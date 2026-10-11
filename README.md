@@ -1,5 +1,7 @@
 # ArqStudioCAD
 
+**English** | [Español](README.es.md)
+
 Open-source 2D/3D CAD for architecture and engineering, with DWG as its native
 format and DXF as an open alternative.
 

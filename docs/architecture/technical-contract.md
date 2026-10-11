@@ -202,8 +202,12 @@ RenderScene: update(changes) · remove_entities(ids) · set_visibility(layer, vi
 - Geometry is sent to the GPU **relative to the camera origin**, so large
   (georeferenced) coordinates survive `f32` conversion.
 - Moving the mouse never re-uploads the whole scene.
-- The graphics API (wgpu vs OpenGL/QRhi) is chosen in phase 7 after a spike on
-  all target platforms, including Wayland.
+- **One renderer on wgpu** with WGSL shaders; the backend (Vulkan, DirectX 12,
+  Metal, OpenGL/GLES, software) is chosen at runtime by out-of-process probes
+  ([ADR 0007](adr/0007-graphics-api.md)).
+- The core drawing path works within wgpu **downlevel limits** (OpenGL ES 3.0
+  class: no compute shaders, no storage buffers); anything beyond is optional.
+- The reference low-end machine (GeForce GT 730 2 GB, LMDE 7) is a release gate.
 
 Selection: pointer + camera → screen-to-world → Rust spatial query → `EntityId`
 → Python selection → highlight. Spatial index chosen after measuring.
@@ -221,7 +225,9 @@ Selection: pointer + camera → screen-to-world → Rust spatial query → `Enti
 ## 10. Contract H — Files and persistence
 
 **DWG is the native format; DXF is the open alternative.**
-See [ADR 0002](adr/0002-dwg-native-format.md).
+See [ADR 0002](adr/0002-dwg-native-format.md). Both are read and written by
+**opencadcodec** (MPL-2.0), wrapped by `arq-document`; codec types never leave
+that crate ([ADR 0008](adr/0008-opencadcodec.md)).
 
 - The document model mirrors DWG: `EntityId` is the entity handle, layers and
   linetypes are symbol-table records with handles, model space and paper space
@@ -230,8 +236,8 @@ See [ADR 0002](adr/0002-dwg-native-format.md).
   registered application `ARQSTUDIOCAD`, together with our schema version.
 - The file "format version" is the DWG/DXF version written, plus that schema
   version.
-- Until DWG writing is reliable, saving uses DXF. Order: DXF read/write →
-  DWG read → DWG write.
+- Saving defaults to DXF until our round-trip corpus (open → edit → save →
+  reopen, every supported DWG/DXF version) is green; then DWG becomes the default.
 - GPU buffers and Qt objects are never persisted.
 - The core owns file I/O; Python asks to open/save; PySide6 shows the dialogs.
 
@@ -292,10 +298,10 @@ and [ADR 0005](adr/0005-development-conventions.md).
 0. Foundation: workspace, tooling, CI, this contract.
 1. Walking skeleton: Rust → PyO3 → PySide6 window with i18n, packaged for every platform.
 2. `arq-geometry`.
-3. `arq-document` + `arq-core`: handles, layers, transactions, undo/redo.
+3. `arq-document` (over opencadcodec) + `arq-core`: handles, layers, transactions, undo/redo.
 4. `arq-python`: full binding API.
 5. PySide6 application: window, command line, panels, events, provisional viewport.
 6. First complete workflow: LINE, CIRCLE, select, MOVE, ROTATE, ERASE, UNDO/REDO.
-7. GPU renderer and spatial index, with benchmarks.
-8. DXF read/write, then DWG read, then DWG write.
+7. GPU renderer (wgpu, backend probing, Qt integration spike) and spatial index, with benchmarks.
+8. DWG/DXF round-trip corpus and fidelity; DWG becomes the default save format.
 9. Public distribution: signing, notarization, Flathub, AUR.

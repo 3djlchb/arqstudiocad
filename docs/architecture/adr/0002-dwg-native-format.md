@@ -1,6 +1,7 @@
 # 0002. DWG as native format, DXF as alternative
 
-Date: 2026-10-11 · Status: Accepted
+Date: 2026-10-11 · Status: Accepted · Implementation amended by
+[0008](0008-opencadcodec.md) (opencadcodec replaces our own reader/writer)
 
 ## Context
 
