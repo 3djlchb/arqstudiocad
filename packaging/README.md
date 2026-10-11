@@ -50,8 +50,39 @@ Silent install, for testing:
 dist\ArqStudioCAD-0.1.0-windows-x64-setup.exe /VERYSILENT /CURRENTUSER /DIR="C:\Temp\arq"
 ```
 
-## Linux, macOS
+## Linux (x86-64, arm64)
 
-Coming in the next steps of phase 1: AppImage, `.deb`, `.rpm`, Flatpak and
-AUR on Linux (built in a `manylinux_2_34` container), universal2 `.dmg` on
-macOS.
+The bundle is built **inside a `manylinux_2_34` container** (Podman), so it
+links against glibc 2.34 and starts on every distribution with glibc ≥ 2.34
+(ADR 0009). The packages are then assembled on the host from that one bundle.
+
+Requirements on the host (Debian/Ubuntu names):
+
+```sh
+sudo apt install podman dpkg-dev rpm desktop-file-utils appstream curl
+```
+
+Build, then test each package in clean containers of the distributions it
+targets:
+
+```sh
+bash packaging/linux/build.sh            # -> dist/linux/
+bash packaging/linux/test-packages.sh
+```
+
+| Package | Installs to | Tested on |
+|---|---|---|
+| `ArqStudioCAD-<v>-linux-<arch>.tar.gz` | anywhere (run `ArqStudioCAD/ArqStudioCAD`) | — |
+| `ArqStudioCAD-<v>-linux-<arch>.AppImage` | nothing, runs in place | Ubuntu 22.04 |
+| `arqstudiocad_<v>_<arch>.deb` | `/opt/arqstudiocad`, command `arqstudiocad` | Debian 13, Ubuntu 22.04 |
+| `arqstudiocad-<v>-1.<arch>.rpm` | `/opt/arqstudiocad`, command `arqstudiocad` | Fedora, AlmaLinux 9 |
+
+All of them carry the desktop entry, the AppStream metadata and the icon
+under the application ID (`io.github._3djlchb.ArqStudioCAD`), validated during
+the build. Flatpak and AUR have their own recipes (built from source).
+
+The icon in `resources/icons/` is **provisional** until the project has a logo.
+
+## macOS
+
+Coming in a later step of phase 1: universal2 `.dmg`.

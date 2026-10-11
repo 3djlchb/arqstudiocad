@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github._3djlchb.ArqStudioCAD</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>ArqStudioCAD</name>
+  <summary>Open-source 2D/3D CAD for architecture and engineering</summary>
+  <summary xml:lang="es">CAD 2D/3D de código abierto para arquitectura e ingeniería</summary>
+  <developer id="io.github._3djlchb">
+    <name>ArqStudioCAD contributors</name>
+  </developer>
+  <description>
+    <p>
+      ArqStudioCAD is an open-source CAD application with DWG as its native
+      format and DXF as an open alternative. Its core is written in Rust, its
+      application layer in Python and its interface in Qt.
+    </p>
+    <p xml:lang="es">
+      ArqStudioCAD es una aplicación CAD de código abierto con DWG como formato
+      nativo y DXF como alternativa abierta. Su núcleo está escrito en Rust, su
+      capa de aplicación en Python y su interfaz en Qt.
+    </p>
+    <p>This is a pre-alpha version: it cannot draw yet.</p>
+    <p xml:lang="es">Esta es una versión pre-alfa: todavía no permite dibujar.</p>
+  </description>
+  <launchable type="desktop-id">io.github._3djlchb.ArqStudioCAD.desktop</launchable>
+  <url type="homepage">https://github.com/3djlchb/arqstudiocad</url>
+  <url type="bugtracker">https://github.com/3djlchb/arqstudiocad/issues</url>
+  <url type="vcs-browser">https://github.com/3djlchb/arqstudiocad</url>
+  <categories>
+    <category>Graphics</category>
+    <category>Engineering</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-11" type="development"/>
+  </releases>
+</component>
