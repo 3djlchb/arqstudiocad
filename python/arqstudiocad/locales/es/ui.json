@@ -1,0 +1,17 @@
+{
+  "&File": "&Archivo",
+  "E&xit": "&Salir",
+  "&Tools": "&Herramientas",
+  "&Language": "&Idioma",
+  "&Help": "Ay&uda",
+  "&About ArqStudioCAD": "&Acerca de ArqStudioCAD",
+  "About ArqStudioCAD": "Acerca de ArqStudioCAD",
+  "ArqStudioCAD {version} — CAD core {core}": "ArqStudioCAD {version} — núcleo CAD {core}",
+  "Nothing to draw yet: this is the walking skeleton.": "Todavía no hay nada que dibujar: este es el esqueleto ejecutable.",
+  "Open-source CAD for architecture and engineering.": "CAD de código abierto para arquitectura e ingeniería.",
+  "CAD core {core} · Qt {qt} · Python {python}": "Núcleo CAD {core} · Qt {qt} · Python {python}",
+  "License: GPL-3.0-or-later": "Licencia: GPL-3.0-or-later",
+  "Credits file not found.": "No se encontró el archivo de créditos.",
+  "Maintainers": "Mantenimiento",
+  "Contributors": "Colaboradores"
+}

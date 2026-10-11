@@ -1,0 +1,11 @@
+ArqStudioCAD is written and maintained by the ArqStudioCAD contributors,
+who hold the copyright on their contributions.
+
+This file is the single source of the credits: the application shows the same
+list in Help > About (it is bundled with every package and read at runtime).
+
+Maintainer:
+
+  @3djlchb (GitHub)
+
+Contributors (add yourself in your first pull request, one line each):
