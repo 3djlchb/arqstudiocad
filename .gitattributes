@@ -1,0 +1,7 @@
+# Normalize line endings: the same bytes on Windows, macOS and Linux.
+* text=auto eol=lf
+
+*.dwg binary
+*.png binary
+*.ico binary
+*.icns binary
