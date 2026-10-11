@@ -67,12 +67,19 @@ The **reference low-end machine** — GeForce GT 730 2 GB, LMDE 7 — is a relea
 gate: the renderer is not accepted unless it works there. Best-effort failures
 do not block a release.
 
+> **Pending — reference machine details.** The machine is not available yet.
+> To be recorded here when it is: GT 730 variant (Kepler GK208 or Fermi
+> GF108, from `lspci -nn`), driver and Mesa version (`glxinfo -B`), Vulkan
+> availability (`vulkaninfo --summary`), CPU, RAM, kernel and LMDE 7 release.
+> Until then the downlevel rule above is the binding constraint, and
+> optimization for this machine starts once its configuration is known.
+
 ### Test matrix available today
 
 | Machine | GPUs | Backends testable |
 |---|---|---|
 | Windows 11 laptop (i7-8750H) | NVIDIA GTX 1050 Ti, Intel UHD 630 | DX12, Vulkan, OpenGL, WARP on each GPU (`WGPU_BACKEND`, `WGPU_ADAPTER_NAME`) |
-| LMDE 7 desktop | NVIDIA GT 730 2 GB | OpenGL ES 3.0, Vulkan if the driver offers it, llvmpipe |
+| LMDE 7 desktop (details pending) | NVIDIA GT 730 2 GB | OpenGL ES 3.0, Vulkan if the driver offers it, llvmpipe |
 
 AMD and macOS are covered by manual CI runs and volunteer testers.
 
