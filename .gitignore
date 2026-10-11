@@ -1,0 +1,23 @@
+# Rust
+/target/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+/dist/
+/build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Native extension built in place by maturin
+python/arqstudiocad/*.pyd
+python/arqstudiocad/*.so
+
+# Editors / OS
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

@@ -1,0 +1,69 @@
+[build-system]
+requires = ["maturin>=1.15,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "arqstudiocad"
+description = "Open-source 2D/3D CAD: Rust core, Python application layer, PySide6 interface"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "ArqStudioCAD contributors" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Multimedia :: Graphics :: Editors :: Vector-Based",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+# Single source of truth for the version: [workspace.package] in Cargo.toml.
+dynamic = ["version"]
+# PySide6 is added in phase 1, together with the first window.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/3djlchb/arqstudiocad"
+
+[dependency-groups]
+dev = [
+    "maturin>=1.15,<2.0",
+    "pytest>=8",
+    "ruff>=0.13",
+    "mypy>=1.18",
+    "pre-commit>=4",
+]
+
+[tool.maturin]
+manifest-path = "crates/arq-python/Cargo.toml"
+module-name = "arqstudiocad._core"
+python-source = "python"
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+# Rebuild the Rust extension whenever Rust sources change.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "crates/**/*.rs" },
+    { file = "crates/**/Cargo.toml" },
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["python", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["python", "tests"]
+mypy_path = "python"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]

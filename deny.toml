@@ -1,0 +1,49 @@
+# cargo-deny: dependency licenses must be compatible with GPL-3.0-or-later,
+# and dependencies must have no known vulnerabilities.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+# The allow list anticipates future dependencies; don't warn about unused entries.
+unused-allowed-license = "allow"
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "ISC",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[[licenses.clarify]]
+# Our own crates inherit the workspace license.
+crate = "arq-*"
+expression = "GPL-3.0-or-later"
+license-files = []
+
+[licenses.private]
+ignore = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

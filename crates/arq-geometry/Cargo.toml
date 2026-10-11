@@ -1,0 +1,15 @@
+[package]
+name = "arq-geometry"
+description = "ArqStudioCAD geometric types and algorithms"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

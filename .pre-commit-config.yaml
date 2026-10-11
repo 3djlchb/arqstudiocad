@@ -1,0 +1,51 @@
+# Install once with: uv run pre-commit install
+# Local hooks reuse the pinned toolchain (rust-toolchain.toml) and the uv environment.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-toml
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: cargo-deny
+        name: cargo deny (licenses, advisories)
+        entry: cargo deny check
+        language: system
+        files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
+        pass_filenames: false
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types_or: [python, pyi]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types_or: [python, pyi]
+      - id: mypy
+        name: mypy
+        entry: uv run mypy
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false

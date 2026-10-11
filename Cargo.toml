@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# `cargo build` / `cargo test` from the root never touch the Python binding.
+# This enforces the core rule: the CAD core builds and tests without Python.
+default-members = [
+    "crates/arq-geometry",
+    "crates/arq-document",
+    "crates/arq-core",
+    "crates/arq-render",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/3djlchb/arqstudiocad"
+authors = ["ArqStudioCAD contributors"]
+publish = false
+
+[workspace.dependencies]
+arq-geometry = { path = "crates/arq-geometry" }
+arq-document = { path = "crates/arq-document" }
+arq-core = { path = "crates/arq-core" }
+arq-render = { path = "crates/arq-render" }
+pyo3 = "0.29.3"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

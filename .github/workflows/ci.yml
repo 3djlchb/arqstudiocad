@@ -1,0 +1,70 @@
+name: CI
+
+# Manual only: day-to-day testing is local (ADR 0005). Run this before a
+# version, or to check platforms not available locally (macOS, Windows ARM).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      # rustup installs the exact toolchain from rust-toolchain.toml.
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test core crates (no Python)
+        run: cargo test
+      - name: Core crates must not depend on Python
+        shell: bash
+        run: |
+          for crate in arq-geometry arq-document arq-core arq-render; do
+            if cargo tree -p "$crate" -e normal,build --prefix none | grep -q '^pyo3'; then
+              echo "::error::$crate depends on pyo3"; exit 1
+            fi
+          done
+
+  python:
+    name: Python ${{ matrix.python }} (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Build extension and dev environment
+        run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy
+      - run: uv run pytest
+
+  cargo-deny:
+    name: Licenses and advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: EmbarkStudios/cargo-deny-action@v2
