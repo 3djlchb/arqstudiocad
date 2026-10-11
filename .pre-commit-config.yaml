@@ -27,6 +27,12 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+      - id: cargo-deny
+        name: cargo deny (licenses, advisories)
+        entry: cargo deny check
+        language: system
+        files: (^|/)Cargo\.(toml|lock)$|^deny\.toml$
+        pass_filenames: false
       - id: ruff-check
         name: ruff check
         entry: uv run ruff check --fix

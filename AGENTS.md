@@ -24,7 +24,10 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 cargo test                                     # core crates, no Python
 uv run pytest                                  # Python tests
 uv run ruff check && uv run ruff format --check && uv run mypy
+cargo deny check                               # dependency licenses + advisories
 ```
+
+One-time setup: `cargo install cargo-deny --locked` and `uv run pre-commit install`.
 
 A change is done when all of the above pass locally and it has tests at the
 right layer (contract §12). A check that inspects nothing is a failure, not a

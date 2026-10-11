@@ -45,6 +45,13 @@ cargo test         # Rust core tests (no Python needed)
 
 After changing Rust code, `uv sync` (or `uv run`) rebuilds the extension.
 
+Contributors also install the local checks once:
+
+```sh
+cargo install cargo-deny --locked
+uv run pre-commit install
+```
+
 ## License
 
 [GPL-3.0-or-later](LICENSE). Third-party code and ideas are credited in
