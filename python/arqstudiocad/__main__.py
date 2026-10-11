@@ -5,13 +5,14 @@ import sys
 from collections.abc import Sequence
 
 from arqstudiocad import __version__
+from arqstudiocad.product import APP_NAME
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="arqstudiocad", description="ArqStudioCAD, open-source CAD."
+        prog="arqstudiocad", description=f"{APP_NAME}, open-source CAD."
     )
-    parser.add_argument("--version", action="version", version=f"ArqStudioCAD {__version__}")
+    parser.add_argument("--version", action="version", version=f"{APP_NAME} {__version__}")
     parser.add_argument("--check", action="store_true", help="verify the installation and exit")
     parser.add_argument(
         "--lang", metavar="CODE", help="interface language for this session, e.g. en or es"

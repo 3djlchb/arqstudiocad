@@ -3,9 +3,7 @@
 import sys
 
 from arqstudiocad.i18n import SOURCE_LANGUAGE, available_languages
-
-APP_ID = "io.github._3djlchb.ArqStudioCAD"
-ORGANIZATION = "ArqStudioCAD"
+from arqstudiocad.product import APP_ID, APP_NAME, ORGANIZATION
 
 
 def choose_language(requested: str | None, saved: object, system_locale: str) -> str:
@@ -25,7 +23,7 @@ def run(language: str | None = None) -> int:
 
     from arqstudiocad import _core
     from arqstudiocad.i18n import set_language
-    from arqstudiocad.ui.main_window import APP_NAME, LANGUAGE_SETTING, MainWindow
+    from arqstudiocad.ui.main_window import LANGUAGE_SETTING, MainWindow
 
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)

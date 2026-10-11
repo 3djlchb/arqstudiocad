@@ -11,9 +11,9 @@ from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox
 from arqstudiocad import _core
 from arqstudiocad.credits import load_credits
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
+from arqstudiocad.product import APP_NAME
 from arqstudiocad.ui.qt_translations import QtTranslations
 
-APP_NAME = "ArqStudioCAD"
 LANGUAGE_SETTING = "language"
 
 
@@ -62,10 +62,10 @@ class MainWindow(QMainWindow):
         self._tools_menu.setTitle(tr("&Tools"))
         self._language_menu.setTitle(tr("&Language"))
         self._help_menu.setTitle(tr("&Help"))
-        self._about_action.setText(tr("&About ArqStudioCAD"))
+        self._about_action.setText(tr("&About {app}"))
         self._welcome.setText(
             tr(
-                "ArqStudioCAD {version} — CAD core {core}",
+                "{app} {version} — CAD core {core}",
                 version=_core.__version__,
                 core=_core.__version__,
             )
@@ -115,4 +115,4 @@ class MainWindow(QMainWindow):
         return "".join(parts)
 
     def show_about(self) -> None:
-        QMessageBox.about(self, tr("About ArqStudioCAD"), self.about_text())
+        QMessageBox.about(self, tr("About {app}"), self.about_text())

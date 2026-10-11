@@ -15,6 +15,7 @@ from arqstudiocad.i18n import (
     tr,
 )
 from arqstudiocad.paths import package_dir
+from arqstudiocad.product import APP_NAME
 
 SOURCES = sorted(package_dir().rglob("*.py"))
 PACKS = discover(strict=True)
@@ -93,8 +94,23 @@ def test_tr_translates_and_falls_back_to_english() -> None:
 
 def test_tr_fills_placeholders_in_translation() -> None:
     set_language("es")
-    text = tr("ArqStudioCAD {version} — CAD core {core}", version="1.2", core="3.4")
-    assert text == "ArqStudioCAD 1.2 — núcleo CAD 3.4"
+    text = tr("{app} {version} — CAD core {core}", version="1.2", core="3.4")
+    assert text == f"{APP_NAME} 1.2 — núcleo CAD 3.4"
+
+
+def test_no_translatable_string_spells_the_product_name() -> None:
+    # The name lives in arqstudiocad.product only; strings use {app}.
+    spelled = sorted(s for s in _tr_literals() if APP_NAME.casefold() in s.casefold())
+    assert not spelled, f"use {{app}} instead of the product name: {spelled}"
+    for code, pack in PACKS.items():
+        spelled = sorted(t for t in pack.ui.values() if APP_NAME.casefold() in t.casefold())
+        assert not spelled, f"{code}: use {{app}} instead of the product name: {spelled}"
+
+
+def test_tr_fills_the_product_name() -> None:
+    assert tr("About {app}") == f"About {APP_NAME}"
+    set_language("es")
+    assert tr("About {app}") == f"Acerca de {APP_NAME}"
 
 
 def test_unknown_language_is_refused() -> None:

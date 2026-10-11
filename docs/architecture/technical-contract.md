@@ -274,6 +274,9 @@ See [ADR 0006](adr/0006-i18n.md). In one sentence:
 - Source language is English everywhere: code, comments, docs, UI strings.
 - UI text goes through `tr()`; a missing translation falls back to English,
   never to a key or a crash.
+- The product name is never spelled out in translatable text: strings use the
+  `{app}` placeholder, filled from `arqstudiocad.product.APP_NAME`, so a rename
+  touches one constant. A test enforces it.
 - Translations are language packs (`i18n/<code>/meta.json`, `ui.json`,
   `commands.json`); adding a language changes no Python code.
 - Command names and prompt option keys are English and **always** work in every

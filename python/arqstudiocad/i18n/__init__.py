@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from arqstudiocad.paths import locales_dir
+from arqstudiocad.product import APP_NAME
 
 __all__ = [
     "SOURCE_LANGUAGE",
@@ -136,10 +137,15 @@ def current_language() -> str:
 
 
 def tr(source: str, /, **values: object) -> str:
-    """Translate `source` into the active language, then fill `{placeholders}`."""
+    """Translate `source` into the active language, then fill `{placeholders}`.
+
+    `{app}` is always available and expands to the product name, so no
+    translatable string spells the name out.
+    """
     text = _active.ui.get(source, source) if _active is not None else source
-    if not values:
+    if not values and "{app}" not in text:
         return text
+    values = {"app": APP_NAME, **values}
     try:
         return text.format(**values)
     except (KeyError, IndexError, ValueError):
