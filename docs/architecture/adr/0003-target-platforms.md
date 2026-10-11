@@ -1,6 +1,7 @@
 # 0003. Target platforms and macOS universal2
 
-Date: 2026-10-11 · Status: Accepted
+Date: 2026-10-11 · Status: Accepted · Packaging tools and platform floor in
+[0009](0009-packaging.md)
 
 ## Context
 
