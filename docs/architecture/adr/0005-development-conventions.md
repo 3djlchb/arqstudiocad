@@ -18,6 +18,8 @@ Date: 2026-10-11 · Status: Accepted
   runs them on each commit); Linux is tested locally through WSL2 from phase 1.
   GitHub Actions CI runs **only on manual dispatch**: before a version, and to
   build/test platforms not available locally (macOS, Windows ARM64).
+  CI runner images are pinned (`ubuntu-24.04`, `windows-2025`, `macos-15`),
+  never `*-latest`, and bumped deliberately like the Rust toolchain.
 
 ## Consequences
 
