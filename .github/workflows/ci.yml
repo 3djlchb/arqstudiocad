@@ -1,9 +1,8 @@
 name: CI
 
+# Manual only: day-to-day testing is local (ADR 0005). Run this before a
+# version, or to check platforms not available locally (macOS, Windows ARM).
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 concurrency:

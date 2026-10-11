@@ -14,8 +14,15 @@ Date: 2026-10-11 · Status: Accepted
 - **Git:** one branch per phase (`fase-N/<topic>`), small commits per step,
   pull request to `main` when the phase closes with green CI.
 - Line endings are LF in the repository (`.gitattributes`).
+- **Testing is local.** Every check runs on the developer machine (pre-commit
+  runs them on each commit); Linux is tested locally through WSL2 from phase 1.
+  GitHub Actions CI runs **only on manual dispatch**: before a version, and to
+  build/test platforms not available locally (macOS, Windows ARM64).
 
 ## Consequences
 
 - Every contributor, Codex and CI build with the same compiler.
 - Toolchain bumps are explicit commits, easy to bisect.
+- macOS and Windows ARM64 regressions are only caught when CI is run by hand,
+  so it must be run before merging anything platform-sensitive (packaging,
+  rendering, file paths, native dependencies).

@@ -19,8 +19,11 @@ late (missing wheels, signing, sandboxing) are expensive.
 
 - macOS ships a **single universal2 build** that installs on Apple Silicon and
   Intel. PySide6 and the python.org runtime are already universal2.
-- All platforms are built in GitHub Actions from phase 1 (walking skeleton),
-  on native runners where available.
+- All platforms can be built in GitHub Actions from phase 1 (walking
+  skeleton), on native runners where available, triggered manually (ADR 0005).
+- **No public release until the application is mature** enough to be used and
+  distributed. Until then, packages exist only as CI artifacts for internal
+  testing.
 - Code signing and notarization are set up in phase 9.
 
 ## Consequences

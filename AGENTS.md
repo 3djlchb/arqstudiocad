@@ -26,8 +26,10 @@ uv run pytest                                  # Python tests
 uv run ruff check && uv run ruff format --check && uv run mypy
 ```
 
-A change is done when all of the above pass and it has tests at the right layer
-(contract §12). A check that inspects nothing is a failure, not a pass.
+A change is done when all of the above pass locally and it has tests at the
+right layer (contract §12). A check that inspects nothing is a failure, not a
+pass. GitHub Actions CI is manual-only; it is not a substitute for running the
+checks locally.
 
 ## Git
 
