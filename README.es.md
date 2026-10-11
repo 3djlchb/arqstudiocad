@@ -141,6 +141,12 @@ La lista completa de comprobaciones está en [AGENTS.md](AGENTS.md).
 | `linker 'cc' not found` (Linux) | Instala el paquete del compilador del paso 1 |
 | `invalid peer certificate: UnknownIssuer` en uv | Un proxy o antivirus intercepta HTTPS. Define `UV_SYSTEM_CERTS=1` para que uv use los certificados del sistema |
 
+## Contribuir
+
+Las contribuciones son bienvenidas, en español o en inglés. Lee
+[CONTRIBUTING.es.md](CONTRIBUTING.es.md) para conocer el flujo de trabajo y las
+reglas, y el [Código de Conducta](CODE_OF_CONDUCT.md).
+
 ## Licencia
 
 [GPL-3.0-or-later](LICENSE). El código y las ideas de terceros se reconocen en

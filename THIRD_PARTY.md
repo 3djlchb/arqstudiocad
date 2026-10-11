@@ -13,6 +13,13 @@ copied.
 |---|---|---|---|
 | _(none yet)_ | | | |
 
+## Documents
+
+| Path in this repo | Origin | License | Notes |
+|---|---|---|---|
+| `CODE_OF_CONDUCT.md` | [Contributor Covenant 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) | CC BY 4.0 | Contact address changed |
+| `CONTRIBUTING*.md`, `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md` | [IngeCAD](https://github.com/ingelibre/ingecad) | GPL-3.0-or-later | Adapted to this project's stack and rules |
+
 ## Design references
 
 | Project | License | What we take from it |

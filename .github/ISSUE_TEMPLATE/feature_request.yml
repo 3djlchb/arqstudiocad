@@ -1,0 +1,33 @@
+name: Something is missing / Falta algo
+description: A command or behaviour you need that ArqStudioCAD does not have.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Escribe en español si prefieres** — English or Spanish, both are read.
+
+        ArqStudioCAD is not a feature-for-feature clone of AutoCAD. Please say
+        what you were trying to do, not only which command you want: the need
+        decides the design.
+  - type: textarea
+    id: need
+    attributes:
+      label: What you were trying to do
+      placeholder: |
+        I have to hand in a plan with a table of coordinates for every vertex
+        of the boundary. Today I type it by hand.
+    validations:
+      required: true
+  - type: input
+    id: autocad
+    attributes:
+      label: How AutoCAD (or BricsCAD) does it, if it does
+      description: The command name helps a lot.
+      placeholder: TABLE, or a LISP routine everyone passes around
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, sample drawings, standards that apply.
