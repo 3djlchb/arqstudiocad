@@ -95,8 +95,7 @@ Quien viene de AutoCAD escribe lo que ya saben sus dedos —`L`, `TR`, `Z`— y 
 debe funcionar en cualquier idioma de la interfaz. Se traducen los menús, los
 diálogos, los paneles y el *texto* de los mensajes; no se traducen los nombres
 de comando ni las teclas de las opciones. Las reglas completas están en el
-[ADR 0006](docs/architecture/adr/0006-i18n.md); el sistema de idiomas llega en
-la fase 1.
+[ADR 0006](docs/architecture/adr/0006-i18n.md).
 
 La única regla estricta para traducir: un mensaje se interpreta según sus
 teclas de opción en inglés, así que la traducción debe mantener cada tecla visible:
@@ -106,11 +105,16 @@ teclas de opción en inglés, así que la traducción debe mantener cada tecla v
     "Especifique el ángulo de rotación o [Referencia(R)]:"
 ```
 
-Cada idioma es una carpeta (`i18n/<código>/meta.json`, `ui.json` y,
-opcionalmente, `commands.json`). Las traducciones parciales están bien: un
-texto sin traducir se muestra en inglés, y nunca se retrasa una versión por una
-traducción. Se pueden *añadir* nombres de comando localizados (`LINEA`), pero
-nunca sustituir ni tapar un nombre en inglés.
+Cada idioma es una carpeta en `python/arqstudiocad/locales/<código>/` con un
+`meta.json` (su código y su nombre en su propio idioma, p. ej.
+`"name": "Español"`) y un `ui.json` (`{"texto en inglés": "traducción"}`);
+copia `es/` como modelo. No hace falta tocar código: el idioma aparece solo en
+*Herramientas > Idioma*. Las traducciones parciales están bien: un texto sin
+traducir se muestra en inglés, y nunca se retrasa una versión por una
+traducción. Respeta los `{marcadores}` como `{app}` o `{version}` tal cual: las
+pruebas lo comprueban. Se pueden *añadir* nombres de comando localizados
+(`LINEA`, en un futuro `commands.json`), pero nunca sustituir ni tapar un
+nombre en inglés.
 
 ---
 

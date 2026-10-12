@@ -20,8 +20,10 @@ classifiers = [
 ]
 # Single source of truth for the version: [workspace.package] in Cargo.toml.
 dynamic = ["version"]
-# PySide6 is added in phase 1, together with the first window.
-dependencies = []
+dependencies = ["PySide6-Essentials>=6.12,<6.13"]
+
+[project.scripts]
+arqstudiocad = "arqstudiocad.__main__:main"
 
 [project.urls]
 Repository = "https://github.com/3djlchb/arqstudiocad"
@@ -30,10 +32,12 @@ Repository = "https://github.com/3djlchb/arqstudiocad"
 dev = [
     "maturin>=1.15,<2.0",
     "pytest>=8",
+    "pytest-qt>=4.5",
     "ruff>=0.13",
     "mypy>=1.18",
     "pre-commit>=4",
 ]
+package = ["pyinstaller>=6.22,<7"]
 
 [tool.maturin]
 manifest-path = "crates/arq-python/Cargo.toml"

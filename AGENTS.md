@@ -13,6 +13,8 @@ before changing code. It is binding. Decisions are in [docs/architecture/adr/](d
 - Operations are all-or-nothing: a failed operation leaves the document unchanged.
 - English everywhere in code, comments, docs and UI source strings. User-facing
   text goes through `tr()`; commands and prompt keys stay English (ADR 0006).
+  Never write the product name in user-facing text: use `{app}` in `tr()`
+  strings and `arqstudiocad.product` constants elsewhere.
 - `README.md` / `README.es.md` and `CONTRIBUTING.md` / `CONTRIBUTING.es.md`
   (English / Spanish) are kept in sync: a change to one is made to the other in
   the same commit. Everything else is English.

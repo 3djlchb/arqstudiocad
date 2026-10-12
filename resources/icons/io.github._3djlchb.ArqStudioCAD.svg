@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PROVISIONAL icon: a placeholder until the project chooses its logo. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="#1f3a5f"/>
+  <g fill="none" stroke="#9cc3e6" stroke-width="2" opacity="0.45">
+    <path d="M48 64H208M48 96H208M48 128H208M48 160H208M48 192H208"/>
+    <path d="M64 48V208M96 48V208M128 48V208M160 48V208M192 48V208"/>
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M76 196L128 60L180 196"/>
+    <path d="M98 146H158"/>
+  </g>
+  <circle cx="128" cy="60" r="11" fill="#f2a541"/>
+  <circle cx="76" cy="196" r="9" fill="#f2a541"/>
+  <circle cx="180" cy="196" r="9" fill="#f2a541"/>
+</svg>

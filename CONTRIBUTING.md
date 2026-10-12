@@ -90,8 +90,7 @@ is worth more than the real one anyway.
 An AutoCAD user types what their fingers already know — `L`, `TR`, `Z` — and it
 must work in every interface language. Menus, dialogs, panels and the *text*
 of prompts are translated; command names and the option keys inside prompts
-are not. The full rules are in [ADR 0006](docs/architecture/adr/0006-i18n.md);
-the language machinery itself arrives in phase 1.
+are not. The full rules are in [ADR 0006](docs/architecture/adr/0006-i18n.md).
 
 The one hard rule for translators: a prompt is parsed against its English
 option keys, so a translation must keep each key visible —
@@ -101,10 +100,15 @@ option keys, so a translation must keep each key visible —
     "Especifique el ángulo de rotación o [Referencia(R)]:"
 ```
 
-A language is a folder (`i18n/<code>/meta.json`, `ui.json`, optional
-`commands.json`). Partial translations are fine: a missing string falls back
-to English, and no release is ever blocked on a translation. Localized command
-names (`LINEA`) may be *added*, but never replace or shadow an English name.
+A language is a folder under `python/arqstudiocad/locales/<code>/` with a
+`meta.json` (its code and its own name, e.g. `"name": "Español"`) and a
+`ui.json` (`{"English source": "translation"}`); copy `es/` as a model. No code
+change is needed: the language appears in *Tools > Language* by itself.
+Partial translations are fine: a missing string falls back to English, and no
+release is ever blocked on a translation. Keep `{placeholders}` such as
+`{app}` or `{version}` exactly as they are — the tests check it. Localized
+command names (`LINEA`, in a future `commands.json`) may be *added*, but never
+replace or shadow an English name.
 
 ---
 

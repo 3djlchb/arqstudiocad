@@ -1,0 +1,41 @@
+# RPM spec template filled in by packaging/linux/build.sh. It repackages the
+# prebuilt PyInstaller bundle staged in the 'stage' directory; nothing is compiled here.
+
+# The bundle carries its own libraries: no automatic requirements from them,
+# no stripping, no debuginfo, no build-id links (they clash between packages).
+%global debug_package %{nil}
+%global __strip /bin/true
+%global __brp_strip %{nil}
+%global __brp_strip_comment_note %{nil}
+%global __brp_strip_static_archive %{nil}
+%global _build_id_links none
+AutoReqProv: no
+
+Name:           @PKG@
+Version:        @VERSION@
+Release:        1
+Summary:        Open-source 2D/3D CAD for architecture and engineering
+License:        GPL-3.0-or-later
+URL:            https://github.com/3djlchb/arqstudiocad
+
+Requires:       glibc >= @GLIBC_MIN@
+Requires:       mesa-libGL
+Requires:       mesa-libEGL
+Requires:       fontconfig
+Requires:       libxkbcommon-x11
+Requires:       xcb-util-cursor
+Requires:       dbus-libs
+
+%description
+@APP_NAME@ is an open-source CAD application with DWG as its native format
+and DXF as an open alternative. Pre-alpha: it cannot draw yet.
+
+%install
+cp -a %{stage}/. %{buildroot}/
+
+%files
+/opt/@PKG@
+/usr/bin/@PKG@
+/usr/share/applications/@APP_ID@.desktop
+/usr/share/metainfo/@APP_ID@.metainfo.xml
+/usr/share/icons/hicolor/scalable/apps/@APP_ID@.svg

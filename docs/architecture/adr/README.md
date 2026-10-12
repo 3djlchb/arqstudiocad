@@ -13,6 +13,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0006](0006-i18n.md) | English source, translation packs (IngeCAD model) | Accepted |
 | [0007](0007-graphics-api.md) | One wgpu renderer, backend chosen at runtime; GT 730 as low-end reference | Accepted (spike in phase 7) |
 | [0008](0008-opencadcodec.md) | opencadcodec (MPL-2.0) as the DWG/DXF engine | Accepted |
+| [0009](0009-packaging.md) | PyInstaller onedir, Inno Setup (+ MSI later), app ID, platform floor | Accepted |
 
 Template:
 

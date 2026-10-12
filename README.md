@@ -5,7 +5,9 @@
 Open-source 2D/3D CAD for architecture and engineering, with DWG as its native
 format and DXF as an open alternative.
 
-> **Status:** pre-alpha, phase 0 (foundation). Nothing usable yet.
+> **Status:** pre-alpha. Phase 1 (walking skeleton) is done: the application
+> starts, switches between English and Spanish, and is packaged for every
+> target platform — but it cannot draw yet.
 
 | Layer | Technology | Owns |
 |---|---|---|
@@ -22,7 +24,7 @@ for the rules every change must respect, and
 ## Target platforms
 
 Windows (x86-64, ARM64) · macOS (universal2: Apple Silicon and Intel) ·
-Linux (`.deb`, `.rpm`, Arch/AUR, Flatpak, AppImage).
+Linux (`.deb`, `.rpm`, AppImage).
 
 ## Languages
 
@@ -32,9 +34,6 @@ line are always accepted in English. See
 [ADR 0006](docs/architecture/adr/0006-i18n.md).
 
 ## Building from source
-
-> There is no application to launch yet (phase 0). Building today produces the
-> Rust core and its Python module, and runs the test suites.
 
 You need four things on every platform: **Git**, a **C/C++ linker**,
 **rustup** (installs Rust) and **[uv](https://docs.astral.sh/uv/)** (installs
@@ -80,6 +79,10 @@ first time you build.
    | openSUSE | `sudo zypper install -t pattern devel_basis && sudo zypper install git curl` |
    | Arch, Manjaro, EndeavourOS | `sudo pacman -S --needed base-devel git curl` |
 
+   Desktop distributions already have the libraries Qt needs to open windows,
+   except sometimes the X11 cursor library: `libxcb-cursor0` (Debian, Ubuntu),
+   `xcb-util-cursor` (Fedora, openSUSE, Arch).
+
 2. Install rustup and uv (both install into your home directory, no `sudo`):
 
    ```sh
@@ -102,10 +105,17 @@ first time you build.
 
 Run `xcode-select --install` for the compiler, then follow the Linux steps 2–4.
 
-### Check that it works (all platforms)
+### Run it (all platforms)
 
 ```sh
-uv run python -c "import arqstudiocad; print(arqstudiocad.__version__)"   # prints 0.1.0
+uv run arqstudiocad              # opens the application
+uv run arqstudiocad --lang es    # in Spanish (also: Tools > Language)
+uv run arqstudiocad --check      # verifies the installation, prints a report
+```
+
+And the test suites:
+
+```sh
 cargo test         # Rust core tests (no Python involved)
 uv run pytest      # Python tests
 ```
@@ -119,6 +129,10 @@ To build an optimized, installable package (a *wheel*) in `target/wheels/`:
 ```sh
 uv run maturin build --release
 ```
+
+Installers and portable packages (Windows installer and portable ZIP, macOS
+`.dmg`, Linux AppImage/`.deb`/`.rpm`) are built with the scripts described in
+[packaging/README.md](packaging/README.md).
 
 ### Contributors
 
@@ -138,6 +152,7 @@ The full set of checks is listed in [AGENTS.md](AGENTS.md).
 | `cargo`, `rustup` or `uv` not found | Open a new terminal (Windows: close all terminals, or restart VS Code) |
 | `link.exe not found` (Windows) | Install the Build Tools C++ workload (step 1) |
 | `linker 'cc' not found` (Linux) | Install the compiler package from step 1 |
+| `Could not load the Qt platform plugin "xcb"` (Linux) | Install the X11 cursor library named in step 1 |
 | `invalid peer certificate: UnknownIssuer` from uv | A proxy or antivirus intercepts HTTPS. Set `UV_SYSTEM_CERTS=1` so uv trusts the system certificate store |
 
 ## Contributing

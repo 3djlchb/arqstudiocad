@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=ArqStudioCAD
+GenericName=CAD
+GenericName[es]=CAD
+Comment=Open-source 2D/3D CAD for architecture and engineering
+Comment[es]=CAD 2D/3D de código abierto para arquitectura e ingeniería
+Exec=arqstudiocad
+Icon=io.github._3djlchb.ArqStudioCAD
+Terminal=false
+Categories=Graphics;2DGraphics;VectorGraphics;Engineering;
+Keywords=CAD;DWG;DXF;drawing;architecture;engineering;drafting;
+Keywords[es]=CAD;DWG;DXF;dibujo;arquitectura;ingeniería;plano;
+StartupWMClass=ArqStudioCAD
