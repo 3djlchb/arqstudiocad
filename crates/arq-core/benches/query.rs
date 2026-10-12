@@ -1,4 +1,4 @@
-//! Spatial queries on a 100,000-entity drawing (contract §12, ADR 0011 D3.8).
+//! Queries, snapshots and transactions on a 100,000-entity drawing (contract §12, ADR 0011 D3.8).
 //!
 //! The baseline for the phase 7 spatial index: `cargo bench -p arq-core`.
 //! A reproducible measurement target, not a promise.
@@ -59,6 +59,8 @@ fn queries(c: &mut Criterion) {
     group.bench_function("query everything", |b| {
         b.iter(|| black_box(cad.query_entities(black_box(all))))
     });
+    // What saving and autosave hold the document lock for (D3.10).
+    group.bench_function("snapshot", |b| b.iter(|| black_box(cad.snapshot())));
     // Transaction overhead in a large drawing: one recorded change and its undo.
     group.bench_function("add line + undo", |b| {
         b.iter(|| {

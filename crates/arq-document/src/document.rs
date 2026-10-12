@@ -94,6 +94,20 @@ impl Document {
         })
     }
 
+    /// An independent copy of the drawing as it is now, for long reads
+    /// (saving, autosave) away from the live document (ADR 0011, D3.10).
+    ///
+    /// Cheap: entities are shared `Arc`s, so the copy costs one counter bump
+    /// per entity plus the tables, and later edits of either side copy only
+    /// what they touch. Taken mid-change it holds the edits made so far,
+    /// without the recording.
+    pub fn snapshot(&self) -> Self {
+        Self {
+            cad: Box::new(CadDocument::clone(&self.cad)),
+            recording: None,
+        }
+    }
+
     /// File-format version code of the drawing, e.g. `"AC1032"` (R2018).
     pub fn version_code(&self) -> String {
         format!("{:?}", self.cad.version)
@@ -225,5 +239,46 @@ mod tests {
                 "{name} must be rejected, not panic"
             );
         }
+    }
+
+    #[test]
+    fn a_snapshot_is_independent_of_the_live_document() {
+        use arq_geometry::{Line as Line2, Point2};
+
+        let mut doc = sample();
+        let first = doc.entities()[0].id();
+        let snap = doc.snapshot();
+        let plan = |x: f64| {
+            let p = |x, y| Point2::new(x, y).unwrap();
+            crate::PlanGeometry::new(Line2::new(p(x, 0.0), p(x, 1.0)).unwrap().into())
+        };
+        let zero = doc.layer_by_name("0").unwrap().id();
+
+        doc.set_plan_geometry(first, plan(7.0)).unwrap();
+        doc.add_entity(plan(9.0), zero).unwrap();
+        doc.create_layer("NUEVA").unwrap();
+        assert_eq!(snap.entities(), sample().entities(), "edits stay out");
+        assert!(snap.layer_by_name("NUEVA").is_none());
+
+        // The other way round: editing the snapshot leaves the live one alone.
+        let mut snap = snap;
+        let live = doc.entities();
+        snap.delete_entity(first).unwrap();
+        assert_eq!(doc.entities(), live);
+    }
+
+    #[test]
+    fn a_snapshot_taken_mid_change_has_its_own_history() {
+        let mut doc = sample();
+        doc.begin_change().unwrap();
+        doc.create_layer("A").unwrap();
+        let mut snap = doc.snapshot();
+        assert!(!snap.is_recording());
+        assert!(snap.layer_by_name("A").is_some(), "edits so far");
+        doc.rollback_change().unwrap();
+        assert!(doc.layer_by_name("A").is_none());
+        assert!(snap.layer_by_name("A").is_some());
+        snap.begin_change().unwrap();
+        snap.commit_change().unwrap();
     }
 }

@@ -215,3 +215,63 @@ fn a_group_is_undone_in_reverse_order() {
     cad.redo().unwrap();
     assert_eq!(state(&cad), end);
 }
+
+#[test]
+fn modified_follows_the_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plano.dxf");
+    let mut cad = CadDocument::new();
+    assert!(!cad.is_modified(), "a new drawing");
+    cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    assert!(cad.is_modified());
+    cad.undo().unwrap();
+    assert!(!cad.is_modified(), "back to the starting state");
+    cad.redo().unwrap();
+    cad.save(&path).unwrap();
+    assert!(!cad.is_modified(), "just saved");
+    cad.undo().unwrap();
+    assert!(cad.is_modified(), "before the saved state");
+    cad.redo().unwrap();
+    assert!(!cad.is_modified(), "redo reaches the saved state again");
+    cad.undo().unwrap();
+    cad.add_circle(p(0.0, 0.0), 1.0).unwrap();
+    cad.undo().unwrap();
+    assert!(
+        cad.is_modified(),
+        "the saved state cannot be reached any more"
+    );
+    assert!(
+        !CadDocument::open(&path).unwrap().is_modified(),
+        "just opened"
+    );
+}
+
+#[test]
+fn an_open_group_with_changes_is_a_modification() {
+    let mut cad = CadDocument::new();
+    cad.begin_group("CMD");
+    assert!(!cad.is_modified());
+    cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    assert!(cad.is_modified());
+    cad.cancel_group().unwrap();
+    assert!(!cad.is_modified());
+}
+
+#[test]
+fn a_snapshot_marks_saved_only_its_own_state() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plano.dwg");
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    let snap = cad.snapshot();
+    let (b, _) = cad.add_circle(p(0.0, 0.0), 1.0).unwrap(); // during the save
+    assert!(snap.document().entity(b).is_none());
+    snap.save(&path).unwrap();
+    cad.mark_saved(&snap);
+    assert!(cad.is_modified(), "the circle is not in the file");
+    cad.undo().unwrap();
+    assert!(!cad.is_modified(), "now it matches the file");
+    let back = CadDocument::open(&path).unwrap();
+    assert!(back.document().entity(a).is_some());
+    assert!(back.document().entity(b).is_none());
+}

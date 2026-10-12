@@ -15,6 +15,8 @@ use crate::error::{CadError, CadResult};
 
 /// One undo step: the changes it made, in order.
 struct Step {
+    /// Unique within the document, never reused: the state after this step.
+    serial: u64,
     name: String,
     changes: Vec<Change>,
     summary: ChangeSet,
@@ -33,6 +35,10 @@ pub struct CadDocument {
     undo: Vec<Step>,
     redo: Vec<Step>,
     group: Option<Group>,
+    /// Serial of the next step.
+    next_serial: u64,
+    /// State last saved or opened (see [`CadDocument::state`]).
+    saved: u64,
 }
 
 impl CadDocument {
@@ -53,12 +59,47 @@ impl CadDocument {
             undo: Vec::new(),
             redo: Vec::new(),
             group: None,
+            next_serial: 1,
+            saved: 0,
         }
     }
 
-    /// Saves as DWG or DXF, by the file extension. The history is kept.
-    pub fn save(&self, path: impl AsRef<Path>) -> CadResult<()> {
-        Ok(self.doc.save(path)?)
+    /// Saves as DWG or DXF, by the file extension, and marks the drawing
+    /// unmodified. The history is kept.
+    pub fn save(&mut self, path: impl AsRef<Path>) -> CadResult<()> {
+        self.doc.save(path)?;
+        self.saved = self.state();
+        Ok(())
+    }
+
+    /// A copy of the drawing as it is now, to read or save away from this
+    /// document and its lock (ADR 0011, D3.10).
+    pub fn snapshot(&self) -> Snapshot {
+        Snapshot {
+            doc: self.doc.snapshot(),
+            state: self.state(),
+        }
+    }
+
+    /// Records that `snapshot` was saved: the drawing is unmodified while it
+    /// stays in the state the snapshot was taken from.
+    pub fn mark_saved(&mut self, snapshot: &Snapshot) {
+        self.saved = snapshot.state;
+    }
+
+    /// Whether the drawing differs from the last saved or opened state.
+    /// Undoing back to that state makes it unmodified again.
+    pub fn is_modified(&self) -> bool {
+        self.group
+            .as_ref()
+            .is_some_and(|g| !g.step.changes.is_empty())
+            || self.state() != self.saved
+    }
+
+    /// The state the history is in: the serial of the last applied step, or
+    /// 0 for the state the document was created or opened in.
+    fn state(&self) -> u64 {
+        self.undo.last().map_or(0, |s| s.serial)
     }
 
     /// Read access to the drawing. Changes go through this type's operations.
@@ -101,7 +142,9 @@ impl CadDocument {
             }
             None => {
                 self.redo.clear();
+                let serial = self.take_serial();
                 self.undo.push(Step {
+                    serial,
                     name: name.to_owned(),
                     changes: vec![change],
                     summary: summary.clone(),
@@ -120,6 +163,7 @@ impl CadDocument {
             None => {
                 self.group = Some(Group {
                     step: Step {
+                        serial: 0, // assigned when the group ends
                         name: name.to_owned(),
                         changes: Vec::new(),
                         summary: ChangeSet::default(),
@@ -139,9 +183,10 @@ impl CadDocument {
             group.depth -= 1;
             return Ok(ChangeSet::default());
         }
-        let step = self.group.take().map(|g| g.step).ok_or_else(no_group)?;
+        let mut step = self.group.take().map(|g| g.step).ok_or_else(no_group)?;
         let summary = step.summary.clone();
         if !step.changes.is_empty() {
+            step.serial = self.take_serial();
             self.redo.clear();
             self.undo.push(step);
         }
@@ -222,6 +267,12 @@ impl CadDocument {
         self.redo.last().map(|s| s.name.as_str())
     }
 
+    fn take_serial(&mut self) -> u64 {
+        let serial = self.next_serial;
+        self.next_serial += 1;
+        serial
+    }
+
     fn check_no_group(&self) -> CadResult<()> {
         if self.group.is_some() {
             return Err(CadError::InvalidOperation(
@@ -229,6 +280,26 @@ impl CadDocument {
             ));
         }
         Ok(())
+    }
+}
+
+/// An independent copy of a drawing at one moment ([`CadDocument::snapshot`]):
+/// readable and savable from any thread while the live document goes on.
+pub struct Snapshot {
+    doc: Document,
+    state: u64,
+}
+
+impl Snapshot {
+    /// The drawing as it was when the snapshot was taken.
+    pub fn document(&self) -> &Document {
+        &self.doc
+    }
+
+    /// Saves as DWG or DXF, by the file extension. Afterwards, pass the
+    /// snapshot to [`CadDocument::mark_saved`].
+    pub fn save(&self, path: impl AsRef<Path>) -> CadResult<()> {
+        Ok(self.doc.save(path)?)
     }
 }
 
