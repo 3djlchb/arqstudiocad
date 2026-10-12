@@ -10,6 +10,7 @@ mod entities;
 mod entity;
 mod error;
 mod format;
+mod layers;
 mod ocs;
 mod translate;
 
@@ -17,3 +18,4 @@ pub use document::Document;
 pub use entity::{Color, Entity, EntityId, PlanGeometry};
 pub use error::{DocumentError, DocumentResult};
 pub use format::FileFormat;
+pub use layers::{Layer, LayerId};

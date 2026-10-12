@@ -42,6 +42,22 @@ pub enum DocumentError {
     },
     /// No layer has this name.
     LayerNotFound(String),
+    /// No layer has this id.
+    LayerIdNotFound(u64),
+    /// A layer with this name already exists (names ignore case).
+    LayerExists(String),
+    /// Not a valid layer name (empty, too long, surrounding spaces, or one
+    /// of `< > / \ " : ; ? * | , = `` and control characters).
+    InvalidName(String),
+    /// Layers "0" and "Defpoints" and external-reference layers cannot be
+    /// renamed or deleted; the current layer cannot be deleted.
+    ProtectedLayer(String),
+    /// The layer still has entities, so it cannot be deleted.
+    LayerInUse(String),
+    /// A layer's own color must be an ACI index or RGB, not ByLayer/ByBlock.
+    InvalidLayerColor,
+    /// A frozen layer cannot be the current layer.
+    FrozenLayer(String),
     /// A geometric value is invalid.
     Geometry(arq_geometry::GeometryError),
 }
@@ -75,6 +91,15 @@ impl fmt::Display for DocumentError {
                 )
             }
             Self::LayerNotFound(name) => write!(f, "no layer named {name:?}"),
+            Self::LayerIdNotFound(id) => write!(f, "no layer with id {id}"),
+            Self::LayerExists(name) => write!(f, "a layer named {name:?} already exists"),
+            Self::InvalidName(name) => write!(f, "{name:?} is not a valid layer name"),
+            Self::ProtectedLayer(name) => write!(f, "layer {name:?} cannot be changed that way"),
+            Self::LayerInUse(name) => write!(f, "layer {name:?} still has entities"),
+            Self::InvalidLayerColor => {
+                write!(f, "a layer color must be a color index or RGB")
+            }
+            Self::FrozenLayer(name) => write!(f, "layer {name:?} is frozen"),
             Self::Geometry(e) => write!(f, "{e}"),
         }
     }

@@ -24,7 +24,11 @@ impl Document {
         Self::from_cad(CadDocument::new())
     }
 
-    fn from_cad(cad: CadDocument) -> Self {
+    fn from_cad(mut cad: CadDocument) -> Self {
+        // Table records created in memory (layer "0" of a new drawing,
+        // records from DXF without handles) only get a handle when written
+        // to DWG; assigning them now keeps every LayerId stable from the start.
+        cad.assign_table_entry_handles();
         Self { cad: Box::new(cad) }
     }
 

@@ -3,6 +3,7 @@
 use crate::document::Document;
 use crate::entity::{Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
+use crate::layers::LayerId;
 use crate::translate::{handle, new_entity, read_entity, write_plan};
 
 impl Document {
@@ -17,11 +18,13 @@ impl Document {
     }
 
     /// Adds plan geometry to model space on `layer`; returns its id.
-    pub fn add_entity(&mut self, plan: PlanGeometry, layer: &str) -> DocumentResult<EntityId> {
-        if self.cad().layers.get(layer).is_none() {
-            return Err(DocumentError::LayerNotFound(layer.to_owned()));
-        }
-        let h = self.cad_mut().add_entity(new_entity(plan, layer))?;
+    pub fn add_entity(&mut self, plan: PlanGeometry, layer: LayerId) -> DocumentResult<EntityId> {
+        let name = self
+            .layer(layer)
+            .ok_or(DocumentError::LayerIdNotFound(layer))?
+            .name()
+            .to_owned();
+        let h = self.cad_mut().add_entity(new_entity(plan, &name))?;
         Ok(h.value())
     }
 
@@ -65,6 +68,10 @@ mod tests {
         PlanGeometry::at_elevation(g.into(), z).unwrap()
     }
 
+    fn layer0(doc: &Document) -> LayerId {
+        doc.layer_by_name("0").unwrap().id()
+    }
+
     /// Adds a raw codec entity, as a file written by another CAD would contain.
     fn add_raw(doc: &mut Document, e: EntityType) -> EntityId {
         doc.cad_mut().add_entity(e).unwrap().value()
@@ -90,7 +97,7 @@ mod tests {
         ];
         let ids: Vec<_> = shapes
             .iter()
-            .map(|g| doc.add_entity(plan(*g, 7.5), "0").unwrap())
+            .map(|g| doc.add_entity(plan(*g, 7.5), layer0(&doc)).unwrap())
             .collect();
         assert_eq!(
             ids.len(),
@@ -112,8 +119,8 @@ mod tests {
     #[test]
     fn unknown_layer_is_rejected() {
         let line = Line::new(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
-        let r = Document::new().add_entity(plan(line, 0.0), "NO-EXISTE");
-        assert_eq!(r, Err(DocumentError::LayerNotFound("NO-EXISTE".into())));
+        let r = Document::new().add_entity(plan(line, 0.0), 424_242);
+        assert_eq!(r, Err(DocumentError::LayerIdNotFound(424_242)));
     }
 
     #[test]
@@ -124,17 +131,17 @@ mod tests {
         let ids = [
             doc.add_entity(
                 plan(Line::new(p(x, y), p(x + 12.0, y + 3.0)).unwrap(), 2_850.0),
-                "0",
+                layer0(&doc),
             )
             .unwrap(),
             doc.add_entity(
                 plan(Circle::new(p(x + 5.0, y), 1.25).unwrap(), 2_850.0),
-                "0",
+                layer0(&doc),
             )
             .unwrap(),
             doc.add_entity(
                 plan(Arc::new(p(x, y + 8.0), 3.0, 5.5, 0.4).unwrap(), 2_850.0),
-                "0",
+                layer0(&doc),
             )
             .unwrap(),
         ];
@@ -271,7 +278,10 @@ mod tests {
     fn kind_mismatch_and_missing_entity() {
         let mut doc = Document::new();
         let id = doc
-            .add_entity(plan(Line::new(p(0.0, 0.0), p(1.0, 0.0)).unwrap(), 0.0), "0")
+            .add_entity(
+                plan(Line::new(p(0.0, 0.0), p(1.0, 0.0)).unwrap(), 0.0),
+                layer0(&doc),
+            )
             .unwrap();
         let circle = plan(Circle::new(p(0.0, 0.0), 1.0).unwrap(), 0.0);
         assert_eq!(

@@ -151,7 +151,6 @@ pub(crate) fn color_from_codec(c: opencadcodec::Color) -> Color {
     }
 }
 
-#[allow(dead_code)] // used by set_color (step 3.4)
 pub(crate) fn color_to_codec(c: Color) -> opencadcodec::Color {
     match c {
         Color::ByLayer => opencadcodec::Color::ByLayer,
