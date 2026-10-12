@@ -114,6 +114,26 @@ Three sources, none committed as third-party files:
    (path from an environment variable), **never pushed** — they may be
    client work.
 
+Implemented in `crates/arq-core/tests/corpus.rs`; how to run it is in
+CONTRIBUTING. Source 1 runs with every `cargo test`; sources 2 and 3 run on
+request (`--ignored`) and fail when their folder is missing or empty. The
+samples are fetched by `tools/fetch_codec_samples.py` into `target/corpus/`,
+checked against SHA-256 sums.
+
+Each drawing is saved as DWG and DXF and read back, then edited (move,
+erase, new layer, new line with layer and color), saved and read back again,
+then the edit is undone. Everything the API shows must survive, with three
+allowances that are limits of the older formats, not losses of ours:
+
+- geometry within the contract's tolerance: DXF stores angles in degrees,
+  so radians come back within an ulp or two (DWG is exact);
+- before AutoCAD 2004 (AC1018) there is no true color: RGB is saved as the
+  nearest ACI index, as AutoCAD does;
+- before AutoCAD 2000 (AC1015) a layer cannot be marked not plottable.
+
+R12 (AC1009) exists only as DXF; saving an R12 drawing as DWG is refused by
+the codec.
+
 ## Consequences
 
 - `arq-core` never sees codec types; replacing or forking the codec stays a

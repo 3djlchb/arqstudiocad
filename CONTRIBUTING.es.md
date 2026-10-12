@@ -87,6 +87,22 @@ Adjunta el DWG/DXF (comprímelo en zip si GitHub rechaza la extensión). Si es
 trabajo de un cliente que no puedes compartir, una copia reducida a las
 entidades que fallan vale incluso más que el original.
 
+Antes de informar, puedes pasar el corpus de ida y vuelta por tus propios
+dibujos sin compartirlos: abre cada uno, lo guarda como DWG y DXF, lo vuelve
+a leer, lo edita y comprueba que no se ha perdido nada de lo que el programa
+muestra.
+
+```sh
+# Dibujos generados por las pruebas: parte de cada `cargo test`.
+cargo test -p arq-core --test corpus
+# Las muestras del propio motor DWG/DXF, descargadas y verificadas antes.
+uv run python tools/fetch_codec_samples.py
+cargo test -p arq-core --test corpus -- --ignored codec
+# Tus dibujos: una carpeta de archivos .dwg/.dxf, recorrida con subcarpetas.
+# Solo se leen; nunca se copian al repositorio.
+ARQ_CORPUS_DIR=/ruta/a/dibujos cargo test -p arq-core --test corpus -- --ignored local --nocapture
+```
+
 ## Traducir ArqStudioCAD
 
 **Todo lo que se lee se traduce; todo lo que se escribe es inglés.**

@@ -112,6 +112,19 @@ impl Document {
             .expect("adding a text")
             .value()
     }
+
+    /// Sets the file-format version the next save writes, by code
+    /// (`"AC1015"`…); `false` for an unknown code. Choosing the version is
+    /// not a user feature yet; the round-trip corpus needs it.
+    pub fn set_version_for_tests(&mut self, code: &str) -> bool {
+        match opencadcodec::types::DxfVersion::parse(code) {
+            Some(version) => {
+                self.cad_mut().version = version;
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -27,9 +27,12 @@ impl Document {
     }
 
     fn from_cad(mut cad: CadDocument) -> Self {
-        // Table records created in memory (layer "0" of a new drawing,
-        // records from DXF without handles) only get a handle when written
-        // to DWG; assigning them now keeps every LayerId stable from the start.
+        // Every table record needs a handle from the start, or its LayerId
+        // would change on the first save. At rev 8189f83 the codec already
+        // gives one to the records it creates and reads (layer "0" of a new
+        // drawing, an R12 DXF without handles); this call keeps that true for
+        // any record still without one. Pinned by
+        // `layers_without_handles_get_stable_ids`.
         cad.assign_table_entry_handles();
         Self {
             cad: Box::new(cad),
@@ -152,6 +155,7 @@ fn temp_path(path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Layer;
     use opencadcodec::{EntityType, Line};
 
     /// A drawing with two lines, built through the codec until the entity
@@ -169,6 +173,39 @@ mod tests {
                 .unwrap();
         }
         doc
+    }
+
+    /// An R12 DXF as old programs write it: layers without handles.
+    const R12_WITHOUT_HANDLES: &str = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC\n\
+        0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n2\n\
+        0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n\
+        0\nLAYER\n2\nMUROS\n70\n0\n62\n1\n6\nCONTINUOUS\n\
+        0\nENDTAB\n0\nENDSEC\n\
+        0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nMUROS\n10\n0.0\n20\n0.0\n30\n0.0\n11\n5.0\n21\n0.0\n31\n0.0\n\
+        0\nENDSEC\n0\nEOF\n";
+
+    #[test]
+    fn layers_without_handles_get_stable_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut doc = Document::from_dxf_bytes(R12_WITHOUT_HANDLES.as_bytes().to_vec()).unwrap();
+        let ids: Vec<u64> = doc.layers().iter().map(Layer::id).collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.iter().all(|&id| id != 0), "{ids:?}");
+        assert_ne!(ids[0], ids[1]);
+        let walls = doc.layer_by_name("MUROS").unwrap().id();
+        assert_eq!(doc.layer(walls).unwrap().name(), "MUROS");
+        for name in ["back.dxf", "back.dwg"] {
+            if name.ends_with("dwg") {
+                // R12 has no DWG form; AutoCAD 2000 keeps the same tables.
+                doc.cad_mut().version = opencadcodec::types::DxfVersion::AC1015;
+            }
+            let path = dir.path().join(name);
+            doc.save(&path).unwrap();
+            let back = Document::open(&path).unwrap();
+            assert_eq!(back.layer_by_name("MUROS").unwrap().id(), walls, "{name}");
+        }
+        let new = Document::new();
+        assert_ne!(new.layer_by_name("0").unwrap().id(), 0, "a new drawing");
     }
 
     #[test]
