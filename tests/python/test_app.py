@@ -11,7 +11,13 @@ from arqstudiocad.ui.main_window import MainWindow
 def test_check_passes_from_source_tree(qtbot: QtBot) -> None:
     results = run_checks()
     failed = [r for r in results if not r.ok]
-    assert len(results) == 4
+    assert [r.name for r in results] == [
+        "native core",
+        "language packs",
+        "credits (AUTHORS)",
+        "Qt",
+        "settings",
+    ]
     assert not failed, failed
 
 

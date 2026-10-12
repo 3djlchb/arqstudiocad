@@ -62,11 +62,27 @@ def check_qt() -> CheckResult:
     return CheckResult("Qt", True, f"Qt {qVersion()}, platform plugin '{platform_name}'")
 
 
+def check_settings() -> CheckResult:
+    from arqstudiocad.paths import portable_dir
+
+    folder = portable_dir()
+    if folder is None:
+        return CheckResult("settings", True, "system location")
+    probe = folder / ".write-test"
+    try:
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+    except OSError as exc:
+        return CheckResult("settings", False, f"portable folder is not writable: {exc}")
+    return CheckResult("settings", True, f"portable, in {folder}")
+
+
 CHECKS: tuple[Callable[[], CheckResult], ...] = (
     check_core,
     check_languages,
     check_credits,
     check_qt,
+    check_settings,
 )
 
 

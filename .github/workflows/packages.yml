@@ -1,0 +1,97 @@
+name: Packages
+
+# Manual only (ADR 0005). Builds every package with the same scripts used
+# locally, self-checks each one, and uploads them as workflow artifacts. Not
+# a release: nothing is published (ADR 0003).
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Windows ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2025
+            arch: x64
+          - runner: windows-11-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0  # no major-version tag is published
+      - uses: Swatinem/rust-cache@v2
+      - name: Build installer and portable ZIP
+        shell: pwsh
+        run: ./packaging/windows/build.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-${{ matrix.arch }}
+          path: |
+            dist/*.exe
+            dist/*.zip
+          retention-days: 14
+          if-no-files-found: error
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq dpkg-dev rpm desktop-file-utils appstream
+      - name: Build AppImage, .deb, .rpm and tarball
+        run: bash packaging/linux/build.sh
+      - name: Install and self-check in clean distributions
+        run: bash packaging/linux/test-packages.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: |
+            dist/linux/*.AppImage
+            dist/linux/*.deb
+            dist/linux/*.rpm
+            dist/linux/*.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
+  macos:
+    name: macOS universal2
+    runs-on: macos-15
+    env:
+      PYTHON_VERSION: "3.13.16"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Universal2 Python from python.org
+        run: |
+          curl -fsSL -o python.pkg \
+            "https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-macos11.pkg"
+          sudo installer -pkg python.pkg -target /
+      - name: Rosetta (to self-check the Intel half)
+        run: softwareupdate --install-rosetta --agree-to-license || true
+      - name: Build .app and .dmg
+        run: bash packaging/macos/build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal2
+          path: dist/macos/*.dmg
+          retention-days: 14
+          if-no-files-found: error

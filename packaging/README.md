@@ -41,7 +41,13 @@ Produces `dist\ArqStudioCAD\` (the bundle) and
 - uses the application ID as its `AppId`, so upgrades replace the previous
   version.
 
-`-SkipInstaller` stops after the bundle. An MSI (WiX) for corporate
+It also produces `dist\ArqStudioCAD-<version>-windows-<arch>-portable.zip`:
+unzip anywhere (a USB stick included) and run `ArqStudioCAD.exe`. The
+`portable.txt` file inside switches the app to portable mode — settings go to
+`settings.ini` in that folder instead of the registry; delete it to use the
+registry. The build unpacks the ZIP and self-checks it in portable mode.
+
+`-SkipInstaller` stops after the portable ZIP. An MSI (WiX) for corporate
 deployment is planned (ADR 0009).
 
 Silent install, for testing:
@@ -83,6 +89,56 @@ the build. Flatpak and AUR have their own recipes (built from source).
 
 The icon in `resources/icons/` is **provisional** until the project has a logo.
 
-## macOS
+## Flatpak
 
-Coming in a later step of phase 1: universal2 `.dmg`.
+Flathub builds from source, offline, so the Flatpak does not reuse the
+PyInstaller bundle. The manifest
+[`flatpak/io.github._3djlchb.ArqStudioCAD.yml`](flatpak/io.github._3djlchb.ArqStudioCAD.yml)
+builds on the KDE 6.11 runtime with PySide6 from the official
+`io.qt.PySide.BaseApp` (so the Flatpak uses the PySide version that base
+provides, currently 6.11), compiles the Rust extension with the SDK's
+`rust-stable` extension, and vendors crates through `cargo-sources.json`
+(regenerated from `Cargo.lock` by the build script).
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+bash packaging/flatpak/build.sh     # build, install for the user, --check, dist/flatpak/*.flatpak
+```
+
+> **Status: blocked.** Flathub's `rust-stable` extension ships Rust 1.98.1,
+> older than our `rust-version` (1.99). The script stops with a clear message
+> until Flathub updates it; nothing else needs to change then.
+
+## macOS (universal2: Apple Silicon + Intel)
+
+One `.app` carries both architectures. Every piece must be universal2: the
+python.org Python 3.13 installer (uv's Pythons are single-architecture), the
+PySide6 wheels (already universal2), and our extension, built with
+`maturin --target universal2-apple-darwin`.
+
+Requirements: Xcode command line tools, rustup, and Python 3.13 from
+python.org (or set `PYTHON` to another universal2 interpreter).
+
+```sh
+bash packaging/macos/build.sh     # -> dist/macos/ArqStudioCAD-<v>-macos-universal2.dmg
+```
+
+The build checks with `lipo` that the executable and the extension contain
+both architectures, then runs `--check` natively and again with
+`arch -x86_64` (Rosetta), so the Intel half is proven on Apple Silicon too.
+Minimum macOS: 14 Sonoma. Not signed or notarized until phase 9: open it the
+first time with right click > Open.
+
+## All platforms in CI
+
+[`.github/workflows/packages.yml`](../.github/workflows/packages.yml) runs the
+same scripts on GitHub's runners — the only way to build Windows ARM64, Linux
+arm64 and macOS without that hardware — and uploads the packages as workflow
+artifacts (kept 14 days). It runs only when started by hand
+(*Actions → Packages → Run workflow*). It is not a release: nothing is published.
+
+| Job | Runner | Output |
+|---|---|---|
+| Windows x64 / arm64 | `windows-2025`, `windows-11-arm` | installer + portable ZIP |
+| Linux x86_64 / aarch64 | `ubuntu-24.04`, `ubuntu-24.04-arm` | AppImage, `.deb`, `.rpm`, tarball (tested in clean containers) |
+| macOS universal2 | `macos-15` | `.dmg` |

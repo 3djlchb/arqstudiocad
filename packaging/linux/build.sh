@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build the Linux packages of ArqStudioCAD (ADR 0009):
-#   1. PyInstaller bundle inside a manylinux_2_34 container (glibc 2.34 floor)
+#   1. PyInstaller bundle inside a manylinux container at the glibc floor of
+#      the PySide6 wheels: 2.34 on x86_64, 2.39 on aarch64
 #   2. .tar.gz, AppImage, .deb and .rpm from that bundle
 #   3. Validation of the desktop entry and AppStream metadata
 #
@@ -10,7 +11,12 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARCH="$(uname -m)"                       # x86_64 or aarch64
-IMAGE="quay.io/pypa/manylinux_2_34_${ARCH}"
+case "$ARCH" in
+    x86_64)  MANYLINUX="manylinux_2_34"; GLIBC_MIN="2.34" ;;
+    aarch64) MANYLINUX="manylinux_2_39"; GLIBC_MIN="2.39" ;;
+    *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+esac
+IMAGE="quay.io/pypa/${MANYLINUX}_${ARCH}"
 OUT="$ROOT/dist/linux"
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/arqstudiocad-build"
 APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage"
@@ -23,7 +29,7 @@ rm -rf "$OUT" && mkdir -p "$OUT" "$CACHE"
 step "1/6 Bundle in $IMAGE"
 # Rootless podman maps the container's root to the calling user, so every
 # file written to /out belongs to the user running this script.
-podman run --rm --user root \
+podman run --rm --user root -e MANYLINUX="$MANYLINUX" \
     -v "$ROOT:/src:ro" -v "$OUT:/out" -v "$CACHE:/cache" \
     "$IMAGE" bash /src/packaging/linux/container-build.sh
 
@@ -86,7 +92,7 @@ Maintainer: $APP_NAME contributors <https://github.com/3djlchb/arqstudiocad>
 Homepage: https://github.com/3djlchb/arqstudiocad
 Section: graphics
 Priority: optional
-Depends: libc6 (>= 2.34), libgl1, libegl1, libfontconfig1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libdbus-1-3
+Depends: libc6 (>= $GLIBC_MIN), libgl1, libegl1, libfontconfig1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libdbus-1-3
 Description: Open-source 2D/3D CAD for architecture and engineering
  $APP_NAME is an open-source CAD application with DWG as its native format
  and DXF as an open alternative. Pre-alpha: it cannot draw yet.
@@ -97,7 +103,7 @@ step "6/6 .rpm"
 RPMTOP="$OUT/rpmbuild"
 mkdir -p "$RPMTOP"/{BUILD,RPMS,SPECS,SOURCES,BUILDROOT}
 sed -e "s/@VERSION@/$VERSION/" -e "s/@PKG@/$PKG/" -e "s/@APP_NAME@/$APP_NAME/" \
-    -e "s/@APP_ID@/$APP_ID/" "$LINUX/arqstudiocad.spec.in" > "$RPMTOP/SPECS/$PKG.spec"
+    -e "s/@APP_ID@/$APP_ID/" -e "s/@GLIBC_MIN@/$GLIBC_MIN/" "$LINUX/arqstudiocad.spec.in" > "$RPMTOP/SPECS/$PKG.spec"
 STAGE="$OUT/rpmstage"
 install_tree "$STAGE"
 rpmbuild -bb --quiet --dbpath "$RPMTOP/db" --define "_topdir $RPMTOP" --define "stage $STAGE" "$RPMTOP/SPECS/$PKG.spec"

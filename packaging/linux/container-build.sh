@@ -1,7 +1,7 @@
 #!/bin/bash
-# Runs INSIDE the manylinux_2_34 container (see build.sh). Produces the
-# PyInstaller bundle against glibc 2.34, so it starts on every Linux with
-# glibc >= 2.34 (ADR 0009).
+# Runs INSIDE the manylinux container chosen by build.sh (manylinux_2_34 on
+# x86_64, manylinux_2_39 on aarch64). The bundle links against that glibc, so
+# it starts on every Linux with the same or a newer one (ADR 0009).
 #
 #   /src   repository (read-only)
 #   /out   output directory (bundle + metadata)
@@ -40,7 +40,7 @@ uv venv -q --python "$PYTHON" --managed-python /tmp/build/venv
 VENV_PY=/tmp/build/venv/bin/python
 uv pip install -q --python "$VENV_PY" "maturin>=1.15,<2.0" "pyinstaller>=6.22,<7"
 (cd /src && "$VENV_PY" -m maturin build --release --locked \
-    --compatibility manylinux_2_34 --interpreter "$VENV_PY" --out /tmp/build/wheels)
+    --compatibility "${MANYLINUX:-manylinux_2_34}" --interpreter "$VENV_PY" --out /tmp/build/wheels)
 uv pip install -q --python "$VENV_PY" /tmp/build/wheels/*.whl
 
 echo "==> PyInstaller bundle"
