@@ -93,7 +93,7 @@ cargo test -p arq-core --test corpus
 # The DWG/DXF engine's own sample files, downloaded and checksummed first.
 uv run python tools/fetch_codec_samples.py
 cargo test -p arq-core --test corpus -- --ignored codec
-# Your drawings: a folder of .dwg/.dxf files, searched recursively.
+# Your drawings: one .dwg/.dxf file, or a folder searched recursively.
 # They are only read, never copied into the repository.
 ARQ_CORPUS_DIR=/path/to/drawings cargo test -p arq-core --test corpus -- --ignored local --nocapture
 ```

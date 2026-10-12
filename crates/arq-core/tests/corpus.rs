@@ -9,8 +9,8 @@
 //! 2. the codec's sample files, fetched with
 //!    `uv run python tools/fetch_codec_samples.py`;
 //!    `cargo test -p arq-core --test corpus -- --ignored codec`;
-//! 3. a local folder of real drawings named by `ARQ_CORPUS_DIR`, never
-//!    committed; `cargo test -p arq-core --test corpus -- --ignored local`.
+//! 3. real drawings named by `ARQ_CORPUS_DIR` (a folder, searched
+//!    recursively, or one file), never committed; `cargo test -p arq-core --test corpus -- --ignored local`.
 //!
 //! The last two fail when their folder is missing or empty: a check that
 //! inspects nothing is a failure (contract §12).
@@ -295,10 +295,24 @@ fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
 
 fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
     let cad = CadDocument::open(&path).map_err(|e| vec![format!("open: {e}")])?;
+    let doc = cad.document();
+    let model = doc.entities();
+    let editable = model.iter().filter(|e| e.is_editable()).count();
+    let mut kinds: Vec<(&str, usize)> = Vec::new();
+    for e in &model {
+        match kinds.iter_mut().find(|(k, _)| *k == e.kind()) {
+            Some((_, n)) => *n += 1,
+            None => kinds.push((e.kind(), 1)),
+        }
+    }
+    kinds.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    let kinds: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} {n}")).collect();
     let summary = format!(
-        "{}  {} entities",
-        cad.document().version_code(),
-        cad.document().entity_count()
+        "{}  {} entities, {} in model space, {editable} editable: {}",
+        doc.version_code(),
+        doc.entity_count(),
+        model.len(),
+        kinds.join(", ")
     );
     let problems = round_trip(cad, dir);
     if problems.is_empty() {
@@ -408,15 +422,24 @@ fn codec_samples_round_trip() {
 }
 
 #[test]
-#[ignore = "needs ARQ_CORPUS_DIR: a local folder of real drawings, never committed"]
+#[ignore = "needs ARQ_CORPUS_DIR: real drawings (a folder or one file), never committed"]
 fn local_drawings_round_trip() {
     let root = std::env::var_os("ARQ_CORPUS_DIR")
         .map(PathBuf::from)
-        .expect("set ARQ_CORPUS_DIR to a folder of .dwg/.dxf drawings");
-    assert!(
-        root.is_dir(),
-        "ARQ_CORPUS_DIR is not a folder: {}",
-        root.display()
-    );
-    run_all(drawings_in(&root), check_file);
+        .expect("set ARQ_CORPUS_DIR to a .dwg/.dxf file or a folder of them");
+    let items = if root.is_file() {
+        let name = root.file_name().map_or_else(
+            || root.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        vec![(name, root)]
+    } else {
+        assert!(
+            root.is_dir(),
+            "ARQ_CORPUS_DIR does not exist: {}",
+            root.display()
+        );
+        drawings_in(&root)
+    };
+    run_all(items, check_file);
 }

@@ -98,7 +98,7 @@ cargo test -p arq-core --test corpus
 # Las muestras del propio motor DWG/DXF, descargadas y verificadas antes.
 uv run python tools/fetch_codec_samples.py
 cargo test -p arq-core --test corpus -- --ignored codec
-# Tus dibujos: una carpeta de archivos .dwg/.dxf, recorrida con subcarpetas.
+# Tus dibujos: un archivo .dwg/.dxf, o una carpeta recorrida con subcarpetas.
 # Solo se leen; nunca se copian al repositorio.
 ARQ_CORPUS_DIR=/ruta/a/dibujos cargo test -p arq-core --test corpus -- --ignored local --nocapture
 ```
