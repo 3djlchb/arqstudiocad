@@ -5,6 +5,10 @@ name: Packages
 # a release: nothing is published (ADR 0003).
 on:
   workflow_dispatch:
+  # TEMPORARY (phase 1.6d): manual dispatch needs this file on main, so the
+  # first runs are triggered by pushes to the phase branch. REMOVE BEFORE MERGE.
+  push:
+    branches: [fase-1/esqueleto]
 
 concurrency:
   group: packages-${{ github.ref }}
