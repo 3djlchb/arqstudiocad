@@ -158,13 +158,9 @@ fn save_and_reopen(
     Ok(observe(back.document()))
 }
 
-/// Formats a drawing of this version can be saved in.
-fn formats(version: &str) -> &'static [&'static str] {
-    if version == "AC1009" {
-        &["dxf"]
-    } else {
-        &["dwg", "dxf"]
-    }
+/// Every drawing is saved in both formats; an R12 one becomes 2018 as DWG.
+fn formats(_version: &str) -> &'static [&'static str] {
+    &["dwg", "dxf"]
 }
 
 /// The edits applied to every drawing: move what can be moved, erase one

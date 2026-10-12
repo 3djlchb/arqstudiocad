@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
+use opencadcodec::types::DxfVersion;
 use opencadcodec::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter};
 
 use crate::error::{DocumentError, DocumentResult};
@@ -69,8 +70,20 @@ impl Document {
         Ok(DxfWriter::new(&self.cad).write_to_vec()?)
     }
 
-    /// The drawing as DWG bytes.
+    /// The drawing as DWG bytes, in its own version.
+    ///
+    /// R12 (AC1009) exists only as DXF, so such a drawing is written as
+    /// AutoCAD 2018 DWG (AC1032), as AutoCAD does; so is one of unknown
+    /// version. The drawing itself keeps its version. (As DXF the codec writes
+    /// an R12 drawing as R13, the oldest version whose structure matches what
+    /// it emits.)
     pub fn to_dwg_bytes(&self) -> DocumentResult<Vec<u8>> {
+        if matches!(self.cad.version, DxfVersion::AC1009 | DxfVersion::Unknown) {
+            // A cheap copy: entities are shared `Arc`s (see `snapshot`).
+            let mut modern = CadDocument::clone(&self.cad);
+            modern.version = DxfVersion::AC1032;
+            return Ok(DwgWriter::write_to_vec(&modern)?);
+        }
         Ok(DwgWriter::write_to_vec(&self.cad)?)
     }
 
@@ -187,7 +200,7 @@ mod tests {
     #[test]
     fn layers_without_handles_get_stable_ids() {
         let dir = tempfile::tempdir().unwrap();
-        let mut doc = Document::from_dxf_bytes(R12_WITHOUT_HANDLES.as_bytes().to_vec()).unwrap();
+        let doc = Document::from_dxf_bytes(R12_WITHOUT_HANDLES.as_bytes().to_vec()).unwrap();
         let ids: Vec<u64> = doc.layers().iter().map(Layer::id).collect();
         assert_eq!(ids.len(), 2);
         assert!(ids.iter().all(|&id| id != 0), "{ids:?}");
@@ -195,10 +208,6 @@ mod tests {
         let walls = doc.layer_by_name("MUROS").unwrap().id();
         assert_eq!(doc.layer(walls).unwrap().name(), "MUROS");
         for name in ["back.dxf", "back.dwg"] {
-            if name.ends_with("dwg") {
-                // R12 has no DWG form; AutoCAD 2000 keeps the same tables.
-                doc.cad_mut().version = opencadcodec::types::DxfVersion::AC1015;
-            }
             let path = dir.path().join(name);
             doc.save(&path).unwrap();
             let back = Document::open(&path).unwrap();
@@ -206,6 +215,29 @@ mod tests {
         }
         let new = Document::new();
         assert_ne!(new.layer_by_name("0").unwrap().id(), 0, "a new drawing");
+    }
+
+    #[test]
+    fn an_r12_drawing_is_saved_as_dwg_2018() {
+        let dir = tempfile::tempdir().unwrap();
+        let doc = Document::from_dxf_bytes(R12_WITHOUT_HANDLES.as_bytes().to_vec()).unwrap();
+        assert_eq!(doc.version_code(), "AC1009");
+        let dwg = dir.path().join("casa.dwg");
+        doc.save(&dwg).unwrap();
+        let back = Document::open(&dwg).unwrap();
+        assert_eq!(back.version_code(), "AC1032");
+        assert_eq!(back.entities().len(), 1);
+        assert_eq!(back.entities()[0].layer(), "MUROS");
+        assert_eq!(
+            back.layer_by_name("MUROS").unwrap().color(),
+            crate::Color::Index(1)
+        );
+        // The drawing keeps its own version; as DXF the codec writes R13, the
+        // oldest version matching the structure it emits (its issue #68).
+        assert_eq!(doc.version_code(), "AC1009");
+        let dxf = dir.path().join("casa.dxf");
+        doc.save(&dxf).unwrap();
+        assert_eq!(Document::open(&dxf).unwrap().version_code(), "AC1012");
     }
 
     #[test]

@@ -131,8 +131,10 @@ allowances that are limits of the older formats, not losses of ours:
   nearest ACI index, as AutoCAD does;
 - before AutoCAD 2000 (AC1015) a layer cannot be marked not plottable.
 
-R12 (AC1009) exists only as DXF; saving an R12 drawing as DWG is refused by
-the codec.
+R12 (AC1009) drawings are read and kept, but not written as R12: saved as DWG
+they become AutoCAD 2018 (AC1032), as AutoCAD does (decided 2026-10-12);
+saved as DXF the codec writes R13 (AC1012), the oldest version whose
+structure matches what it emits (codec issue #68).
 
 ## Consequences
 
