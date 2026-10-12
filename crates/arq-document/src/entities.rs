@@ -89,6 +89,21 @@ impl Document {
     }
 }
 
+/// Test helpers for other crates (feature `test-support`).
+#[cfg(feature = "test-support")]
+impl Document {
+    /// Inserts a TEXT entity on layer "0", as a drawing from another CAD
+    /// would contain; TEXT is read-only in this version.
+    pub fn insert_text_for_tests(&mut self, value: &str, x: f64, y: f64) -> EntityId {
+        let text =
+            opencadcodec::Text::with_value(value, opencadcodec::types::Vector3::new(x, y, 0.0));
+        self.cad_mut()
+            .add_entity(opencadcodec::EntityType::Text(text))
+            .expect("adding a text")
+            .value()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::f64::consts::{FRAC_PI_2, PI};

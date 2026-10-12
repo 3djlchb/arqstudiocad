@@ -13,5 +13,9 @@ publish.workspace = true
 arq-geometry.workspace = true
 arq-document.workspace = true
 
+[dev-dependencies]
+arq-document = { workspace = true, features = ["test-support"] }
+tempfile = "3"
+
 [lints]
 workspace = true

@@ -13,6 +13,11 @@ publish.workspace = true
 arq-geometry.workspace = true
 opencadcodec.workspace = true
 
+[features]
+# Helpers for other crates' tests (e.g. inserting entity types the API cannot
+# create yet). Never enabled in production builds.
+test-support = []
+
 [dev-dependencies]
 proptest = "1.12"
 tempfile = "3"
