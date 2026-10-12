@@ -23,6 +23,22 @@ def locales_dir() -> Path:
     return package_dir() / "locales"
 
 
+PORTABLE_MARKER = "portable.txt"
+
+
+def portable_dir() -> Path | None:
+    """Folder of a portable installation, or None.
+
+    A frozen build is portable when `portable.txt` sits next to its
+    executable; settings then live in that folder instead of the system
+    location (Windows registry, ~/.config...).
+    """
+    if not is_frozen():
+        return None
+    folder = Path(sys.executable).resolve().parent
+    return folder if (folder / PORTABLE_MARKER).is_file() else None
+
+
 def authors_file() -> Path | None:
     """The AUTHORS file (single source of the credits), or None if absent."""
     if is_frozen():

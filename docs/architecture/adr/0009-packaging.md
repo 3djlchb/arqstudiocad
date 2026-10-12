@@ -36,6 +36,7 @@ PySide6 6.12 wheels set hard floors that ADR 0003 did not know about:
 | Platform | Package | Tool |
 |---|---|---|
 | Windows x64, ARM64 | `.exe` installer | **Inno Setup** (now) |
+| Windows x64, ARM64 | **Portable ZIP**: settings in `settings.ini` next to the executable, nothing in the registry (enabled by a `portable.txt` marker) | .NET `ZipFile` |
 | Windows x64, ARM64 | `.msi` | **WiX** (later, for corporate deployment) |
 | macOS universal2 | `.dmg` with `.app` bundle | PyInstaller + `hdiutil`; signing/notarization in phase 9 |
 | Linux x86-64 (+ arm64) | AppImage, `.deb`, `.rpm`, Flatpak, AUR `PKGBUILD` | PyInstaller output repackaged; Flatpak builds from its manifest |

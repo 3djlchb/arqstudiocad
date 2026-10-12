@@ -41,7 +41,13 @@ Produces `dist\ArqStudioCAD\` (the bundle) and
 - uses the application ID as its `AppId`, so upgrades replace the previous
   version.
 
-`-SkipInstaller` stops after the bundle. An MSI (WiX) for corporate
+It also produces `dist\ArqStudioCAD-<version>-windows-<arch>-portable.zip`:
+unzip anywhere (a USB stick included) and run `ArqStudioCAD.exe`. The
+`portable.txt` file inside switches the app to portable mode — settings go to
+`settings.ini` in that folder instead of the registry; delete it to use the
+registry. The build unpacks the ZIP and self-checks it in portable mode.
+
+`-SkipInstaller` stops after the portable ZIP. An MSI (WiX) for corporate
 deployment is planned (ADR 0009).
 
 Silent install, for testing:
