@@ -1,10 +1,11 @@
 //! Property tests: laws that must hold for any finite input, checked on
 //! random values up to survey-coordinate magnitudes (~1e7).
 
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use arq_geometry::{
-    Arc, Bounds2, Circle, Geometry2, Line, Point2, Tolerance, Transform2, Vector2, angle,
+    Arc, Bounds2, Circle, Geometry2, Intersections, Line, Point2, Tolerance, Transform2, Vector2,
+    angle, intersect,
 };
 use proptest::prelude::*;
 
@@ -56,6 +57,36 @@ fn tol_for(magnitude: f64) -> Tolerance {
 
 fn magnitude(p: Point2) -> f64 {
     p.to_vector().length()
+}
+
+/// A local scene: offsets within ±100 around a base point that may sit at
+/// survey coordinates, so random curves actually meet.
+fn near(base: Point2) -> impl Strategy<Value = Point2> {
+    (-100.0..100.0f64, -100.0..100.0f64)
+        .prop_map(move |(dx, dy)| base + Vector2::new(dx, dy).unwrap())
+}
+
+fn near_geometry(base: Point2) -> impl Strategy<Value = Geometry2> {
+    prop_oneof![
+        (near(base), near(base))
+            .prop_filter("non-zero length", |(a, b)| a.distance_to(*b) > 1e-3)
+            .prop_map(|(a, b)| Line::new(a, b).unwrap().into()),
+        (near(base), 1.0..100.0f64).prop_map(|(c, r)| Circle::new(c, r).unwrap().into()),
+        (near(base), 1.0..100.0f64, any_angle(), 0.05..(TAU - 0.05))
+            .prop_map(|(c, r, s, w)| Arc::new(c, r, s, s + w).unwrap().into()),
+    ]
+}
+
+/// Two curves near the same base point.
+fn scene() -> impl Strategy<Value = (Point2, Geometry2, Geometry2)> {
+    point().prop_flat_map(|base| (Just(base), near_geometry(base), near_geometry(base)))
+}
+
+fn same_points(a: &Intersections, b: &Intersections, tol: Tolerance) -> bool {
+    a.points().len() == b.points().len()
+        && a.points()
+            .iter()
+            .all(|p| b.points().iter().any(|q| p.approx_eq(*q, tol)))
 }
 
 /// One elementary transformation, as the editing commands create them.
@@ -346,6 +377,80 @@ proptest! {
         let back = m.apply_point(m.apply_point(p));
         prop_assert!(back.approx_eq(p, chain_tol(&[p, axis.start()])));
         prop_assert!(m.is_reflection());
+    }
+
+    #[test]
+    fn intersection_points_lie_on_both_curves((base, a, b) in scene()) {
+        let tol = tol_for(magnitude(base) + 300.0);
+        let found = intersect(a, b, TOL);
+        for p in found.points() {
+            prop_assert!(a.contains_point(*p, tol), "{p:?} not on {a:?}");
+            prop_assert!(b.contains_point(*p, tol), "{p:?} not on {b:?}");
+        }
+        for piece in found.overlaps() {
+            let mid = piece.point_at(0.5);
+            prop_assert!(a.contains_point(mid, tol) && b.contains_point(mid, tol));
+        }
+        if found.overlaps().is_empty() {
+            prop_assert!(found.points().len() <= 2);
+        }
+    }
+
+    #[test]
+    fn intersection_is_symmetric((base, a, b) in scene()) {
+        let tol = tol_for(magnitude(base) + 300.0);
+        let (ab, ba) = (intersect(a, b, TOL), intersect(b, a, TOL));
+        prop_assert!(same_points(&ab, &ba, tol), "{:?} vs {:?}", ab.points(), ba.points());
+        prop_assert_eq!(ab.overlaps().len(), ba.overlaps().len());
+    }
+
+    #[test]
+    fn crossing_lines_meet_where_they_were_built(
+        base in point(), d1 in any_angle(), d2 in any_angle(),
+        l1 in 1.0..100.0f64, l2 in 1.0..100.0f64, t1 in 0.0..=1.0f64, t2 in 0.0..=1.0f64,
+    ) {
+        // Two segments through `base`, at parameters t1 and t2.
+        prop_assume!(angle::difference(d1, d2).abs() > 0.01 && (PI - angle::difference(d1, d2).abs()) > 0.01);
+        let (u1, u2) = (Vector2::from_polar(l1, d1).unwrap(), Vector2::from_polar(l2, d2).unwrap());
+        let a = Line::new(base - u1 * t1, base + u1 * (1.0 - t1)).unwrap();
+        let b = Line::new(base - u2 * t2, base + u2 * (1.0 - t2)).unwrap();
+        let found = intersect(a.into(), b.into(), TOL);
+        let tol = tol_for(magnitude(base) + 200.0);
+        prop_assert_eq!(found.points().len(), 1);
+        prop_assert!(found.points()[0].approx_eq(base, tol));
+    }
+
+    #[test]
+    fn curves_through_a_point_meet_there(
+        base in point(), r1 in 1.0..100.0f64, r2 in 1.0..100.0f64,
+        a1 in any_angle(), a2 in any_angle(), dir in any_angle(), half in 1.0..50.0f64,
+    ) {
+        // A circle, an arc and a line all passing through `base`.
+        let c1 = Circle::new(base - Vector2::from_polar(r1, a1).unwrap(), r1).unwrap();
+        let c2 = Circle::new(base - Vector2::from_polar(r2, a2).unwrap(), r2).unwrap();
+        let arc = Arc::new(c2.center(), r2, a2 - 0.5, a2 + 0.5).unwrap();
+        let u = Vector2::from_polar(half, dir).unwrap();
+        let line = Line::new(base - u, base + u).unwrap();
+        let tol = tol_for(magnitude(base) + 300.0);
+        // Directions of the curves at `base` (circles: perpendicular to the radius).
+        let (t_line, t_c1, t_c2) = (dir, a1 + FRAC_PI_2, a2 + FRAC_PI_2);
+        for (x, y, crossing) in [
+            (Geometry2::from(line), Geometry2::from(c1), t_line - t_c1),
+            (line.into(), arc.into(), t_line - t_c2),
+            (c1.into(), arc.into(), t_c1 - t_c2),
+        ] {
+            // Near-tangent crossings are ill-conditioned: an input error of ε
+            // (about 1e-9 at survey coordinates) moves the meeting point by up
+            // to √(r·ε) along the curves. Their points are still checked to lie
+            // on both curves by `intersection_points_lie_on_both_curves`.
+            if crossing.sin().abs() < 0.05 {
+                continue;
+            }
+            let found = intersect(x, y, TOL);
+            let hit = found.points().iter().any(|p| p.approx_eq(base, tol))
+                || !found.overlaps().is_empty();
+            prop_assert!(hit, "{:?} and {:?} miss {:?}: {:?}", x, y, base, found);
+        }
     }
 
     #[test]
