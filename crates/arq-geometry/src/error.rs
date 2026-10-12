@@ -35,6 +35,8 @@ pub enum GeometryError {
         /// Which value, e.g. `"distance"`.
         what: &'static str,
     },
+    /// A scale factor must be finite and strictly positive.
+    InvalidScale,
 }
 
 impl fmt::Display for GeometryError {
@@ -53,6 +55,12 @@ impl fmt::Display for GeometryError {
             Self::ZeroSweep => write!(f, "an arc needs different start and end angles"),
             Self::Collinear => write!(f, "three points on one line define no arc or circle"),
             Self::OutOfRange { what } => write!(f, "{what} is outside the curve"),
+            Self::InvalidScale => {
+                write!(
+                    f,
+                    "the scale factor must be a finite number greater than zero"
+                )
+            }
         }
     }
 }

@@ -3,7 +3,9 @@
 
 use std::f64::consts::{PI, TAU};
 
-use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Tolerance, Vector2, angle};
+use arq_geometry::{
+    Arc, Bounds2, Circle, Geometry2, Line, Point2, Tolerance, Transform2, Vector2, angle,
+};
 use proptest::prelude::*;
 
 /// Coordinates from the origin up to UTM-like magnitudes.
@@ -54,6 +56,30 @@ fn tol_for(magnitude: f64) -> Tolerance {
 
 fn magnitude(p: Point2) -> f64 {
     p.to_vector().length()
+}
+
+/// One elementary transformation, as the editing commands create them.
+fn step() -> impl Strategy<Value = Transform2> {
+    prop_oneof![
+        vector().prop_map(Transform2::translation),
+        (point(), any_angle()).prop_map(|(c, a)| Transform2::rotation(c, a).unwrap()),
+        (point(), 0.5..2.0f64).prop_map(|(c, f)| Transform2::scaling(c, f).unwrap()),
+        line().prop_map(Transform2::mirror),
+    ]
+}
+
+/// A chain of 1 to 4 steps composed with `then`, plus the steps themselves.
+fn transform() -> impl Strategy<Value = (Transform2, Vec<Transform2>)> {
+    prop::collection::vec(step(), 1..=4).prop_map(|steps| {
+        let t = steps.iter().skip(1).fold(steps[0], |acc, s| acc.then(*s));
+        (t, steps)
+    })
+}
+
+/// Composed transforms of large coordinates accumulate rounding: scale the
+/// tolerance to the largest magnitude seen, with headroom for the chain.
+fn chain_tol(points: &[Point2]) -> Tolerance {
+    tol_for(10.0 * points.iter().map(|p| magnitude(*p)).fold(0.0, f64::max))
 }
 
 fn any_angle() -> impl Strategy<Value = f64> {
@@ -276,6 +302,50 @@ proptest! {
         prop_assert_eq!(Geometry2::from(l).length(), l.length());
         prop_assert_eq!(Geometry2::from(a).start_point(), Some(a.start_point()));
         prop_assert_eq!(Geometry2::from(c).end_point(), None);
+    }
+
+    #[test]
+    fn composition_equals_applying_each_step((t, steps) in transform(), p in point()) {
+        let stepwise = steps.iter().fold(p, |q, s| s.apply_point(q));
+        let tol = chain_tol(&[p, stepwise, t.apply_point(p)]);
+        prop_assert!(t.apply_point(p).approx_eq(stepwise, tol));
+    }
+
+    #[test]
+    fn inverse_undoes((t, _) in transform(), p in point()) {
+        let image = t.apply_point(p);
+        let back = t.inverse().apply_point(image);
+        prop_assert!(back.approx_eq(p, chain_tol(&[p, image])));
+    }
+
+    #[test]
+    fn distances_scale_by_the_factor((t, _) in transform(), p in point(), q in point()) {
+        let (tp, tq) = (t.apply_point(p), t.apply_point(q));
+        let expected = p.distance_to(q) * t.scale_factor();
+        prop_assert!((tp.distance_to(tq) - expected).abs() <= chain_tol(&[p, q, tp, tq]).linear());
+    }
+
+    #[test]
+    fn transformed_curves_contain_the_images_of_their_points(
+        (t, _) in transform(), l in line(), c in circle(), a in arc(), s in 0.0..=1.0f64,
+    ) {
+        for g in [Geometry2::from(l), c.into(), a.into()] {
+            let image = t.apply(g).unwrap();
+            prop_assert_eq!(image.kind(), g.kind());
+            let q = t.apply_point(g.point_at(s));
+            let tol = chain_tol(&[g.point_at(s), q, image.bounds().min(), image.bounds().max()]);
+            prop_assert!(image.contains_point(q, tol), "{:?} lost a point under {:?}", g.kind(), t);
+            let expected_length = g.length() * t.scale_factor();
+            prop_assert!((image.length() - expected_length).abs() <= tol.linear() * 10.0);
+        }
+    }
+
+    #[test]
+    fn mirror_is_an_involution(axis in line(), p in point()) {
+        let m = Transform2::mirror(axis);
+        let back = m.apply_point(m.apply_point(p));
+        prop_assert!(back.approx_eq(p, chain_tol(&[p, axis.start()])));
+        prop_assert!(m.is_reflection());
     }
 
     #[test]

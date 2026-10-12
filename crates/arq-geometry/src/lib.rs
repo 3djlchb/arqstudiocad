@@ -24,6 +24,7 @@ mod geometry;
 mod line;
 mod point;
 mod tolerance;
+mod transform;
 mod vector;
 
 pub use arc::Arc;
@@ -34,4 +35,5 @@ pub use geometry::{Geometry2, GeometryKind};
 pub use line::Line;
 pub use point::Point2;
 pub use tolerance::Tolerance;
+pub use transform::Transform2;
 pub use vector::Vector2;
