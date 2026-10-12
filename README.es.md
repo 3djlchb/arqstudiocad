@@ -22,7 +22,7 @@ y las decisiones que las justifican, en [docs/architecture/adr/](docs/architectu
 ## Plataformas objetivo
 
 Windows (x86-64, ARM64) · macOS (universal2: Apple Silicon e Intel) ·
-Linux (`.deb`, `.rpm`, Arch/AUR, Flatpak, AppImage).
+Linux (`.deb`, `.rpm`, AppImage).
 
 ## Idiomas
 

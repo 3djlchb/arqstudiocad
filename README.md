@@ -22,7 +22,7 @@ for the rules every change must respect, and
 ## Target platforms
 
 Windows (x86-64, ARM64) · macOS (universal2: Apple Silicon and Intel) ·
-Linux (`.deb`, `.rpm`, Arch/AUR, Flatpak, AppImage).
+Linux (`.deb`, `.rpm`, AppImage).
 
 ## Languages
 
