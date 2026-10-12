@@ -1,10 +1,11 @@
 //! Entity access on [`Document`].
 
 use crate::document::Document;
+use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
-use crate::translate::{handle, new_entity, read_entity, write_plan};
+use crate::translate::{color_to_codec, handle, new_entity, read_entity, write_plan};
 
 impl Document {
     /// A snapshot of the entity with this id, in any space.
@@ -44,6 +45,47 @@ impl Document {
             return Err(DocumentError::NotEditable { id, kind });
         }
         write_plan(e, plan)
+    }
+
+    /// Deletes an entity of any type (erasing needs no geometry, D3.4).
+    ///
+    /// Uses the codec's shared-image removal, which keeps block membership so
+    /// undo can restore it exactly.
+    pub fn delete_entity(&mut self, id: EntityId) -> DocumentResult<()> {
+        self.cad_mut()
+            .remove_entity_arc(handle(id))
+            .map(|_| ())
+            .ok_or(DocumentError::EntityNotFound(id))
+    }
+
+    /// Moves an entity of any type to another layer.
+    pub fn set_entity_layer(&mut self, id: EntityId, layer: LayerId) -> DocumentResult<()> {
+        let name = self
+            .layer(layer)
+            .ok_or(DocumentError::LayerIdNotFound(layer))?
+            .name()
+            .to_owned();
+        let e = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        let common = e.common_mut();
+        common.layer = name;
+        common.layer_handle = Some(opencadcodec::Handle::new(layer));
+        Ok(())
+    }
+
+    /// Sets the color of an entity of any type.
+    pub fn set_entity_color(&mut self, id: EntityId, color: Color) -> DocumentResult<()> {
+        if color == Color::Index(0) {
+            return Err(DocumentError::InvalidLayerColor);
+        }
+        let e = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        e.common_mut().color = color_to_codec(color);
+        Ok(())
     }
 }
 

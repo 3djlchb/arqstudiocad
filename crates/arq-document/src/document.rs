@@ -16,6 +16,8 @@ use crate::format::FileFormat;
 /// its memory address during a transaction (D3.5).
 pub struct Document {
     cad: Box<CadDocument>,
+    /// The change being recorded, if any (see `change.rs`).
+    pub(crate) recording: Option<crate::change::Recording>,
 }
 
 impl Document {
@@ -29,7 +31,10 @@ impl Document {
         // records from DXF without handles) only get a handle when written
         // to DWG; assigning them now keeps every LayerId stable from the start.
         cad.assign_table_entry_handles();
-        Self { cad: Box::new(cad) }
+        Self {
+            cad: Box::new(cad),
+            recording: None,
+        }
     }
 
     /// Opens a `.dwg` or `.dxf` file; the extension decides the format.

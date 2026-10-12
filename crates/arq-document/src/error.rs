@@ -58,6 +58,10 @@ pub enum DocumentError {
     InvalidLayerColor,
     /// A frozen layer cannot be the current layer.
     FrozenLayer(String),
+    /// A change is already being recorded (or undo/redo was asked during one).
+    ChangeInProgress,
+    /// Commit or rollback without a change being recorded.
+    NoChangeInProgress,
     /// A geometric value is invalid.
     Geometry(arq_geometry::GeometryError),
 }
@@ -100,6 +104,8 @@ impl fmt::Display for DocumentError {
                 write!(f, "a layer color must be a color index or RGB")
             }
             Self::FrozenLayer(name) => write!(f, "layer {name:?} is frozen"),
+            Self::ChangeInProgress => write!(f, "a change is already in progress"),
+            Self::NoChangeInProgress => write!(f, "no change is in progress"),
             Self::Geometry(e) => write!(f, "{e}"),
         }
     }

@@ -5,6 +5,7 @@
 //! (handles, symbol tables, model/paper space) so DWG/DXF load and save
 //! without lossy translation.
 
+mod change;
 mod document;
 mod entities;
 mod entity;
@@ -14,6 +15,7 @@ mod layers;
 mod ocs;
 mod translate;
 
+pub use change::{Change, ChangeSet};
 pub use document::Document;
 pub use entity::{Color, Entity, EntityId, PlanGeometry};
 pub use error::{DocumentError, DocumentResult};

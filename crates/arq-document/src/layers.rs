@@ -7,6 +7,7 @@ use opencadcodec::Handle;
 use opencadcodec::tables::layer::Layer as CodecLayer;
 use opencadcodec::tables::normalize_name;
 
+use crate::change::LayerNote;
 use crate::document::Document;
 use crate::entity::Color;
 use crate::error::{DocumentError, DocumentResult};
@@ -124,12 +125,26 @@ impl Document {
         self.cad().layers.iter().find(|l| l.handle.value() == id)
     }
 
-    fn codec_layer_mut(&mut self, id: LayerId) -> DocumentResult<&mut CodecLayer> {
-        self.cad_mut()
+    /// Applies `edit` to the layer, recording it as modified.
+    fn edit_layer(
+        &mut self,
+        id: LayerId,
+        edit: impl FnOnce(&mut CodecLayer),
+    ) -> DocumentResult<()> {
+        if self.codec_layer(id).is_none() {
+            return Err(DocumentError::LayerIdNotFound(id));
+        }
+        self.touch_structure();
+        if let Some(layer) = self
+            .cad_mut()
             .layers
             .iter_mut()
             .find(|l| l.handle.value() == id)
-            .ok_or(DocumentError::LayerIdNotFound(id))
+        {
+            edit(layer);
+        }
+        self.note_layer(id, LayerNote::Modified);
+        Ok(())
     }
 
     fn layer_name(&self, id: LayerId) -> DocumentResult<String> {
@@ -145,6 +160,7 @@ impl Document {
         if self.cad().layers.contains(name) {
             return Err(DocumentError::LayerExists(name.to_owned()));
         }
+        self.touch_structure();
         let mut layer = CodecLayer::new(name);
         layer.handle = self.cad_mut().allocate_handle();
         let id = layer.handle.value();
@@ -152,6 +168,7 @@ impl Document {
             .layers
             .add(layer)
             .map_err(DocumentError::Codec)?;
+        self.note_layer(id, LayerNote::Created);
         Ok(id)
     }
 
@@ -170,10 +187,13 @@ impl Document {
         if !same_key && self.cad().layers.contains(new_name) {
             return Err(DocumentError::LayerExists(new_name.to_owned()));
         }
+        self.touch_structure();
+        self.record_all_entities();
         self.cad_mut()
             .rename_layer(&old, new_name)
-            .map(|_| ())
-            .map_err(DocumentError::Codec)
+            .map_err(DocumentError::Codec)?;
+        self.note_layer(id, LayerNote::Modified);
+        Ok(())
     }
 
     /// Sets a layer's color (an ACI index or RGB).
@@ -181,14 +201,12 @@ impl Document {
         if !matches!(color, Color::Index(1..) | Color::Rgb { .. }) {
             return Err(DocumentError::InvalidLayerColor);
         }
-        self.codec_layer_mut(id)?.color = color_to_codec(color);
-        Ok(())
+        self.edit_layer(id, |l| l.color = color_to_codec(color))
     }
 
     /// Turns a layer on or off.
     pub fn set_layer_visible(&mut self, id: LayerId, visible: bool) -> DocumentResult<()> {
-        self.codec_layer_mut(id)?.flags.off = !visible;
-        Ok(())
+        self.edit_layer(id, |l| l.flags.off = !visible)
     }
 
     /// Freezes or thaws a layer. The current layer cannot be frozen.
@@ -196,20 +214,17 @@ impl Document {
         if frozen && self.current_layer().id == id {
             return Err(DocumentError::ProtectedLayer(self.layer_name(id)?));
         }
-        self.codec_layer_mut(id)?.flags.frozen = frozen;
-        Ok(())
+        self.edit_layer(id, |l| l.flags.frozen = frozen)
     }
 
     /// Locks or unlocks a layer.
     pub fn set_layer_locked(&mut self, id: LayerId, locked: bool) -> DocumentResult<()> {
-        self.codec_layer_mut(id)?.flags.locked = locked;
-        Ok(())
+        self.edit_layer(id, |l| l.flags.locked = locked)
     }
 
     /// Whether a layer is plotted.
     pub fn set_layer_plottable(&mut self, id: LayerId, plottable: bool) -> DocumentResult<()> {
-        self.codec_layer_mut(id)?.is_plottable = plottable;
-        Ok(())
+        self.edit_layer(id, |l| l.is_plottable = plottable)
     }
 
     /// Deletes an empty layer. "0", "Defpoints", external-reference layers and
@@ -227,7 +242,9 @@ impl Document {
         if in_use {
             return Err(DocumentError::LayerInUse(name));
         }
+        self.touch_structure();
         self.cad_mut().layers.remove(&name);
+        self.note_layer(id, LayerNote::Deleted);
         Ok(())
     }
 
@@ -248,9 +265,11 @@ impl Document {
         if layer.frozen {
             return Err(DocumentError::FrozenLayer(layer.name));
         }
+        self.touch_structure();
         let header = &mut self.cad_mut().header;
         header.current_layer_name = layer.name;
         header.current_layer_handle = Handle::new(id);
+        self.note_document();
         Ok(())
     }
 }
