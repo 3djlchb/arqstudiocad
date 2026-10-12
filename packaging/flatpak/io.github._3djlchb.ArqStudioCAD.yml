@@ -1,0 +1,61 @@
+# Flatpak manifest for ArqStudioCAD (ADR 0009).
+#
+# Unlike the other Linux packages this does not reuse the PyInstaller bundle:
+# Flathub builds from source, offline. PySide6 comes from the official
+# io.qt.PySide.BaseApp; the Rust extension is compiled with the SDK's
+# rust-stable extension from vendored crates (cargo-sources.json).
+#
+# Local build: bash packaging/flatpak/build.sh
+# For Flathub, the `dir` source below becomes a `git` source pinned to a tag.
+id: io.github._3djlchb.ArqStudioCAD
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: arqstudiocad
+
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+cleanup-commands:
+  # Provided by the BaseApp: removes the parts of PySide6 an app does not use.
+  - /app/cleanup-BaseApp.sh
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+modules:
+  - name: arqstudiocad
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/arqstudiocad/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo build --release --offline --locked -p arq-python --features pyo3/extension-module
+      - install -d /app/share/arqstudiocad/python
+      - cp -r python/arqstudiocad /app/share/arqstudiocad/python/
+      - rm -f /app/share/arqstudiocad/python/arqstudiocad/*.so
+      - install -m755 target/release/lib_core.so /app/share/arqstudiocad/python/arqstudiocad/_core.abi3.so
+      - install -m644 AUTHORS LICENSE /app/share/arqstudiocad/
+      - install -Dm755 packaging/flatpak/arqstudiocad.sh /app/bin/arqstudiocad
+      - install -Dm644 packaging/linux/${FLATPAK_ID}.desktop /app/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 packaging/linux/${FLATPAK_ID}.metainfo.xml /app/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      - install -Dm644 resources/icons/${FLATPAK_ID}.svg /app/share/icons/hicolor/scalable/apps/${FLATPAK_ID}.svg
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .venv
+          - target
+          - dist
+          - build
+          - .flatpak-builder
+      - cargo-sources.json

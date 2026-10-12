@@ -83,6 +83,26 @@ the build. Flatpak and AUR have their own recipes (built from source).
 
 The icon in `resources/icons/` is **provisional** until the project has a logo.
 
+## Flatpak
+
+Flathub builds from source, offline, so the Flatpak does not reuse the
+PyInstaller bundle. The manifest
+[`flatpak/io.github._3djlchb.ArqStudioCAD.yml`](flatpak/io.github._3djlchb.ArqStudioCAD.yml)
+builds on the KDE 6.11 runtime with PySide6 from the official
+`io.qt.PySide.BaseApp` (so the Flatpak uses the PySide version that base
+provides, currently 6.11), compiles the Rust extension with the SDK's
+`rust-stable` extension, and vendors crates through `cargo-sources.json`
+(regenerated from `Cargo.lock` by the build script).
+
+```sh
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+bash packaging/flatpak/build.sh     # build, install for the user, --check, dist/flatpak/*.flatpak
+```
+
+> **Status: blocked.** Flathub's `rust-stable` extension ships Rust 1.98.1,
+> older than our `rust-version` (1.99). The script stops with a clear message
+> until Flathub updates it; nothing else needs to change then.
+
 ## macOS
 
 Coming in a later step of phase 1: universal2 `.dmg`.
