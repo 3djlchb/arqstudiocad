@@ -16,10 +16,16 @@ API, so its shape is decided before writing it.
 
 ### D4.1 — Points and vectors are tuples
 
-A point or vector is a `tuple[float, float]` in both directions. Rust
-validates every tuple on entry; NaN or infinity raises `InvalidGeometryError`.
-No point class: commands and scripts write `(10.0, 5.0)` without imports, and
-lists of coordinates cross the boundary without building objects.
+A single point or vector is returned as a `tuple[float, float]`. On entry
+any sequence of two numbers is accepted — a tuple, a list or a NumPy array of
+shape `(2,)` — so NumPy users pass their arrays directly. Rust validates every
+value; NaN or infinity raises `InvalidGeometryError`. No point class: commands
+and scripts write `(10.0, 5.0)` without imports.
+
+Bulk coordinates (polyline vertices, exports, render data; later phases) are
+returned as `(N, 2)` `float64` arrays through Python's buffer protocol, which
+`numpy.asarray` reads without a copy. NumPy stays optional: the core never
+requires it, and the installers do not grow by its 20–30 MB.
 
 ### D4.2 — Values are immutable classes
 
