@@ -24,6 +24,7 @@ mod geometry;
 mod intersect;
 mod line;
 mod point;
+pub mod snap;
 mod tolerance;
 mod transform;
 mod vector;

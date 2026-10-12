@@ -3,6 +3,7 @@
 
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
+use arq_geometry::snap::{self, SnapKind};
 use arq_geometry::{
     Arc, Bounds2, Circle, Geometry2, Intersections, Line, Point2, Tolerance, Transform2, Vector2,
     angle, intersect,
@@ -450,6 +451,47 @@ proptest! {
             let hit = found.points().iter().any(|p| p.approx_eq(base, tol))
                 || !found.overlaps().is_empty();
             prop_assert!(hit, "{:?} and {:?} miss {:?}: {:?}", x, y, base, found);
+        }
+    }
+
+    #[test]
+    fn key_points_lie_on_the_curve((base, g, _) in scene()) {
+        let tol = tol_for(magnitude(base) + 300.0);
+        for s in snap::key_points(g) {
+            if s.kind == SnapKind::Center {
+                continue;
+            }
+            prop_assert!(g.contains_point(s.point, tol), "{:?} {:?} not on {:?}", s.kind, s.point, g);
+            prop_assert!(g.bounds().contains_point(s.point, tol));
+        }
+    }
+
+    #[test]
+    fn perpendicular_points_make_a_right_angle((base, g, _) in scene(), from in point()) {
+        let from = base + (from - Point2::ORIGIN) * 1e-5; // near the scene
+        let tol = tol_for(magnitude(base) + 300.0);
+        for s in snap::perpendicular_points(g, from, TOL) {
+            prop_assert!(g.contains_point(s.point, tol));
+            let Ok(to_from) = (from - s.point).normalized() else { continue };
+            let cos = to_from.dot(snap::tangent_direction(g, s.point));
+            prop_assert!(cos.abs() <= 1e-6, "angle off 90° by cos = {cos}");
+        }
+    }
+
+    #[test]
+    fn tangent_points_touch_without_crossing(
+        c in circle(), dir in any_angle(), extra in 1.001..10.0f64,
+    ) {
+        // A point outside the circle has exactly two tangent points.
+        let from = c.center() + Vector2::from_polar(c.radius() * extra, dir).unwrap();
+        let tangents = snap::tangent_points(c.into(), from, TOL);
+        prop_assert_eq!(tangents.len(), 2);
+        let tol = tol_for(magnitude(c.center()) + c.radius() * 10.0);
+        for s in tangents {
+            prop_assert!(c.contains_point(s.point, tol));
+            let radial = (s.point - c.center()).normalized().unwrap();
+            let towards = (s.point - from).normalized().unwrap();
+            prop_assert!(radial.dot(towards).abs() <= 1e-6, "radius not perpendicular to the tangent");
         }
     }
 
