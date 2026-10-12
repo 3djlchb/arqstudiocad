@@ -31,7 +31,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0  # no major-version tag is published
       - uses: Swatinem/rust-cache@v2
       - name: Build installer and portable ZIP
         shell: pwsh
