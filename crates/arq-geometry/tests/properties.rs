@@ -3,7 +3,7 @@
 
 use std::f64::consts::{PI, TAU};
 
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Tolerance, Vector2, angle};
+use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Tolerance, Vector2, angle};
 use proptest::prelude::*;
 
 /// Coordinates from the origin up to UTM-like magnitudes.
@@ -263,6 +263,19 @@ proptest! {
             prop_assert!(arc.contains_point(q, tol));
         }
         prop_assert!((arc.radius() - r).abs() <= tol.linear());
+    }
+
+    #[test]
+    fn geometry2_delegates_exactly(
+        l in line(), c in circle(), a in arc(), q in point(), t in 0.0..=1.0f64,
+    ) {
+        prop_assert_eq!(Geometry2::from(l).closest_point(q), l.closest_point(q));
+        prop_assert_eq!(Geometry2::from(c).distance_to(q), c.distance_to(q));
+        prop_assert_eq!(Geometry2::from(a).point_at(t), a.point_at(t));
+        prop_assert_eq!(Geometry2::from(a).bounds(), a.bounds());
+        prop_assert_eq!(Geometry2::from(l).length(), l.length());
+        prop_assert_eq!(Geometry2::from(a).start_point(), Some(a.start_point()));
+        prop_assert_eq!(Geometry2::from(c).end_point(), None);
     }
 
     #[test]
