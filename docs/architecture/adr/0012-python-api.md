@@ -35,8 +35,8 @@ requires it, and the installers do not grow by its 20–30 MB.
 drawing never changes one already returned.
 
 - `CadColor` has named constructors (`by_layer()`, `by_block()`,
-  `index(1..=255)`, `rgb(r, g, b)`) and a `kind`; index 7 and RGB (7, 7, 7)
-  cannot be confused.
+  `from_index(1..=255)`, `from_rgb(r, g, b)`) and the attributes `kind`,
+  `index` and `rgb`; index 7 and RGB (7, 7, 7) cannot be confused.
 - Entity geometry is one class per curve — `CadLine`, `CadCircle`, `CadArc`
   — with `CadEntityInfo.geometry` set to `None` for read-only kinds (TEXT,
   INSERT…). Each class supports `match`/`case` by keyword.

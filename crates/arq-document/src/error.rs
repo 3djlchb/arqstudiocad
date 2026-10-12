@@ -56,6 +56,8 @@ pub enum DocumentError {
     LayerInUse(String),
     /// A layer's own color must be an ACI index or RGB, not ByLayer/ByBlock.
     InvalidLayerColor,
+    /// An ACI color index must be 1 to 255 (0 means ByBlock).
+    InvalidColorIndex(u8),
     /// A frozen layer cannot be the current layer.
     FrozenLayer(String),
     /// A change is already being recorded (or undo/redo was asked during one).
@@ -102,6 +104,9 @@ impl fmt::Display for DocumentError {
             Self::LayerInUse(name) => write!(f, "layer {name:?} still has entities"),
             Self::InvalidLayerColor => {
                 write!(f, "a layer color must be a color index or RGB")
+            }
+            Self::InvalidColorIndex(i) => {
+                write!(f, "color index {i} is not 1 to 255 (0 means ByBlock)")
             }
             Self::FrozenLayer(name) => write!(f, "layer {name:?} is frozen"),
             Self::ChangeInProgress => write!(f, "a change is already in progress"),

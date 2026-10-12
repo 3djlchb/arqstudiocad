@@ -51,3 +51,10 @@ repos:
         language: system
         types_or: [python, pyi]
         pass_filenames: false
+      # The hand-written stub must match the built module (ADR 0012, D4.8).
+      - id: stubtest
+        name: stubtest (arqstudiocad._core)
+        entry: uv run stubtest arqstudiocad._core
+        language: system
+        files: ^(python/arqstudiocad/_core\.pyi|crates/arq-python/)
+        pass_filenames: false
