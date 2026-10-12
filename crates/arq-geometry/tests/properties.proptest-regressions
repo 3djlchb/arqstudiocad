@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 96dcf2e0fdf8fb0c0abe1597a9d0576d96f19b49c2a7e7c9528e9d02451db2d6 # shrinks to v = Vector2 { x: 0.0, y: -7806612.642802711 }, a = -15.914062879620884
+cc df758955028c65b1be30d41cc55ab4287b46287c9ae1e29f726994dfbbed9cb7 # shrinks to (t, _) = (Transform2 { a: -1.0, b: -0.0, c: -0.0, d: 1.0, pivot: Point2 { x: 0.0, y: 0.0 }, t: Vector2 { x: 0.0, y: 0.0 } }, [Transform2 { a: -1.0, b: -0.0, c: -0.0, d: 1.0, pivot: Point2 { x: 0.0, y: 0.0 }, t: Vector2 { x: 0.0, y: 0.0 } }]), l = Line { start: Point2 { x: 0.0, y: 0.0 }, end: Point2 { x: 0.0, y: -6458848.708598839 } }, c = Circle { center: Point2 { x: 0.0, y: 0.0 }, radius: 0.001 }, a = Arc { center: Point2 { x: 0.0, y: 0.0 }, radius: 0.001, start_angle: 0.0, end_angle: 0.001 }, s = 0.0
+cc 24fbd4d6eee3fdd41efb4ba618a3e8bf5a8ddfa64933bd120253671ee5f07c1f # shrinks to (base, a, b) = (Point2 { x: 0.0, y: 0.0 }, Line(Line { start: Point2 { x: 0.0, y: 0.0 }, end: Point2 { x: 0.0, y: -59.521578697447346 } }), Arc(Arc { center: Point2 { x: 0.0, y: 73.1338949985198 }, radius: 84.59482260127018, start_angle: 0.0, end_angle: 0.05 }))
+cc 9d1904f01a404f3480a0136201453b954f4b4967575e4ee4469d27b8c3187270 # shrinks to base = Point2 { x: 0.0, y: 6265408.949641334 }, r1 = 76.63843060534985, r2 = 1.0, a1 = 280.5214708136373, a2 = 0.0, dir = 65.3223779805223, half = 1.0

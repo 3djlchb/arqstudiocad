@@ -5,9 +5,10 @@
 Open-source 2D/3D CAD for architecture and engineering, with DWG as its native
 format and DXF as an open alternative.
 
-> **Status:** pre-alpha. Phase 1 (walking skeleton) is done: the application
-> starts, switches between English and Spanish, and is packaged for every
-> target platform — but it cannot draw yet.
+> **Status:** pre-alpha. The application starts, switches between English and
+> Spanish and is packaged for every target platform (phase 1), and the
+> geometry core is done — lines, circles, arcs, transformations,
+> intersections and snap points (phase 2) — but it cannot draw yet.
 
 | Layer | Technology | Owns |
 |---|---|---|

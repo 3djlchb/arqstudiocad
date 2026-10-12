@@ -5,9 +5,11 @@
 CAD 2D/3D de código abierto para arquitectura e ingeniería, con DWG como
 formato nativo y DXF como alternativa abierta.
 
-> **Estado:** pre-alfa. La fase 1 (esqueleto ejecutable) está terminada: la
-> aplicación arranca, cambia entre inglés y español y se empaqueta para todas
-> las plataformas objetivo, pero todavía no permite dibujar.
+> **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
+> se empaqueta para todas las plataformas objetivo (fase 1), y el núcleo
+> geométrico está terminado —líneas, círculos, arcos, transformaciones,
+> intersecciones y puntos de referencia (fase 2)—, pero todavía no permite
+> dibujar.
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|
