@@ -5,7 +5,9 @@
 CAD 2D/3D de código abierto para arquitectura e ingeniería, con DWG como
 formato nativo y DXF como alternativa abierta.
 
-> **Estado:** pre-alfa, fase 0 (fundación). Todavía no es utilizable.
+> **Estado:** pre-alfa. La fase 1 (esqueleto ejecutable) está terminada: la
+> aplicación arranca, cambia entre inglés y español y se empaqueta para todas
+> las plataformas objetivo, pero todavía no permite dibujar.
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|
@@ -33,9 +35,6 @@ idioma puede añadir sus propios nombres (`LINEA`). Ver
 [ADR 0006](docs/architecture/adr/0006-i18n.md).
 
 ## Compilar desde el código fuente
-
-> Todavía no hay una aplicación que abrir (fase 0). Compilar hoy genera el
-> núcleo Rust y su módulo de Python, y ejecuta las pruebas.
 
 En todas las plataformas se necesitan cuatro cosas: **Git**, un **enlazador
 C/C++**, **rustup** (instala Rust) y **[uv](https://docs.astral.sh/uv/)**
@@ -81,6 +80,10 @@ si no lo encuentra, y rustup instala la versión exacta de Rust fijada en
    | openSUSE | `sudo zypper install -t pattern devel_basis && sudo zypper install git curl` |
    | Arch, Manjaro, EndeavourOS | `sudo pacman -S --needed base-devel git curl` |
 
+   Las distribuciones de escritorio ya traen las librerías que Qt necesita para
+   abrir ventanas, salvo a veces la del cursor de X11: `libxcb-cursor0` (Debian,
+   Ubuntu), `xcb-util-cursor` (Fedora, openSUSE, Arch).
+
 2. Instala rustup y uv (ambos se instalan en tu carpeta personal, sin `sudo`):
 
    ```sh
@@ -103,10 +106,17 @@ si no lo encuentra, y rustup instala la versión exacta de Rust fijada en
 
 Ejecuta `xcode-select --install` para el compilador y sigue los pasos 2–4 de Linux.
 
-### Comprobar que funciona (todas las plataformas)
+### Ejecutarla (todas las plataformas)
 
 ```sh
-uv run python -c "import arqstudiocad; print(arqstudiocad.__version__)"   # muestra 0.1.0
+uv run arqstudiocad              # abre la aplicación
+uv run arqstudiocad --lang es    # en español (también: Herramientas > Idioma)
+uv run arqstudiocad --check      # verifica la instalación y muestra un informe
+```
+
+Y las pruebas:
+
+```sh
 cargo test         # pruebas del núcleo Rust (sin Python)
 uv run pytest      # pruebas de Python
 ```
@@ -120,6 +130,10 @@ Para generar un paquete optimizado e instalable (un *wheel*) en `target/wheels/`
 ```sh
 uv run maturin build --release
 ```
+
+Los instaladores y paquetes portables (instalador y ZIP portable de Windows,
+`.dmg` de macOS, AppImage/`.deb`/`.rpm` de Linux) se generan con los scripts
+descritos en [packaging/README.md](packaging/README.md) (en inglés).
 
 ### Para quien contribuya
 
@@ -139,6 +153,7 @@ La lista completa de comprobaciones está en [AGENTS.md](AGENTS.md).
 | No se encuentra `cargo`, `rustup` o `uv` | Abre una terminal nueva (Windows: cierra todas las terminales o reinicia VS Code) |
 | `link.exe not found` (Windows) | Instala la carga de trabajo de C++ de Build Tools (paso 1) |
 | `linker 'cc' not found` (Linux) | Instala el paquete del compilador del paso 1 |
+| `Could not load the Qt platform plugin "xcb"` (Linux) | Instala la librería del cursor de X11 indicada en el paso 1 |
 | `invalid peer certificate: UnknownIssuer` en uv | Un proxy o antivirus intercepta HTTPS. Define `UV_SYSTEM_CERTS=1` para que uv use los certificados del sistema |
 
 ## Licencia
