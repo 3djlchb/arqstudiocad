@@ -18,7 +18,7 @@ Summary:        Open-source 2D/3D CAD for architecture and engineering
 License:        GPL-3.0-or-later
 URL:            https://github.com/3djlchb/arqstudiocad
 
-Requires:       glibc >= 2.34
+Requires:       glibc >= @GLIBC_MIN@
 Requires:       mesa-libGL
 Requires:       mesa-libEGL
 Requires:       fontconfig
