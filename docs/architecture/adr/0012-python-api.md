@@ -74,6 +74,11 @@ the codec's work: up to seconds), so the interface and other Python threads
 keep running. Every other call takes micro- to milliseconds and keeps it.
 Queries are reconsidered with the spatial index (phase 7).
 
+The binding never runs Python code while a document is locked: a thread that
+released the GIL may hold that lock, and it must be able to finish without
+the GIL, or the two threads would wait for each other forever. A test checks
+that other Python threads really run during an open and a save.
+
 ### D4.7 — Collections
 
 Operations take ids as any sequence of `int`; queries return `list[int]`;

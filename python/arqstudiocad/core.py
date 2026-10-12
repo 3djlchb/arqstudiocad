@@ -9,10 +9,12 @@ numbers (tuple, list, NumPy array).
 from typing import Protocol, SupportsFloat
 
 from arqstudiocad._core import (
+    CadApplication,
     CadArc,
     CadBounds2,
     CadCircle,
     CadColor,
+    CadDocument,
     CadError,
     CadIoError,
     CadLine,
@@ -37,10 +39,12 @@ class PointLike(Protocol):
 
 
 __all__ = [
+    "CadApplication",
     "CadArc",
     "CadBounds2",
     "CadCircle",
     "CadColor",
+    "CadDocument",
     "CadError",
     "CadIoError",
     "CadLine",
