@@ -48,7 +48,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2025, macos-15]
-        python: ["3.12", "3.14"]
+        # Minimum supported (3.12), the version bundled in every package
+        # (3.13, ADR 0009) and the newest (3.14).
+        python: ["3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
