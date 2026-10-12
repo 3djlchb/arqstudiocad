@@ -7,7 +7,8 @@ reused is recorded in [THIRD_PARTY.md](../../THIRD_PARTY.md).
 | Project | Stack | License | Analysis |
 |---|---|---|---|
 | Open CAD Studio | Rust, iced, wgpu | GPL-3.0 (app) / MPL-2.0 (codec, kernel) | [opencadstudio.md](opencadstudio.md) |
-| IngeCAD | Python, PySide6, ezdxf, OpenGL | GPL-3.0-or-later | [ingecad.md](ingecad.md) |
+| IngeCAD | Python, PySide6, ezdxf, OpenGL | GPL-3.0-or-later | [ingecad.md](ingecad.md), [what to port from its core](ingecad-core-port.md) |
+| opencadcodec | Rust (DWG/DXF engine, ADR 0008) | MPL-2.0 | [internals](opencadcodec-internals.md) |
 
 ## Proposals arising from the analyses
 

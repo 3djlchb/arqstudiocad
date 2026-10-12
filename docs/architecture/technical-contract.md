@@ -187,8 +187,15 @@ pub struct CadChangeSet {
 ```
 
 - A failed operation leaves the document unchanged: all or nothing.
-- Undo never copies the whole document for a small edit; the strategy is
-  decided in phase 3 (ADR).
+- Undo never copies the whole document for a small edit: each transaction
+  keeps before/after images of the entities it touched (shared `Arc`s, no
+  geometry copy) and structure snapshots for tables
+  ([ADR 0011](adr/0011-document-model-and-transactions.md)).
+- Every core operation is one transaction (one undo step); commands that
+  combine operations wrap them in a group, undone as one step and rolled back
+  as one on failure.
+- Each committed transaction returns a `CadChangeSet`: entities and layers
+  created, modified and deleted, plus a document-level flag.
 
 ## 7. Contract E — Events and UI synchronization
 
