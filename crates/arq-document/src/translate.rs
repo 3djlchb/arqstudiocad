@@ -12,10 +12,7 @@ use crate::ocs::{PlanNormal, plan_normal};
 /// Our view of a codec entity.
 pub(crate) fn read_entity(e: &EntityType) -> Entity {
     let plan = plan_of(e);
-    let bounds = match plan {
-        Some(p) => Some(p.geometry().bounds()),
-        None => codec_bounds(e),
-    };
+    let bounds = bounds_with(e, plan);
     Entity {
         id: e.as_entity().handle().value(),
         kind: e.as_entity().entity_type(),
@@ -23,6 +20,19 @@ pub(crate) fn read_entity(e: &EntityType) -> Entity {
         color: color_from_codec(e.as_entity().color()),
         bounds,
         plan,
+    }
+}
+
+/// Plan bounds of an entity: from our geometry when it has plan geometry,
+/// else the codec's box.
+pub(crate) fn bounds_of(e: &EntityType) -> Option<Bounds2> {
+    bounds_with(e, plan_of(e))
+}
+
+fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
+    match plan {
+        Some(p) => Some(p.geometry().bounds()),
+        None => codec_bounds(e),
     }
 }
 

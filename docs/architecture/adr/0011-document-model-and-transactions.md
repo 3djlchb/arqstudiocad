@@ -71,6 +71,12 @@ document-level changes (units, settings). The UI refreshes only what changed.
 Deferred to phase 7 (proposal R6). In phase 3, `query_entities(bounds)` scans
 all entities behind a stable interface, with a benchmark to measure later.
 
+Queries return candidates by bounding box and ignore layer state; callers
+filter. Baseline (`cargo bench -p arq-core`, development machine,
+2026-10-12, 100,000 entities): about 17 ms for `bounds()` or one query,
+whatever the window size, so the scan dominates; one recorded change plus
+its undo takes about 1.5 µs.
+
 ### D3.9 — Grouping
 
 Every core operation is **one transaction by itself** (one undo step).

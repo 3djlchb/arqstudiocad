@@ -16,6 +16,12 @@ arq-document.workspace = true
 [dev-dependencies]
 arq-document = { workspace = true, features = ["test-support"] }
 tempfile = "3"
+# Statistics without plotting dependencies.
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "query"
+harness = false
 
 [lints]
 workspace = true

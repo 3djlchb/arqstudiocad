@@ -5,6 +5,7 @@
 mod error;
 mod history;
 mod operations;
+mod queries;
 
 pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{

@@ -1,11 +1,13 @@
 //! Entity access on [`Document`].
 
+use arq_geometry::Bounds2;
+
 use crate::document::Document;
 use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
-use crate::translate::{color_to_codec, handle, new_entity, read_entity, write_plan};
+use crate::translate::{bounds_of, color_to_codec, handle, new_entity, read_entity, write_plan};
 
 impl Document {
     /// A snapshot of the entity with this id, in any space.
@@ -16,6 +18,14 @@ impl Document {
     /// Snapshots of every entity in model space, in drawing order.
     pub fn entities(&self) -> Vec<Entity> {
         self.cad().model_space_entities().map(read_entity).collect()
+    }
+
+    /// The plan bounds of every model-space entity that has them, in drawing
+    /// order: a cheap pass for spatial queries (no layer names copied).
+    pub fn entity_bounds(&self) -> impl Iterator<Item = (EntityId, Bounds2)> + '_ {
+        self.cad()
+            .model_space_entities()
+            .filter_map(|e| Some((e.as_entity().handle().value(), bounds_of(e)?)))
     }
 
     /// Adds plan geometry to model space on `layer`; returns its id.
