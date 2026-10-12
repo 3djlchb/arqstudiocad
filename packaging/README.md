@@ -109,6 +109,36 @@ bash packaging/flatpak/build.sh     # build, install for the user, --check, dist
 > older than our `rust-version` (1.99). The script stops with a clear message
 > until Flathub updates it; nothing else needs to change then.
 
-## macOS
+## macOS (universal2: Apple Silicon + Intel)
 
-Coming in a later step of phase 1: universal2 `.dmg`.
+One `.app` carries both architectures. Every piece must be universal2: the
+python.org Python 3.13 installer (uv's Pythons are single-architecture), the
+PySide6 wheels (already universal2), and our extension, built with
+`maturin --target universal2-apple-darwin`.
+
+Requirements: Xcode command line tools, rustup, and Python 3.13 from
+python.org (or set `PYTHON` to another universal2 interpreter).
+
+```sh
+bash packaging/macos/build.sh     # -> dist/macos/ArqStudioCAD-<v>-macos-universal2.dmg
+```
+
+The build checks with `lipo` that the executable and the extension contain
+both architectures, then runs `--check` natively and again with
+`arch -x86_64` (Rosetta), so the Intel half is proven on Apple Silicon too.
+Minimum macOS: 14 Sonoma. Not signed or notarized until phase 9: open it the
+first time with right click > Open.
+
+## All platforms in CI
+
+[`.github/workflows/packages.yml`](../.github/workflows/packages.yml) runs the
+same scripts on GitHub's runners — the only way to build Windows ARM64, Linux
+arm64 and macOS without that hardware — and uploads the packages as workflow
+artifacts (kept 14 days). It runs only when started by hand
+(*Actions → Packages → Run workflow*). It is not a release: nothing is published.
+
+| Job | Runner | Output |
+|---|---|---|
+| Windows x64 / arm64 | `windows-2025`, `windows-11-arm` | installer + portable ZIP |
+| Linux x86_64 / aarch64 | `ubuntu-24.04`, `ubuntu-24.04-arm` | AppImage, `.deb`, `.rpm`, tarball (tested in clean containers) |
+| macOS universal2 | `macos-15` | `.dmg` |
