@@ -1,0 +1,67 @@
+name: A drawing opens, draws or saves wrong / Un dibujo se abre, dibuja o guarda mal
+description: A DWG or DXF that ArqStudioCAD reads, displays or writes differently than it should.
+title: "[drawing] "
+labels: ["bug", "drawing"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Escribe en español si prefieres** — English or Spanish, both are read.
+
+        This is the most valuable kind of report, and also the one that is
+        impossible to act on without the file. Please read the note about
+        that below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What goes wrong
+      description: What you see, and what you expected instead.
+      placeholder: |
+        The hatch inside the walls is missing, and the block with the north
+        arrow comes in rotated. In AutoCAD the same file looks right.
+    validations:
+      required: true
+  - type: textarea
+    id: file
+    attributes:
+      label: The drawing
+      description: |
+        **Attach it if you can** (drag it here; zip it if GitHub refuses the
+        extension). Without the file this usually cannot be fixed.
+
+        Client work is understood. If you cannot share it, say so and send
+        what you can instead — a screenshot, or a copy with only the entities
+        that misbehave left in it. A drawing that reproduces the problem with
+        ten lines is worth more than the real one anyway.
+      placeholder: attached / cannot share, here is a screenshot instead
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: When does it go wrong
+      options:
+        - Opening the file
+        - Displaying it
+        - Editing it
+        - Saving it (the saved file is wrong in ArqStudioCAD or another CAD)
+    validations:
+      required: true
+  - type: input
+    id: origin
+    attributes:
+      label: What made the drawing
+      description: The program and version that wrote it, if you know.
+      placeholder: AutoCAD 2018, Civil 3D 2020, BricsCAD V24, a surveyor sent it…
+  - type: input
+    id: version
+    attributes:
+      label: ArqStudioCAD version or commit
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System and graphics card
+      placeholder: Windows 11, NVIDIA GTX 1050 Ti / LMDE 7, NVIDIA GT 730
