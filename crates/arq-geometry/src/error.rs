@@ -22,6 +22,19 @@ pub enum GeometryError {
         /// Which value, e.g. `"margin"`.
         what: &'static str,
     },
+    /// A line segment whose start and end coincide.
+    ZeroLength,
+    /// A circle or arc radius must be finite and strictly positive.
+    InvalidRadius,
+    /// An arc whose start and end angles coincide (use a circle instead).
+    ZeroSweep,
+    /// Three points on one line define no circle or arc.
+    Collinear,
+    /// A distance or parameter falls outside the curve.
+    OutOfRange {
+        /// Which value, e.g. `"distance"`.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for GeometryError {
@@ -33,6 +46,13 @@ impl fmt::Display for GeometryError {
             Self::NegativeOrNonFinite { what } => {
                 write!(f, "{what} must be a finite number, zero or greater")
             }
+            Self::ZeroLength => write!(f, "a line needs two different points"),
+            Self::InvalidRadius => {
+                write!(f, "the radius must be a finite number greater than zero")
+            }
+            Self::ZeroSweep => write!(f, "an arc needs different start and end angles"),
+            Self::Collinear => write!(f, "three points on one line define no arc or circle"),
+            Self::OutOfRange { what } => write!(f, "{what} is outside the curve"),
         }
     }
 }

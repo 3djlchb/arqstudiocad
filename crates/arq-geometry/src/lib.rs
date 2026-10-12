@@ -16,14 +16,20 @@
 //! ```
 
 pub mod angle;
+mod arc;
 mod bounds;
+mod circle;
 mod error;
+mod line;
 mod point;
 mod tolerance;
 mod vector;
 
+pub use arc::Arc;
 pub use bounds::Bounds2;
+pub use circle::Circle;
 pub use error::{GeometryError, GeometryResult};
+pub use line::Line;
 pub use point::Point2;
 pub use tolerance::Tolerance;
 pub use vector::Vector2;
