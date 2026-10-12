@@ -11,7 +11,7 @@ copied.
 
 | Path in this repo | Origin | License | Notes |
 |---|---|---|---|
-| _(none yet)_ | | | |
+| `crates/arq-document/src/ocs.rs` | Approach of IngeCAD's `core/ocs.py` (plan view of OCS entities, normal `(0,0,-1)`), reimplemented in Rust | GPL-3.0-or-later | Idea and rules ported, no code copied |
 
 ## Documents
 

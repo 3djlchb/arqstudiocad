@@ -96,13 +96,11 @@ impl Document {
     }
 
     /// The codec document, for the other modules of this crate only.
-    #[allow(dead_code)] // used by the entity and layer views (steps 3.2–3.3)
     pub(crate) fn cad(&self) -> &CadDocument {
         &self.cad
     }
 
     /// Mutable codec document, for the other modules of this crate only.
-    #[allow(dead_code)] // used by the entity and layer views (steps 3.2–3.3)
     pub(crate) fn cad_mut(&mut self) -> &mut CadDocument {
         &mut self.cad
     }
