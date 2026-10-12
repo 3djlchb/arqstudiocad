@@ -16,7 +16,7 @@ reused is recorded in [THIRD_PARTY.md](../../THIRD_PARTY.md).
 | R1 | Use **opencadcodec** (MPL-2.0) for DWG/DXF instead of writing our own | 3 / 8 | Open CAD Studio | Accepted, [ADR 0008](../architecture/adr/0008-opencadcodec.md) |
 | R2 | `arq-document` wraps the codec document as the model (the document *is* the file database) | 3 | both | Accepted, ADR 0008 |
 | R3 | **PyInstaller onedir** for freezing; IngeCAD's packaging as template | 1 | IngeCAD | Accepted, [ADR 0009](../architecture/adr/0009-packaging.md) |
-| R4 | Adopt the **local-frame** precision invariant in `arq-geometry` | 2 | opencadkernel | Proposed |
+| R4 | Adopt the **local-frame** precision invariant in `arq-geometry` | 2 | opencadkernel | Accepted, [ADR 0010](../architecture/adr/0010-geometry-conventions.md) |
 | R5 | Undo as symmetric per-handle before/after deltas | 3 | Open CAD Studio | Proposed |
 | R6 | Spatial index: grid for 2D, BVH for 3D, measured first | 3 / 7 | Open CAD Studio | Proposed |
 | R7 | Renderer with GPU fallback / safe mode | 7 | both | Superseded by [ADR 0007](../architecture/adr/0007-graphics-api.md): wgpu with runtime backend probing |

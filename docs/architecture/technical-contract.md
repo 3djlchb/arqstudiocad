@@ -65,30 +65,39 @@ pub type EntityId = u64;   // == DWG handle (see §10)
 pub type LayerId = u64;    // == handle of the LAYER table record
 pub type DocumentId = u64; // session-only, never persisted
 
-pub struct Point2 { pub x: f64, pub y: f64 }
-pub struct Vector2 { pub x: f64, pub y: f64 }
-pub struct Bounds2 { pub min: Point2, pub max: Point2 }
+// arq-geometry (ADR 0010): fields are private, constructors validate.
+pub struct Point2 { /* x, y */ }       // Point2::new(x, y) -> Result<Point2, GeometryError>
+pub struct Vector2 { /* x, y */ }      // point - point = vector, point + vector = point
+pub struct Bounds2 { /* min, max */ }
+pub struct Line { /* start, end */ }   // Line::new(start, end) -> Result<Line, _>
+pub struct Circle { /* center, radius */ }
+pub struct Arc { /* center, radius, start_angle, end_angle */ }
 
-pub enum Geometry2 {
-    Line { start: Point2, end: Point2 },
-    Circle { center: Point2, radius: f64 },
-    Arc { center: Point2, radius: f64, start_angle: f64, end_angle: f64 },
-}
+pub enum Geometry2 { Line(Line), Circle(Circle), Arc(Arc) }
 ```
 
-These are the target shapes; final signatures are set when each crate is built.
-`Document` fields are private and accessed only through controlled methods.
+Final signatures are set as each crate is built. An invalid geometry cannot be
+constructed. `Document` fields are private and accessed only through
+controlled methods.
 
-Geometry rules:
+Geometry rules ([ADR 0010](adr/0010-geometry-conventions.md)):
 
 1. Coordinates are `f64` **model units**; never assume millimetres. Units are a
    document property (DWG `$INSUNITS`).
-2. Angles in the API are **radians**. The UI may display degrees.
-3. Non-finite values (NaN, ±∞) are rejected by every operation that takes them.
-4. Radii must be positive; each operation validates its own degenerate cases.
-5. Geometry changes only through core methods.
-6. Render data is never the source of truth.
-7. Tolerances are explicit parameters or documented constants, never ad-hoc literals.
+2. **The core and the Python API use radians, always.** 0 points East (+X),
+   counterclockwise is positive. **Commands and the interface work in
+   degrees**, converted only at the presentation boundary (Python), when
+   reading user input and when displaying values.
+3. Arcs follow DWG: counterclockwise from `start_angle` to `end_angle`, both
+   normalized to `[0, 2π)`.
+4. Non-finite values (NaN, ±∞) are rejected by every constructor and operation.
+5. Radii must be positive; segments must have non-zero length.
+6. Geometry changes only through core methods.
+7. Render data is never the source of truth.
+8. Tolerances are an explicit `Tolerance { linear, angular }` argument
+   (default: 1e-9 model units, 1e-10 rad), never ad-hoc literals.
+9. Algorithms that combine coordinates compute in a **local frame** near the
+   data, so georeferenced coordinates (~1e6) keep their precision.
 
 ## 4. Contract B — Rust → Python API (PyO3)
 

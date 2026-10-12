@@ -9,7 +9,9 @@ before changing code. It is binding. Decisions are in [docs/architecture/adr/](d
   PyO3 API; PySide6 never talks to Rust directly, only through Python.
 - Only `crates/arq-python` may depend on `pyo3`. No crate depends on Qt.
 - The core never calls Python or Qt; it returns results and `CadChangeSet`s.
-- Coordinates are `f64` model units; angles are radians; reject NaN/infinity.
+- Coordinates are `f64` model units; reject NaN/infinity. Angles are radians
+  in Rust and in the Python API; commands and the UI read and show degrees,
+  converting only at that boundary (ADR 0010).
 - Operations are all-or-nothing: a failed operation leaves the document unchanged.
 - English everywhere in code, comments, docs and UI source strings. User-facing
   text goes through `tr()`; commands and prompt keys stay English (ADR 0006).
