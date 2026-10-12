@@ -6,10 +6,12 @@ CAD 2D/3D de código abierto para arquitectura e ingeniería, con DWG como
 formato nativo y DXF como alternativa abierta.
 
 > **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
-> se empaqueta para todas las plataformas objetivo (fase 1), y el núcleo
+> se empaqueta para todas las plataformas objetivo (fase 1). El núcleo
 > geométrico está terminado —líneas, círculos, arcos, transformaciones,
-> intersecciones y puntos de referencia (fase 2)—, pero todavía no permite
-> dibujar.
+> intersecciones y puntos de referencia (fase 2)— y también el núcleo del
+> documento: abre y guarda DWG y DXF, edita líneas, círculos, arcos y capas
+> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo
+> (fase 3). La interfaz todavía no permite dibujar.
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|

@@ -31,8 +31,18 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy with test helpers enabled
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Test core crates (no Python)
         run: cargo test
+      # Round-trip corpus, source 2 (ADR 0011, D3.12): the codec's sample
+      # drawings, downloaded and checksummed. Source 1 runs in `cargo test`;
+      # source 3 (real drawings) is local only and never reaches CI.
+      - uses: astral-sh/setup-uv@v10.3.0  # no major-version tag is published
+      - name: Fetch the codec's sample drawings
+        run: uv run --no-project --python 3.13 tools/fetch_codec_samples.py
+      - name: Round-trip corpus (codec samples)
+        run: cargo test -p arq-core --test corpus -- --ignored codec
       - name: Core crates must not depend on Python
         shell: bash
         run: |
