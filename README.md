@@ -33,26 +33,112 @@ line are always accepted in English. See
 
 ## Building from source
 
-Requirements:
+> There is no application to launch yet (phase 0). Building today produces the
+> Rust core and its Python module, and runs the test suites.
 
-- Rust (the exact version is pinned in `rust-toolchain.toml`; `rustup` installs it automatically)
-- [uv](https://docs.astral.sh/uv/)
-- Windows: Visual Studio Build Tools with the C++ workload
+You need four things on every platform: **Git**, a **C/C++ linker**,
+**rustup** (installs Rust) and **[uv](https://docs.astral.sh/uv/)** (installs
+Python and the Python tools). You do **not** need to install Python or a
+specific Rust version yourself: uv downloads Python 3.12+ if missing, and
+rustup installs the exact Rust version pinned in `rust-toolchain.toml` the
+first time you build.
+
+### Windows 10/11 (x86-64 or ARM64)
+
+1. Install the tools from PowerShell:
+
+   ```powershell
+   winget install --source winget --id Git.Git
+   winget install --source winget --id Rustlang.Rustup
+   winget install --source winget --id astral-sh.uv
+   winget install --source winget --id Microsoft.VisualStudio.BuildTools `
+     --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+   ```
+
+   The last command installs Visual Studio Build Tools with the C++ workload
+   (MSVC linker and Windows SDK). If you already have Visual Studio with
+   "Desktop development with C++", skip it.
+
+2. **Close and reopen the terminal** so the new `PATH` is loaded.
+
+3. Get the code and build:
+
+   ```powershell
+   git clone https://github.com/3djlchb/arqstudiocad.git
+   cd arqstudiocad
+   uv sync
+   ```
+
+### Linux
+
+1. Install a compiler, Git and curl with your distribution's package manager:
+
+   | Distribution | Command |
+   |---|---|
+   | Debian, Ubuntu, Linux Mint, LMDE | `sudo apt install build-essential git curl` |
+   | Fedora | `sudo dnf install gcc gcc-c++ make git curl` |
+   | openSUSE | `sudo zypper install -t pattern devel_basis && sudo zypper install git curl` |
+   | Arch, Manjaro, EndeavourOS | `sudo pacman -S --needed base-devel git curl` |
+
+2. Install rustup and uv (both install into your home directory, no `sudo`):
+
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+3. **Open a new terminal** (or run `source ~/.cargo/env`) so `cargo` and `uv`
+   are on the `PATH`.
+
+4. Get the code and build:
+
+   ```sh
+   git clone https://github.com/3djlchb/arqstudiocad.git
+   cd arqstudiocad
+   uv sync
+   ```
+
+### macOS (Apple Silicon or Intel)
+
+Run `xcode-select --install` for the compiler, then follow the Linux steps 2–4.
+
+### Check that it works (all platforms)
 
 ```sh
-uv sync            # creates .venv, builds the Rust extension, installs dev tools
+uv run python -c "import arqstudiocad; print(arqstudiocad.__version__)"   # prints 0.1.0
+cargo test         # Rust core tests (no Python involved)
 uv run pytest      # Python tests
-cargo test         # Rust core tests (no Python needed)
 ```
 
-After changing Rust code, `uv sync` (or `uv run`) rebuilds the extension.
+`uv sync` creates a `.venv` folder, compiles the Rust extension in debug mode
+and installs the development tools. After changing Rust code, `uv sync` (or
+any `uv run ...`) rebuilds the extension automatically.
 
-Contributors also install the local checks once:
+To build an optimized, installable package (a *wheel*) in `target/wheels/`:
+
+```sh
+uv run maturin build --release
+```
+
+### Contributors
+
+Install the local checks once; they then run on every commit:
 
 ```sh
 cargo install cargo-deny --locked
 uv run pre-commit install
 ```
+
+The full set of checks is listed in [AGENTS.md](AGENTS.md).
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `cargo`, `rustup` or `uv` not found | Open a new terminal (Windows: close all terminals, or restart VS Code) |
+| `link.exe not found` (Windows) | Install the Build Tools C++ workload (step 1) |
+| `linker 'cc' not found` (Linux) | Install the compiler package from step 1 |
+| `invalid peer certificate: UnknownIssuer` from uv | A proxy or antivirus intercepts HTTPS. Set `UV_SYSTEM_CERTS=1` so uv trusts the system certificate store |
 
 ## License
 

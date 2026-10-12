@@ -34,26 +34,112 @@ idioma puede añadir sus propios nombres (`LINEA`). Ver
 
 ## Compilar desde el código fuente
 
-Requisitos:
+> Todavía no hay una aplicación que abrir (fase 0). Compilar hoy genera el
+> núcleo Rust y su módulo de Python, y ejecuta las pruebas.
 
-- Rust (la versión exacta está fijada en `rust-toolchain.toml`; `rustup` la instala automáticamente)
-- [uv](https://docs.astral.sh/uv/)
-- Windows: Visual Studio Build Tools con la carga de trabajo de C++
+En todas las plataformas se necesitan cuatro cosas: **Git**, un **enlazador
+C/C++**, **rustup** (instala Rust) y **[uv](https://docs.astral.sh/uv/)**
+(instala Python y las herramientas de Python). **No** hace falta instalar
+Python ni una versión concreta de Rust por tu cuenta: uv descarga Python 3.12+
+si no lo encuentra, y rustup instala la versión exacta de Rust fijada en
+`rust-toolchain.toml` la primera vez que compilas.
+
+### Windows 10/11 (x86-64 o ARM64)
+
+1. Instala las herramientas desde PowerShell:
+
+   ```powershell
+   winget install --source winget --id Git.Git
+   winget install --source winget --id Rustlang.Rustup
+   winget install --source winget --id astral-sh.uv
+   winget install --source winget --id Microsoft.VisualStudio.BuildTools `
+     --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+   ```
+
+   El último comando instala Visual Studio Build Tools con la carga de trabajo
+   de C++ (enlazador MSVC y SDK de Windows). Si ya tienes Visual Studio con
+   "Desarrollo para el escritorio con C++", puedes omitirlo.
+
+2. **Cierra y vuelve a abrir la terminal** para que cargue el nuevo `PATH`.
+
+3. Descarga el código y compila:
+
+   ```powershell
+   git clone https://github.com/3djlchb/arqstudiocad.git
+   cd arqstudiocad
+   uv sync
+   ```
+
+### Linux
+
+1. Instala un compilador, Git y curl con el gestor de paquetes de tu distribución:
+
+   | Distribución | Comando |
+   |---|---|
+   | Debian, Ubuntu, Linux Mint, LMDE | `sudo apt install build-essential git curl` |
+   | Fedora | `sudo dnf install gcc gcc-c++ make git curl` |
+   | openSUSE | `sudo zypper install -t pattern devel_basis && sudo zypper install git curl` |
+   | Arch, Manjaro, EndeavourOS | `sudo pacman -S --needed base-devel git curl` |
+
+2. Instala rustup y uv (ambos se instalan en tu carpeta personal, sin `sudo`):
+
+   ```sh
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+3. **Abre una terminal nueva** (o ejecuta `source ~/.cargo/env`) para que
+   `cargo` y `uv` estén en el `PATH`.
+
+4. Descarga el código y compila:
+
+   ```sh
+   git clone https://github.com/3djlchb/arqstudiocad.git
+   cd arqstudiocad
+   uv sync
+   ```
+
+### macOS (Apple Silicon o Intel)
+
+Ejecuta `xcode-select --install` para el compilador y sigue los pasos 2–4 de Linux.
+
+### Comprobar que funciona (todas las plataformas)
 
 ```sh
-uv sync            # crea .venv, compila la extensión Rust e instala las herramientas
+uv run python -c "import arqstudiocad; print(arqstudiocad.__version__)"   # muestra 0.1.0
+cargo test         # pruebas del núcleo Rust (sin Python)
 uv run pytest      # pruebas de Python
-cargo test         # pruebas del núcleo Rust (no necesita Python)
 ```
 
-Tras modificar código Rust, `uv sync` (o `uv run`) vuelve a compilar la extensión.
+`uv sync` crea la carpeta `.venv`, compila la extensión Rust en modo depuración
+e instala las herramientas de desarrollo. Tras modificar código Rust, `uv sync`
+(o cualquier `uv run ...`) vuelve a compilar la extensión automáticamente.
 
-Quien contribuya instala además, una sola vez, las comprobaciones locales:
+Para generar un paquete optimizado e instalable (un *wheel*) en `target/wheels/`:
+
+```sh
+uv run maturin build --release
+```
+
+### Para quien contribuya
+
+Instala una vez las comprobaciones locales; después se ejecutan en cada commit:
 
 ```sh
 cargo install cargo-deny --locked
 uv run pre-commit install
 ```
+
+La lista completa de comprobaciones está en [AGENTS.md](AGENTS.md).
+
+### Solución de problemas
+
+| Síntoma | Solución |
+|---|---|
+| No se encuentra `cargo`, `rustup` o `uv` | Abre una terminal nueva (Windows: cierra todas las terminales o reinicia VS Code) |
+| `link.exe not found` (Windows) | Instala la carga de trabajo de C++ de Build Tools (paso 1) |
+| `linker 'cc' not found` (Linux) | Instala el paquete del compilador del paso 1 |
+| `invalid peer certificate: UnknownIssuer` en uv | Un proxy o antivirus intercepta HTTPS. Define `UV_SYSTEM_CERTS=1` para que uv use los certificados del sistema |
 
 ## Licencia
 
