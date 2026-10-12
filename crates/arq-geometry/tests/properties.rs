@@ -3,7 +3,7 @@
 
 use std::f64::consts::{PI, TAU};
 
-use arq_geometry::{Point2, Vector2, angle};
+use arq_geometry::{Bounds2, Point2, Tolerance, Vector2, angle};
 use proptest::prelude::*;
 
 /// Coordinates from the origin up to UTM-like magnitudes.
@@ -20,6 +20,12 @@ fn point() -> impl Strategy<Value = Point2> {
 fn vector() -> impl Strategy<Value = Vector2> {
     (coord(), coord()).prop_map(|(x, y)| Vector2::new(x, y).unwrap())
 }
+
+fn bounds() -> impl Strategy<Value = Bounds2> {
+    (point(), point()).prop_map(|(a, b)| Bounds2::new(a, b))
+}
+
+const TOL: Tolerance = Tolerance::DEFAULT;
 
 fn any_angle() -> impl Strategy<Value = f64> {
     -100.0 * TAU..=100.0 * TAU
@@ -109,6 +115,45 @@ proptest! {
         let m = 3e7;
         prop_assert_eq!(a.distance_to(b), b.distance_to(a));
         prop_assert!(a.distance_to(c) <= a.distance_to(b) + b.distance_to(c) + 1e-13 * m);
+    }
+
+    #[test]
+    fn bounds_contain_every_point(points in prop::collection::vec(point(), 1..50)) {
+        let b = Bounds2::from_points(points.iter().copied()).unwrap();
+        for p in &points {
+            prop_assert!(b.contains_point(*p, TOL));
+        }
+        prop_assert!(b.width() >= 0.0 && b.height() >= 0.0);
+        prop_assert!(b.contains_point(b.center(), TOL));
+    }
+
+    #[test]
+    fn bounds_corner_order_does_not_matter(a in point(), b in point()) {
+        prop_assert_eq!(Bounds2::new(a, b), Bounds2::new(b, a));
+    }
+
+    #[test]
+    fn union_is_commutative_idempotent_and_covering(a in bounds(), b in bounds()) {
+        let u = a.union(b);
+        prop_assert_eq!(u, b.union(a));
+        prop_assert_eq!(a.union(a), a);
+        prop_assert!(u.contains(a, TOL) && u.contains(b, TOL));
+    }
+
+    #[test]
+    fn box_intersection_is_symmetric_and_implied_by_containment(a in bounds(), b in bounds()) {
+        prop_assert_eq!(a.intersects(b, TOL), b.intersects(a, TOL));
+        if a.contains(b, TOL) {
+            prop_assert!(a.intersects(b, TOL));
+        }
+        prop_assert!(a.intersects(a.union(b), TOL));
+    }
+
+    #[test]
+    fn expanding_keeps_the_original(b in bounds(), margin in 0.0..1e6f64) {
+        let e = b.expanded(margin).unwrap();
+        prop_assert!(e.contains(b, TOL));
+        prop_assert_eq!(b.expanded(0.0).unwrap(), b);
     }
 
     #[test]

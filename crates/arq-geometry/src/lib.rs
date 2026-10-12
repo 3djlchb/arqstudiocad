@@ -16,11 +16,13 @@
 //! ```
 
 pub mod angle;
+mod bounds;
 mod error;
 mod point;
 mod tolerance;
 mod vector;
 
+pub use bounds::Bounds2;
 pub use error::{GeometryError, GeometryResult};
 pub use point::Point2;
 pub use tolerance::Tolerance;

@@ -17,6 +17,11 @@ pub enum GeometryError {
     ZeroVector,
     /// A tolerance must be finite and strictly positive.
     InvalidTolerance,
+    /// A margin, distance or size must be finite and not negative.
+    NegativeOrNonFinite {
+        /// Which value, e.g. `"margin"`.
+        what: &'static str,
+    },
 }
 
 impl fmt::Display for GeometryError {
@@ -25,6 +30,9 @@ impl fmt::Display for GeometryError {
             Self::NonFinite { what } => write!(f, "{what}: values must be finite numbers"),
             Self::ZeroVector => write!(f, "a zero-length vector has no direction"),
             Self::InvalidTolerance => write!(f, "tolerances must be finite and positive"),
+            Self::NegativeOrNonFinite { what } => {
+                write!(f, "{what} must be a finite number, zero or greater")
+            }
         }
     }
 }
