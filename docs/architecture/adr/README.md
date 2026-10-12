@@ -15,6 +15,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0008](0008-opencadcodec.md) | opencadcodec (MPL-2.0) as the DWG/DXF engine | Accepted |
 | [0009](0009-packaging.md) | PyInstaller onedir, Inno Setup (+ MSI later), app ID, platform floor | Accepted |
 | [0010](0010-geometry-conventions.md) | Geometry: own validated types, radians in core / degrees in UI, DWG arcs, tolerance, local frames | Accepted |
+| [0011](0011-document-model-and-transactions.md) | Document over opencadcodec, 2D in plan, before/after-image undo, groups, change sets, round-trip corpus | Accepted |
 
 Template:
 

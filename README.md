@@ -6,9 +6,12 @@ Open-source 2D/3D CAD for architecture and engineering, with DWG as its native
 format and DXF as an open alternative.
 
 > **Status:** pre-alpha. The application starts, switches between English and
-> Spanish and is packaged for every target platform (phase 1), and the
-> geometry core is done — lines, circles, arcs, transformations,
-> intersections and snap points (phase 2) — but it cannot draw yet.
+> Spanish and is packaged for every target platform (phase 1). The geometry
+> core is done — lines, circles, arcs, transformations, intersections and snap
+> points (phase 2) — and so is the document core: it opens and saves DWG and
+> DXF, edits lines, circles, arcs and layers with undo and redo, and keeps
+> everything else in the drawing intact (phase 3). The interface cannot draw
+> yet.
 
 | Layer | Technology | Owns |
 |---|---|---|

@@ -25,6 +25,9 @@ arq-document = { path = "crates/arq-document" }
 arq-core = { path = "crates/arq-core" }
 arq-render = { path = "crates/arq-render" }
 pyo3 = "0.29.3"
+# DWG/DXF engine (ADR 0008). Pinned commit: the codec publishes no tags; update
+# only deliberately, after the round-trip corpus passes (ADR 0011, D3.1).
+opencadcodec = { git = "https://github.com/HakanSeven12/opencadcodec.git", rev = "8189f83" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
