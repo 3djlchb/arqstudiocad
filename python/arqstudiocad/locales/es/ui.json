@@ -92,5 +92,15 @@
   "Properties": "Propiedades",
   "No drawing open.": "No hay ningún dibujo abierto.",
   "History": "Historial",
-  "(start)": "(inicio)"
+  "(start)": "(inicio)",
+  "Ribbon": "Cinta de opciones",
+  "Classic": "Clásico",
+  "2D drafting": "Dibujo 2D",
+  "Standard": "Estándar",
+  "Home": "Inicio",
+  "Navigate": "Navegar",
+  "View": "Vista",
+  "&Workspace": "&Espacio de trabajo",
+  "Workspace": "Espacio de trabajo",
+  "&Layers…": "&Capas…"
 }

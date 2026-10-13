@@ -179,6 +179,13 @@ def test_show_panel_knows_its_panels(window: MainWindow) -> None:
     assert not window.show_panel("toolpalettes")
 
 
+def test_layers_and_properties_share_tabs_with_history_below(window: MainWindow) -> None:
+    assert window.tabifiedDockWidgets(window.layers_panel) == [window.properties_panel]
+    assert window.tabifiedDockWidgets(window.history_panel) == []
+    area = Qt.DockWidgetArea.RightDockWidgetArea
+    assert all(window.dockWidgetArea(panel) == area for panel in window.panels.values())
+
+
 def test_the_view_menu_toggles_the_panels(window: MainWindow) -> None:
     texts = [action.text() for action in window._view_menu.actions()]
     for title in ("Layers", "Properties", "History", "Command line"):

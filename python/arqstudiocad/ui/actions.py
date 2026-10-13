@@ -21,6 +21,7 @@ SHORTCUTS: dict[str, QKeySequence.StandardKey | None] = {
     "UNDO": QKeySequence.StandardKey.Undo,
     "REDO": QKeySequence.StandardKey.Redo,
     "ZOOM": None,
+    "LAYER": None,
 }
 
 
@@ -36,6 +37,7 @@ def labels() -> dict[str, str]:
         "UNDO": tr("&Undo"),
         "REDO": tr("&Redo"),
         "ZOOM": tr("&Zoom"),
+        "LAYER": tr("&Layers…"),
     }
 
 

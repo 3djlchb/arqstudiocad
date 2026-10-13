@@ -45,6 +45,8 @@ from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.viewport import Viewport
+from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
+from arqstudiocad.workspaces import WorkspaceRegistry, builtin_workspaces
 
 LANGUAGE_SETTING = "language"
 #: Initial height of the command window, in pixels.
@@ -58,6 +60,7 @@ class MainWindow(QMainWindow):
         bus: EventBus | None = None,
         ui: UiServices | None = None,
         worker: Worker | None = None,
+        workspaces: WorkspaceRegistry | None = None,
     ) -> None:
         super().__init__()
         self._settings = settings
@@ -86,10 +89,10 @@ class MainWindow(QMainWindow):
             "history": self.history_panel,
         }
         right = Qt.DockWidgetArea.RightDockWidgetArea
+        # Split before tabifying: splitting a tabified dock adds a tab.
         self.addDockWidget(right, self.layers_panel)
-        self.tabifyDockWidget(self.layers_panel, self.properties_panel)
-        self.addDockWidget(right, self.history_panel)
         self.splitDockWidget(self.layers_panel, self.history_panel, Qt.Orientation.Vertical)
+        self.tabifyDockWidget(self.layers_panel, self.properties_panel)
         self.layers_panel.raise_()
         for signal in (
             self.events.active_document_changed,
@@ -160,12 +163,23 @@ class MainWindow(QMainWindow):
             self._language_group.addAction(action)
             self._language_actions[pack.code] = action
 
+        self.workspaces = WorkspaceSwitcher(
+            self,
+            self.command_actions.by_command,
+            workspaces if workspaces is not None else builtin_workspaces(),
+            settings,
+        )
+        self._view_menu.addSeparator()
+        self._view_menu.addMenu(self.workspaces.menu)
+        self.statusBar().addPermanentWidget(self.workspaces.button)
+
         self._help_menu = menu_bar.addMenu("")
         self._about_action = self._help_menu.addAction("")
         self._about_action.triggered.connect(self.show_about)
 
         self.resize(1024, 700)
         self.retranslate()
+        self.workspaces.show_remembered()
 
     def retranslate(self) -> None:
         """Set every user-visible text from the active language."""
@@ -179,6 +193,7 @@ class MainWindow(QMainWindow):
         self.layers_panel.retranslate()
         self.properties_panel.retranslate()
         self.history_panel.retranslate()
+        self.workspaces.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
         self._language_menu.setTitle(tr("&Language"))
         self._help_menu.setTitle(tr("&Help"))
@@ -312,6 +327,7 @@ class MainWindow(QMainWindow):
                     event.ignore()
                     return
                 self.session.save(document, path)
+        self.workspaces.save_state()
         if isinstance(self.worker, QtWorker):
             self.worker.shutdown()
         event.accept()
