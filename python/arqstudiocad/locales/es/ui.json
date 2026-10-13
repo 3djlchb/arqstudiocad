@@ -102,5 +102,6 @@
   "View": "Vista",
   "&Workspace": "&Espacio de trabajo",
   "Workspace": "Espacio de trabajo",
-  "&Layers…": "&Capas…"
+  "&Layers…": "&Capas…",
+  "&Reset layout": "&Restablecer disposición"
 }

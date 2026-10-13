@@ -47,7 +47,8 @@ IfcOpenShell integration: open, inspect, create and modify BIM models;
 GlobalId, properties and relationships kept through every operation;
 import/export validation; views and documentation generated from the model.
 Never a collection of anonymous meshes. Model ownership decided by ADR first
-(ADR 0014, open question 1).
+(ADR 0014, open question 1). The BIM workspace takes ArchiCAD's interface as
+its reference, in the Ribbon layout (ADR 0015).
 
 ## Phase 5 — Topography and civil engineering ○
 

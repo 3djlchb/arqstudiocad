@@ -4,6 +4,7 @@ Each discipline's toolbars and ribbon are built once, from its data, when it
 is first shown. Switching saves the window's dock and toolbar state for the
 workspace being left and restores the one of the workspace entered, so each
 keeps its own arrangement. The current discipline and layout are remembered.
+"Reset layout" puts panels and toolbars back where they start.
 """
 
 from collections.abc import Mapping
@@ -60,6 +61,8 @@ class WorkspaceSwitcher:
         self._registry = registry
         self._settings = settings
         self._built: dict[str, DisciplineWidgets] = {}
+        #: The panels as the window placed them, before any workspace.
+        self._default_state = window.saveState()
         self.discipline: Discipline | None = None
         self.layout: Layout | None = None
 
@@ -83,6 +86,9 @@ class WorkspaceSwitcher:
             action.triggered.connect(lambda _checked=False, chosen=layout: self.show(None, chosen))
             self._layout_group.addAction(action)
             self.layout_actions[layout] = action
+        self.menu.addSeparator()
+        self.reset_action = self.menu.addAction("")
+        self.reset_action.triggered.connect(self.reset)
 
         #: The status-bar button that opens the same menu (AutoCAD's gear).
         self.button = QToolButton()
@@ -135,6 +141,19 @@ class WorkspaceSwitcher:
         self.layout_actions[new_layout].setChecked(True)
         self._update_button()
 
+    def reset(self) -> None:
+        """Puts the panels back where the window first placed them and the
+        current workspace's toolbars back at the top, docked."""
+        self._window.restoreState(self._default_state)
+        if self.discipline is not None:
+            built = self._widgets(self.discipline)
+            for toolbar in built.toolbars:
+                self._window.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+                toolbar.setVisible(self.layout == "classic")
+            if built.ribbon_bar is not None:
+                built.ribbon_bar.setVisible(self.layout == "ribbon")
+        self.save_state()
+
     def save_state(self) -> None:
         """Remembers the window's arrangement for the current workspace."""
         if self._settings is not None and self.discipline is not None and self.layout:
@@ -147,6 +166,7 @@ class WorkspaceSwitcher:
 
     def retranslate(self) -> None:
         self.menu.setTitle(tr("&Workspace"))
+        self.reset_action.setText(tr("&Reset layout"))
         for discipline in self._registry:
             self.discipline_actions[discipline.name].setText(discipline.title())
         for layout, action in self.layout_actions.items():

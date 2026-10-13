@@ -51,6 +51,12 @@ override this data, not a second mechanism.
 - **Classic** shows the discipline's toolbars.
 - The **menu bar stays in both** for now (File, Edit, View, Tools, Help);
   a ribbon application menu may replace it later.
+- Panels and the command window behave as AutoCAD's palettes in both
+  layouts: each moves, floats, and docks on any side of the window, side by
+  side or as tabs, and a tab group drags as one; panels docked left or right
+  take the full height, the command window between them. Classic toolbars
+  dock on any side or float too. View › Workspace › Reset layout puts
+  everything back where it started.
 - Panels and the command window are shared. Their arrangement (dock and
   toolbar state) is saved **per workspace** and restored when the user
   comes back to it. The current discipline and layout are remembered.

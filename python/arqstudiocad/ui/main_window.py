@@ -89,6 +89,22 @@ class MainWindow(QMainWindow):
             "history": self.history_panel,
         }
         right = Qt.DockWidgetArea.RightDockWidgetArea
+        # Panels move, float and dock on any side, side by side or as tabs,
+        # and a tab group drags as one, as AutoCAD's palettes (ADR 0015).
+        # Side panels take the full height, the command window between them.
+        self.setDockOptions(
+            QMainWindow.DockOption.AnimatedDocks
+            | QMainWindow.DockOption.AllowNestedDocks
+            | QMainWindow.DockOption.AllowTabbedDocks
+            | QMainWindow.DockOption.GroupedDragging
+        )
+        for corner, side in (
+            (Qt.Corner.TopLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (Qt.Corner.BottomLeftCorner, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (Qt.Corner.TopRightCorner, Qt.DockWidgetArea.RightDockWidgetArea),
+            (Qt.Corner.BottomRightCorner, Qt.DockWidgetArea.RightDockWidgetArea),
+        ):
+            self.setCorner(corner, side)
         # Split before tabifying: splitting a tabified dock adds a tab.
         self.addDockWidget(right, self.layers_panel)
         self.splitDockWidget(self.layers_panel, self.history_panel, Qt.Orientation.Vertical)
