@@ -7,15 +7,23 @@
 //!
 //! Rule for every call: never run Python code while a document is locked.
 //! A thread that released the GIL may hold that lock, and it must be able to
-//! finish without needing the GIL back.
+//! finish without needing the GIL back. Even creating Python objects counts:
+//! it may run the garbage collector, whose finalizers may call back into the
+//! same document. So the closures given to `read`/`edit` copy Rust values
+//! out, and Python objects are built after the lock is released.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use arq_core::{CadApplication as CoreApplication, CadDocument as CoreDocument, DocumentId};
+use arq_core::{
+    CadApplication as CoreApplication, CadDocument as CoreDocument, CadError, DocumentId, EntityId,
+    LayerId,
+};
 use pyo3::prelude::*;
 
 use crate::errors::IntoPy;
+use crate::info::{CadEntityInfo, CadLayerInfo};
+use crate::values::CadBounds2;
 
 /// The open documents of one application.
 #[pyclass(frozen, module = "arqstudiocad._core")]
@@ -168,6 +176,75 @@ impl CadDocument {
     #[getter]
     fn version(&self) -> PyResult<String> {
         self.read(|cad| cad.document().version_code())
+    }
+
+    // Queries (contract §4). Each copies what it needs under the lock and
+    // builds the Python objects after.
+
+    /// The entity with this id, in any space.
+    fn get_entity(&self, entity_id: EntityId) -> PyResult<CadEntityInfo> {
+        self.read(|cad| cad.document().entity(entity_id))?
+            .map(CadEntityInfo)
+            .ok_or(CadError::EntityNotFound(entity_id))
+            .py()
+    }
+
+    /// The entities with these ids, in that order; without ids, every entity
+    /// in model space, in drawing order. A missing id raises
+    /// `EntityNotFoundError`.
+    #[pyo3(signature = (entity_ids = None))]
+    fn get_entities(&self, entity_ids: Option<Vec<EntityId>>) -> PyResult<Vec<CadEntityInfo>> {
+        let found = self.read(|cad| {
+            let doc = cad.document();
+            match entity_ids {
+                None => Ok(doc.entities()),
+                Some(ids) => ids
+                    .into_iter()
+                    .map(|id| doc.entity(id).ok_or(CadError::EntityNotFound(id)))
+                    .collect(),
+            }
+        })?;
+        Ok(found.py()?.into_iter().map(CadEntityInfo).collect())
+    }
+
+    /// The box around every entity in model space; `None` when empty.
+    fn get_bounds(&self) -> PyResult<Option<CadBounds2>> {
+        Ok(self.read(CoreDocument::bounds)?.map(CadBounds2))
+    }
+
+    /// Ids of the model-space entities whose bounding box touches `area`, in
+    /// drawing order: candidates, whatever their layer state.
+    fn query_entities(&self, area: CadBounds2) -> PyResult<Vec<EntityId>> {
+        self.read(|cad| cad.query_entities(area.0))
+    }
+
+    /// Every layer: "0" first, then by name ignoring case.
+    fn get_layers(&self) -> PyResult<Vec<CadLayerInfo>> {
+        let layers = self.read(|cad| cad.document().layers())?;
+        Ok(layers.into_iter().map(CadLayerInfo).collect())
+    }
+
+    /// The layer with this id.
+    fn get_layer(&self, layer_id: LayerId) -> PyResult<CadLayerInfo> {
+        self.read(|cad| cad.document().layer(layer_id))?
+            .map(CadLayerInfo)
+            .ok_or(CadError::LayerNotFound(layer_id))
+            .py()
+    }
+
+    /// The layer with this name, ignoring case; `None` if there is none.
+    fn get_layer_by_name(&self, name: &str) -> PyResult<Option<CadLayerInfo>> {
+        Ok(self
+            .read(|cad| cad.document().layer_by_name(name))?
+            .map(CadLayerInfo))
+    }
+
+    /// The layer new entities go to.
+    #[getter]
+    fn current_layer(&self) -> PyResult<CadLayerInfo> {
+        Ok(CadLayerInfo(
+            self.read(|cad| cad.document().current_layer())?,
+        ))
     }
 
     /// Saves as DWG or DXF, by the file extension (see

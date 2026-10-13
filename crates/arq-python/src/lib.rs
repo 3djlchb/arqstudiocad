@@ -7,6 +7,7 @@ use pyo3::prelude::*;
 
 mod documents;
 mod errors;
+mod info;
 mod values;
 
 #[pymodule]
@@ -14,6 +15,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", arq_core::version())?;
     errors::register(m)?;
     documents::register(m)?;
+    info::register(m)?;
     values::register(m)?;
     Ok(())
 }
