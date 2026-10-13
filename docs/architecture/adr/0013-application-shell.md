@@ -142,8 +142,12 @@ Scaling up, decided at run time:
 
 Each scaled-up path is tested against the floor path on the same input, so
 a faster machine never draws something different. `tools/check_cpu_floor.sh`
-runs every test suite on an emulated Sandy Bridge CPU (QEMU user mode), after
-proving that the emulation refuses AVX2; it is run before each release.
+runs every test suite on an emulated Sandy Bridge CPU with Intel SDE (a free,
+proprietary emulator each developer downloads; never shipped), after proving
+that the emulator refuses AVX2: QEMU was tried and does not, it hides AVX2
+from CPUID but still executes it. `tools/reference_machine_report.sh` runs
+the build, tests, self-check and timings on the real floor machine and
+records its graphics stack. Both run before each release.
 
 ## Consequences
 

@@ -33,7 +33,7 @@ uv run pytest                                  # Python tests
 uv run ruff check && uv run ruff format --check && uv run mypy
 uv run stubtest arqstudiocad._core            # the .pyi stub matches the module
 cargo deny check                               # dependency licenses + advisories
-bash tools/check_cpu_floor.sh                  # Linux/WSL, before a release: tests on the floor CPU
+bash tools/check_cpu_floor.sh                  # Linux/WSL + Intel SDE, before a release: tests on the floor CPU
 ```
 
 One-time setup: `cargo install cargo-deny --locked` and `uv run pre-commit install`.
