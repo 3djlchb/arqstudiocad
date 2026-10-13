@@ -1,4 +1,5 @@
-"""Main window: document tabs, menus, the command window, language switch and About."""
+"""Main window: document tabs, menus, the command window, the layers,
+properties and history panels, language switch and About."""
 
 import platform
 from functools import partial
@@ -7,6 +8,7 @@ from html import escape
 from PySide6.QtCore import QSettings, Qt, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
+    QDockWidget,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -37,6 +39,9 @@ from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.history_panel import HistoryPanel
+from arqstudiocad.ui.layers_panel import LayersPanel
+from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.viewport import Viewport
@@ -61,7 +66,7 @@ class MainWindow(QMainWindow):
         self.events.language_changed.connect(self._on_language_changed)
         self.session = Session(self.bus)
         self.viewports: dict[int, Viewport] = {}
-        self.ui = ui if ui is not None else QtUiServices(self, self.viewport_for)
+        self.ui = ui if ui is not None else QtUiServices(self, self.viewport_for, self.show_panel)
         self.worker = worker if worker is not None else QtWorker(self)
         self.runner = CommandRunner(
             builtin_registry(), CommandContext(self.session, self.ui, self.worker)
@@ -71,6 +76,21 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.command_window)
         # A few lines, as in AutoCAD; the user can drag it taller.
         self.resizeDocks([self.command_window], [COMMAND_WINDOW_HEIGHT], Qt.Orientation.Vertical)
+        # The panels, on the right: layers and properties as tabs, history below.
+        self.layers_panel = LayersPanel(self.session, self.events, self)
+        self.properties_panel = PropertiesPanel(self.session, self.events, self)
+        self.history_panel = HistoryPanel(self.session, self.events, self)
+        self.panels: dict[str, QDockWidget] = {
+            "layers": self.layers_panel,
+            "properties": self.properties_panel,
+            "history": self.history_panel,
+        }
+        right = Qt.DockWidgetArea.RightDockWidgetArea
+        self.addDockWidget(right, self.layers_panel)
+        self.tabifyDockWidget(self.layers_panel, self.properties_panel)
+        self.addDockWidget(right, self.history_panel)
+        self.splitDockWidget(self.layers_panel, self.history_panel, Qt.Orientation.Vertical)
+        self.layers_panel.raise_()
         for signal in (
             self.events.active_document_changed,
             self.events.document_saved,
@@ -123,6 +143,9 @@ class MainWindow(QMainWindow):
 
         self._view_menu = menu_bar.addMenu("")
         self._view_menu.addAction(self.command_actions["ZOOM"])
+        self._view_menu.addSeparator()
+        for panel in (*self.panels.values(), self.command_window):
+            self._view_menu.addAction(panel.toggleViewAction())
 
         self._tools_menu = menu_bar.addMenu("")
         self._language_menu = self._tools_menu.addMenu("")
@@ -153,6 +176,9 @@ class MainWindow(QMainWindow):
         self._view_menu.setTitle(tr("&View"))
         self.command_actions.retranslate()
         self.command_window.retranslate()
+        self.layers_panel.retranslate()
+        self.properties_panel.retranslate()
+        self.history_panel.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
         self._language_menu.setTitle(tr("&Language"))
         self._help_menu.setTitle(tr("&Help"))
@@ -181,6 +207,16 @@ class MainWindow(QMainWindow):
     def _on_language_changed(self, event: LanguageChanged) -> None:
         self._qt_translations.apply(event.code)
         self.retranslate()
+
+    def show_panel(self, name: str) -> bool:
+        """Shows and raises the panel called ``name``, for commands such as
+        LAYER; False if there is no such panel."""
+        panel = self.panels.get(name)
+        if panel is None:
+            return False
+        panel.show()
+        panel.raise_()
+        return True
 
     # Viewports: one per open document; the active one is shown.
 
@@ -240,10 +276,16 @@ class MainWindow(QMainWindow):
     def _on_work_started(self, event: WorkStarted) -> None:
         self.statusBar().showMessage(event.message)
         self._busy.show()
+        # The drawing may be locked by the background work (a save): the
+        # panels wait until it is done instead of blocking the interface.
+        for panel in self.panels.values():
+            panel.setEnabled(False)
 
     def _on_work_finished(self, event: Event) -> None:
         self.statusBar().clearMessage()
         self._busy.hide()
+        for panel in self.panels.values():
+            panel.setEnabled(True)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 (Qt API)
         """Quitting: wait for background work, and ask about every drawing

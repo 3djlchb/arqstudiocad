@@ -107,6 +107,10 @@ class FakeUi:
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.the_view
 
+    def show_panel(self, name: str) -> bool:
+        self.asked.append(f"panel {name}")
+        return True
+
 
 # The registry
 
@@ -298,6 +302,26 @@ def test_zoom_without_a_view() -> None:
     h.run("NEW", "ZOOM")
     assert h.messages()[-1] == "There is no view to zoom."
     assert h.runner.active is None
+
+
+def test_layer_opens_the_layers_panel() -> None:
+    ui = FakeUi()
+    h = harness(ui)
+    h.run("NEW", "LA")
+    assert ui.asked == ["panel layers"] and h.of(CommandCancelled) == []
+
+
+def test_layer_without_a_panel_or_a_drawing() -> None:
+    h = harness()
+    h.run("NEW", "LAYER")
+    assert h.of(CommandCancelled)[-1] == CommandCancelled(
+        "LAYER", "The layers panel is not available here."
+    )
+    ui = FakeUi()
+    h = harness(ui)
+    h.run("LAYER")
+    assert ui.asked == [], "no drawing: nothing to show"
+    assert h.of(CommandCancelled)[-1].name == "LAYER"
 
 
 def test_prompt_formatting() -> None:

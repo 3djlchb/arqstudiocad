@@ -1,6 +1,6 @@
 """The document and view commands of phase 5 (ADR 0013, D5.4).
 
-NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO and ZOOM. Without an interface
+NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER. Without an interface
 (scripts, tests), OPEN and SAVEAS ask for the file name on the command line,
 as AutoCAD does with FILEDIA=0.
 """
@@ -155,6 +155,15 @@ def zoom(ctx: CommandContext) -> CommandScript:
         view.zoom(ZOOM_STEP if choice == "I" else 1 / ZOOM_STEP)
 
 
+def layer(ctx: CommandContext) -> CommandScript:
+    """Opens the layers panel, as AutoCAD's LAYER opens its palette."""
+    ctx.document()
+    if ctx.ui is None or not ctx.ui.show_panel("layers"):
+        raise CommandCancelledError(tr("The layers panel is not available here."))
+    return
+    yield
+
+
 #: Every command of this module, with AutoCAD's usual aliases.
 BUILTIN_COMMANDS = (
     Command("NEW", new, ("QNEW",)),
@@ -165,6 +174,7 @@ BUILTIN_COMMANDS = (
     Command("UNDO", undo, ("U",)),
     Command("REDO", redo),
     Command("ZOOM", zoom, ("Z",)),
+    Command("LAYER", layer, ("LA",)),
 )
 
 

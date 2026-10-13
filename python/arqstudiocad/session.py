@@ -6,6 +6,7 @@ the interface go through it, never around it, so every change becomes an
 event. It has no Qt.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from arqstudiocad.core import CadApplication, CadChangeSet, CadDocument
@@ -88,6 +89,14 @@ class Session:
             self.activate(following)
             if following is None:
                 self.bus.publish(ActiveDocumentChanged(None))
+
+    def edit(
+        self, document: CadDocument, operation: Callable[[CadDocument], CadChangeSet]
+    ) -> CadChangeSet:
+        """Runs one core operation on ``document`` and publishes what it did.
+        The operation is one undo step; if it raises (a core error), nothing
+        changed and nothing is published."""
+        return self.report(document, operation(document))
 
     def report(self, document: CadDocument, changes: CadChangeSet) -> CadChangeSet:
         """Publishes what an operation on ``document`` did; returns it."""

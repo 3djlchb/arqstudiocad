@@ -25,6 +25,10 @@ def test_a_new_document(app: CadApplication) -> None:
     assert isinstance(doc, CadDocument)
     assert (doc.name, doc.path, doc.is_modified, doc.is_open) == ("Plano1", None, False, True)
     assert doc.version.startswith("AC")
+    assert doc.entity_count == 0
+    doc.add_line((0, 0), (1, 1))
+    doc.add_circle((0, 0), 2)
+    assert doc.entity_count == 2
     assert app.document_ids() == [doc.id]
     assert repr(doc) == f"CadDocument(id={doc.id}, name='Plano1')"
     assert repr(app.create_document("it's")) == f'CadDocument(id={doc.id + 1}, name="it\'s")'

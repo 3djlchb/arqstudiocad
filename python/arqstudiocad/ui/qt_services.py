@@ -24,9 +24,11 @@ class QtUiServices:
         self,
         parent: QWidget,
         views: Callable[[CadDocument], ViewControl | None] | None = None,
+        panels: Callable[[str], bool] | None = None,
     ) -> None:
         self._parent = parent
         self._views = views
+        self._panels = panels
         self.last_folder = ""
 
     def choose_open_path(self) -> Path | None:
@@ -64,6 +66,9 @@ class QtUiServices:
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return None if self._views is None else self._views(document)
+
+    def show_panel(self, name: str) -> bool:
+        return self._panels is not None and self._panels(name)
 
     def _remember(self, path: str) -> Path | None:
         if not path:

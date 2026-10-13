@@ -223,6 +223,12 @@ impl CadDocument {
         self.read(|cad| cad.document().version_code())
     }
 
+    /// How many entities model space holds, without reading them.
+    #[getter]
+    fn entity_count(&self) -> PyResult<usize> {
+        self.read(|cad| cad.document().model_entity_count())
+    }
+
     // Queries (contract §4). Each copies what it needs under the lock and
     // builds the Python objects after.
 
