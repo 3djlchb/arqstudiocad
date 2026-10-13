@@ -13,6 +13,8 @@ from arqstudiocad.events import (
     ActiveLayerChanged,
     CommandCancelled,
     CommandFinished,
+    CommandMessage,
+    CommandPrompt,
     CommandStarted,
     DocumentChanged,
     DocumentClosed,
@@ -39,6 +41,8 @@ class QtEventBridge(QObject):
     command_started = Signal(object)
     command_finished = Signal(object)
     command_cancelled = Signal(object)
+    command_prompt = Signal(object)
+    command_message = Signal(object)
     language_changed = Signal(object)
 
     def __init__(self, bus: EventBus, parent: QObject | None = None) -> None:
@@ -54,6 +58,8 @@ class QtEventBridge(QObject):
             CommandStarted: self.command_started,
             CommandFinished: self.command_finished,
             CommandCancelled: self.command_cancelled,
+            CommandPrompt: self.command_prompt,
+            CommandMessage: self.command_message,
             LanguageChanged: self.language_changed,
         }
         self._subscription = bus.subscribe(Event, self._emit)

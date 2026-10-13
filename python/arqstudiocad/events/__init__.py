@@ -25,6 +25,8 @@ __all__ = [
     "ActiveLayerChanged",
     "CommandCancelled",
     "CommandFinished",
+    "CommandMessage",
+    "CommandPrompt",
     "CommandStarted",
     "DocumentChanged",
     "DocumentClosed",
@@ -120,6 +122,22 @@ class CommandCancelled(Event):
 
     name: str
     reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class CommandPrompt(Event):
+    """A running command asks for input; ``text`` is ready to show,
+    translated, e.g. ``"Zoom [Extents(E)/In(I)/Out(O)] <E>:"``."""
+
+    name: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
+class CommandMessage(Event):
+    """A line for the command window's history, translated."""
+
+    text: str
 
 
 @dataclass(frozen=True, slots=True)
