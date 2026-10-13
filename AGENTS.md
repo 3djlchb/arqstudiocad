@@ -1,7 +1,11 @@
-# Instructions for coding agents (Codex, Claude Code, ...)
+# Instructions for coding agents (Claude Code, and any other)
 
 Read [docs/architecture/technical-contract.md](docs/architecture/technical-contract.md)
-before changing code. It is binding. Decisions are in [docs/architecture/adr/](docs/architecture/adr/).
+before changing code. It is binding. Decisions are in [docs/architecture/adr/](docs/architecture/adr/);
+the project's goals in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) and the
+order of work in [docs/ROADMAP.md](docs/ROADMAP.md). New designs must leave room
+for the platform's modules (IFC/BIM, associative documentation, rendering)
+without building them early (ADR 0014).
 
 ## Non-negotiable rules
 
@@ -21,7 +25,8 @@ before changing code. It is binding. Decisions are in [docs/architecture/adr/](d
   (English / Spanish) are kept in sync: a change to one is made to the other in
   the same commit. Everything else is English.
 - Code or ideas copied from other projects are recorded in `THIRD_PARTY.md`
-  and must be GPL-3.0-or-later compatible.
+  and must be GPL-3.0-or-later compatible. Code is GPL-3.0-or-later;
+  documentation is CC BY-SA 4.0 (`docs/LICENSE`).
 
 ## Commands
 
@@ -33,14 +38,15 @@ uv run pytest                                  # Python tests
 uv run ruff check && uv run ruff format --check && uv run mypy
 uv run stubtest arqstudiocad._core            # the .pyi stub matches the module
 cargo deny check                               # dependency licenses + advisories
+bash tools/check_cpu_floor.sh                  # Linux/WSL + Intel SDE, before a release: tests on the floor CPU
 ```
 
 One-time setup: `cargo install cargo-deny --locked` and `uv run pre-commit install`.
 
 A change is done when all of the above pass locally and it has tests at the
 right layer (contract §12). A check that inspects nothing is a failure, not a
-pass. GitHub Actions CI is manual-only; it is not a substitute for running the
-checks locally.
+pass. GitHub Actions CI runs on every pull request and push to `main` (ADR 0014);
+it is not a substitute for running the checks locally.
 
 ## Git
 

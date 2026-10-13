@@ -19,7 +19,9 @@ use std::fmt::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 
-use arq_core::{CadDocument, Color, Document, Entity, EntityId, Layer, LayerId, PlanGeometry};
+use arq_core::{
+    CadDocument, Color, Document, Entity, EntityId, Layer, LayerId, PlanGeometry, Shape,
+};
 use arq_geometry::{Point2, Tolerance, Vector2};
 
 /// DXF versions the codec writes; DWG starts at R13 (AC1012).
@@ -303,19 +305,70 @@ fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
     }
     kinds.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
     let kinds: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} {n}")).collect();
+    let (drawn, drawing_problems) = drawing_coverage(doc);
     let summary = format!(
-        "{}  {} entities, {} in model space, {editable} editable: {}",
+        "{}  {} entities, {} in model space, {editable} editable: {}
+      {drawn}",
         doc.version_code(),
         doc.entity_count(),
         model.len(),
         kinds.join(", ")
     );
-    let problems = round_trip(cad, dir);
+    let mut problems = drawing_problems;
+    problems.extend(round_trip(cad, dir));
     if problems.is_empty() {
         Ok(summary)
     } else {
         Err(problems)
     }
+}
+
+/// What the drawing primitives make of a drawing (ADR 0013, D5.2): a line
+/// for the report, and a problem for every visible entity that draws nothing
+/// although it has an extent.
+fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
+    let mut shapes = [0usize; 6]; // line, circle, arc, point, text, placeholder
+    let mut placeholder_kinds: Vec<&str> = Vec::new();
+    let mut problems = Vec::new();
+    for (id, items) in doc.drawing_all() {
+        let entity = doc.entity(id).expect("drawn entities exist");
+        let visible = doc
+            .layer_by_name(entity.layer())
+            .is_none_or(|l| l.is_visible() && !l.is_frozen());
+        for item in &items {
+            let slot = match item.shape {
+                Shape::Line(_) => 0,
+                Shape::Circle(_) => 1,
+                Shape::Arc(_) => 2,
+                Shape::Point(_) => 3,
+                Shape::Text(_) => 4,
+                Shape::Placeholder(_) => {
+                    if !placeholder_kinds.contains(&entity.kind()) {
+                        placeholder_kinds.push(entity.kind());
+                    }
+                    5
+                }
+            };
+            shapes[slot] += 1;
+            if matches!(item.color, Color::ByLayer | Color::ByBlock | Color::None) {
+                problems.push(format!("entity {id} ({}): unresolved color", entity.kind()));
+            }
+        }
+        let nothing_to_draw = matches!(entity.kind(), "VIEWPORT" | "XLINE" | "RAY");
+        if items.is_empty() && visible && !nothing_to_draw && entity.bounds().is_some() {
+            problems.push(format!("entity {id} ({}) draws nothing", entity.kind()));
+        }
+    }
+    let [l, c, a, pt, t, ph] = shapes;
+    let mut line = format!(
+        "draws {} shapes: {l} lines, {c} circles, {a} arcs, {pt} points, {t} texts, {ph} placeholders",
+        l + c + a + pt + t + ph
+    );
+    if !placeholder_kinds.is_empty() {
+        let _ = write!(line, " ({})", placeholder_kinds.join(", "));
+    }
+    problems.truncate(20); // enough to see the pattern
+    (line, problems)
 }
 
 /// Every `.dwg` and `.dxf` under `root`, sorted, with paths relative to it.

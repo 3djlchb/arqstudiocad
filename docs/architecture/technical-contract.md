@@ -191,6 +191,18 @@ Every command:
 
 A command never edits widgets or document internals.
 
+In `arqstudiocad.commands` (ADR 0013 D5.4) a command is a **generator**: it
+yields a `Prompt` (an option by its English key, or text), receives the
+answer, and returns when done; it may yield `Background` work (open, save),
+which a `Worker` thread runs while the window keeps responding. A
+`CommandRunner` drives it from the command window or a menu action, turns Esc
+into cancellation and publishes the command events (§7). Commands reach the
+drawing only through the `Session` (one undo step per operation, its change
+set published) and the interface only through the `UiServices` protocol
+(file dialogs, the save-changes question, views, panels). Names and aliases
+are AutoCAD's (`LA` for `LAYER`). The window shows every command through one
+`QAction`, laid out by the workspace (ADR 0015).
+
 ## 6. Contract D — Transactions and undo/redo
 
 The history belongs to the Rust core; Python drives the command lifecycle.
@@ -229,11 +241,18 @@ pub struct CadChangeSet {   // read through accessors of the same names
 The core never calls PySide6. Change sets become Python events, which a
 `QObject` bridge re-emits as Qt signals.
 
-Initial events: `DocumentOpened`, `DocumentSaved`, `DocumentChanged`,
-`SelectionChanged`, `ActiveLayerChanged`, `CommandStarted`,
-`CommandFinished`, `CommandCancelled`, `LanguageChanged`.
+Events (`arqstudiocad.events`, no Qt): `DocumentOpened`, `DocumentSaved`,
+`DocumentClosed`, `ActiveDocumentChanged`, `DocumentChanged` (carrying the
+change set), `SelectionChanged`, `ActiveLayerChanged`, `CommandStarted`,
+`CommandPrompt`, `CommandMessage`, `CommandFinished`, `CommandCancelled`,
+`WorkStarted`, `WorkFinished`, `LanguageChanged`.
 
-Events are frozen dataclasses. The UI updates only what a change affects.
+Events are frozen dataclasses stating facts, never requests: whoever changes
+something publishes the event after. The bus delivers synchronously, in
+subscription order; a failing handler is logged and does not stop the
+others; an event published by a handler is delivered after the current one.
+`arqstudiocad.ui.event_bridge.QtEventBridge` re-emits every event as a Qt
+signal on the GUI thread. The UI updates only what a change affects.
 
 ## 8. Contract F — Viewport and renderer
 
@@ -257,6 +276,12 @@ RenderScene: update(changes) · remove_entities(ids) · set_visibility(layer, vi
   class: no compute shaders, no storage buffers); anything beyond is optional.
 - The reference low-end machine (GeForce GT 730 2 GB, LMDE 7) is a release gate.
 
+Until the wgpu renderer (milestone 2.6), `arq-render` draws on the CPU
+(ADR 0013 D5.2–D5.3): the document describes every entity as neutral drawing
+primitives, blocks expanded; a `RenderScene` updates from change sets and a
+tiny-skia rasterizer draws a `Camera`'s view into an image, with the GIL
+released, which the Qt viewport shows. It stays as the fallback renderer.
+
 Selection: pointer + camera → screen-to-world → Rust spatial query → `EntityId`
 → Python selection → highlight. Spatial index chosen after measuring.
 
@@ -269,6 +294,12 @@ Selection: pointer + camera → screen-to-world → Rust spatial query → `Enti
 - A background operation must define: cancellation, behaviour if the document
   changes meanwhile, when results apply, progress reporting, failure rollback.
 - Releasing the GIL is an explicit, reviewed decision per operation.
+- Opening and saving run on a worker thread (milestone 2.4). Cancellation:
+  they cannot be interrupted, and the window refuses other commands
+  ("Please wait") meanwhile. Concurrent changes: none — the panels wait,
+  disabled, until the work finishes. Results apply on the GUI thread when
+  the work is done; progress is a busy indicator; a failed open adds no
+  document and a failed save leaves the document as it was.
 
 ## 10. Contract H — Files and persistence
 
@@ -346,13 +377,9 @@ and [ADR 0005](adr/0005-development-conventions.md).
 
 ## 15. Implementation phases
 
-0. Foundation: workspace, tooling, CI, this contract.
-1. Walking skeleton: Rust → PyO3 → PySide6 window with i18n, packaged for every platform.
-2. `arq-geometry`.
-3. `arq-document` (over opencadcodec) + `arq-core`: handles, layers, transactions, undo/redo.
-4. `arq-python`: full binding API.
-5. PySide6 application: window, command line, panels, events, provisional viewport.
-6. First complete workflow: LINE, CIRCLE, select, MOVE, ROTATE, ERASE, UNDO/REDO.
-7. GPU renderer (wgpu, backend probing, Qt integration spike) and spatial index, with benchmarks.
-8. DWG/DXF round-trip corpus and fidelity; DWG becomes the default save format.
-9. Public distribution: signing, notarization, Flathub, AUR.
+The phases are in the [roadmap](../ROADMAP.md) (ADR 0014): 0 specification,
+1 foundation, 2 CAD core (milestones 2.1–2.8), 3 CAD exchange and 2D
+documentation, 4 IFC and BIM, 5 topography, 6 disciplines, 7 visualization,
+8 interactive walkthroughs and coordination, 9 LuxCoreRender, 10 optimization
+and distribution. The project's goals are in the
+[project charter](../PROJECT_CHARTER.md).

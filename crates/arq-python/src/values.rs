@@ -150,6 +150,21 @@ impl CadColor {
         }
     }
 
+    /// The `(r, g, b)` it is drawn with, the viewport's own ACI table:
+    /// index colors through it, ACI 7 white or black by `background`,
+    /// by-layer and by-block as ACI 7 (their real color is the layer's or
+    /// the block's).
+    #[pyo3(signature = (background = (33, 40, 48)))]
+    fn display_rgb(&self, background: (u8, u8, u8)) -> (u8, u8, u8) {
+        let bg = [background.0, background.1, background.2];
+        let [r, g, b] = match self.0 {
+            Color::Rgb { r, g, b } => [r, g, b],
+            Color::Index(i) => arq_render::aci_rgb_on(i, bg),
+            _ => arq_render::aci_rgb_on(7, bg),
+        };
+        (r, g, b)
+    }
+
     fn __repr__(&self) -> String {
         match self.0 {
             Color::ByLayer => "CadColor.by_layer()".to_owned(),

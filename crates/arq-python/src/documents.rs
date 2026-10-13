@@ -133,6 +133,12 @@ impl CadDocument {
         self.store.read(self.id, f).py()
     }
 
+    /// Like [`read`](Self::read) but touching no Python at all, so it can
+    /// run with the GIL released (inside `py.detach`).
+    pub fn read_core<R>(&self, f: impl FnOnce(&CoreDocument) -> R) -> arq_core::CadResult<R> {
+        self.store.read(self.id, f)
+    }
+
     /// Runs `f` with write access, for this call only.
     pub fn edit<R>(
         &self,
@@ -215,6 +221,12 @@ impl CadDocument {
     #[getter]
     fn version(&self) -> PyResult<String> {
         self.read(|cad| cad.document().version_code())
+    }
+
+    /// How many entities model space holds, without reading them.
+    #[getter]
+    fn entity_count(&self) -> PyResult<usize> {
+        self.read(|cad| cad.document().model_entity_count())
     }
 
     // Queries (contract §4). Each copies what it needs under the lock and
@@ -468,6 +480,18 @@ impl CadDocument {
     #[getter]
     fn redo_name(&self) -> PyResult<Option<String>> {
         self.read(|cad| cad.redo_name().map(str::to_owned))
+    }
+
+    /// Every step that can be undone, oldest first (the last is `undo_name`).
+    #[getter]
+    fn undo_history(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.undo_names().into_iter().map(str::to_owned).collect())
+    }
+
+    /// Every step that can be redone, next first (the first is `redo_name`).
+    #[getter]
+    fn redo_history(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.redo_names().into_iter().map(str::to_owned).collect())
     }
 
     /// A context manager making the operations inside one undo step:

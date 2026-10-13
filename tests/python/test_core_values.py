@@ -101,6 +101,16 @@ def test_colors() -> None:
     assert repr(CadColor.from_index(255)) == "CadColor.from_index(255)"
 
 
+def test_display_rgb_is_the_color_on_screen() -> None:
+    assert CadColor.from_index(1).display_rgb() == (255, 0, 0)
+    assert CadColor.from_rgb(200, 120, 40).display_rgb() == (200, 120, 40)
+    # Index 7 is white on the dark default background, black on white paper.
+    assert CadColor.from_index(7).display_rgb() == (255, 255, 255)
+    assert CadColor.from_index(7).display_rgb((255, 255, 255)) == (0, 0, 0)
+    # BYLAYER and BYBLOCK have no color of their own: shown as index 7.
+    assert CadColor.by_layer().display_rgb() == (255, 255, 255)
+
+
 @pytest.mark.parametrize("index", [0, 256, -1])
 def test_color_index_is_1_to_255(index: int) -> None:
     with pytest.raises(InvalidOperationError, match="1 to 255"):

@@ -1,8 +1,13 @@
 name: CI
 
-# Manual only: day-to-day testing is local (ADR 0005). Run this before a
-# version, or to check platforms not available locally (macOS, Windows ARM).
+# Every pull request to main and every push to main, on every platform, and by
+# hand (ADR 0014, amending ADR 0005). It adds platforms not available locally
+# (macOS, Windows ARM); it does not replace the local checks (AGENTS.md).
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:

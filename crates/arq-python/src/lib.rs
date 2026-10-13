@@ -11,6 +11,7 @@
 //! | `documents` | `CadApplication`, `CadDocument` (queries, operations, history) |
 //! | `info` | `CadEntityInfo`, `CadLayerInfo` |
 //! | `changes` | `CadChangeSet`, `CadGroup` |
+//! | `view` | `CadView`: the document rendered on the CPU for the viewport |
 //!
 //! Two rules keep it safe across threads: never run Python code while a
 //! document is locked (build Python objects after the lock is released), and
@@ -23,6 +24,7 @@ mod documents;
 mod errors;
 mod info;
 mod values;
+mod view;
 
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -32,5 +34,6 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     info::register(m)?;
     changes::register(m)?;
     values::register(m)?;
+    view::register(m)?;
     Ok(())
 }

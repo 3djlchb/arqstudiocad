@@ -29,8 +29,9 @@ uv run pre-commit install
 
 From then on every commit runs formatting, linters, type checks and the
 dependency licence check. The full list of commands is in [AGENTS.md](AGENTS.md).
-**Testing is local**: CI on GitHub runs only on demand, so a pull request is
-expected to arrive with the checks already green on your machine.
+**Testing starts locally**: a pull request is expected to arrive with the
+checks already green on your machine. CI on GitHub then runs them on every
+pull request to `main`, on Windows, Linux and macOS.
 
 ## House rules
 

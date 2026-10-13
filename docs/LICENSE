@@ -1,0 +1,19 @@
+ArqStudioCAD documentation
+
+Copyright (C) the ArqStudioCAD contributors (see AUTHORS).
+
+The documentation of ArqStudioCAD — everything under docs/, README.md,
+README.es.md, CONTRIBUTING.md, CONTRIBUTING.es.md and CODE_OF_CONDUCT.md —
+is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International License (CC BY-SA 4.0).
+
+You may share and adapt it for any purpose, provided you give appropriate
+credit, indicate if changes were made, and distribute your contributions
+under the same license.
+
+Full license text: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+Summary: https://creativecommons.org/licenses/by-sa/4.0/
+
+The source code of ArqStudioCAD is licensed separately under the GNU General
+Public License, version 3 or later: see LICENSE at the root of the repository.
+Code examples inside the documentation may also be used under that license.

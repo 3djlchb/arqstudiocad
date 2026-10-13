@@ -2,17 +2,24 @@
 
 [English](README.md) | **Español**
 
-CAD 2D/3D de código abierto para arquitectura e ingeniería, con DWG como
-formato nativo y DXF como alternativa abierta.
+Plataforma CAD/BIM de código abierto para arquitectura e ingeniería: dibujo
+CAD, modelado BIM (IFC), terreno, estudios de ingeniería y documentación técnica
+que sigue al modelo, con DWG como formato CAD nativo y DXF como alternativa
+abierta. Sus objetivos están en el [acta del proyecto](docs/PROJECT_CHARTER.md)
+(en inglés) y el orden de trabajo en la [hoja de ruta](docs/ROADMAP.md).
 
 > **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
 > se empaqueta para todas las plataformas objetivo (fase 1). El núcleo
 > geométrico está terminado —líneas, círculos, arcos, transformaciones,
-> intersecciones y puntos de referencia (fase 2)— y también el núcleo del
+> intersecciones y puntos de referencia (hito 2.1)— y también el núcleo del
 > documento: abre y guarda DWG y DXF, edita líneas, círculos, arcos y capas
-> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo
-> (fase 3). Todo ello se puede programar desde Python con `arqstudiocad.core`
-> (fase 4). La interfaz todavía no permite dibujar.
+> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo (2.2).
+> Todo ello se puede programar desde Python con `arqstudiocad.core` (2.3). El
+> armazón de la aplicación muestra los dibujos en pestañas, los abre y guarda
+> en segundo plano, y tiene línea de comandos, paneles de Capas, Propiedades e
+> Historial que se acoplan, flotan o se ocultan solos, espacios de trabajo
+> Cinta de opciones y Clásico, y tema oscuro o claro (2.4). Todavía no permite
+> dibujar: la selección y los comandos de dibujo son el siguiente hito.
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|
@@ -169,5 +176,5 @@ reglas, y el [Código de Conducta](CODE_OF_CONDUCT.md).
 
 ## Licencia
 
-[GPL-3.0-or-later](LICENSE). El código y las ideas de terceros se reconocen en
-[THIRD_PARTY.md](THIRD_PARTY.md).
+Código: [GPL-3.0-or-later](LICENSE). Documentación: [CC BY-SA 4.0](docs/LICENSE).
+El código y las ideas de terceros se reconocen en [THIRD_PARTY.md](THIRD_PARTY.md).

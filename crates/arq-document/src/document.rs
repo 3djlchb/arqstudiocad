@@ -134,6 +134,11 @@ impl Document {
         self.cad.entity_count()
     }
 
+    /// Number of entities in model space, counted without reading them.
+    pub fn model_entity_count(&self) -> usize {
+        self.cad.model_space_entities().count()
+    }
+
     /// The codec document, for the other modules of this crate only.
     pub(crate) fn cad(&self) -> &CadDocument {
         &self.cad
@@ -238,6 +243,27 @@ mod tests {
         let dxf = dir.path().join("casa.dxf");
         doc.save(&dxf).unwrap();
         assert_eq!(Document::open(&dxf).unwrap().version_code(), "AC1012");
+    }
+
+    #[test]
+    fn model_entity_count_counts_model_space_only() {
+        let doc = sample();
+        assert_eq!(doc.model_entity_count(), 2);
+        assert_eq!(doc.model_entity_count(), doc.entities().len());
+        // A block's own entities are not in model space.
+        let with_block = Document::from_dxf_bytes(
+            "0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n8\n0\n2\nB\n70\n0\n10\n0\n20\n0\n30\n0\n3\nB\n\
+             0\nLINE\n8\n0\n10\n0\n20\n0\n30\n0\n11\n1\n21\n0\n31\n0\n0\nENDBLK\n8\n0\n0\nENDSEC\n\
+             0\nSECTION\n2\nENTITIES\n0\nINSERT\n8\n0\n2\nB\n10\n0\n20\n0\n30\n0\n0\nENDSEC\n0\nEOF\n"
+                .as_bytes()
+                .to_vec(),
+        )
+        .unwrap();
+        assert_eq!(
+            with_block.model_entity_count(),
+            1,
+            "the INSERT, not the LINE inside"
+        );
     }
 
     #[test]
