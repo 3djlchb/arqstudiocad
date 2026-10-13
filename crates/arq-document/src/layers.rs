@@ -64,7 +64,7 @@ impl Layer {
     }
 }
 
-fn read_layer(l: &CodecLayer) -> Layer {
+pub(crate) fn read_layer(l: &CodecLayer) -> Layer {
     Layer {
         id: l.handle.value(),
         name: l.name.clone(),
@@ -104,21 +104,22 @@ fn is_protected(name: &str) -> bool {
 }
 
 impl Document {
-    /// All layers, "0" first and the rest by name (ignoring case).
+    /// All layers, "0" first and the rest by name (ignoring case), from
+    /// the own model.
     pub fn layers(&self) -> Vec<Layer> {
-        let mut layers: Vec<Layer> = self.cad().layers.iter().map(read_layer).collect();
+        let mut layers: Vec<Layer> = self.model.layers.values().cloned().collect();
         layers.sort_by_key(|l| (l.name != "0", l.name.to_lowercase()));
         layers
     }
 
     /// The layer with this id.
     pub fn layer(&self, id: LayerId) -> Option<Layer> {
-        self.codec_layer(id).map(read_layer)
+        self.model.layers.get(&id).cloned()
     }
 
     /// The layer with this name (ignoring case).
     pub fn layer_by_name(&self, name: &str) -> Option<Layer> {
-        self.cad().layers.get(name).map(read_layer)
+        self.model_layer_by_name(name).cloned()
     }
 
     fn codec_layer(&self, id: LayerId) -> Option<&CodecLayer> {
@@ -143,6 +144,7 @@ impl Document {
         {
             edit(layer);
         }
+        self.sync_layers();
         self.note_layer(id, LayerNote::Modified);
         Ok(())
     }
@@ -168,6 +170,7 @@ impl Document {
             .layers
             .add(layer)
             .map_err(DocumentError::Codec)?;
+        self.sync_layers();
         self.note_layer(id, LayerNote::Created);
         Ok(id)
     }
@@ -192,6 +195,8 @@ impl Document {
         self.cad_mut()
             .rename_layer(&old, new_name)
             .map_err(DocumentError::Codec)?;
+        // Entities keep their layer's id; the model names it from the table.
+        self.sync_layers();
         self.note_layer(id, LayerNote::Modified);
         Ok(())
     }
@@ -244,19 +249,18 @@ impl Document {
         }
         self.touch_structure();
         self.cad_mut().layers.remove(&name);
+        self.sync_layers();
         self.note_layer(id, LayerNote::Deleted);
         Ok(())
     }
 
     /// The layer new entities go to (AutoCAD's CLAYER).
     pub fn current_layer(&self) -> Layer {
-        let header = &self.cad().header;
-        self.cad()
+        self.model
             .layers
-            .get(&header.current_layer_name)
-            .or_else(|| self.cad().layers.get("0"))
-            .map(read_layer)
-            .expect("layer 0 always exists")
+            .get(&self.model.current)
+            .cloned()
+            .expect("the current layer is in the model")
     }
 
     /// Makes a layer current. A frozen layer cannot be current.
@@ -269,6 +273,7 @@ impl Document {
         let header = &mut self.cad_mut().header;
         header.current_layer_name = layer.name;
         header.current_layer_handle = Handle::new(id);
+        self.model.current = id;
         self.note_document();
         Ok(())
     }

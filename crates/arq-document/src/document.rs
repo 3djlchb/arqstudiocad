@@ -12,11 +12,16 @@ use crate::format::FileFormat;
 
 /// One drawing.
 ///
-/// The codec's `CadDocument` is the only store (ADR 0011, D3.2). It lives in a
-/// `Box` and never moves: the codec's change recorder identifies a document by
-/// its memory address during a transaction (D3.5).
+/// Our own model owns layers and the editable entities (ADR 0018 D2); the
+/// engine's `CadDocument` holds them too, written together with the model,
+/// and everything the model does not own yet (see `model.rs`). The engine's
+/// document lives in a `Box` and never moves: its change recorder
+/// identifies a document by its memory address during a transaction
+/// (ADR 0011 D3.5).
 pub struct Document {
     cad: Box<CadDocument>,
+    /// The own internal model (`model.rs`).
+    pub(crate) model: crate::model::OwnModel,
     /// The change being recorded, if any (see `change.rs`).
     pub(crate) recording: Option<crate::change::Recording>,
 }
@@ -35,10 +40,13 @@ impl Document {
         // any record still without one. Pinned by
         // `layers_without_handles_get_stable_ids`.
         cad.assign_table_entry_handles();
-        Self {
+        let mut doc = Self {
             cad: Box::new(cad),
+            model: crate::model::OwnModel::default(),
             recording: None,
-        }
+        };
+        doc.rebuild_model();
+        doc
     }
 
     /// Opens a `.dwg` or `.dxf` file; the extension decides the format.
@@ -120,6 +128,7 @@ impl Document {
     pub fn snapshot(&self) -> Self {
         Self {
             cad: Box::new(CadDocument::clone(&self.cad)),
+            model: self.model.clone(),
             recording: None,
         }
     }

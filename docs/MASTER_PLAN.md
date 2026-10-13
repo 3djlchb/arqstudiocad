@@ -296,7 +296,7 @@ Prove the architecture end to end before widening the scope.
 - [x] A Rust library reachable from Python through PyO3.
 - [x] PySide6 showing a result computed by Rust.
 - [x] A minimal CAD document with identified entities.
-- [ ] **Save and recover the working document (DWG) from the own internal model** ([ADR 0018](architecture/adr/0018-native-format.md); originally "the native document").
+- [x] **Save and recover the working document (DWG) from the own internal model** ([ADR 0018](architecture/adr/0018-native-format.md); originally "the native document").
 - [x] A first DXF test with its round trip validated.
 - [x] Automated tests and a first continuous integration.
 

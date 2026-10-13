@@ -9,13 +9,12 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 
 ## Where we are (2026-10-13)
 
-- **Technical MVP: 7 of 8** (master plan §15). Missing: save and recover the
-  working document (DWG) from the own internal model (milestone 02.6).
+- **Technical MVP: 8 of 8** (master plan §15): milestone 02.6 saves and
+  recovers the working document (DWG) from the own internal model.
 - **Working format:** DWG, as BricsCAD does, with an own internal model; the
   native format `.ascad` is designed and reserved (ADR 0018).
-- **Next, in this order:** 02.6 own internal model (closes the MVP) → 03.3
-  the four data protections → 03.2 opencadcodec's constraint reading → back
-  to 02.5 editing (step 2.5.2).
+- **Next, in this order:** 03.3 the four data protections → 03.2
+  opencadcodec's constraint reading → back to 02.5 editing (step 2.5.2).
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -44,7 +43,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.3 Python API | `arq-python`: the whole core from Python, typed (ADR 0012) | ✅ PR #7 |
 | 02.4 Application shell | Drawing primitives, CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels, Ribbon and Classic workspaces, themes (ADR 0013, 0015) | ✅ PR #8 |
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ◐ step 2.5.1 done |
-| 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model | ○ **next** |
+| 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0011 D3.8); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ○ |
 | 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; 3D primitives and the 3D document model (an ADR first) | ○ |
 
@@ -58,7 +57,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 |---|---|---|
 | 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ |
 | 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; offered upstream | ○ |
-| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ○ |
+| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ○ **next** |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ first matrix from the comparison |
 | 03.5 External validation | Outputs opened in independent CAD applications; Xref and BIM drawings in the corpus | ○ |
 | 03.6 Fidelity across versions | DWG as the default save format once the corpus allows it (contract §10); linetypes, lineweights, layouts | ○ |
