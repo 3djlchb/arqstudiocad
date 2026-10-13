@@ -28,7 +28,7 @@ ADR 0009). Merged in PRs #1–#4.
 | 2.1 Geometry | `arq-geometry`: points, vectors, lines, circles, arcs, transformations, intersections, snaps (ADR 0010) | ✅ PR #5 |
 | 2.2 Document | `arq-document` over opencadcodec: DWG/DXF open and save, entities, layers, ids, change recording; `arq-core`: transactions, groups, undo/redo, queries, document store; round-trip corpus (ADR 0011) | ✅ PR #6 |
 | 2.3 Python API | `arq-python`: the whole core from Python, typed (ADR 0012) | ✅ PR #7 |
-| 2.4 Application shell | Drawing primitives, render scene and CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels, workspaces (ADR 0013) | ◐ branch `fase-5/aplicacion` |
+| 2.4 Application shell | Drawing primitives, render scene and CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels (pinned or auto-hidden), Ribbon and Classic workspaces, dark and light themes (ADR 0013, ADR 0015) | ✅ PR #8 |
 | 2.5 Editing workflow | Selection (pick, window, crossing), grips and object snaps, LINE, CIRCLE, ARC, MOVE, ROTATE, SCALE, MIRROR, ERASE, COPY, properties of the selection | ○ |
 | 2.6 Spatial index and GPU viewport | Spatial index (ADR 0011 D3.8); wgpu renderer with backend probing (ADR 0007); the CPU rasterizer stays as fallback | ○ |
 | 2.7 Wider CAD entities | Editing polylines, blocks (INSERT), texts; 3D primitives and the 3D document model (an ADR first) | ○ |

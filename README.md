@@ -11,11 +11,14 @@ and the order of work in the [roadmap](docs/ROADMAP.md).
 > **Status:** pre-alpha. The application starts, switches between English and
 > Spanish and is packaged for every target platform (phase 1). The geometry
 > core is done — lines, circles, arcs, transformations, intersections and snap
-> points (phase 2) — and so is the document core: it opens and saves DWG and
-> DXF, edits lines, circles, arcs and layers with undo and redo, and keeps
-> everything else in the drawing intact (phase 3). All of it can be scripted
-> from Python through `arqstudiocad.core` (phase 4). The interface cannot draw
-> yet.
+> points (milestone 2.1) — and so is the document core: it opens and saves DWG
+> and DXF, edits lines, circles, arcs and layers with undo and redo, and keeps
+> everything else in the drawing intact (2.2). All of it can be scripted from
+> Python through `arqstudiocad.core` (2.3). The application shell shows
+> drawings in tabs, opens and saves them in the background, and has a command
+> line, Layers, Properties and History panels that dock, float or auto-hide,
+> Ribbon and Classic workspaces and a dark or light theme (2.4). It cannot
+> draw yet: selection and drawing commands are the next milestone.
 
 | Layer | Technology | Owns |
 |---|---|---|

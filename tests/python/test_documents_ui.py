@@ -67,6 +67,25 @@ def test_a_failed_open_adds_nothing(
     assert isinstance(events[-1], CommandCancelled) and events[-1].reason.startswith("io_error")
 
 
+def test_a_failed_save_leaves_the_drawing_as_it_was(
+    qtbot: QtBot, window: MainWindow, ui: QuietUi, tmp_path: Path
+) -> None:
+    saved: list[Event] = []
+    window.bus.subscribe(DocumentSaved, saved.append)
+    window.command_actions.run("NEW")
+    document = window.session.active
+    assert document is not None
+    window.session.edit(document, lambda d: d.add_line((0, 0), (10, 10))[1])
+    ui.save_path = tmp_path / "no-such-folder" / "plano.dxf"
+    window.command_actions.run("SAVEAS")
+    wait_idle(qtbot, window)
+    assert history(window)[-1].startswith("Error: ")
+    assert saved == []
+    assert (document.name, document.path, document.is_modified) == ("Drawing1", None, True)
+    assert window.tabs.tabText(0) == "Drawing1*" and document.entity_count == 1
+    assert all(panel.isEnabled() for panel in window.panels.values()), "the panels are back"
+
+
 def test_saving_runs_in_the_background(
     qtbot: QtBot, window: MainWindow, ui: QuietUi, tmp_path: Path
 ) -> None:

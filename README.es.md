@@ -11,11 +11,15 @@ abierta. Sus objetivos están en el [acta del proyecto](docs/PROJECT_CHARTER.md)
 > **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
 > se empaqueta para todas las plataformas objetivo (fase 1). El núcleo
 > geométrico está terminado —líneas, círculos, arcos, transformaciones,
-> intersecciones y puntos de referencia (fase 2)— y también el núcleo del
+> intersecciones y puntos de referencia (hito 2.1)— y también el núcleo del
 > documento: abre y guarda DWG y DXF, edita líneas, círculos, arcos y capas
-> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo
-> (fase 3). Todo ello se puede programar desde Python con `arqstudiocad.core`
-> (fase 4). La interfaz todavía no permite dibujar.
+> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo (2.2).
+> Todo ello se puede programar desde Python con `arqstudiocad.core` (2.3). El
+> armazón de la aplicación muestra los dibujos en pestañas, los abre y guarda
+> en segundo plano, y tiene línea de comandos, paneles de Capas, Propiedades e
+> Historial que se acoplan, flotan o se ocultan solos, espacios de trabajo
+> Cinta de opciones y Clásico, y tema oscuro o claro (2.4). Todavía no permite
+> dibujar: la selección y los comandos de dibujo son el siguiente hito.
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|
