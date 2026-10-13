@@ -86,7 +86,12 @@ jobs:
       - run: uv run ruff format --check
       - run: uv run mypy
       - run: uv run stubtest arqstudiocad._core
-      - run: uv run pytest
+      - run: uv run pytest --junitxml=pytest-results.xml
+      # The log is private but annotations are public: one per failed test,
+      # so an intermittent failure can be identified from the pull request.
+      - name: Failed tests as annotations
+        if: failure()
+        run: uv run python tools/ci_test_annotations.py pytest-results.xml
 
   cargo-deny:
     name: Licenses and advisories
