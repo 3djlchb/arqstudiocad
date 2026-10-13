@@ -1,6 +1,6 @@
 //! Document model for ArqStudioCAD: entities, layers and blocks.
 //!
-//! The drawing is stored in opencadcodec's DWG database (ADR 0008, ADR 0011);
+//! The drawing is stored in AcadRust's DWG database (ADR 0011, ADR 0017);
 //! codec types never leave this crate. The model mirrors DWG concepts
 //! (handles, symbol tables, model/paper space) so DWG/DXF load and save
 //! without lossy translation.
@@ -27,6 +27,8 @@ mod error;
 mod format;
 mod layers;
 mod ocs;
+#[cfg(test)]
+mod test_dxf;
 mod translate;
 
 pub use change::{Change, ChangeSet};

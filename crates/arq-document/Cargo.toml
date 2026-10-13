@@ -11,7 +11,7 @@ publish.workspace = true
 
 [dependencies]
 arq-geometry.workspace = true
-opencadcodec.workspace = true
+acadrust.workspace = true
 
 [features]
 # Helpers for other crates' tests (e.g. inserting entity types the API cannot

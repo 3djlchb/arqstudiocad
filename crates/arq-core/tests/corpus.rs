@@ -171,9 +171,10 @@ fn edit(cad: &mut CadDocument) -> Result<(), String> {
     let doc = cad.document();
     let locked = |e: &Entity| doc.layer_by_name(e.layer()).is_some_and(|l| l.is_locked());
     let entities: Vec<Entity> = doc.entities().into_iter().filter(|e| !locked(e)).collect();
+    // Blocks and polylines move as a whole too (ADR 0016, D1).
     let movable: Vec<EntityId> = entities
         .iter()
-        .filter(|e| e.is_editable())
+        .filter(|e| e.is_transformable())
         .map(Entity::id)
         .collect();
     // Prefer erasing a read-only entity: erasing must work on any type.
@@ -296,6 +297,7 @@ fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
     let doc = cad.document();
     let model = doc.entities();
     let editable = model.iter().filter(|e| e.is_editable()).count();
+    let transformable = model.iter().filter(|e| e.is_transformable()).count();
     let mut kinds: Vec<(&str, usize)> = Vec::new();
     for e in &model {
         match kinds.iter_mut().find(|(k, _)| *k == e.kind()) {
@@ -307,7 +309,7 @@ fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
     let kinds: Vec<String> = kinds.iter().map(|(k, n)| format!("{k} {n}")).collect();
     let (drawn, drawing_problems) = drawing_coverage(doc);
     let summary = format!(
-        "{}  {} entities, {} in model space, {editable} editable: {}
+        "{}  {} entities, {} in model space, {editable} editable, {transformable} transformable: {}
       {drawn}",
         doc.version_code(),
         doc.entity_count(),
@@ -315,12 +317,91 @@ fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
         kinds.join(", ")
     );
     let mut problems = drawing_problems;
+    problems.extend(whole_transform_problems(&path));
     problems.extend(round_trip(cad, dir));
     if problems.is_empty() {
         Ok(summary)
     } else {
         Err(problems)
     }
+}
+
+/// Points along everything drawn for `id`, as the drawing primitives give
+/// them: ends and middles of lines and arcs, and circles' centers (a
+/// rotated circle is the same circle, sampled from a new east point; the
+/// rotation and move checked here keep radii).
+fn drawn_points(doc: &Document, id: EntityId) -> Vec<Point2> {
+    let mut points = Vec::new();
+    for item in doc.drawing(id).unwrap_or_default() {
+        let g: arq_geometry::Geometry2 = match item.shape {
+            Shape::Line(l) => l.into(),
+            Shape::Arc(a) => a.into(),
+            Shape::Circle(c) => {
+                points.push(c.center());
+                continue;
+            }
+            _ => continue,
+        };
+        points.extend([0.0, 0.25, 0.5, 0.75, 1.0].map(|t| g.point_at(t)));
+    }
+    points
+}
+
+/// Rotates and moves every block and polyline of the drawing (ADR 0016,
+/// D1) and checks each is drawn where the transformation puts it.
+fn whole_transform_problems(path: &Path) -> Vec<String> {
+    let Ok(mut cad) = CadDocument::open(path) else {
+        return Vec::new(); // reported by the round trip
+    };
+    let Some(center) = cad.bounds().map(|b| b.center()) else {
+        return Vec::new();
+    };
+    let doc = cad.document();
+    let locked = |e: &Entity| doc.layer_by_name(e.layer()).is_some_and(|l| l.is_locked());
+    let ids: Vec<EntityId> = doc
+        .entities()
+        .iter()
+        .filter(|e| e.is_transformable() && !e.is_editable() && !locked(e))
+        .map(Entity::id)
+        .collect();
+    let t = arq_geometry::Transform2::rotation(center, 0.4)
+        .expect("finite")
+        .then(arq_geometry::Transform2::translation(
+            Vector2::new(3.25, -1.5).expect("finite"),
+        ));
+    let expected: Vec<Vec<Point2>> = ids
+        .iter()
+        .map(|id| {
+            drawn_points(doc, *id)
+                .into_iter()
+                .map(|q| t.apply_point(q))
+                .collect()
+        })
+        .collect();
+    if let Err(e) = cad
+        .rotate_entities(&ids, center, 0.4)
+        .and_then(|_| cad.move_entities(&ids, Vector2::new(3.25, -1.5).expect("finite")))
+    {
+        return vec![format!("transform blocks and polylines: {e}")];
+    }
+    let size = cad.bounds().map_or(1.0, |b| b.width().max(b.height()));
+    let tol = Tolerance::new(1e-9 * (1.0 + size), 1e-9).expect("valid");
+    let mut problems = Vec::new();
+    for (id, want) in ids.iter().zip(expected) {
+        let found = drawn_points(cad.document(), *id);
+        let same = found.len() == want.len()
+            && want
+                .iter()
+                .all(|w| found.iter().any(|f| f.approx_eq(*w, tol)));
+        if !same {
+            let kind = cad.document().entity(*id).map_or("?", |e| e.kind());
+            problems.push(format!(
+                "entity {id} ({kind}) is not drawn where it was moved"
+            ));
+        }
+    }
+    problems.truncate(20);
+    problems
 }
 
 /// What the drawing primitives make of a drawing (ADR 0013, D5.2): a line
@@ -461,7 +542,7 @@ fn generated_drawings_round_trip_in_every_version() {
 #[test]
 #[ignore = "needs the codec samples: uv run python tools/fetch_codec_samples.py"]
 fn codec_samples_round_trip() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/opencadcodec");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/acadrust");
     assert!(
         root.is_dir(),
         "{} is missing: run `uv run python tools/fetch_codec_samples.py`",

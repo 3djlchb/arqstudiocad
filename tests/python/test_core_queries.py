@@ -81,6 +81,7 @@ def test_entities_in_drawing_order(doc: CadDocument) -> None:
     assert [e.layer for e in entities] == ["MUROS", "MUROS", "0", "0", "0", "TEXTOS"]
     assert len({e.id for e in entities}) == 6, "distinct ids"
     assert [e.is_editable for e in entities] == [True, True, False, True, True, False]
+    assert [e.is_transformable for e in entities] == [True, True, False, True, True, False]
 
 
 def test_geometry_of_each_kind(doc: CadDocument) -> None:

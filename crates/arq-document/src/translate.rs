@@ -1,9 +1,9 @@
-//! Translation between opencadcodec entities and our types. The only place
+//! Translation between the engine's (AcadRust) entities and our types. The only place
 //! that reads or writes codec geometry fields.
 
-use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2};
-use opencadcodec::types::Vector3;
-use opencadcodec::{EntityType, Handle};
+use acadrust::types::{Matrix4, Transform, Vector3};
+use acadrust::{EntityType, Handle};
+use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Transform2};
 
 use crate::entity::{Color, Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
@@ -20,7 +20,40 @@ pub(crate) fn read_entity(e: &EntityType) -> Entity {
         color: color_from_codec(e.as_entity().color()),
         bounds,
         plan,
+        transformable: plan.is_some() || is_whole_transformable(e),
     }
+}
+
+/// Blocks and lightweight polylines drawn in plan, which move, rotate,
+/// scale, mirror and copy as a whole (ADR 0016, D1). A block array
+/// (MINSERT) is not: its spacing would not follow a scaling.
+pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
+    match e {
+        EntityType::Insert(i) => {
+            plan_normal(i.normal.x, i.normal.y, i.normal.z).is_some()
+                && i.column_count <= 1
+                && i.row_count <= 1
+        }
+        EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
+        _ => false,
+    }
+}
+
+/// Applies a plan transformation to a block or a lightweight polyline as a
+/// whole, through the codec: a block's attributes follow it, a polyline's
+/// bulges flip under a mirror (the codec's mirror path does the same for
+/// these two kinds). Elevations are kept.
+pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
+    let [[a, b, tx], [c, d, ty]] = t.affine();
+    let codec = Transform::from_matrix(Matrix4 {
+        m: [
+            [a, b, 0.0, tx],
+            [c, d, 0.0, ty],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    });
+    e.apply_transform(&codec);
 }
 
 /// Plan bounds of an entity: from our geometry when it has plan geometry,
@@ -120,7 +153,7 @@ fn editable_normal(id: EntityId, kind: &'static str, n: Vector3) -> DocumentResu
 pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
     let z = plan.elevation();
     let mut e = match plan.geometry() {
-        Geometry2::Line(g) => EntityType::Line(opencadcodec::Line::from_coords(
+        Geometry2::Line(g) => EntityType::Line(acadrust::Line::from_coords(
             g.start().x(),
             g.start().y(),
             z,
@@ -129,13 +162,13 @@ pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
             z,
         )),
         Geometry2::Circle(g) => {
-            let mut c = opencadcodec::Circle::new();
+            let mut c = acadrust::Circle::new();
             c.center = Vector3::new(g.center().x(), g.center().y(), z);
             c.radius = g.radius();
             EntityType::Circle(c)
         }
         Geometry2::Arc(g) => {
-            let mut a = opencadcodec::Arc::new();
+            let mut a = acadrust::Arc::new();
             a.center = Vector3::new(g.center().x(), g.center().y(), z);
             a.radius = g.radius();
             a.start_angle = g.start_angle();
@@ -151,22 +184,22 @@ pub(crate) fn handle(id: EntityId) -> Handle {
     Handle::new(id)
 }
 
-pub(crate) fn color_from_codec(c: opencadcodec::Color) -> Color {
+pub(crate) fn color_from_codec(c: acadrust::Color) -> Color {
     match c {
-        opencadcodec::Color::ByLayer => Color::ByLayer,
-        opencadcodec::Color::ByBlock => Color::ByBlock,
-        opencadcodec::Color::Index(i) => Color::Index(i),
-        opencadcodec::Color::Rgb { r, g, b } => Color::Rgb { r, g, b },
-        opencadcodec::Color::None => Color::None,
+        acadrust::Color::ByLayer => Color::ByLayer,
+        acadrust::Color::ByBlock => Color::ByBlock,
+        acadrust::Color::Index(i) => Color::Index(i),
+        acadrust::Color::Rgb { r, g, b } => Color::Rgb { r, g, b },
+        acadrust::Color::None => Color::None,
     }
 }
 
-pub(crate) fn color_to_codec(c: Color) -> opencadcodec::Color {
+pub(crate) fn color_to_codec(c: Color) -> acadrust::Color {
     match c {
-        Color::ByLayer => opencadcodec::Color::ByLayer,
-        Color::ByBlock => opencadcodec::Color::ByBlock,
-        Color::Index(i) => opencadcodec::Color::Index(i),
-        Color::Rgb { r, g, b } => opencadcodec::Color::Rgb { r, g, b },
-        Color::None => opencadcodec::Color::None,
+        Color::ByLayer => acadrust::Color::ByLayer,
+        Color::ByBlock => acadrust::Color::ByBlock,
+        Color::Index(i) => acadrust::Color::Index(i),
+        Color::Rgb { r, g, b } => acadrust::Color::Rgb { r, g, b },
+        Color::None => acadrust::Color::None,
     }
 }

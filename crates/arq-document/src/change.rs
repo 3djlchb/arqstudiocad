@@ -11,8 +11,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc as Shared;
 
-use opencadcodec::document::EntityChangeRecorder;
-use opencadcodec::{CadDocument, EntityType, Handle};
+use acadrust::document::EntityChangeRecorder;
+use acadrust::{CadDocument, EntityType, Handle};
 
 use crate::document::Document;
 use crate::entity::EntityId;

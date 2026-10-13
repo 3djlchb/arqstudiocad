@@ -51,7 +51,7 @@ Las reglas vinculantes están en el [contrato técnico](docs/architecture/techni
   a un evento del ratón. Así se pueden probar sin GUI y automatizar.
 - **El documento DWG/DXF es el modelo.** Lo que ArqStudioCAD no entiende de un
   dibujo (proxies, XDATA, diccionarios, sólidos 3D) debe sobrevivir intacto a
-  abrir y guardar. Los tipos de opencadcodec nunca salen de `arq-document`.
+  abrir y guardar. Los tipos del motor (AcadRust) nunca salen de `arq-document`.
 - **Solo `crates/arq-python` puede depender de Python**, y ningún crate depende de Qt.
 - **Las coordenadas son `f64` en unidades del modelo y los ángulos, radianes**;
   se rechazan NaN e infinito.

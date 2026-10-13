@@ -79,7 +79,7 @@ pub struct Transform2 { /* similarity: move, rotate, uniform scale, mirror */ }
 pub fn intersect(a: Geometry2, b: Geometry2, tol: Tolerance) -> Intersections; // points + overlaps
 pub mod snap;  // END, MID, CEN, QUA, INT, PER, TAN, NEA points
 
-// arq-document (ADR 0011): the drawing, stored in opencadcodec's database.
+// arq-document (ADR 0011): the drawing, stored in AcadRust's database.
 pub struct Document { /* codec document, private */ }   // open/save/snapshot, entities, layers
 pub struct Entity { /* id, kind, layer, color, bounds, plan */ }  // read-only view
 pub struct PlanGeometry { /* Geometry2 + elevation */ } // LINE/CIRCLE/ARC in plan: editable
@@ -305,8 +305,9 @@ Selection: pointer + camera → screen-to-world → Rust spatial query → `Enti
 
 **DWG is the native format; DXF is the open alternative.**
 See [ADR 0002](adr/0002-dwg-native-format.md). Both are read and written by
-**opencadcodec** (MPL-2.0), wrapped by `arq-document`; codec types never leave
-that crate ([ADR 0008](adr/0008-opencadcodec.md)).
+**AcadRust** (MPL-2.0, crates.io, exact version), wrapped by `arq-document`;
+engine types never leave that crate ([ADR 0008](adr/0008-opencadcodec.md),
+[ADR 0017](adr/0017-dwg-dxf-engine-strategy.md)).
 
 - The document model mirrors DWG: `EntityId` is the entity handle, layers and
   linetypes are symbol-table records with handles, model space and paper space

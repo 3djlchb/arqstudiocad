@@ -132,6 +132,16 @@ impl Transform2 {
         self.a.hypot(self.c)
     }
 
+    /// The same transformation as an absolute affine map
+    /// `[[a, b, tx], [c, d, ty]]`, `p ↦ (a·x + b·y + tx, c·x + d·y + ty)`, for
+    /// libraries that take a matrix. Folding the pivot in loses the
+    /// local-frame precision for huge coordinates (about 1e-9 at 1e7), so
+    /// prefer [`Self::apply_point`] where it can be used.
+    pub fn affine(self) -> [[f64; 3]; 2] {
+        let moved = self.pivot.to_vector() - self.mul(self.pivot.to_vector()) + self.t;
+        [[self.a, self.b, moved.x()], [self.c, self.d, moved.y()]]
+    }
+
     /// Whether it mirrors, reversing the turning direction of curves.
     pub fn is_reflection(self) -> bool {
         self.a * self.d - self.b * self.c < 0.0
@@ -227,6 +237,27 @@ mod tests {
 
     fn v(x: f64, y: f64) -> Vector2 {
         Vector2::new(x, y).unwrap()
+    }
+
+    #[test]
+    fn affine_form_maps_points_as_the_transform_does() {
+        let axis = Line::new(p(1.0, 2.0), p(4.0, 6.0)).unwrap();
+        let transforms = [
+            Transform2::translation(v(3.0, -1.0)),
+            Transform2::rotation(p(500_000.0, 9_977_000.0), 0.7).unwrap(),
+            Transform2::scaling(p(-2.0, 5.0), 2.5).unwrap(),
+            Transform2::mirror(axis),
+            Transform2::mirror(axis).then(Transform2::rotation(p(3.0, 3.0), 1.1).unwrap()),
+        ];
+        for t in transforms {
+            let [[a, b, tx], [c, d, ty]] = t.affine();
+            for q in [p(0.0, 0.0), p(7.5, -3.0), p(500_010.0, 9_977_020.0)] {
+                let mapped = p(a * q.x() + b * q.y() + tx, c * q.x() + d * q.y() + ty);
+                let tol =
+                    Tolerance::new(1e-8 * (1.0 + q.x().abs().max(q.y().abs())), 1e-9).unwrap();
+                assert!(mapped.approx_eq(t.apply_point(q), tol), "{t:?} at {q:?}");
+            }
+        }
     }
 
     #[test]

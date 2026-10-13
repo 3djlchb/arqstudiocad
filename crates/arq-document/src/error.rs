@@ -118,8 +118,8 @@ impl fmt::Display for DocumentError {
 
 impl std::error::Error for DocumentError {}
 
-impl From<opencadcodec::DxfError> for DocumentError {
-    fn from(e: opencadcodec::DxfError) -> Self {
+impl From<acadrust::DxfError> for DocumentError {
+    fn from(e: acadrust::DxfError) -> Self {
         Self::Codec(e.to_string())
     }
 }

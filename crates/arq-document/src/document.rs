@@ -1,11 +1,11 @@
-//! `Document`: one drawing, stored in opencadcodec's DWG database.
+//! `Document`: one drawing, stored in the DWG/DXF engine's database (AcadRust).
 
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
-use opencadcodec::types::DxfVersion;
-use opencadcodec::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter};
+use acadrust::types::DxfVersion;
+use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter};
 
 use crate::error::{DocumentError, DocumentResult};
 use crate::format::FileFormat;
@@ -174,7 +174,7 @@ fn temp_path(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use crate::Layer;
-    use opencadcodec::{EntityType, Line};
+    use acadrust::{EntityType, Line};
 
     /// A drawing with two lines, built through the codec until the entity
     /// API exists (step 3.2).

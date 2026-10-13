@@ -3,9 +3,9 @@
 //! Layer names ignore case, as in AutoCAD. Entities refer to their layer by
 //! name inside the DWG; renaming a layer updates every reference.
 
-use opencadcodec::Handle;
-use opencadcodec::tables::layer::Layer as CodecLayer;
-use opencadcodec::tables::normalize_name;
+use acadrust::Handle;
+use acadrust::tables::layer::Layer as CodecLayer;
+use acadrust::tables::normalize_name;
 
 use crate::change::LayerNote;
 use crate::document::Document;

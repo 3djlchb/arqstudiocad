@@ -49,7 +49,7 @@ these are the ones a first contribution usually meets:
   event. That makes them testable without a GUI and scriptable.
 - **The DWG/DXF document is the model.** What ArqStudioCAD does not understand
   about a drawing (proxies, XDATA, dictionaries, 3D solids) must survive a
-  round trip untouched. opencadcodec types never leave `arq-document`.
+  round trip untouched. Engine (AcadRust) types never leave `arq-document`.
 - **Only `crates/arq-python` may depend on Python**, and no crate depends on Qt.
 - **Coordinates are `f64` model units and angles are radians**; NaN and
   infinity are rejected.

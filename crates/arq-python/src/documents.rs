@@ -345,6 +345,18 @@ impl CadDocument {
         self.change(|cad| cad.delete_entities(&entity_ids))
     }
 
+    /// Copies entities, the copies moved by `offset` (COPY); returns the
+    /// copies' ids, in order without repeats, and what changed. Lines,
+    /// circles, arcs, blocks and polylines can be copied.
+    fn copy_entities(
+        &self,
+        entity_ids: Vec<EntityId>,
+        offset: PyVector,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.copy_entities(&entity_ids, offset.0))
+            .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
     /// Moves entities by `offset` (MOVE).
     fn move_entities(&self, entity_ids: Vec<EntityId>, offset: PyVector) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.move_entities(&entity_ids, offset.0))

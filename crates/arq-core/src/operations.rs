@@ -79,8 +79,35 @@ impl CadDocument {
         self.transform_entities("MIRROR", ids, Transform2::mirror(axis))
     }
 
-    /// Applies `t` to entities with plan geometry. Any other entity fails
-    /// the whole operation.
+    /// Copies entities, moving the copies by `offset` (COPY); returns the
+    /// copies' ids, in the order of `ids` without repeats. Lines, circles,
+    /// arcs, blocks and polylines can be copied (ADR 0016, D1); any other
+    /// entity fails the whole operation. The copies take the originals'
+    /// layer, color and other properties.
+    pub fn copy_entities(
+        &mut self,
+        ids: &[EntityId],
+        offset: Vector2,
+    ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let ids = distinct(ids);
+        let t = Transform2::translation(offset);
+        self.transact("COPY", |doc| {
+            let mut copies = Vec::with_capacity(ids.len());
+            for id in ids {
+                let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &e)?;
+                check_transformable(&e)?;
+                let copy = doc.copy_entity(id)?;
+                doc.transform_entity(copy, t)?;
+                copies.push(copy);
+            }
+            Ok(copies)
+        })
+    }
+
+    /// Applies `t` to entities that transform: lines, circles and arcs
+    /// through their geometry, blocks and polylines as a whole (ADR 0016,
+    /// D1). Any other entity fails the whole operation.
     fn transform_entities(
         &mut self,
         name: &str,
@@ -88,15 +115,8 @@ impl CadDocument {
         t: Transform2,
     ) -> CadResult<ChangeSet> {
         self.edit_entities(name, ids, |doc, e| {
-            let plan = e.plan().ok_or_else(|| {
-                CadError::InvalidOperation(format!(
-                    "entity {} ({}) cannot be edited in this version",
-                    e.id(),
-                    e.kind()
-                ))
-            })?;
-            let moved = plan.with_geometry(t.apply(plan.geometry())?);
-            Ok(doc.set_plan_geometry(e.id(), moved)?)
+            check_transformable(e)?;
+            Ok(doc.transform_entity(e.id(), t)?)
         })
     }
 
@@ -192,6 +212,17 @@ impl CadDocument {
 fn distinct(ids: &[EntityId]) -> Vec<EntityId> {
     let mut seen = std::collections::HashSet::new();
     ids.iter().copied().filter(|id| seen.insert(*id)).collect()
+}
+
+fn check_transformable(e: &Entity) -> CadResult<()> {
+    if e.is_transformable() {
+        return Ok(());
+    }
+    Err(CadError::InvalidOperation(format!(
+        "entity {} ({}) cannot be transformed in this version",
+        e.id(),
+        e.kind()
+    )))
 }
 
 fn check_unlocked(doc: &Document, e: &Entity) -> CadResult<()> {

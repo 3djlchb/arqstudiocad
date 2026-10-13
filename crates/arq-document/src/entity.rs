@@ -95,6 +95,7 @@ pub struct Entity {
     pub(crate) color: Color,
     pub(crate) bounds: Option<Bounds2>,
     pub(crate) plan: Option<PlanGeometry>,
+    pub(crate) transformable: bool,
 }
 
 impl Entity {
@@ -131,5 +132,12 @@ impl Entity {
     /// Whether its geometry can be edited in this version.
     pub fn is_editable(&self) -> bool {
         self.plan.is_some()
+    }
+
+    /// Whether it can be moved, rotated, scaled, mirrored and copied as a
+    /// whole: editable entities, and blocks (INSERT) and lightweight
+    /// polylines drawn in plan (ADR 0016, D1).
+    pub fn is_transformable(&self) -> bool {
+        self.transformable
     }
 }

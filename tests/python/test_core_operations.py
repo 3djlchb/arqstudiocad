@@ -146,11 +146,57 @@ def test_read_only_entities_can_be_erased_not_edited(tmp_path: Path) -> None:
     doc = CadApplication().open_document(path)
     line, text = (e.id for e in doc.get_entities())
 
-    with pytest.raises(InvalidOperationError, match="cannot be edited"):
+    with pytest.raises(InvalidOperationError, match="cannot be transformed"):
         doc.move_entities([line, text], (1, 0))
     assert line_of(doc, line) == CadLine((0, 0), (1, 0))
     assert doc.delete_entities([text]).deleted == (text,)
     assert [e.kind for e in doc.get_entities()] == ["LINE"]
+
+
+def blocks_and_polylines(tmp_path: Path) -> CadDocument:
+    """Block PUERTA, base (1,1), one LINE to (2,1); an INSERT of it at
+    (10,5); a polyline (0,0)-(4,0)-(4,2)."""
+    codes = ["0", "SECTION", "2", "BLOCKS"]
+    codes += ["0", "BLOCK", "8", "0", "2", "PUERTA", "70", "0", "10", "1", "20", "1", "30", "0"]
+    codes += ["3", "PUERTA", "0", "LINE", "8", "0", "10", "1", "20", "1", "30", "0"]
+    codes += ["11", "2", "21", "1", "31", "0", "0", "ENDBLK", "8", "0", "0", "ENDSEC"]
+    codes += ["0", "SECTION", "2", "ENTITIES"]
+    codes += ["0", "INSERT", "8", "0", "2", "PUERTA", "10", "10", "20", "5", "30", "0"]
+    codes += ["0", "LWPOLYLINE", "8", "0", "90", "3", "70", "0", "10", "0", "20", "0"]
+    codes += ["10", "4", "20", "0", "10", "4", "20", "2", "0", "ENDSEC", "0", "EOF", ""]
+    path = tmp_path / "bloques.dxf"
+    path.write_text("\n".join(codes), encoding="ascii")
+    return CadApplication().open_document(path)
+
+
+def test_blocks_and_polylines_move_and_copy_as_a_whole(tmp_path: Path) -> None:
+    doc = blocks_and_polylines(tmp_path)
+    door, wall = doc.get_entities()
+    assert (door.kind, door.is_transformable, door.is_editable) == ("INSERT", True, False)
+    assert (wall.kind, wall.is_transformable, wall.is_editable) == ("LWPOLYLINE", True, False)
+    assert wall.geometry is None, "its vertices are not editable yet"
+
+    moved = doc.move_entities([door.id, wall.id], (1, 2))
+    assert moved.modified == (door.id, wall.id)
+    bounds = doc.get_entity(wall.id).bounds
+    assert bounds is not None and (bounds.min, bounds.max) == ((1.0, 2.0), (5.0, 4.0))
+
+    copies, changes = doc.copy_entities([wall.id, wall.id], (0, -10))
+    assert len(copies) == 1 and changes.created == tuple(copies)
+    copied = doc.get_entity(copies[0]).bounds
+    assert copied is not None and (copied.min, copied.max) == ((1.0, -8.0), (5.0, -6.0))
+    assert doc.undo_name == "COPY"
+    doc.undo()
+    assert [e.id for e in doc.get_entities()] == [door.id, wall.id]
+
+
+def test_copying_what_cannot_be_copied_changes_nothing(doc: CadDocument) -> None:
+    line, _ = doc.add_line((0, 0), (1, 0))
+    with pytest.raises(EntityNotFoundError):
+        doc.copy_entities([line, 999_999], (1, 0))
+    assert len(doc.get_entities()) == 1 and doc.undo_name == "LINE"
+    copies, _ = doc.copy_entities(np.array([line]), (0, 1))
+    assert line_of(doc, copies[0]) == CadLine((0, 1), (1, 1))
 
 
 def test_locked_layers_protect_their_entities(doc: CadDocument) -> None:

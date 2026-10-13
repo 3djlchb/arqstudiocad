@@ -1,13 +1,17 @@
 //! Entity access on [`Document`].
 
-use arq_geometry::Bounds2;
+use acadrust::{EntityType, Handle};
+use arq_geometry::{Bounds2, Transform2};
 
 use crate::document::Document;
 use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
-use crate::translate::{bounds_of, color_to_codec, handle, new_entity, read_entity, write_plan};
+use crate::translate::{
+    bounds_of, color_to_codec, handle, is_whole_transformable, new_entity, read_entity,
+    transform_whole, write_plan,
+};
 
 impl Document {
     /// A snapshot of the entity with this id, in any space.
@@ -57,6 +61,70 @@ impl Document {
         write_plan(e, plan)
     }
 
+    /// Moves, rotates, scales or mirrors an entity that
+    /// [`Entity::is_transformable`]: editable ones through their plan
+    /// geometry, blocks and polylines as a whole (ADR 0016, D1). Anything
+    /// else is [`DocumentError::NotEditable`].
+    pub fn transform_entity(&mut self, id: EntityId, t: Transform2) -> DocumentResult<()> {
+        let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        if let Some(plan) = e.plan() {
+            let moved = plan.with_geometry(t.apply(plan.geometry())?);
+            return self.set_plan_geometry(id, moved);
+        }
+        let raw = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        if !is_whole_transformable(raw) {
+            let kind = raw.as_entity().entity_type();
+            return Err(DocumentError::NotEditable { id, kind });
+        }
+        transform_whole(raw, t);
+        Ok(())
+    }
+
+    /// Adds a copy of a transformable entity to model space, with the same
+    /// layer, color and other properties, where the original is; returns
+    /// its id. A block's attributes get handles of their own; links the
+    /// copy cannot share (reactors, an extension dictionary, cached proxy
+    /// graphics) are left out, as copying drops them in AutoCAD too.
+    pub fn copy_entity(&mut self, id: EntityId) -> DocumentResult<EntityId> {
+        let original = self
+            .cad()
+            .get_entity(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        if !read_entity(original).is_transformable() {
+            let kind = original.as_entity().entity_type();
+            return Err(DocumentError::NotEditable { id, kind });
+        }
+        let mut copy = original.clone();
+        let common = copy.common_mut();
+        common.handle = Handle::NULL;
+        common.owner_handle = Handle::NULL;
+        common.raw_record = None;
+        common.reactors.clear();
+        common.xdictionary_handle = None;
+        common.graphic_data = None;
+        if let EntityType::Insert(insert) = &mut copy {
+            for attribute in &mut insert.attributes {
+                let h = self.cad_mut().allocate_handle();
+                let common = &mut attribute.common;
+                common.handle = h;
+                common.raw_record = None;
+                common.reactors.clear();
+                common.xdictionary_handle = None;
+            }
+            insert.seqend_handle = None;
+        }
+        let h = self.cad_mut().add_entity(copy)?;
+        if let Some(EntityType::Insert(insert)) = self.cad_mut().get_entity_mut(h) {
+            for attribute in &mut insert.attributes {
+                attribute.common.owner_handle = h;
+            }
+        }
+        Ok(h.value())
+    }
+
     /// Deletes an entity of any type (erasing needs no geometry, D3.4).
     ///
     /// Uses the codec's shared-image removal, which keeps block membership so
@@ -81,7 +149,7 @@ impl Document {
             .ok_or(DocumentError::EntityNotFound(id))?;
         let common = e.common_mut();
         common.layer = name;
-        common.layer_handle = Some(opencadcodec::Handle::new(layer));
+        common.layer_handle = Some(acadrust::Handle::new(layer));
         Ok(())
     }
 
@@ -105,10 +173,9 @@ impl Document {
     /// Inserts a TEXT entity on layer "0", as a drawing from another CAD
     /// would contain; TEXT is read-only in this version.
     pub fn insert_text_for_tests(&mut self, value: &str, x: f64, y: f64) -> EntityId {
-        let text =
-            opencadcodec::Text::with_value(value, opencadcodec::types::Vector3::new(x, y, 0.0));
+        let text = acadrust::Text::with_value(value, acadrust::types::Vector3::new(x, y, 0.0));
         self.cad_mut()
-            .add_entity(opencadcodec::EntityType::Text(text))
+            .add_entity(acadrust::EntityType::Text(text))
             .expect("adding a text")
             .value()
     }
@@ -117,7 +184,7 @@ impl Document {
     /// (`"AC1015"`…); `false` for an unknown code. Choosing the version is
     /// not a user feature yet; the round-trip corpus needs it.
     pub fn set_version_for_tests(&mut self, code: &str) -> bool {
-        match opencadcodec::types::DxfVersion::parse(code) {
+        match acadrust::types::DxfVersion::parse(code) {
             Some(version) => {
                 self.cad_mut().version = version;
                 true
@@ -128,12 +195,16 @@ impl Document {
 }
 
 #[cfg(test)]
+#[path = "whole_tests.rs"]
+mod whole_tests;
+
+#[cfg(test)]
 mod tests {
     use std::f64::consts::{FRAC_PI_2, PI};
 
+    use acadrust::types::Vector3;
+    use acadrust::{EntityType, Handle};
     use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Tolerance, Transform2, Vector2};
-    use opencadcodec::types::Vector3;
-    use opencadcodec::{EntityType, Handle};
 
     use super::*;
     use crate::entity::Color;
@@ -158,7 +229,7 @@ mod tests {
     }
 
     fn codec_arc(center: (f64, f64, f64), r: f64, s: f64, e: f64, normal_z: f64) -> EntityType {
-        let mut a = opencadcodec::Arc::new();
+        let mut a = acadrust::Arc::new();
         a.center = Vector3::new(center.0, center.1, center.2);
         a.radius = r;
         a.start_angle = s;
@@ -301,10 +372,10 @@ mod tests {
     #[test]
     fn edits_keep_color_thickness_and_layer() {
         let mut doc = Document::new();
-        let mut c = opencadcodec::Circle::new();
+        let mut c = acadrust::Circle::new();
         c.radius = 2.0;
         c.thickness = 3.5;
-        c.common.color = opencadcodec::Color::Index(1);
+        c.common.color = acadrust::Color::Index(1);
         let id = add_raw(&mut doc, EntityType::Circle(c));
         let bigger = Circle::new(p(1.0, 1.0), 4.0).unwrap();
         doc.set_plan_geometry(id, plan(bigger, 0.0)).unwrap();
@@ -320,19 +391,17 @@ mod tests {
     #[test]
     fn tilted_sloped_and_unsupported_entities_are_read_only() {
         let mut doc = Document::new();
-        let mut tilted = opencadcodec::Circle::new();
+        let mut tilted = acadrust::Circle::new();
         tilted.radius = 1.0;
         tilted.normal = Vector3::new(1.0, 0.0, 0.0);
         let tilted = add_raw(&mut doc, EntityType::Circle(tilted));
         let sloped = add_raw(
             &mut doc,
-            EntityType::Line(opencadcodec::Line::from_coords(
-                0.0, 0.0, 0.0, 5.0, 0.0, 2.0,
-            )),
+            EntityType::Line(acadrust::Line::from_coords(0.0, 0.0, 0.0, 5.0, 0.0, 2.0)),
         );
         let text = add_raw(
             &mut doc,
-            EntityType::Text(opencadcodec::Text::with_value(
+            EntityType::Text(acadrust::Text::with_value(
                 "PLANTA",
                 Vector3::new(1.0, 2.0, 0.0),
             )),
@@ -403,8 +472,8 @@ mod tests {
                 let mut doc = Document::new();
                 let nz = if mirrored { -1.0 } else { 1.0 };
                 let raw = match g {
-                    Geometry2::Line(_) => EntityType::Line(opencadcodec::Line::from_coords(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
-                    Geometry2::Circle(_) => { let mut c = opencadcodec::Circle::new(); c.radius = 1.0; c.normal = Vector3::new(0.0, 0.0, nz); EntityType::Circle(c) }
+                    Geometry2::Line(_) => EntityType::Line(acadrust::Line::from_coords(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
+                    Geometry2::Circle(_) => { let mut c = acadrust::Circle::new(); c.radius = 1.0; c.normal = Vector3::new(0.0, 0.0, nz); EntityType::Circle(c) }
                     Geometry2::Arc(_) => codec_arc((0.0, 0.0, 0.0), 1.0, 0.0, 1.0, nz),
                 };
                 let id = add_raw(&mut doc, raw);
