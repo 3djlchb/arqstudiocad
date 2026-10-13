@@ -107,8 +107,12 @@ def test_prompts_and_esc(qtbot: QtBot, window: MainWindow) -> None:
     assert history(cw)[-1] == "Zoom [Extents(E)/In(I)/Out(O)] <E>:"
 
 
-def test_space_is_a_character_while_typing_text(qtbot: QtBot) -> None:
-    # Without an interface, SAVEAS asks for the file name on the line.
+def test_space_is_a_character_while_typing_text(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without an interface, SAVEAS asks for the file name on the line. Work
+    # in a temporary folder: if Space ever sent the line, "my" would be saved.
+    monkeypatch.chdir(tmp_path)
     bus = EventBus()
     bridge = QtEventBridge(bus)
     session = Session(bus)
