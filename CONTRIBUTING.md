@@ -69,6 +69,8 @@ these are the ones a first contribution usually meets:
 
 ## Branches, commits and pull requests
 
+- One branch per feature or fix, named `feature/<topic>` or `fix/<topic>`
+  (`feature/native-format`, `fix/document-roundtrip`).
 - One topic per pull request; small is easier to review and to revert.
 - Commit messages: an imperative summary line in English (`Add LINE command`),
   then a body that explains *why* when it is not obvious.

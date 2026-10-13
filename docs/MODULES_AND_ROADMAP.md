@@ -1,0 +1,153 @@
+# ArqStudioCAD — Modules and roadmap
+
+The order of work of the [master plan](MASTER_PLAN.md) (version 2.0,
+2026-10-13), and where the project stands. Phases are a sequence, not
+dates: a phase ends when its exit criterion is met and tested, not when its
+code exists. Phases may overlap once their contracts are stable.
+
+Legend: ✅ done · ◐ in progress · ○ to do.
+
+## Where we are (2026-10-13)
+
+- **Technical MVP: 7 of 8** (master plan §15). Missing: save and recover the
+  native document (milestone 02.6).
+- **Next, in this order:** 02.6 native format (closes the MVP) → 03.3 the
+  four data protections → 03.2 opencadcodec's constraint reading → back to
+  02.5 editing (step 2.5.2).
+- Before the master plan the phases were numbered 0–10 (ADR 0014) and
+  milestones 2.1–2.8; the table at the end maps old names to new ones.
+
+## Phase 00 — Specification and contracts ✅
+
+Technical contract, ADRs, licenses, conventions, acceptance criteria;
+charter, master plan and governing documents (2026-10-13).
+Exit: decisions documented and a compilable skeleton.
+
+## Phase 01 — Technological foundation ✅
+
+Cargo workspace, uv, PyO3 + maturin, PySide6 window with i18n, local checks,
+CI on every pull request and push to `main`, packages for every target
+(ADR 0001–0006, 0009). PRs #1–#4.
+Exit: a minimal reproducible application on Windows showing a result
+computed in Rust.
+
+## Phase 02 — CAD core ◐
+
+Exit: create, edit, save and recover a basic drawing.
+
+| Milestone | Content | Status |
+|---|---|---|
+| 02.1 Geometry | `arq-geometry`: points, vectors, lines, circles, arcs, transformations, intersections, snaps (ADR 0010) | ✅ PR #5 |
+| 02.2 Document | `arq-document`: entities, layers, ids, change recording; `arq-core`: transactions, groups, undo/redo, queries, document store; round-trip corpus (ADR 0011) | ✅ PR #6 |
+| 02.3 Python API | `arq-python`: the whole core from Python, typed (ADR 0012) | ✅ PR #7 |
+| 02.4 Application shell | Drawing primitives, CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels, Ribbon and Classic workspaces, themes (ADR 0013, 0015) | ✅ PR #8 |
+| 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ◐ step 2.5.1 done |
+| 02.6 Native format | Own versioned document format; save and recover the native document; the own model takes over from the DWG database step by step (ADR 0018) | ○ **next** |
+| 02.7 Spatial index and GPU viewport | Spatial index (ADR 0011 D3.8); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ○ |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; 3D primitives and the 3D document model (an ADR first) | ○ |
+
+## Phase 03 — DWG/DXF ◐
+
+Exit: a documented compatibility matrix and no known silent losses in the
+cases covered. Module M02. Decision: [ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md);
+detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
+
+| Milestone | Content | Status |
+|---|---|---|
+| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ |
+| 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; offered upstream | ○ |
+| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ○ |
+| 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ first matrix from the comparison |
+| 03.5 External validation | Outputs opened in independent CAD applications; Xref and BIM drawings in the corpus | ○ |
+| 03.6 Fidelity across versions | DWG as the default save format once the corpus allows it (contract §10); linetypes, lineweights, layouts | ○ |
+
+## Phase 04 — Associative technical documentation ○
+
+Dimensions, texts and fonts, annotations, hatches, views, scales, sheets,
+title blocks, plotting to PDF; projections, sections and elevations as
+**associative views** that know their source and regenerate keeping manual
+annotations (ADR 0014); the **project container** (models, drawings, views,
+sheets, resources; an ADR first). Module M09.
+
+## Phase 05 — BIM and IFC ○
+
+IfcOpenShell through a decoupled integration: semantic elements, properties,
+spatial relations, IFC import/export, exchange validation; GlobalId,
+properties and relations kept through every operation; never a collection of
+anonymous meshes. Model ownership decided by ADR first (ADR 0014, open
+question 1). The BIM workspace takes ArchiCAD's interface as its reference
+(ADR 0015). Module M03.
+
+## Phase 06 — Topography and surfaces ○
+
+Survey points, triangulation (TIN), contour lines, profiles, sections,
+slopes, cut and fill volumes; QGIS bridge for maps. Module M04.
+
+## Phase 07 — Architecture, structures and MEP ○
+
+Specialized modeling, links between disciplines, loads, analysis through
+appropriate engines (structural FEM verified against reference cases);
+results independently verifiable. Modules M05 and M06; environmental
+studies (M07) and transport and infrastructure (M08) follow the same pattern
+as independent modules on public APIs.
+
+## Phase 08 — Rendering and animation ○
+
+Blender + Cycles headless, model transfer, PBR materials, lighting, cameras,
+image sequences, FFmpeg for video, a render queue with progress and
+cancellation. Transversal capability.
+
+## Phase 09 — Coordination and walkthroughs ○
+
+Clash detection, revision comparison, multidisciplinary review,
+traceability; interactive real-time navigation on the GPU renderer. Module
+M10.
+
+## Phase 10 — Extensions and advanced optimization ○
+
+Plugin API, automation, performance profiles, large models and terrains,
+additional libraries, LuxCoreRender evaluated against Cycles on shared
+scenes. Module M11.
+
+## Phase 11 — Cross-platform distribution ○
+
+Installers, bundled dependencies, signing and notarization where they apply,
+updates, installation docs, tests on Windows (x86-64, ARM64), Linux (x86-64,
+ARM64; native packages, AppImage, Flatpak) and macOS (Apple Silicon, Intel);
+public releases only when the release criteria of the master plan (§14) are
+met.
+
+## Modules and phases
+
+| Module | Main phase |
+|---|---|
+| M01 CAD 2D/3D | 02 |
+| M02 DWG/DXF interoperability | 03 |
+| M03 BIM/IFC | 05 |
+| M04 Topography and civil works | 06 |
+| M05 Architecture and structures | 07 |
+| M06 Building services (MEP) | 07 |
+| M07 Environmental studies | 07 (pattern) |
+| M08 Transport and infrastructure | 07 (pattern) |
+| M09 Associative technical documentation | 04 |
+| M10 Coordination | 09 |
+| M11 Automation and extensions | 10 (the Python API exists since 02.3) |
+
+## Old names (ADR 0014 roadmap)
+
+| Before 2026-10-13 | Now |
+|---|---|
+| Phases 0, 1 | 00, 01 |
+| Milestones 2.1–2.5 | 02.1–02.5 |
+| 2.6 Spatial index and GPU viewport | 02.7 |
+| 2.7 Wider CAD entities | 02.8 |
+| 2.8 Projects | Phase 04 (project container) |
+| Phase 3 CAD exchange and 2D documentation | 03 (exchange) and 04 (documentation) |
+| Phases 4–8 | 05–09 |
+| Phase 9 LuxCoreRender, 10 Optimization and distribution | 10, 11 |
+
+## Branches
+
+One branch per feature or fix: `feature/<topic>`, `fix/<topic>` (master
+plan §13), a pull request to `main` each. Branches started before
+2026-10-13 keep their names (`fase-2.5/edicion`).

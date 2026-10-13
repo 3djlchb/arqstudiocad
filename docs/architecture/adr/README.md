@@ -6,7 +6,7 @@ that changes gets a new ADR that supersedes the old one.
 | # | Decision | Status |
 |---|---|---|
 | [0001](0001-technology-stack.md) | Rust core + Python application + PySide6 UI, bound with PyO3/maturin | Accepted |
-| [0002](0002-dwg-native-format.md) | DWG as native format, DXF as alternative | Accepted, amended by 0008 |
+| [0002](0002-dwg-native-format.md) | DWG as native format, DXF as alternative | Superseded by 0018 (DWG/DXF are exchange formats) |
 | [0003](0003-target-platforms.md) | Target platforms and macOS universal2 | Accepted |
 | [0004](0004-naming-and-licensing.md) | Names, Python 3.12+, GPL-3.0-or-later | Accepted |
 | [0005](0005-development-conventions.md) | Toolchain pinning, quality tools, git workflow | Accepted, CI trigger amended by 0014 |
@@ -22,6 +22,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0015](0015-workspaces.md) | Workspaces: a discipline (declared as data in Python) shown in a layout (Ribbon for all, foldable and the default; Classic only for 2D drafting); chosen separately, layout state saved per workspace | Accepted |
 | [0016](0016-editing-workflow.md) | Editing workflow: AutoCAD selection (window/crossing), picking and snaps in Rust, running object snaps + ORTHO, AutoCAD point syntax, multifunction grips, first draw/edit commands, blocks and polylines transformed as a whole, property editors, Spanish command names | Accepted |
 | [0017](0017-dwg-dxf-engine-strategy.md) | DWG/DXF engine: AcadRust (crates.io) as the base, opencadcodec improvements recovered one by one with regression drawings, LibreDWG out of the product, codec behind our read/write/capabilities/round-trip contract, four mandatory data protections | Accepted, interoperability validation pending |
+| [0018](0018-native-format.md) | Native format: own `.arqcad` file, a versioned ZIP with a manifest, the own model in JSON (authoritative for the kinds it owns, growing in stages) and the preserved DWG for the rest; versions, identity, safe save | Accepted |
 
 Template:
 
