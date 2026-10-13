@@ -74,7 +74,7 @@ mod queries;
 pub use app::{CadApplication, DocumentId};
 pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
-    Color, Document, Entity, EntityId, FileFormat, Layer, LayerId, PlanGeometry,
+    Color, Document, DrawItem, Entity, EntityId, FileFormat, Layer, LayerId, PlanGeometry, Shape,
 };
 pub use error::{CadError, CadResult};
 pub use history::{CadDocument, Snapshot};

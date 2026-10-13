@@ -37,7 +37,7 @@ fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
 }
 
 /// Editable plan geometry of LINE, CIRCLE and ARC drawn in plan.
-fn plan_of(e: &EntityType) -> Option<PlanGeometry> {
+pub(crate) fn plan_of(e: &EntityType) -> Option<PlanGeometry> {
     match e {
         EntityType::Line(l) => {
             let z = l.start.z;
@@ -69,7 +69,7 @@ fn point(x: f64, y: f64) -> Option<Point2> {
 }
 
 /// Plan extent from the codec, for entities we cannot edit yet.
-fn codec_bounds(e: &EntityType) -> Option<Bounds2> {
+pub(crate) fn codec_bounds(e: &EntityType) -> Option<Bounds2> {
     let b = e.as_entity().bounding_box();
     let min = Point2::new(b.min.x, b.min.y).ok()?;
     let max = Point2::new(b.max.x, b.max.y).ok()?;

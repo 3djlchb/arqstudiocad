@@ -88,3 +88,16 @@ compatible with GPL-3.0-or-later. `deny.toml` must allow the git source.
 Single maintainer; no tags; public mutable fields; large compile time
 (~212k lines); recorder tied to the document address. Mitigations: pinned
 commit, round-trip corpus, the `arq-document` boundary, `Box`ed document.
+
+## Known issues found while using it
+
+- **`EntityType::explode` gives LINEs in OCS coordinates** (rev 8189f83).
+  Exploding an LWPOLYLINE, a 2D POLYLINE, a HATCH or a SOLID copies the
+  vertices' OCS coordinates into LINE entities, whose coordinates are world
+  ones by definition. With a normal of (0,0,1) nothing shows; with (0,0,-1) —
+  what MIRROR often leaves — the lines land mirrored. `arq-document`'s drawing
+  primitives map those LINEs through the parent's OCS
+  (`a_mirrored_polyline_is_drawn_where_it_is`). Worth reporting upstream.
+- **Dimensions:** `explode` approximates them; the anonymous block AutoCAD
+  stored (`DimensionBase::block_name`) is what was drawn, so we draw that when
+  it exists.

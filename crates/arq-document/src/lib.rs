@@ -20,6 +20,7 @@
 
 mod change;
 mod document;
+mod drawing;
 mod entities;
 mod entity;
 mod error;
@@ -30,6 +31,7 @@ mod translate;
 
 pub use change::{Change, ChangeSet};
 pub use document::Document;
+pub use drawing::{DrawItem, Shape};
 pub use entity::{Color, Entity, EntityId, PlanGeometry};
 pub use error::{DocumentError, DocumentResult};
 pub use format::FileFormat;
