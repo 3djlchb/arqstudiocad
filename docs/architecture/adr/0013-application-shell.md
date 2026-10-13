@@ -141,7 +141,9 @@ Scaling up, decided at run time:
 - **Displays:** high-DPI scaling and both X11 and Wayland on Linux.
 
 Each scaled-up path is tested against the floor path on the same input, so
-a faster machine never draws something different.
+a faster machine never draws something different. `tools/check_cpu_floor.sh`
+runs every test suite on an emulated Sandy Bridge CPU (QEMU user mode), after
+proving that the emulation refuses AVX2; it is run before each release.
 
 ## Consequences
 
