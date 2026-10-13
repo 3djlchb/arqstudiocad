@@ -217,10 +217,13 @@ def test_panels_follow_the_language(window: MainWindow) -> None:
 
 
 def test_properties_describe_the_drawing(window: MainWindow, tmp_path: Path) -> None:
-    assert window.properties_panel.rows() == [("", "No drawing open.")]
+    grid = window.properties_panel.grid
+    assert grid.caption.text() == "No drawing open." and window.properties_panel.rows() == []
     window.runner.execute("NEW")
     document = window.session.active
     assert document is not None
+    assert grid.caption.text() == "Drawing"
+    assert [title for title, _rows in grid.sections()] == ["General", "Contents", "Geometry"]
     rows = dict(window.properties_panel.rows())
     assert rows["Name"] == document.name
     assert rows["File"] == "(not saved)"
@@ -234,6 +237,21 @@ def test_properties_describe_the_drawing(window: MainWindow, tmp_path: Path) -> 
     assert rows["Entities"] == "1" and rows["Layers"] == "2"
     assert rows["Extents"] == "30.0000 x 40.0000"
     assert rows["Unsaved changes"] == "Yes"
+
+
+def test_property_sections_fold_and_stay_folded(window: MainWindow) -> None:
+    window.runner.execute("NEW")
+    grid = window.properties_panel.grid
+    contents = grid.tree.topLevelItem(1)
+    assert contents is not None and contents.isExpanded()
+    assert contents.text(0) == "▾ Contents"
+    grid.tree.itemClicked.emit(contents, 0)
+    assert not contents.isExpanded() and contents.text(0) == "▸ Contents"
+    window.runner.execute("NEW")  # refreshed for another drawing
+    again = grid.tree.topLevelItem(1)
+    assert again is not None and not again.isExpanded()
+    grid.tree.itemClicked.emit(again, 0)
+    assert again.isExpanded() and grid.folded == set()
 
 
 def test_version_text() -> None:

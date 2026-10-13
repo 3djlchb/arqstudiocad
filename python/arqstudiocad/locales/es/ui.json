@@ -106,6 +106,12 @@
   "&Reset layout": "&Restablecer disposición",
   "Auto-hide": "Ocultar automáticamente",
   "Keep open": "Mantener abierto",
-  "Float": "Flotante",
-  "Close": "Cerrar"
+  "Close": "Cerrar",
+  "T&heme": "&Tema",
+  "Dark": "Oscuro",
+  "Light": "Claro",
+  "General": "General",
+  "Contents": "Contenido",
+  "Geometry": "Geometría",
+  "Drawing": "Dibujo"
 }

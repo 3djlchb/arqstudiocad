@@ -53,13 +53,17 @@ class WorkspaceSwitcher:
         actions: Mapping[str, QAction],
         registry: WorkspaceRegistry,
         settings: QSettings | None = None,
+        above: QToolBar | None = None,
     ) -> None:
+        """``above``: a top toolbar the workspace's toolbars and ribbon stay
+        above (the drawings' tab strip), each new one on the row before it."""
         if len(registry) == 0:
             raise ValueError("no discipline to show")
         self._window = window
         self._actions = actions
         self._registry = registry
         self._settings = settings
+        self._above = above
         self._built: dict[str, DisciplineWidgets] = {}
         #: The panels as the window placed them, before any workspace.
         self._default_state = window.saveState()
@@ -157,7 +161,7 @@ class WorkspaceSwitcher:
         if self.discipline is not None:
             built = self._widgets(self.discipline)
             for toolbar in built.toolbars:
-                self._window.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+                self._place(toolbar)
                 toolbar.setVisible(self.layout == "classic")
             if built.ribbon_bar is not None:
                 built.ribbon_bar.setVisible(self.layout == "ribbon")
@@ -205,7 +209,7 @@ class WorkspaceSwitcher:
                 else:
                     toolbar.addAction(self._actions[name])
             toolbar.hide()
-            self._window.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+            self._place(toolbar)
             built.toolbars.append(toolbar)
         if discipline.ribbon:
             built.ribbon = Ribbon(discipline, self._actions)
@@ -216,11 +220,20 @@ class WorkspaceSwitcher:
             bar.toggleViewAction().setVisible(False)
             bar.addWidget(built.ribbon)
             bar.hide()
-            self._window.addToolBar(Qt.ToolBarArea.TopToolBarArea, bar)
+            self._place(bar)
             built.ribbon_bar = bar
         self._built[discipline.name] = built
         self.retranslate()
         return built
+
+    def _place(self, toolbar: QToolBar) -> None:
+        """Docks ``toolbar`` at the top, on the row just above ``above``."""
+        if self._above is None:
+            self._window.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+            return
+        self._window.removeToolBarBreak(self._above)
+        self._window.insertToolBar(self._above, toolbar)
+        self._window.insertToolBarBreak(self._above)
 
     def _update_button(self) -> None:
         if self.discipline is not None and self.layout is not None:

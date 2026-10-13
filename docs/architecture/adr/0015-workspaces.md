@@ -57,9 +57,34 @@ override this data, not a second mechanism.
   take the full height, the command window between them. Classic toolbars
   dock on any side or float too. View › Workspace › Reset layout puts
   everything back where it started.
+- Every panel's title has a **pin**, as AutoCAD's palettes. Pinned (the
+  default) it stays open; unpinned it collapses to a tab with its name on
+  the side it was docked, and resting the mouse on the tab slides it out
+  over the drawing until the mouse leaves or the drawing is clicked.
+- The drawings' **tabs run the full width** of the window, under the ribbon
+  or the toolbars, and the panels start below them, as AutoCAD's file tabs.
 - Panels and the command window are shared. Their arrangement (dock and
   toolbar state) is saved **per workspace** and restored when the user
   comes back to it. The current discipline and layout are remembered.
+
+### Look
+
+The maintainer chose the references (2026-10-13):
+
+- **Panels after OpenCADStudio's**: a title with only the pin and close
+  (double-clicking it floats the panel), and Properties as a property grid —
+  a caption naming what is shown, then foldable sections of name and value
+  rows. Milestone 2.4 shows the drawing, read-only; editors per value come
+  with selection in 2.5.
+- **Dark theme by default**, light on choice (Tools › Theme, remembered),
+  both on Qt's Fusion style so they look alike on every platform. The
+  drawing area stays dark in both.
+- **Secondary windows** (Preferences, Options…), when they come: a list of
+  sections down the left on a dark band, the chosen section's page on the
+  right, the main action at the bottom; the selection and focus in **light
+  blue**.
+- The **BIM** workspace takes **ArchiCAD's** interface as its reference
+  (roadmap, phase 4).
 
 ## Consequences
 

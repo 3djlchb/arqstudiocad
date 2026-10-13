@@ -25,6 +25,6 @@ copied.
 | Project | License | What we take from it |
 |---|---|---|
 | [IngeCAD](https://github.com/ingelibre/ingecad) | GPL-3.0-or-later | i18n model: English command line, language packs, prompt-key convention ([ADR 0006](docs/architecture/adr/0006-i18n.md)); packaging approach (PyInstaller onedir, AppImage, Flatpak); command-line conventions ([analysis](docs/references/ingecad.md)) |
-| [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio) | GPL-3.0 | Undo as per-handle deltas, spatial indexing, GPU fallback ([analysis](docs/references/opencadstudio.md)) |
+| [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio) | GPL-3.0 | Undo as per-handle deltas, spatial indexing, GPU fallback ([analysis](docs/references/opencadstudio.md)); look of the panels: title with pin and close, property grid with foldable sections ([ADR 0015](docs/architecture/adr/0015-workspaces.md)); ribbon workspace |
 | [opencadkernel](https://github.com/HakanSeven12/opencadkernel) | MPL-2.0 | Local-frame precision invariant, provenance for round-trips |
 | [opencadcodec](https://github.com/HakanSeven12/opencadcodec) | MPL-2.0 | DWG/DXF engine — **dependency** of `arq-document`, pinned at commit `8189f83`; its sample drawings are downloaded for the test corpus, never committed (`tools/fetch_codec_samples.py`) ([ADR 0008](docs/architecture/adr/0008-opencadcodec.md), [ADR 0011](docs/architecture/adr/0011-document-model-and-transactions.md)) |

@@ -8,13 +8,14 @@ from html import escape
 from PySide6.QtCore import QSettings, Qt, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QLabel,
     QMainWindow,
     QMessageBox,
     QProgressBar,
     QStackedWidget,
-    QTabWidget,
+    QToolBar,
 )
 
 from arqstudiocad import _core
@@ -39,12 +40,14 @@ from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
 from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.command_window import CommandWindow
+from arqstudiocad.ui.document_tabs import DocumentTabs
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.history_panel import HistoryPanel
 from arqstudiocad.ui.layers_panel import LayersPanel
 from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
+from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
 from arqstudiocad.ui.viewport import Viewport
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
 from arqstudiocad.workspaces import WorkspaceRegistry, builtin_workspaces
@@ -124,15 +127,23 @@ class MainWindow(QMainWindow):
 
         self._welcome = QLabel()
         self._welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
-        self.tabs.setTabsClosable(True)
-        self.tabs.setMovable(True)
+        self.tabs = DocumentTabs()
         self.tabs.currentChanged.connect(self._on_tab_chosen)
         self.tabs.tabCloseRequested.connect(self._on_tab_close_requested)
         self._stack = QStackedWidget()
         self._stack.addWidget(self._welcome)
         self._stack.addWidget(self.tabs)
+        # The drawings' tabs across the whole window, above the panels, as
+        # AutoCAD's file tabs: a strip of their own, under the ribbon or the
+        # toolbars, which the workspaces insert above it.
+        self.tabs_strip = QToolBar(self)
+        self.tabs_strip.setObjectName("document_tabs")
+        self.tabs_strip.setMovable(False)
+        self.tabs_strip.setFloatable(False)
+        self.tabs_strip.toggleViewAction().setVisible(False)
+        self.tabs_strip.addWidget(self.tabs.bar)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.tabs_strip)
+        self.tabs_strip.hide()
         self.setCentralWidget(self._stack)
         self._coordinates = QLabel()
         self._busy = QProgressBar()
@@ -181,12 +192,27 @@ class MainWindow(QMainWindow):
             action.triggered.connect(partial(self.change_language, pack.code))
             self._language_group.addAction(action)
             self._language_actions[pack.code] = action
+        #: The theme in use: the application applies it on start (ADR 0015).
+        self.theme: Theme = THEMES[0]
+        if settings is not None:
+            self.theme = as_theme(settings.value(THEME_SETTING)) or THEMES[0]
+        self._theme_menu = self._tools_menu.addMenu("")
+        self._theme_group = QActionGroup(self)
+        self.theme_actions: dict[Theme, QAction] = {}
+        for theme in THEMES:
+            action = self._theme_menu.addAction("")
+            action.setCheckable(True)
+            action.triggered.connect(partial(self.change_theme, theme))
+            self._theme_group.addAction(action)
+            self.theme_actions[theme] = action
+        self.theme_actions[self.theme].setChecked(True)
 
         self.workspaces = WorkspaceSwitcher(
             self,
             self.command_actions.by_command,
             workspaces if workspaces is not None else builtin_workspaces(),
             settings,
+            above=self.tabs_strip,
         )
         self._view_menu.addSeparator()
         self._view_menu.addMenu(self.workspaces.menu)
@@ -199,6 +225,7 @@ class MainWindow(QMainWindow):
         self.resize(1024, 700)
         self.retranslate()
         self.workspaces.after_restore.append(self.auto_hide.keep_hidden)
+        self.workspaces.after_restore.append(self._show_tabs_strip)
         self.workspaces.before_reset.append(self.auto_hide.pin_all)
         self.workspaces.show_remembered()
         self.auto_hide.restore()
@@ -219,6 +246,9 @@ class MainWindow(QMainWindow):
         self.auto_hide.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
         self._language_menu.setTitle(tr("&Language"))
+        self._theme_menu.setTitle(tr("T&heme"))
+        for theme, theme_action in self.theme_actions.items():
+            theme_action.setText(theme_title(theme))
         self._help_menu.setTitle(tr("&Help"))
         self._about_action.setText(tr("&About {app}"))
         self._welcome.setText(
@@ -233,6 +263,19 @@ class MainWindow(QMainWindow):
         action = self._language_actions.get(current_language())
         if action is not None:
             action.setChecked(True)
+
+    def change_theme(self, theme: Theme) -> None:
+        """Switch between the dark and the light theme, and remember it."""
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            apply_theme(app, theme)
+        # Colors drawn by hand follow the theme: the pins and the grid's sections.
+        self.auto_hide.restyle()
+        self.properties_panel.grid.restyle()
+        self.theme = theme
+        self.theme_actions[theme].setChecked(True)
+        if self._settings is not None:
+            self._settings.setValue(THEME_SETTING, theme)
 
     def change_language(self, code: str) -> None:
         """Switch the interface language, remember it, and tell everyone."""
@@ -275,6 +318,7 @@ class MainWindow(QMainWindow):
         viewport.cursor_moved.connect(self._show_coordinates)
         self.viewports[event.document_id] = viewport
         self.tabs.addTab(viewport, document.name)
+        self._show_tabs_strip()
         self._update_tab_titles()
 
     def _on_active_document_changed(self, event: ActiveDocumentChanged) -> None:
@@ -290,7 +334,12 @@ class MainWindow(QMainWindow):
         viewport = self.viewports.pop(event.document_id, None)
         if viewport is not None:
             self.tabs.removeTab(self.tabs.indexOf(viewport))
+            self._show_tabs_strip()
             viewport.deleteLater()
+
+    def _show_tabs_strip(self) -> None:
+        """The tab strip shows while a drawing is open."""
+        self.tabs_strip.setVisible(self.tabs.count() > 0)
 
     def _on_tab_chosen(self, index: int) -> None:
         viewport = self.tabs.widget(index)

@@ -43,6 +43,7 @@ def run(language: str | None = None) -> int:
     from arqstudiocad import _core
     from arqstudiocad.i18n import set_language
     from arqstudiocad.ui.main_window import LANGUAGE_SETTING, MainWindow
+    from arqstudiocad.ui.theme import THEME_SETTING, THEMES, apply_theme, as_theme
 
     app = QApplication(sys.argv[:1])
     app.setApplicationName(APP_NAME)
@@ -55,6 +56,7 @@ def run(language: str | None = None) -> int:
         choose_language(language, settings.value(LANGUAGE_SETTING), QLocale.system().name())
     )
 
+    apply_theme(app, as_theme(settings.value(THEME_SETTING)) or THEMES[0])
     window = MainWindow(settings)
     window.show()
     return app.exec()

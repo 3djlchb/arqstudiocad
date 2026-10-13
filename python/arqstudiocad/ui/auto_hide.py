@@ -74,27 +74,24 @@ def is_vertical(side: Side) -> bool:
 
 
 class PanelTitleBar(QWidget):
-    """A panel's title: its name, the pin, float and close. Dragging and
-    double-clicking still move and float the panel (QDockWidget handles the
-    mouse events the bar leaves alone)."""
+    """A panel's title, as OpenCADStudio's: its name, the pin and close.
+    Dragging and double-clicking still move and float the panel (QDockWidget
+    handles the mouse events the bar leaves alone)."""
 
     def __init__(self, dock: QDockWidget, pinned: bool = True) -> None:
         super().__init__(dock)
         self.title = QLabel(dock.windowTitle())
         self.pin = QToolButton()
         self.pin.setAutoRaise(True)
-        self.float_button = QToolButton()
-        self.float_button.setAutoRaise(True)
         self.close_button = QToolButton()
         self.close_button.setAutoRaise(True)
         style = self.style()
-        self.float_button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_TitleBarNormalButton))
         self.close_button.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_TitleBarCloseButton))
         row = QHBoxLayout(self)
         row.setContentsMargins(4, 1, 1, 1)
         row.setSpacing(0)
         row.addWidget(self.title, 1)
-        for button in (self.pin, self.float_button, self.close_button):
+        for button in (self.pin, self.close_button):
             button.setIconSize(QSize(12, 12))
             row.addWidget(button)
         dock.windowTitleChanged.connect(self.title.setText)
@@ -103,12 +100,12 @@ class PanelTitleBar(QWidget):
 
     def set_pinned(self, pinned: bool) -> None:
         self.pinned = pinned
-        self.pin.setIcon(pin_icon(pinned, self.palette().windowText().color()))
+        # The application's palette: the theme, even before it reaches this bar.
+        self.pin.setIcon(pin_icon(pinned, QApplication.palette(self).windowText().color()))
         self.retranslate()
 
     def retranslate(self) -> None:
         self.pin.setToolTip(tr("Auto-hide") if self.pinned else tr("Keep open"))
-        self.float_button.setToolTip(tr("Float"))
         self.close_button.setToolTip(tr("Close"))
 
 
@@ -164,7 +161,6 @@ class Overlay(QFrame):
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setAutoFillBackground(True)
         self.title_bar = PanelTitleBar(dock, pinned=False)
-        self.title_bar.float_button.hide()
         self.contents: QWidget | None = None
         self._column = QVBoxLayout(self)
         self._column.setContentsMargins(1, 1, 1, 1)
@@ -221,9 +217,6 @@ class AutoHide(QObject):
         for dock in self.panels:
             title = PanelTitleBar(dock)
             title.pin.clicked.connect(lambda _checked=False, d=dock: self.unpin(d))
-            title.float_button.clicked.connect(
-                lambda _checked=False, d=dock: d.setFloating(not d.isFloating())
-            )
             title.close_button.clicked.connect(dock.close)
             dock.topLevelChanged.connect(title.pin.setHidden)
             dock.setTitleBarWidget(title)
@@ -344,6 +337,13 @@ class AutoHide(QObject):
         self._enabled = enabled
         for overlay in self.overlays.values():
             overlay.setEnabled(enabled)
+
+    def restyle(self) -> None:
+        """Redraws the pins in the theme's text color."""
+        for bar in self.title_bars.values():
+            bar.set_pinned(bar.pinned)
+        for overlay in self.overlays.values():
+            overlay.title_bar.set_pinned(overlay.title_bar.pinned)
 
     def retranslate(self) -> None:
         for bar in self.title_bars.values():

@@ -65,10 +65,11 @@ def test_panels_start_pinned_with_a_pin_in_the_title(qtbot: QtBot) -> None:
 
 def test_the_title_bar_floats_and_closes(qtbot: QtBot) -> None:
     window = make_window(qtbot)
-    title_bar(window).float_button.click()
-    assert window.layers_panel.isFloating()
+    assert not hasattr(title_bar(window), "float_button"), "pin and close, as OpenCADStudio"
+    QTest.mouseDClick(title_bar(window).title, Qt.MouseButton.LeftButton)
+    assert window.layers_panel.isFloating(), "double-clicking the title floats it"
     assert title_bar(window).pin.isHidden(), "a floating panel has nothing to collapse to"
-    title_bar(window).float_button.click()
+    QTest.mouseDClick(title_bar(window).title, Qt.MouseButton.LeftButton)
     assert not window.layers_panel.isFloating() and not title_bar(window).pin.isHidden()
     title_bar(window).close_button.click()
     assert not window.layers_panel.isVisible()
@@ -115,7 +116,9 @@ def test_clicking_the_drawing_slides_it_back(qtbot: QtBot) -> None:
     assert overlay.isVisible()
     QTest.mouseClick(window.layers_panel.table.viewport(), Qt.MouseButton.LeftButton)
     assert overlay.isVisible(), "a click inside keeps it out"
-    QTest.mouseClick(window.tabs.currentWidget(), Qt.MouseButton.LeftButton)
+    shown = window.tabs.currentWidget()
+    assert shown is not None
+    QTest.mouseClick(shown, Qt.MouseButton.LeftButton)
     assert not overlay.isVisible() and pins(window).open is None
 
 
