@@ -86,7 +86,7 @@ class LayersPanel(QDockWidget):
         self.table.cellDoubleClicked.connect(self._on_double_click)
         self.table.cellClicked.connect(self._on_click)
 
-        body = QWidget()
+        body = self._body = QWidget()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(2, 2, 2, 2)
         layout.addLayout(buttons)
@@ -130,7 +130,7 @@ class LayersPanel(QDockWidget):
                 self._fill_row(row, layer, layer.id == current)
         finally:
             self._filling = False
-        self.widget().setEnabled(document is not None)
+        self._body.setEnabled(document is not None)
         self.table.resizeColumnsToContents()
 
     def _fill_row(self, row: int, layer: CadLayerInfo, current: bool) -> None:

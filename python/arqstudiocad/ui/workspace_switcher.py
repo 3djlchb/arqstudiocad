@@ -7,7 +7,7 @@ keeps its own arrangement. The current discipline and layout are remembered.
 "Reset layout" puts panels and toolbars back where they start.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
 from PySide6.QtCore import QByteArray, QSettings, Qt
@@ -63,6 +63,9 @@ class WorkspaceSwitcher:
         self._built: dict[str, DisciplineWidgets] = {}
         #: The panels as the window placed them, before any workspace.
         self._default_state = window.saveState()
+        #: Called after an arrangement is restored, and before a reset.
+        self.after_restore: list[Callable[[], None]] = []
+        self.before_reset: list[Callable[[], None]] = []
         self.discipline: Discipline | None = None
         self.layout: Layout | None = None
 
@@ -129,6 +132,8 @@ class WorkspaceSwitcher:
         saved = self._setting(state_setting(chosen.name, new_layout))
         if isinstance(saved, QByteArray):
             self._window.restoreState(saved)
+            for hook in self.after_restore:
+                hook()
         if widgets.ribbon_bar is not None:
             # The ribbon is the layout itself: it cannot be closed.
             widgets.ribbon_bar.setVisible(new_layout == "ribbon")
@@ -144,7 +149,11 @@ class WorkspaceSwitcher:
     def reset(self) -> None:
         """Puts the panels back where the window first placed them and the
         current workspace's toolbars back at the top, docked."""
+        for hook in self.before_reset:
+            hook()
         self._window.restoreState(self._default_state)
+        for hook in self.after_restore:
+            hook()
         if self.discipline is not None:
             built = self._widgets(self.discipline)
             for toolbar in built.toolbars:

@@ -103,5 +103,9 @@
   "&Workspace": "&Espacio de trabajo",
   "Workspace": "Espacio de trabajo",
   "&Layers…": "&Capas…",
-  "&Reset layout": "&Restablecer disposición"
+  "&Reset layout": "&Restablecer disposición",
+  "Auto-hide": "Ocultar automáticamente",
+  "Keep open": "Mantener abierto",
+  "Float": "Flotante",
+  "Close": "Cerrar"
 }

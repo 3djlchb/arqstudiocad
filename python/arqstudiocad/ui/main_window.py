@@ -36,6 +36,7 @@ from arqstudiocad.i18n import available_languages, current_language, set_languag
 from arqstudiocad.product import APP_NAME
 from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
+from arqstudiocad.ui.auto_hide import AutoHide
 from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.event_bridge import QtEventBridge
@@ -110,6 +111,8 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(self.layers_panel, self.history_panel, Qt.Orientation.Vertical)
         self.tabifyDockWidget(self.layers_panel, self.properties_panel)
         self.layers_panel.raise_()
+        #: The pins: a panel stays open, or collapses to a tab on its side.
+        self.auto_hide = AutoHide(self, self.panels.values(), settings)
         for signal in (
             self.events.active_document_changed,
             self.events.document_saved,
@@ -195,7 +198,10 @@ class MainWindow(QMainWindow):
 
         self.resize(1024, 700)
         self.retranslate()
+        self.workspaces.after_restore.append(self.auto_hide.keep_hidden)
+        self.workspaces.before_reset.append(self.auto_hide.pin_all)
         self.workspaces.show_remembered()
+        self.auto_hide.restore()
 
     def retranslate(self) -> None:
         """Set every user-visible text from the active language."""
@@ -210,6 +216,7 @@ class MainWindow(QMainWindow):
         self.properties_panel.retranslate()
         self.history_panel.retranslate()
         self.workspaces.retranslate()
+        self.auto_hide.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
         self._language_menu.setTitle(tr("&Language"))
         self._help_menu.setTitle(tr("&Help"))
@@ -245,6 +252,8 @@ class MainWindow(QMainWindow):
         panel = self.panels.get(name)
         if panel is None:
             return False
+        if not self.auto_hide.is_pinned(panel):
+            return self.auto_hide.expand(panel)
         panel.show()
         panel.raise_()
         return True
@@ -311,12 +320,14 @@ class MainWindow(QMainWindow):
         # panels wait until it is done instead of blocking the interface.
         for panel in self.panels.values():
             panel.setEnabled(False)
+        self.auto_hide.set_enabled(False)
 
     def _on_work_finished(self, event: Event) -> None:
         self.statusBar().clearMessage()
         self._busy.hide()
         for panel in self.panels.values():
             panel.setEnabled(True)
+        self.auto_hide.set_enabled(True)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 (Qt API)
         """Quitting: wait for background work, and ask about every drawing
