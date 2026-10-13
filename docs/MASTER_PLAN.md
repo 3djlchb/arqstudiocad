@@ -1,7 +1,9 @@
 # ArqStudioCAD — Master plan
 
-Version 2.0 · October 2026 · The project's governing document, adopted by the
-maintainer on 2026-10-13. The other governing documents
+Version 2.1 · October 2026 · The project's governing document, adopted by the
+maintainer on 2026-10-13; 2.1 (same day) keeps DWG as the working format, after
+BricsCAD, with an own internal model and the native format reserved
+(ADR 0018). The other governing documents
 ([index](README.md)) develop it; where they disagree, this plan and the
 ADRs that implement it prevail.
 
@@ -44,7 +46,7 @@ Objectives:
 | Rust–Python bridge | PyO3 + maturin |
 | Python dependencies | uv |
 | Rust workspace | Cargo workspace |
-| Native CAD format | **Own document format, versioned and extensible** ([ADR 0018](architecture/adr/0018-native-format.md)) |
+| Working format | **DWG**, as BricsCAD does, with an **own internal model** from the start; native `.ascad` designed and reserved, decided by a multidisciplinary test ([ADR 0018](architecture/adr/0018-native-format.md)) |
 | DWG/DXF interoperability | **AcadRust as the base, with validated improvements from opencadcodec** ([ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md)) |
 | BIM | IFC through a decoupled IfcOpenShell integration |
 | Geometry | Own core; external libraries evaluated through adapters |
@@ -126,16 +128,19 @@ files by reading them back and in independent applications; keep a
 tables, dimensions, hatches and custom BIM objects
 ([DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md)).
 
-**The native format is independent of DWG/DXF.** An exchange file is never
-the project's only source of truth. The architecture decision is taken; its
-functional validation closes after external tests, Xrefs and BIM objects
-above all.
+**DWG is the working format and the document model is our own**
+(amendment of 2026-10-13, [ADR 0018](architecture/adr/0018-native-format.md)):
+the engine reads into our model and writes from it; whether a native format
+(`.ascad`, reserved) is needed is decided by a real multidisciplinary test.
+The architecture decision is taken; its functional validation closes after
+external tests, Xrefs and BIM objects above all.
 
 ## 6. Formats and interoperability
 
 | Format or technology | Purpose |
 |---|---|
-| ArqStudioCAD native format | Complete project persistence: history, references, own semantics |
+| DWG (working format) + own model | Daily work and persistence; a project database beside it if a multidisciplinary test shows the need |
+| `.ascad` (reserved) | Native format, designed and kept for when DWG plus a project database are not enough |
 | DWG/DXF | Exchange with CAD applications |
 | IFC | BIM interoperability |
 | 3DM / openNURBS | Exchange with Rhino |
@@ -291,7 +296,7 @@ Prove the architecture end to end before widening the scope.
 - [x] A Rust library reachable from Python through PyO3.
 - [x] PySide6 showing a result computed by Rust.
 - [x] A minimal CAD document with identified entities.
-- [ ] **Save and recover the native document** ([ADR 0018](architecture/adr/0018-native-format.md)).
+- [ ] **Save and recover the working document (DWG) from the own internal model** ([ADR 0018](architecture/adr/0018-native-format.md); originally "the native document").
 - [x] A first DXF test with its round trip validated.
 - [x] Automated tests and a first continuous integration.
 

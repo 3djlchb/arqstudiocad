@@ -4,8 +4,8 @@
 
 Plataforma CAD/BIM de código abierto para arquitectura e ingeniería: dibujo
 CAD, modelado BIM (IFC), terreno, estudios de ingeniería y documentación técnica
-que sigue al modelo. Guarda los proyectos en su propio formato nativo e
-intercambia dibujos en DWG y DXF. Su rumbo está en el
+que sigue al modelo. Como BricsCAD, trabaja en DWG con un modelo documental
+propio; DXF es la alternativa abierta e IFC el formato de intercambio BIM. Su rumbo está en el
 [plan maestro](docs/MASTER_PLAN.md), sus objetivos en el
 [acta del proyecto](docs/PROJECT_CHARTER.md), el orden de trabajo en
 [módulos y hoja de ruta](docs/MODULES_AND_ROADMAP.md) y todos los documentos

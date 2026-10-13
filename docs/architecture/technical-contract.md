@@ -303,23 +303,20 @@ Selection: pointer + camera → screen-to-world → Rust spatial query → `Enti
 
 ## 10. Contract H — Files and persistence
 
-**The native format is our own: `.arqcad`**, a versioned ZIP with a
-manifest, the own model and the preserved DWG
-([ADR 0018](adr/0018-native-format.md)). **DWG and DXF are exchange
-formats**, read and written by **AcadRust** (MPL-2.0, crates.io, exact
-version), wrapped by `arq-document`; engine types never leave that crate
-([ADR 0017](adr/0017-dwg-dxf-engine-strategy.md)). Details:
+**DWG is the working format, with an own internal model**
+([ADR 0018](adr/0018-native-format.md)); DXF is the open alternative. Both
+are read and written by **AcadRust** (MPL-2.0, crates.io, exact version),
+wrapped by `arq-document`; engine types never leave that crate
+([ADR 0017](adr/0017-dwg-dxf-engine-strategy.md)). The native format
+`.ascad` is designed and reserved (ADR 0018 D5). Details:
 [data and formats](../DATA_AND_FORMATS.md).
 
 - Ids are stable: `EntityId` and `LayerId` survive saves, reopenings, undo
   and redo (today they are the DWG handles; never reused in a document).
-- The own model is authoritative for the kinds it owns; the rest is the
-  preserved DWG, kept by the engine in the drawing's own version (ADR 0018
-  D2).
-- `.arqcad` carries `format_version` (`major.minor`); a newer major is
-  refused, a newer minor read; older versions are migrated.
-- A new drawing is saved as `.arqcad`; a drawing opened from DWG or DXF keeps
-  its format with Save; Save As offers all three.
+- The own model owns the kinds of ADR 0018 D2's current stage; the rest
+  stays in the engine's database, preserved in the drawing's own version.
+- A drawing is saved to its own format (DWG in its own version, or DXF);
+  Save As offers DWG and DXF.
 - Data protections (ADR 0017 D5): damaged files reported, safe save with
   read-back validation, no silent loss on conversion, unknown data kept.
 - When exporting to DWG, application data DWG cannot represent goes into

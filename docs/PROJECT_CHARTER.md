@@ -30,11 +30,13 @@ and technical and visual deliverables tied to the project.**
 - **Python** is the application layer: commands, automation, integration,
   plugins.
 - **PySide6** is the interface, decoupled from the model's logic.
-- **The native format is our own**, versioned and extensible, and an
-  exchange file is never the project's only source of truth (ADR 0018).
-- **DWG and DXF** are the CAD exchange formats, through an adapter on
-  AcadRust (ADR 0017); **IFC** is the BIM exchange format, through a
-  decoupled IfcOpenShell integration.
+- **DWG is the working format**, as in BricsCAD, and the **document model
+  is our own** from the start; the engine (AcadRust, ADR 0017) reads into it
+  and writes from it. A native format, `.ascad`, is designed and reserved
+  for when a real multidisciplinary project shows that DWG plus a project
+  database are not enough (ADR 0018).
+- **IFC** is the BIM exchange format, through a decoupled IfcOpenShell
+  integration, not a substitute for the internal model.
 - External libraries enter through **adapters**: none of them shapes the core
   permanently, and each can be replaced.
 - **CAD 2D and 3D are central capabilities**, not accessories of BIM.

@@ -43,8 +43,8 @@ macOS Apple Silicon and Intel, subject to toolchains and dependencies. A
 platform is supported only once the application and its critical
 dependencies have been built, installed and tested on it. Packaging today:
 PyInstaller onedir, Inno Setup, `.deb`, `.rpm`, AppImage, Flatpak manifest
-(ADR 0009); the extension `.arqcad` is registered by the installers in
-phase 11.
+(ADR 0009). The extension `.ascad` is reserved for the native format
+(ADR 0018 D5); installers register it if it is ever implemented.
 
 ## When a release is ready
 

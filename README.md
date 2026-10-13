@@ -4,8 +4,8 @@
 
 Open-source CAD/BIM platform for architecture and engineering: CAD drafting,
 BIM modeling (IFC), terrain, engineering studies and technical documentation
-that follows the model. It keeps projects in its own native format and
-exchanges drawings as DWG and DXF. Its direction is in the
+that follows the model. Like BricsCAD it works in DWG, with a document model
+of its own; DXF is the open alternative and IFC the BIM exchange format. Its direction is in the
 [master plan](docs/MASTER_PLAN.md), its goals in the
 [project charter](docs/PROJECT_CHARTER.md), the order of work in
 [modules and roadmap](docs/MODULES_AND_ROADMAP.md), and every governing

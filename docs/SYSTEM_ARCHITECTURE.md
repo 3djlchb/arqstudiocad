@@ -25,7 +25,7 @@ details of each boundary are in the
 │ Format adapters                   │ External engines                 │
 │   DWG/DXF: AcadRust in            │   Blender/Cycles, FFmpeg, FEM…   │
 │   arq-document (ADR 0017);        │   as external processes          │
-│   native format (ADR 0018);       │                                  │
+│   own model (ADR 0018);           │                                  │
 │   IFC, 3DM later                  │                                  │
 └───────────────────────────────────┴──────────────────────────────────┘
 ```
@@ -54,7 +54,7 @@ A format or engine library lives behind a contract of ours, in one place:
 | Adapter | Where today | Contract |
 |---|---|---|
 | DWG/DXF (AcadRust) | `crates/arq-document` | read with diagnostics, write to an explicit version, capabilities, round-trip validation (ADR 0017 D4) |
-| Native format | `crates/arq-document` (to come) | ADR 0018 |
+| Own internal model | `crates/arq-document` (02.6) | ADR 0018 D2; `.ascad` reserved (D5) |
 | Rendering on the CPU (tiny-skia) | `crates/arq-render` | scene from change sets, camera, image (ADR 0013) |
 | IFC (IfcOpenShell), 3DM, Blender | not yet | phase 05, 08 |
 
@@ -71,7 +71,7 @@ is not moved for the sake of the layout (maintainer, 2026-10-13).
 |---|---|---|
 | `crates/arq-core` | `crates/arq-core` (document with transactions, undo, queries, store) | — |
 | `crates/arq-geometry` | `crates/arq-geometry` | — |
-| `crates/arq-document` | `crates/arq-document` (model + DWG/DXF adapter) | the native format (02.6) separates model and adapter |
+| `crates/arq-document` | `crates/arq-document` (model + DWG/DXF adapter) | the own internal model (02.6) separates model and adapter |
 | `crates/arq-entities` | inside `arq-document` | when the own entity model outgrows it (02.6, 02.8) |
 | `crates/arq-spatial` | scan in `arq-core::queries` | milestone 02.7 (spatial index) |
 | `crates/arq-transactions` | `arq-core` history | if other models (IFC) need the same transactions |

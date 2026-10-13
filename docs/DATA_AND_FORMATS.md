@@ -1,6 +1,6 @@
 # ArqStudioCAD — Data and formats
 
-The document model, the native format and every exchange format: what each
+The document model, the working format and every exchange format: what each
 one is for, its adapter and its state. Master plan §5–§6; decisions in
 [ADR 0011](architecture/adr/0011-document-model-and-transactions.md),
 [ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md) and
@@ -24,8 +24,9 @@ one is for, its adapter and its state. Master plan §5–§6; decisions in
 
 | Format | Purpose | Adapter | State |
 |---|---|---|---|
-| **`.arqcad`** (native) | Complete persistence: model, ids, preserved data; later history, views, project references, BIM data | `arq-document` | ADR 0018; milestone 02.6 |
-| DWG (R13–2018) | Exchange with CAD applications | AcadRust in `arq-document` (ADR 0017) | read and write; protections in 03.3 |
+| **DWG (R13–2018)** | **Working format** (as BricsCAD) and exchange with CAD applications | AcadRust in `arq-document` (ADR 0017), into and out of the own model (ADR 0018) | read and write; protections in 03.3 |
+| `.ascad` (reserved) | Native format for when DWG plus a project database are not enough | — | designed, not implemented (ADR 0018 D5) |
+| Project database | Project-wide data shared by several drawings (as BricsCAD's `.bsyslib`) | — | decided by the multidisciplinary test (ADR 0018 D4) |
 | DXF (R12–2018) | Open exchange | AcadRust | read and write |
 | IFC | BIM interoperability | IfcOpenShell, decoupled | phase 05 |
 | 3DM / openNURBS | Exchange with Rhino | to be evaluated | later |
@@ -57,6 +58,6 @@ empty drawing (ADR 0017 D5).
 
 Data the platform does not understand is **kept** when technically
 possible: in DWG, by saving in the drawing's own version (the engine writes
-untouched records back); in `.arqcad`, in its preserved DWG. When a
+untouched records back) and, if `.ascad` is ever used, in its preserved DWG. When a
 conversion cannot keep it (a DWG version change, another format), the loss
 is announced and can be cancelled; it is never silent.

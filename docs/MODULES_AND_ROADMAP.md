@@ -10,10 +10,12 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 ## Where we are (2026-10-13)
 
 - **Technical MVP: 7 of 8** (master plan §15). Missing: save and recover the
-  native document (milestone 02.6).
-- **Next, in this order:** 02.6 native format (closes the MVP) → 03.3 the
-  four data protections → 03.2 opencadcodec's constraint reading → back to
-  02.5 editing (step 2.5.2).
+  working document (DWG) from the own internal model (milestone 02.6).
+- **Working format:** DWG, as BricsCAD does, with an own internal model; the
+  native format `.ascad` is designed and reserved (ADR 0018).
+- **Next, in this order:** 02.6 own internal model (closes the MVP) → 03.3
+  the four data protections → 03.2 opencadcodec's constraint reading → back
+  to 02.5 editing (step 2.5.2).
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -42,7 +44,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.3 Python API | `arq-python`: the whole core from Python, typed (ADR 0012) | ✅ PR #7 |
 | 02.4 Application shell | Drawing primitives, CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels, Ribbon and Classic workspaces, themes (ADR 0013, 0015) | ✅ PR #8 |
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ◐ step 2.5.1 done |
-| 02.6 Native format | Own versioned document format; save and recover the native document; the own model takes over from the DWG database step by step (ADR 0018) | ○ **next** |
+| 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model | ○ **next** |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0011 D3.8); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ○ |
 | 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; 3D primitives and the 3D document model (an ADR first) | ○ |
 
@@ -76,7 +78,9 @@ spatial relations, IFC import/export, exchange validation; GlobalId,
 properties and relations kept through every operation; never a collection of
 anonymous meshes. Model ownership decided by ADR first (ADR 0014, open
 question 1). The BIM workspace takes ArchiCAD's interface as its reference
-(ADR 0015). Module M03.
+(ADR 0015). The **multidisciplinary test** of ADR 0018 D4 runs here: it
+decides whether DWG plus a project database suffice or the reserved `.ascad`
+format is implemented. Module M03.
 
 ## Phase 06 — Topography and surfaces ○
 
