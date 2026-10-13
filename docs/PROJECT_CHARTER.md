@@ -7,9 +7,13 @@ project from the survey of the land to the architectural, structural and
 building-services design, with coordinated information models and CAD
 drawings of professional quality.
 
-This charter states what the project is and where it goes. How it is built is
-in the [technical contract](architecture/technical-contract.md) and the
-[ADRs](architecture/adr/); the order of work is in the [roadmap](ROADMAP.md).
+This charter states what the project is and where it goes. The governing
+document is the [master plan](MASTER_PLAN.md) (version 2.0); how the
+project is built is in the [system architecture](SYSTEM_ARCHITECTURE.md),
+the [technical contract](architecture/technical-contract.md) and the
+[ADRs](architecture/adr/); the order of work is in
+[modules and roadmap](MODULES_AND_ROADMAP.md). The [index](README.md) lists
+every governing document.
 
 ## Mission
 
@@ -18,7 +22,7 @@ models, engineering and specialized analyses with precise technical
 documentation that stays up to date.
 
 **Principle: one coordinated model, many disciplines, specialized analyses,
-and associative CAD documentation.**
+and technical and visual deliverables tied to the project.**
 
 ## Guiding principles
 
@@ -26,34 +30,42 @@ and associative CAD documentation.**
 - **Python** is the application layer: commands, automation, integration,
   plugins.
 - **PySide6** is the interface, decoupled from the model's logic.
-- **IFC** is the main format for exchanging and keeping BIM information.
-- **DWG** is the native CAD format and **DXF** the open alternative
-  (ADR 0002, ADR 0008).
+- **DWG is the working format**, as in BricsCAD, and the **document model
+  is our own** from the start; the engine (AcadRust, ADR 0017) reads into it
+  and writes from it. A native format, `.ascad`, is designed and reserved
+  for when a real multidisciplinary project shows that DWG plus a project
+  database are not enough (ADR 0018).
+- **IFC** is the BIM exchange format, through a decoupled IfcOpenShell
+  integration, not a substitute for the internal model.
+- External libraries enter through **adapters**: none of them shapes the core
+  permanently, and each can be replaced.
 - **CAD 2D and 3D are central capabilities**, not accessories of BIM.
 - Modular architecture, stable APIs, automated tests and measured performance.
 - Every dependency is chosen for function, license, compatibility and upkeep.
 
-## Scope: ten modules
+## Scope: eleven modules
 
 | | Module | Content |
 |---|---|---|
-| M01 | CAD 2D and 3D | Lines, arcs, polylines, curves, solids, layers, blocks, dimensions, references, selection, transformations |
-| M02 | BIM and IFC | Buildings, storeys, spaces, walls, doors, windows, slabs, materials, properties, relationships |
-| M03 | Topography and civil works | Survey points, TIN surfaces, contour lines, profiles, grades, slopes, sections, earthworks |
-| M04 | Architecture and structures | Parametric architectural elements; foundations, beams, columns; analytical models and structural engines |
-| M05 | Building services (MEP) | Electrical, lighting, conduits, water, drainage, HVAC, equipment, connections |
-| M06 | Environmental studies | Sun paths, shadows, solar radiation, daylight; energy and comfort through external engines |
-| M07 | Transport and infrastructure | Road design, accesses, parking, turning paths, external networks, traffic studies |
-| M08 | 2D documentation | Plans, sections, elevations, profiles, details, hatches, lineweights, dimensions, annotations, scales, sheets |
-| M09 | Multidisciplinary coordination | Federated models, clash detection, change review, quantities, validation, issue tracking |
-| M10 | Automation and extensions | Python API, scripts, plugins, custom commands, importers and exporters, external engines |
+| M01 | CAD 2D and 3D | Lines, arcs, polylines, curves, solids, layers, blocks, dimensions, references, selection, transformations, modeling, views |
+| M02 | DWG/DXF interoperability | Reading, writing, conversion, diagnostics, compatibility by version, preservation of unknown objects |
+| M03 | BIM and IFC | Buildings, storeys, spaces, walls, doors, windows, slabs, materials, properties, relationships, classification, quantities |
+| M04 | Topography and civil works | Survey points, TIN surfaces, contour lines, profiles, grades, slopes, sections, earthworks |
+| M05 | Architecture and structures | Parametric architectural elements; foundations, beams, columns; loads; analytical models and structural engines |
+| M06 | Building services (MEP) | Electrical, lighting, conduits, water, drainage, ventilation, HVAC, equipment, interference detection |
+| M07 | Environmental studies | Basins, drainage, territorial analysis; sun paths, shadows, solar radiation, daylight; GIS where it applies |
+| M08 | Transport and infrastructure | Roads, alignments, grades, corridors, linear works, parking, turning paths, traffic studies |
+| M09 | Associative technical documentation | Plans, sections, elevations, profiles, details, hatches, lineweights, dimensions, labels, title blocks, scales, sheets tied to the model |
+| M10 | Coordination | Federated models, model comparison, clash detection, change review, quantities, validation, traceability |
+| M11 | Automation and extensions | Public API, Python scripts, plugins, custom commands, importers and exporters, external engines, automated tasks |
 
 Mechanical modeling (parametric parts, assemblies, fabrication drawings) may
 become a workspace once its scope is defined.
 
 ### Visualization and deliverables
 
-Visualization is a line of work of its own:
+Rendering, animation and walkthroughs are transversal capabilities over the
+one data model, not an isolated module:
 
 - **Photorealistic renders** of exteriors and interiors, with PBR materials
   and natural and artificial light. **Blender + Cycles** is the first engine,
@@ -85,10 +97,12 @@ geometry, never a screenshot; raster output is a separate presentation option.
 | Python + uv | Application, integration, automation |
 | PySide6 (Qt 6) | Interface |
 | PyO3 + maturin | Rust–Python bridge |
-| opencadcodec | DWG/DXF reading and writing (ADR 0008) |
+| AcadRust | DWG/DXF reading and writing, behind `arq-document` (ADR 0017) |
 | IfcOpenShell | IFC entities, relationships, properties, serialization |
 | wgpu + tiny-skia | GPU renderer and CPU rasterizer (ADR 0007, ADR 0013) |
 | Blender (Cycles), LuxCoreRender | Photorealistic rendering, as external engines |
+| FFmpeg | Encoding of image sequences and video |
+| openNURBS, STEP libraries | 3DM (Rhino) and other 3D exchange, evaluated per use case |
 | Visual Studio Code + Claude Code | Development environment and coding agent |
 
 The Rust core builds and tests without Qt. Third-party libraries enter through

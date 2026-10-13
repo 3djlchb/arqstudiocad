@@ -4,20 +4,23 @@
 
 Open-source CAD/BIM platform for architecture and engineering: CAD drafting,
 BIM modeling (IFC), terrain, engineering studies and technical documentation
-that follows the model, with DWG as its native CAD format and DXF as an open
-alternative. Its goals are in the [project charter](docs/PROJECT_CHARTER.md)
-and the order of work in the [roadmap](docs/ROADMAP.md).
+that follows the model. Like BricsCAD it works in DWG, with a document model
+of its own; DXF is the open alternative and IFC the BIM exchange format. Its direction is in the
+[master plan](docs/MASTER_PLAN.md), its goals in the
+[project charter](docs/PROJECT_CHARTER.md), the order of work in
+[modules and roadmap](docs/MODULES_AND_ROADMAP.md), and every governing
+document in the [documentation index](docs/README.md).
 
 > **Status:** pre-alpha. The application starts, switches between English and
 > Spanish and is packaged for every target platform (phase 1). The geometry
 > core is done — lines, circles, arcs, transformations, intersections and snap
-> points (milestone 2.1) — and so is the document core: it opens and saves DWG
+> points (milestone 02.1) — and so is the document core: it opens and saves DWG
 > and DXF, edits lines, circles, arcs and layers with undo and redo, and keeps
-> everything else in the drawing intact (2.2). All of it can be scripted from
-> Python through `arqstudiocad.core` (2.3). The application shell shows
+> everything else in the drawing intact (02.2). All of it can be scripted from
+> Python through `arqstudiocad.core` (02.3). The application shell shows
 > drawings in tabs, opens and saves them in the background, and has a command
 > line, Layers, Properties and History panels that dock, float or auto-hide,
-> Ribbon and Classic workspaces and a dark or light theme (2.4). It cannot
+> Ribbon and Classic workspaces and a dark or light theme (02.4). It cannot
 > draw yet: selection and drawing commands are the next milestone.
 
 | Layer | Technology | Owns |

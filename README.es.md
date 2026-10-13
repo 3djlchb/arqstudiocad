@@ -4,21 +4,24 @@
 
 Plataforma CAD/BIM de código abierto para arquitectura e ingeniería: dibujo
 CAD, modelado BIM (IFC), terreno, estudios de ingeniería y documentación técnica
-que sigue al modelo, con DWG como formato CAD nativo y DXF como alternativa
-abierta. Sus objetivos están en el [acta del proyecto](docs/PROJECT_CHARTER.md)
-(en inglés) y el orden de trabajo en la [hoja de ruta](docs/ROADMAP.md).
+que sigue al modelo. Como BricsCAD, trabaja en DWG con un modelo documental
+propio; DXF es la alternativa abierta e IFC el formato de intercambio BIM. Su rumbo está en el
+[plan maestro](docs/MASTER_PLAN.md), sus objetivos en el
+[acta del proyecto](docs/PROJECT_CHARTER.md), el orden de trabajo en
+[módulos y hoja de ruta](docs/MODULES_AND_ROADMAP.md) y todos los documentos
+rectores en el [índice de documentación](docs/README.md) (en inglés).
 
 > **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
 > se empaqueta para todas las plataformas objetivo (fase 1). El núcleo
 > geométrico está terminado —líneas, círculos, arcos, transformaciones,
-> intersecciones y puntos de referencia (hito 2.1)— y también el núcleo del
+> intersecciones y puntos de referencia (hito 02.1)— y también el núcleo del
 > documento: abre y guarda DWG y DXF, edita líneas, círculos, arcos y capas
-> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo (2.2).
-> Todo ello se puede programar desde Python con `arqstudiocad.core` (2.3). El
+> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo (02.2).
+> Todo ello se puede programar desde Python con `arqstudiocad.core` (02.3). El
 > armazón de la aplicación muestra los dibujos en pestañas, los abre y guarda
 > en segundo plano, y tiene línea de comandos, paneles de Capas, Propiedades e
 > Historial que se acoplan, flotan o se ocultan solos, espacios de trabajo
-> Cinta de opciones y Clásico, y tema oscuro o claro (2.4). Todavía no permite
+> Cinta de opciones y Clásico, y tema oscuro o claro (02.4). Todavía no permite
 > dibujar: la selección y los comandos de dibujo son el siguiente hito.
 
 | Capa | Tecnología | Responsable de |

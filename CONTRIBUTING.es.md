@@ -72,6 +72,8 @@ Las reglas vinculantes están en el [contrato técnico](docs/architecture/techni
 
 ## Ramas, commits y pull requests
 
+- Una rama por funcionalidad o corrección, llamada `feature/<tema>` o
+  `fix/<tema>` (`feature/native-format`, `fix/document-roundtrip`).
 - Un tema por pull request; lo pequeño es más fácil de revisar y de revertir.
 - Mensajes de commit: una primera línea en inglés, en imperativo
   (`Add LINE command`), y un cuerpo que explique el *porqué* cuando no sea obvio.

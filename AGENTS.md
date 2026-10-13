@@ -3,7 +3,9 @@
 Read [docs/architecture/technical-contract.md](docs/architecture/technical-contract.md)
 before changing code. It is binding. Decisions are in [docs/architecture/adr/](docs/architecture/adr/);
 the project's goals in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) and the
-order of work in [docs/ROADMAP.md](docs/ROADMAP.md). New designs must leave room
+order of work in [docs/MODULES_AND_ROADMAP.md](docs/MODULES_AND_ROADMAP.md), under the
+[master plan](docs/MASTER_PLAN.md) ([index of governing documents](docs/README.md)).
+New designs must leave room
 for the platform's modules (IFC/BIM, associative documentation, rendering)
 without building them early (ADR 0014).
 
@@ -50,4 +52,6 @@ it is not a substitute for running the checks locally.
 
 ## Git
 
-Branch per phase (`fase-N/<topic>`), small commits, PR to `main`.
+One branch per feature or fix (`feature/<topic>`, `fix/<topic>`), small commits,
+PR to `main` (master plan §13). Before a new library, engine or technology,
+apply the rule for new technologies (master plan §16).
