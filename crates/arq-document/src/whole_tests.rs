@@ -7,8 +7,8 @@
 
 use std::f64::consts::FRAC_PI_2;
 
+use acadrust::EntityType;
 use arq_geometry::{Geometry2, Line, Point2, Tolerance, Transform2, Vector2};
-use opencadcodec::EntityType;
 
 use crate::document::Document;
 use crate::drawing::Shape;
@@ -270,7 +270,7 @@ fn attributes_follow_their_block() {
     let (mut doc, ids) = drawing_with(&[&door_insert()]);
     doc.transform_entity(ids[0], Transform2::translation(v(5.0, -1.0)))
         .unwrap();
-    let Some(EntityType::Insert(insert)) = doc.cad().get_entity(opencadcodec::Handle::new(ids[0]))
+    let Some(EntityType::Insert(insert)) = doc.cad().get_entity(acadrust::Handle::new(ids[0]))
     else {
         panic!("not an insert")
     };
@@ -286,8 +286,7 @@ fn polylines_keep_their_elevation() {
     let (mut doc, ids) = drawing_with(&[&bulged_polyline()]);
     doc.transform_entity(ids[0], Transform2::rotation(p(1.0, 1.0), 2.0).unwrap())
         .unwrap();
-    let Some(EntityType::LwPolyline(poly)) =
-        doc.cad().get_entity(opencadcodec::Handle::new(ids[0]))
+    let Some(EntityType::LwPolyline(poly)) = doc.cad().get_entity(acadrust::Handle::new(ids[0]))
     else {
         panic!("not a polyline")
     };
@@ -315,9 +314,9 @@ fn other_entities_are_refused() {
     let (mut doc, ids) = drawing_with(&[&minsert()]);
     let text = doc
         .cad_mut()
-        .add_entity(EntityType::Text(opencadcodec::Text::with_value(
+        .add_entity(EntityType::Text(acadrust::Text::with_value(
             "PLANTA",
-            opencadcodec::types::Vector3::new(1.0, 2.0, 0.0),
+            acadrust::types::Vector3::new(1.0, 2.0, 0.0),
         )))
         .unwrap()
         .value();
@@ -380,10 +379,10 @@ fn a_copy_is_a_new_entity_drawn_where_the_original_is() {
 #[test]
 fn a_copy_shares_no_links_with_the_original() {
     let (mut doc, ids) = drawing_with(&[&door_insert()]);
-    let link = opencadcodec::Handle::new(0x9999);
+    let link = acadrust::Handle::new(0x9999);
     let original = doc
         .cad_mut()
-        .get_entity_mut(opencadcodec::Handle::new(ids[0]))
+        .get_entity_mut(acadrust::Handle::new(ids[0]))
         .unwrap();
     let common = original.common_mut();
     common.reactors = vec![link];
@@ -392,14 +391,14 @@ fn a_copy_shares_no_links_with_the_original() {
     let copy = doc.copy_entity(ids[0]).unwrap();
     let made = doc
         .cad()
-        .get_entity(opencadcodec::Handle::new(copy))
+        .get_entity(acadrust::Handle::new(copy))
         .unwrap()
         .common();
     assert!(made.reactors.is_empty() && made.xdictionary_handle.is_none());
     assert!(made.graphic_data.is_none());
     let kept = doc
         .cad()
-        .get_entity(opencadcodec::Handle::new(ids[0]))
+        .get_entity(acadrust::Handle::new(ids[0]))
         .unwrap()
         .common();
     assert_eq!(
@@ -415,7 +414,7 @@ fn a_copied_block_has_attributes_of_its_own_and_survives_saving() {
     doc.transform_entity(copy, Transform2::translation(v(3.0, 0.0)))
         .unwrap();
     let attribute = |doc: &Document, id: EntityId| {
-        let Some(EntityType::Insert(insert)) = doc.cad().get_entity(opencadcodec::Handle::new(id))
+        let Some(EntityType::Insert(insert)) = doc.cad().get_entity(acadrust::Handle::new(id))
         else {
             panic!("not an insert")
         };

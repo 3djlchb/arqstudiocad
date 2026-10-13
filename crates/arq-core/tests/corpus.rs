@@ -542,7 +542,7 @@ fn generated_drawings_round_trip_in_every_version() {
 #[test]
 #[ignore = "needs the codec samples: uv run python tools/fetch_codec_samples.py"]
 fn codec_samples_round_trip() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/opencadcodec");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/acadrust");
     assert!(
         root.is_dir(),
         "{} is missing: run `uv run python tools/fetch_codec_samples.py`",

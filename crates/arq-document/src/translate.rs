@@ -1,9 +1,9 @@
-//! Translation between opencadcodec entities and our types. The only place
+//! Translation between the engine's (AcadRust) entities and our types. The only place
 //! that reads or writes codec geometry fields.
 
+use acadrust::types::{Matrix4, Transform, Vector3};
+use acadrust::{EntityType, Handle};
 use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Transform2};
-use opencadcodec::types::{Matrix4, Transform, Vector3};
-use opencadcodec::{EntityType, Handle};
 
 use crate::entity::{Color, Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
@@ -153,7 +153,7 @@ fn editable_normal(id: EntityId, kind: &'static str, n: Vector3) -> DocumentResu
 pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
     let z = plan.elevation();
     let mut e = match plan.geometry() {
-        Geometry2::Line(g) => EntityType::Line(opencadcodec::Line::from_coords(
+        Geometry2::Line(g) => EntityType::Line(acadrust::Line::from_coords(
             g.start().x(),
             g.start().y(),
             z,
@@ -162,13 +162,13 @@ pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
             z,
         )),
         Geometry2::Circle(g) => {
-            let mut c = opencadcodec::Circle::new();
+            let mut c = acadrust::Circle::new();
             c.center = Vector3::new(g.center().x(), g.center().y(), z);
             c.radius = g.radius();
             EntityType::Circle(c)
         }
         Geometry2::Arc(g) => {
-            let mut a = opencadcodec::Arc::new();
+            let mut a = acadrust::Arc::new();
             a.center = Vector3::new(g.center().x(), g.center().y(), z);
             a.radius = g.radius();
             a.start_angle = g.start_angle();
@@ -184,22 +184,22 @@ pub(crate) fn handle(id: EntityId) -> Handle {
     Handle::new(id)
 }
 
-pub(crate) fn color_from_codec(c: opencadcodec::Color) -> Color {
+pub(crate) fn color_from_codec(c: acadrust::Color) -> Color {
     match c {
-        opencadcodec::Color::ByLayer => Color::ByLayer,
-        opencadcodec::Color::ByBlock => Color::ByBlock,
-        opencadcodec::Color::Index(i) => Color::Index(i),
-        opencadcodec::Color::Rgb { r, g, b } => Color::Rgb { r, g, b },
-        opencadcodec::Color::None => Color::None,
+        acadrust::Color::ByLayer => Color::ByLayer,
+        acadrust::Color::ByBlock => Color::ByBlock,
+        acadrust::Color::Index(i) => Color::Index(i),
+        acadrust::Color::Rgb { r, g, b } => Color::Rgb { r, g, b },
+        acadrust::Color::None => Color::None,
     }
 }
 
-pub(crate) fn color_to_codec(c: Color) -> opencadcodec::Color {
+pub(crate) fn color_to_codec(c: Color) -> acadrust::Color {
     match c {
-        Color::ByLayer => opencadcodec::Color::ByLayer,
-        Color::ByBlock => opencadcodec::Color::ByBlock,
-        Color::Index(i) => opencadcodec::Color::Index(i),
-        Color::Rgb { r, g, b } => opencadcodec::Color::Rgb { r, g, b },
-        Color::None => opencadcodec::Color::None,
+        Color::ByLayer => acadrust::Color::ByLayer,
+        Color::ByBlock => acadrust::Color::ByBlock,
+        Color::Index(i) => acadrust::Color::Index(i),
+        Color::Rgb { r, g, b } => acadrust::Color::Rgb { r, g, b },
+        Color::None => acadrust::Color::None,
     }
 }

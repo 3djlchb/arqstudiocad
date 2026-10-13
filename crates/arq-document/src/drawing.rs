@@ -11,10 +11,10 @@
 
 use std::collections::HashMap;
 
+use acadrust::EntityType;
+use acadrust::entities::Insert;
+use acadrust::types::{Matrix4, Transform, Vector3};
 use arq_geometry::{Arc, Bounds2, Circle, Line, Point2};
-use opencadcodec::EntityType;
-use opencadcodec::entities::Insert;
-use opencadcodec::types::{Matrix4, Transform, Vector3};
 
 use crate::document::Document;
 use crate::entity::{Color, EntityId};
