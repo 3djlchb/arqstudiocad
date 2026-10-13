@@ -267,6 +267,18 @@ impl CadDocument {
         self.redo.last().map(|s| s.name.as_str())
     }
 
+    /// Names of every step that can be undone, oldest first; the last one is
+    /// what [`undo`](Self::undo) reverts.
+    pub fn undo_names(&self) -> Vec<&str> {
+        self.undo.iter().map(|s| s.name.as_str()).collect()
+    }
+
+    /// Names of every step that can be redone, next first: the first one is
+    /// what [`redo`](Self::redo) applies.
+    pub fn redo_names(&self) -> Vec<&str> {
+        self.redo.iter().rev().map(|s| s.name.as_str()).collect()
+    }
+
     fn take_serial(&mut self) -> u64 {
         let serial = self.next_serial;
         self.next_serial += 1;

@@ -476,6 +476,18 @@ impl CadDocument {
         self.read(|cad| cad.redo_name().map(str::to_owned))
     }
 
+    /// Every step that can be undone, oldest first (the last is `undo_name`).
+    #[getter]
+    fn undo_history(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.undo_names().into_iter().map(str::to_owned).collect())
+    }
+
+    /// Every step that can be redone, next first (the first is `redo_name`).
+    #[getter]
+    fn redo_history(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.redo_names().into_iter().map(str::to_owned).collect())
+    }
+
     /// A context manager making the operations inside one undo step:
     /// `with doc.group("COPY") as group: ...`.
     fn group(slf: Py<Self>, name: String) -> CadGroup {

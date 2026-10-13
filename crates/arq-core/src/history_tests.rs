@@ -275,3 +275,20 @@ fn a_snapshot_marks_saved_only_its_own_state() {
     assert!(back.document().entity(a).is_some());
     assert!(back.document().entity(b).is_none());
 }
+
+#[test]
+fn the_history_lists_its_steps_in_order() {
+    let mut cad = CadDocument::new();
+    assert!(cad.undo_names().is_empty() && cad.redo_names().is_empty());
+    let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    cad.move_entities(&[id], v(1.0, 0.0)).unwrap();
+    cad.begin_group("COPY");
+    cad.add_circle(p(0.0, 0.0), 1.0).unwrap();
+    cad.end_group().unwrap();
+    assert_eq!(cad.undo_names(), ["LINE", "MOVE", "COPY"], "oldest first");
+    cad.undo().unwrap();
+    cad.undo().unwrap();
+    assert_eq!(cad.undo_names(), ["LINE"]);
+    assert_eq!(cad.redo_names(), ["MOVE", "COPY"], "next first");
+    assert_eq!(cad.redo_name(), Some("MOVE"));
+}
