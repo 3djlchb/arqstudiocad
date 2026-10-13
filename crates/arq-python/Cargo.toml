@@ -16,6 +16,7 @@ crate-type = ["cdylib"]
 [dependencies]
 arq-core.workspace = true
 arq-geometry.workspace = true
+arq-render.workspace = true
 # abi3: one wheel per platform works on every Python >= 3.12.
 pyo3 = { workspace = true, features = ["abi3-py312"] }
 

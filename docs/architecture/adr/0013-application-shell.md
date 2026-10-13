@@ -61,7 +61,7 @@ smooth on large drawings and on the 2011 reference CPU (D5.8), whatever the
 graphics driver. The camera is `f64` (center, scale); the rasterizer works
 relative to the view, so survey coordinates keep their precision. Pan with
 the middle button, zoom with the wheel about the cursor, zoom extents.
-Rasterizing releases the GIL. Phase 7 adds the GPU renderer beside it; this
+Building the scene and rasterizing release the GIL (`CadView` in Python). Phase 7 adds the GPU renderer beside it; this
 one stays as the software fallback.
 
 Measured (`cargo bench -p arq-render`, development laptop i7-8750H, one
