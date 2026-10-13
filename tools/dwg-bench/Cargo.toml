@@ -1,0 +1,29 @@
+[package]
+name = "dwg-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+description = "Spike: compares AcadRust, opencadcodec and LibreDWG on a common DWG/DXF corpus"
+
+# A workspace of its own: the spike never touches the product's workspace,
+# its checks or its dependency policy.
+[workspace]
+
+[features]
+default = []
+# Links LibreDWG (C, GPL-3.0-or-later) through shim/shim.c; needs
+# LIBREDWG_DIR pointing at an installed prefix (include/ and lib/).
+libredwg = ["dep:cc"]
+
+[dependencies]
+acadrust = "=0.6.4"
+opencadcodec = { git = "https://github.com/HakanSeven12/opencadcodec", rev = "8189f83" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+cc = { version = "1", optional = true }
+
+[profile.release]
+debug = false
