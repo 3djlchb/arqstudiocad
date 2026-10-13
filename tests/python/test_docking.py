@@ -65,9 +65,13 @@ def test_panels_nest_side_by_side_and_drag_as_tab_groups(qtbot: QtBot) -> None:
         QMainWindow.DockOption.GroupedDragging,
     ):
         assert options & option
-    window.splitDockWidget(window.layers_panel, window.history_panel, Qt.Orientation.Horizontal)
-    assert window.dockWidgetArea(window.history_panel) == RIGHT
-    assert window.history_panel.x() > window.layers_panel.x(), "side by side in one area"
+    # Two panels out of any tab group, side by side in one area.
+    left = Qt.DockWidgetArea.LeftDockWidgetArea
+    window.addDockWidget(left, window.history_panel)
+    window.splitDockWidget(window.history_panel, window.command_window, Qt.Orientation.Horizontal)
+    assert window.dockWidgetArea(window.command_window) == left
+    qtbot.waitUntil(lambda: window.command_window.x() > window.history_panel.x())
+    assert window.command_window.y() == window.history_panel.y()
 
 
 def test_side_panels_take_the_full_height(qtbot: QtBot) -> None:
