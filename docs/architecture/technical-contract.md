@@ -229,11 +229,17 @@ pub struct CadChangeSet {   // read through accessors of the same names
 The core never calls PySide6. Change sets become Python events, which a
 `QObject` bridge re-emits as Qt signals.
 
-Initial events: `DocumentOpened`, `DocumentSaved`, `DocumentChanged`,
-`SelectionChanged`, `ActiveLayerChanged`, `CommandStarted`,
+Events (`arqstudiocad.events`, no Qt): `DocumentOpened`, `DocumentSaved`,
+`DocumentClosed`, `ActiveDocumentChanged`, `DocumentChanged` (carrying the
+change set), `SelectionChanged`, `ActiveLayerChanged`, `CommandStarted`,
 `CommandFinished`, `CommandCancelled`, `LanguageChanged`.
 
-Events are frozen dataclasses. The UI updates only what a change affects.
+Events are frozen dataclasses stating facts, never requests: whoever changes
+something publishes the event after. The bus delivers synchronously, in
+subscription order; a failing handler is logged and does not stop the
+others; an event published by a handler is delivered after the current one.
+`arqstudiocad.ui.event_bridge.QtEventBridge` re-emits every event as a Qt
+signal on the GUI thread. The UI updates only what a change affects.
 
 ## 8. Contract F — Viewport and renderer
 

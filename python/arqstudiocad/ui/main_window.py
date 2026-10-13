@@ -10,17 +10,22 @@ from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox
 
 from arqstudiocad import _core
 from arqstudiocad.credits import load_credits
+from arqstudiocad.events import EventBus, LanguageChanged
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
 from arqstudiocad.product import APP_NAME
+from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.qt_translations import QtTranslations
 
 LANGUAGE_SETTING = "language"
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, settings: QSettings | None = None) -> None:
+    def __init__(self, settings: QSettings | None = None, bus: EventBus | None = None) -> None:
         super().__init__()
         self._settings = settings
+        self.bus = bus if bus is not None else EventBus()
+        self.events = QtEventBridge(self.bus, self)
+        self.events.language_changed.connect(self._on_language_changed)
         self._qt_translations = QtTranslations()
         self._qt_translations.apply(current_language())
 
@@ -77,11 +82,15 @@ class MainWindow(QMainWindow):
             action.setChecked(True)
 
     def change_language(self, code: str) -> None:
+        """Switch the interface language, remember it, and tell everyone."""
         if not set_language(code):
             return
         if self._settings is not None:
             self._settings.setValue(LANGUAGE_SETTING, code)
-        self._qt_translations.apply(code)
+        self.bus.publish(LanguageChanged(code))
+
+    def _on_language_changed(self, event: LanguageChanged) -> None:
+        self._qt_translations.apply(event.code)
         self.retranslate()
 
     def about_text(self) -> str:
