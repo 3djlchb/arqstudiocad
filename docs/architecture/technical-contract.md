@@ -127,7 +127,10 @@ Only a small, stable set of classes is exposed; Rust internals are not.
 | `CadEntityInfo` | Immutable description of an entity |
 | `CadLayerInfo` | Immutable description of a layer |
 | `CadBounds2` | Geometric bounds |
+| `CadLine`, `CadCircle`, `CadArc` | Immutable curves (an entity's geometry) |
+| `CadColor` | Entity or layer color |
 | `CadChangeSet` | Summary of a committed change |
+| `CadGroup` | `with doc.group(name):` — several operations as one undo step |
 | `CadError` (+ subclasses) | Core errors as Python exceptions |
 
 Minimum operations:
@@ -139,13 +142,19 @@ Minimum operations:
 - Query/edit: `get_bounds`, `query_entities(bounds)`, `get_layers`,
   `create_layer`, `set_entity_layer`
 
-All of them exist in Rust since phase 3 (`arq-core`); phase 4 binds them.
+All of them are bound since phase 4, in `crates/arq-python`; Python code
+imports them from `arqstudiocad.core`. Points are `(x, y)` tuples (any two
+numbers on input, NumPy arrays included), angles radians. The full API and its
+decisions are in [ADR 0012](adr/0012-python-api.md).
 
 Rules:
 
 - Bulk queries return compact data; mutations take lists of IDs.
 - No Python object may hold a reference into Rust memory across calls.
-- Every exposed item has a `.pyi` stub so the API is typed for Python users.
+- Every exposed item has a `.pyi` stub so the API is typed for Python users;
+  `stubtest` checks the stub against the built module.
+- The binding never runs Python code while a document is locked, and only
+  opening and saving release the GIL.
 
 ### Errors
 

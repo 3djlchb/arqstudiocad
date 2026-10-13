@@ -11,7 +11,8 @@ formato nativo y DXF como alternativa abierta.
 > intersecciones y puntos de referencia (fase 2)— y también el núcleo del
 > documento: abre y guarda DWG y DXF, edita líneas, círculos, arcos y capas
 > con deshacer y rehacer, y conserva intacto todo lo demás del dibujo
-> (fase 3). La interfaz todavía no permite dibujar.
+> (fase 3). Todo ello se puede programar desde Python con `arqstudiocad.core`
+> (fase 4). La interfaz todavía no permite dibujar.
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|

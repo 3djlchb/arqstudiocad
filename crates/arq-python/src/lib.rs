@@ -1,7 +1,20 @@
 //! Python bindings for ArqStudioCAD, exposed as `arqstudiocad._core`.
 //!
 //! This is the only crate that knows about Python. It converts types and
-//! errors; it contains no CAD logic of its own. Decisions are in ADR 0012.
+//! errors; it contains no CAD logic of its own. Decisions are in ADR 0012;
+//! Python code imports from `arqstudiocad.core`, typed by `_core.pyi`.
+//!
+//! | Module | Python names |
+//! |---|---|
+//! | `errors` | `CadError` and one subclass per core error, each with a `code` |
+//! | `values` | `CadColor`, `CadBounds2`, `CadLine`, `CadCircle`, `CadArc`; points as tuples |
+//! | `documents` | `CadApplication`, `CadDocument` (queries, operations, history) |
+//! | `info` | `CadEntityInfo`, `CadLayerInfo` |
+//! | `changes` | `CadChangeSet`, `CadGroup` |
+//!
+//! Two rules keep it safe across threads: never run Python code while a
+//! document is locked (build Python objects after the lock is released), and
+//! release the GIL only to open and save.
 
 use pyo3::prelude::*;
 

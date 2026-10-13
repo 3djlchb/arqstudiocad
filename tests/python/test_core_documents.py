@@ -125,10 +125,11 @@ def _big_dxf(path: Path, lines: int) -> Path:
     return path
 
 
-def _share_of_time_other_threads_ran(call: Callable[[], object]) -> float:
+def _share_of_time_other_threads_ran(call: Callable[[], object]) -> tuple[float, float]:
     """How much a counting thread advanced during `call`, relative to its pace
     when the main thread just sleeps: near 1 if `call` released the GIL, near 0
-    if it held it (then only a switch interval or two slips through)."""
+    if it held it (then only a switch interval or two slips through). Also
+    returns how long `call` took."""
     ticks = 0
     done = threading.Event()
 
@@ -150,15 +151,26 @@ def _share_of_time_other_threads_ran(call: Callable[[], object]) -> float:
     finally:
         done.set()
         counter.join()
-    assert elapsed > 0.1, f"the call took only {elapsed:.3f} s: too short to tell"
-    return ran / (pace * elapsed)
+    return ran / (pace * elapsed), elapsed
 
 
 def test_opening_and_saving_release_the_gil(app: CadApplication, tmp_path: Path) -> None:
-    source = _big_dxf(tmp_path / "grande.dxf", 200_000)
-    opened: list[CadDocument] = []
-    share = _share_of_time_other_threads_ran(lambda: opened.append(app.open_document(source)))
-    assert share > 0.3, f"other threads ran {share:.0%} of the time while opening"
-    doc = opened[0]
-    share = _share_of_time_other_threads_ran(lambda: doc.save(tmp_path / "copia.dwg"))
-    assert share > 0.3, f"other threads ran {share:.0%} of the time while saving"
+    # Each call must last long enough to tell (0.1 s against a 5 ms switch
+    # interval); on a fast machine the drawing grows until it does.
+    for lines in (200_000, 400_000, 800_000):
+        source = _big_dxf(tmp_path / f"grande-{lines}.dxf", lines)
+        opened: list[CadDocument] = []
+        open_share, open_time = _share_of_time_other_threads_ran(
+            lambda: opened.append(app.open_document(source))  # noqa: B023
+        )
+        doc = opened[0]
+        save_share, save_time = _share_of_time_other_threads_ran(
+            lambda: doc.save(tmp_path / f"copia-{lines}.dwg")  # noqa: B023
+        )
+        doc.close()
+        if min(open_time, save_time) > 0.1:
+            break
+    else:
+        pytest.fail(f"open {open_time:.3f} s, save {save_time:.3f} s: too short to tell")
+    assert open_share > 0.3, f"other threads ran {open_share:.0%} of the time while opening"
+    assert save_share > 0.3, f"other threads ran {save_share:.0%} of the time while saving"
