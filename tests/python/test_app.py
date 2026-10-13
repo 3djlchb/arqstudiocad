@@ -43,6 +43,7 @@ def test_window_switches_language(qtbot: QtBot) -> None:
     assert [a.text() for a in window.menuBar().actions()] == [
         "&Archivo",
         "&Edición",
+        "&Ver",
         "&Herramientas",
         "Ay&uda",
     ]

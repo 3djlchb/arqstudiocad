@@ -1,4 +1,4 @@
-"""Main window: menus, the command window, language switch and About."""
+"""Main window: viewports, menus, the command window, language switch and About."""
 
 import platform
 from functools import partial
@@ -6,13 +6,22 @@ from html import escape
 
 from PySide6.QtCore import QSettings, Qt, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
-from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox
+from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox, QStackedWidget
 
 from arqstudiocad import _core
-from arqstudiocad.commands import CommandContext, CommandRunner, UiServices
+from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl
 from arqstudiocad.commands.builtin import builtin_registry
+from arqstudiocad.core import CadDocument
 from arqstudiocad.credits import load_credits
-from arqstudiocad.events import Event, EventBus, LanguageChanged
+from arqstudiocad.events import (
+    ActiveDocumentChanged,
+    DocumentChanged,
+    DocumentClosed,
+    DocumentOpened,
+    Event,
+    EventBus,
+    LanguageChanged,
+)
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
 from arqstudiocad.product import APP_NAME
 from arqstudiocad.session import Session
@@ -21,8 +30,11 @@ from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
+from arqstudiocad.ui.viewport import Viewport
 
 LANGUAGE_SETTING = "language"
+#: Initial height of the command window, in pixels.
+COMMAND_WINDOW_HEIGHT = 140
 
 
 class MainWindow(QMainWindow):
@@ -38,13 +50,18 @@ class MainWindow(QMainWindow):
         self.events = QtEventBridge(self.bus, self)
         self.events.language_changed.connect(self._on_language_changed)
         self.session = Session(self.bus)
+        self.viewports: dict[int, Viewport] = {}
         self.runner = CommandRunner(
             builtin_registry(),
-            CommandContext(self.session, ui if ui is not None else QtUiServices(self)),
+            CommandContext(
+                self.session, ui if ui is not None else QtUiServices(self, self.viewport_for)
+            ),
         )
         self.command_actions = CommandActions(self.runner, self)
         self.command_window = CommandWindow(self.runner, self.events, self)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.command_window)
+        # A few lines, as in AutoCAD; the user can drag it taller.
+        self.resizeDocks([self.command_window], [COMMAND_WINDOW_HEIGHT], Qt.Orientation.Vertical)
         for signal in (
             self.events.active_document_changed,
             self.events.document_saved,
@@ -56,7 +73,15 @@ class MainWindow(QMainWindow):
 
         self._welcome = QLabel()
         self._welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setCentralWidget(self._welcome)
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self._welcome)
+        self.setCentralWidget(self._stack)
+        self._coordinates = QLabel()
+        self.statusBar().addPermanentWidget(self._coordinates)
+        self.events.document_opened.connect(self._on_document_opened)
+        self.events.active_document_changed.connect(self._on_active_document_changed)
+        self.events.document_closed.connect(self._on_document_closed)
+        self.events.document_changed.connect(self._on_document_changed)
 
         menu_bar = self.menuBar()
         self._file_menu = menu_bar.addMenu("")
@@ -70,6 +95,9 @@ class MainWindow(QMainWindow):
         self._edit_menu = menu_bar.addMenu("")
         for name in ("UNDO", "REDO"):
             self._edit_menu.addAction(self.command_actions[name])
+
+        self._view_menu = menu_bar.addMenu("")
+        self._view_menu.addAction(self.command_actions["ZOOM"])
 
         self._tools_menu = menu_bar.addMenu("")
         self._language_menu = self._tools_menu.addMenu("")
@@ -97,6 +125,7 @@ class MainWindow(QMainWindow):
         self._file_menu.setTitle(tr("&File"))
         self._exit_action.setText(tr("E&xit"))
         self._edit_menu.setTitle(tr("&Edit"))
+        self._view_menu.setTitle(tr("&View"))
         self.command_actions.retranslate()
         self.command_window.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
@@ -110,7 +139,7 @@ class MainWindow(QMainWindow):
                 core=_core.__version__,
             )
             + "\n"
-            + tr("Nothing to draw yet: this is the walking skeleton.")
+            + tr("Create or open a drawing: File menu, or type NEW or OPEN below.")
         )
         action = self._language_actions.get(current_language())
         if action is not None:
@@ -127,6 +156,44 @@ class MainWindow(QMainWindow):
     def _on_language_changed(self, event: LanguageChanged) -> None:
         self._qt_translations.apply(event.code)
         self.retranslate()
+
+    # Viewports: one per open document; the active one is shown.
+
+    def viewport_for(self, document: CadDocument) -> ViewControl | None:
+        """The view of ``document``, for commands such as ZOOM."""
+        return self.viewports.get(document.id)
+
+    def _document(self, document_id: int) -> CadDocument | None:
+        return next((d for d in self.session.documents if d.id == document_id), None)
+
+    def _on_document_opened(self, event: DocumentOpened) -> None:
+        document = self._document(event.document_id)
+        if document is None or event.document_id in self.viewports:
+            return
+        viewport = Viewport(document)
+        viewport.cursor_moved.connect(self._show_coordinates)
+        self.viewports[event.document_id] = viewport
+        self._stack.addWidget(viewport)
+
+    def _on_active_document_changed(self, event: ActiveDocumentChanged) -> None:
+        viewport = None if event.document_id is None else self.viewports.get(event.document_id)
+        self._stack.setCurrentWidget(viewport if viewport is not None else self._welcome)
+        if viewport is None:
+            self._coordinates.clear()
+
+    def _on_document_closed(self, event: DocumentClosed) -> None:
+        viewport = self.viewports.pop(event.document_id, None)
+        if viewport is not None:
+            self._stack.removeWidget(viewport)
+            viewport.deleteLater()
+
+    def _on_document_changed(self, event: DocumentChanged) -> None:
+        viewport = self.viewports.get(event.document_id)
+        if viewport is not None:
+            viewport.apply(event.changes)
+
+    def _show_coordinates(self, x: float, y: float) -> None:
+        self._coordinates.setText(f"{x:.4f}, {y:.4f}")
 
     def _update_title(self, event: Event | None = None) -> None:
         """``name* — App``: the active drawing, starred while modified."""

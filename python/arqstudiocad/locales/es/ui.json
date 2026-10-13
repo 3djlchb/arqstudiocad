@@ -7,7 +7,6 @@
   "&About {app}": "&Acerca de {app}",
   "About {app}": "Acerca de {app}",
   "{app} {version} — CAD core {core}": "{app} {version} — núcleo CAD {core}",
-  "Nothing to draw yet: this is the walking skeleton.": "Todavía no hay nada que dibujar: este es el esqueleto ejecutable.",
   "Open-source CAD for architecture and engineering.": "CAD de código abierto para arquitectura e ingeniería.",
   "CAD core {core} · Qt {qt} · Python {python}": "Núcleo CAD {core} · Qt {qt} · Python {python}",
   "License: GPL-3.0-or-later": "Licencia: GPL-3.0-or-later",
@@ -55,5 +54,7 @@
   "DXF drawings (*.dxf);;DWG drawings (*.dwg)": "Dibujos DXF (*.dxf);;Dibujos DWG (*.dwg)",
   "Open drawing": "Abrir dibujo",
   "Save drawing as": "Guardar dibujo como",
-  "Unsaved changes": "Cambios sin guardar"
+  "Unsaved changes": "Cambios sin guardar",
+  "Create or open a drawing: File menu, or type NEW or OPEN below.": "Cree o abra un dibujo: menú Archivo, o escriba NEW u OPEN abajo.",
+  "&View": "&Ver"
 }
