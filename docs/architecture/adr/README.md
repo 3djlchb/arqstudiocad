@@ -20,6 +20,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0013](0013-application-shell.md) | Application shell: Classic and Ribbon workspaces over one action set, render representation and CPU rasterizer in Rust (arq-render), command window, events, panels, tabbed documents; guaranteed floor (reference machine) scaling up by runtime detection (amends 0007) | Accepted |
 | [0014](0014-platform-direction.md) | Platform direction: CAD/BIM multimodeler (charter, roadmap 0–10), no restart, names kept, docs CC BY-SA 4.0, external render engines, open questions | Accepted, question 3 settled by 0015 |
 | [0015](0015-workspaces.md) | Workspaces: a discipline (declared as data in Python) shown in a layout (Ribbon for all, foldable and the default; Classic only for 2D drafting); chosen separately, layout state saved per workspace | Accepted |
+| [0016](0016-editing-workflow.md) | Editing workflow: AutoCAD selection (window/crossing), picking and snaps in Rust, running object snaps + ORTHO, AutoCAD point syntax, multifunction grips, first draw/edit commands, blocks and polylines transformed as a whole, property editors, Spanish command names | Accepted |
 
 Template:
 
