@@ -1,8 +1,10 @@
 """The drawings' tabs run the full width of the window, under the ribbon or
 the toolbars, and the panels start below them, as AutoCAD's file tabs."""
 
+from pathlib import Path
+
 import pytest
-from PySide6.QtCore import QPoint, Qt
+from PySide6.QtCore import QPoint, QSettings, Qt
 from PySide6.QtWidgets import QWidget
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
@@ -106,3 +108,45 @@ def test_closing_from_the_tab(qtbot: QtBot) -> None:
     window.tabs.bar.tabCloseRequested.emit(0)
     assert window.tabs.count() == 1 and window.tabs.bar.count() == 1
     assert len(window.session.documents) == 1
+
+
+def test_a_saved_arrangement_cannot_lift_the_tabs_beside_the_ribbon(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings, ui=QuietUi())
+    qtbot.addWidget(window)
+    window.show()
+    window.runner.execute("NEW")
+    window.removeToolBarBreak(window.tabs_strip)  # as an arrangement saved before the strip
+    window.close()
+    again = MainWindow(settings, ui=QuietUi())
+    qtbot.addWidget(again)
+    again.resize(1100, 700)
+    again.show()
+    qtbot.waitExposed(again)
+    again.runner.execute("NEW")
+    built = again.workspaces.widgets("cad")
+    assert built is not None and built.ribbon_bar is not None
+    ribbon_bottom = top_in_window(again, built.ribbon_bar) + built.ribbon_bar.height()
+    assert top_in_window(again, again.tabs_strip) >= ribbon_bottom
+
+
+def test_switching_layouts_back_and_forth_adds_no_rows(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings, ui=QuietUi())
+    qtbot.addWidget(window)
+    window.resize(1100, 700)
+    window.show()
+    qtbot.waitExposed(window)
+    window.runner.execute("NEW")
+    tops: dict[str, set[int]] = {"ribbon": set(), "classic": set()}
+    for _ in range(3):
+        for layout in ("classic", "ribbon"):
+            window.workspaces.show(None, layout)
+            qtbot.wait(10)
+            tops[layout].add(top_in_window(window, window.tabs_strip))
+    assert len(tops["ribbon"]) == 1 and len(tops["classic"]) == 1
+    window.workspaces.reset_action.trigger()
+    qtbot.wait(10)
+    assert top_in_window(window, window.tabs_strip) in tops["ribbon"]

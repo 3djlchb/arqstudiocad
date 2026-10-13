@@ -225,7 +225,7 @@ class MainWindow(QMainWindow):
         self.resize(1024, 700)
         self.retranslate()
         self.workspaces.after_restore.append(self.auto_hide.keep_hidden)
-        self.workspaces.after_restore.append(self._show_tabs_strip)
+        self.workspaces.after_restore.append(self._keep_tabs_strip_last)
         self.workspaces.before_reset.append(self.auto_hide.pin_all)
         self.workspaces.show_remembered()
         self.auto_hide.restore()
@@ -336,6 +336,15 @@ class MainWindow(QMainWindow):
             self.tabs.removeTab(self.tabs.indexOf(viewport))
             self._show_tabs_strip()
             viewport.deleteLater()
+
+    def _keep_tabs_strip_last(self) -> None:
+        """A restored arrangement may put the tab strip beside the ribbon
+        (one saved before the strip existed): it goes back to a row of its
+        own, the last at the top, above the panels."""
+        self.removeToolBar(self.tabs_strip)
+        self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.tabs_strip)
+        self._show_tabs_strip()
 
     def _show_tabs_strip(self) -> None:
         """The tab strip shows while a drawing is open."""
