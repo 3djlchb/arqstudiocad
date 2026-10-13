@@ -17,6 +17,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0010](0010-geometry-conventions.md) | Geometry: own validated types, radians in core / degrees in UI, DWG arcs, tolerance, local frames | Accepted |
 | [0011](0011-document-model-and-transactions.md) | Document over opencadcodec, 2D in plan, before/after-image undo, groups, change sets, round-trip corpus | Accepted |
 | [0012](0012-python-api.md) | Python API: tuples for points (any 2-sequence in, NumPy-readable arrays for bulk), immutable value classes, document handles, exception hierarchy, groups as context managers, GIL released for open/save | Accepted |
+| [0013](0013-application-shell.md) | Application shell: Classic and Ribbon workspaces over one action set, render representation in Rust (arq-render), QPainter provisional viewport, command window, events, panels, tabbed documents | Accepted |
 
 Template:
 
