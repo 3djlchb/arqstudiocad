@@ -27,6 +27,8 @@ mod error;
 mod format;
 mod layers;
 mod ocs;
+#[cfg(test)]
+mod test_dxf;
 mod translate;
 
 pub use change::{Change, ChangeSet};

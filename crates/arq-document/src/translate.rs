@@ -1,8 +1,8 @@
 //! Translation between opencadcodec entities and our types. The only place
 //! that reads or writes codec geometry fields.
 
-use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2};
-use opencadcodec::types::Vector3;
+use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Transform2};
+use opencadcodec::types::{Matrix4, Transform, Vector3};
 use opencadcodec::{EntityType, Handle};
 
 use crate::entity::{Color, Entity, EntityId, PlanGeometry};
@@ -20,7 +20,40 @@ pub(crate) fn read_entity(e: &EntityType) -> Entity {
         color: color_from_codec(e.as_entity().color()),
         bounds,
         plan,
+        transformable: plan.is_some() || is_whole_transformable(e),
     }
+}
+
+/// Blocks and lightweight polylines drawn in plan, which move, rotate,
+/// scale, mirror and copy as a whole (ADR 0016, D1). A block array
+/// (MINSERT) is not: its spacing would not follow a scaling.
+pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
+    match e {
+        EntityType::Insert(i) => {
+            plan_normal(i.normal.x, i.normal.y, i.normal.z).is_some()
+                && i.column_count <= 1
+                && i.row_count <= 1
+        }
+        EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
+        _ => false,
+    }
+}
+
+/// Applies a plan transformation to a block or a lightweight polyline as a
+/// whole, through the codec: a block's attributes follow it, a polyline's
+/// bulges flip under a mirror (the codec's mirror path does the same for
+/// these two kinds). Elevations are kept.
+pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
+    let [[a, b, tx], [c, d, ty]] = t.affine();
+    let codec = Transform::from_matrix(Matrix4 {
+        m: [
+            [a, b, 0.0, tx],
+            [c, d, 0.0, ty],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    });
+    e.apply_transform(&codec);
 }
 
 /// Plan bounds of an entity: from our geometry when it has plan geometry,

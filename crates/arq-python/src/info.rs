@@ -68,6 +68,13 @@ impl CadEntityInfo {
         self.0.is_editable()
     }
 
+    /// Whether it can be moved, rotated, scaled, mirrored and copied as a
+    /// whole: lines, circles, arcs, blocks and polylines drawn in plan.
+    #[getter]
+    fn is_transformable(&self) -> bool {
+        self.0.is_transformable()
+    }
+
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
         let layer = PyString::new(py, self.0.layer()).repr()?;
         Ok(format!(

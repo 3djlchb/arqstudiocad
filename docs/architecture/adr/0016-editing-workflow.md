@@ -24,10 +24,15 @@ Move, rotate, scale, mirror and copy work on **lines, circles, arcs, blocks
 (INSERT) and lightweight polylines (LWPOLYLINE)**; the last two move from
 milestone 2.7 to here, transformed **as a whole**:
 
-- INSERT: insertion point, rotation and scale factors (a mirror negates the
-  X scale and adjusts the rotation, as AutoCAD does).
-- LWPOLYLINE: vertices and bulges (a mirror flips the bulges' sign) and
-  widths (scaled with the factor); its elevation is kept.
+- INSERT: insertion point, rotation and scale factors, through the codec's
+  transformation, which carries the block's attributes along (a mirror
+  leaves one scale factor negative; the block is drawn mirrored as in
+  AutoCAD). Block arrays (MINSERT) are not transformed yet.
+- LWPOLYLINE: vertices and bulges (a mirror flips the bulges' sign); its
+  elevation is kept.
+- A copy is a new entity with the original's properties; links it cannot
+  share (reactors, an extension dictionary, cached proxy graphics) are left
+  out, and a block's attributes get handles of their own.
 
 Editing polyline vertices, exploding and editing a block's content stay in
 2.7. Every other kind (texts, hatches, dimensions…) can be selected, erased

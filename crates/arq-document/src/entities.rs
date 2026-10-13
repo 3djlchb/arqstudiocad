@@ -1,13 +1,17 @@
 //! Entity access on [`Document`].
 
-use arq_geometry::Bounds2;
+use arq_geometry::{Bounds2, Transform2};
+use opencadcodec::{EntityType, Handle};
 
 use crate::document::Document;
 use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
-use crate::translate::{bounds_of, color_to_codec, handle, new_entity, read_entity, write_plan};
+use crate::translate::{
+    bounds_of, color_to_codec, handle, is_whole_transformable, new_entity, read_entity,
+    transform_whole, write_plan,
+};
 
 impl Document {
     /// A snapshot of the entity with this id, in any space.
@@ -55,6 +59,70 @@ impl Document {
             return Err(DocumentError::NotEditable { id, kind });
         }
         write_plan(e, plan)
+    }
+
+    /// Moves, rotates, scales or mirrors an entity that
+    /// [`Entity::is_transformable`]: editable ones through their plan
+    /// geometry, blocks and polylines as a whole (ADR 0016, D1). Anything
+    /// else is [`DocumentError::NotEditable`].
+    pub fn transform_entity(&mut self, id: EntityId, t: Transform2) -> DocumentResult<()> {
+        let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        if let Some(plan) = e.plan() {
+            let moved = plan.with_geometry(t.apply(plan.geometry())?);
+            return self.set_plan_geometry(id, moved);
+        }
+        let raw = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        if !is_whole_transformable(raw) {
+            let kind = raw.as_entity().entity_type();
+            return Err(DocumentError::NotEditable { id, kind });
+        }
+        transform_whole(raw, t);
+        Ok(())
+    }
+
+    /// Adds a copy of a transformable entity to model space, with the same
+    /// layer, color and other properties, where the original is; returns
+    /// its id. A block's attributes get handles of their own; links the
+    /// copy cannot share (reactors, an extension dictionary, cached proxy
+    /// graphics) are left out, as copying drops them in AutoCAD too.
+    pub fn copy_entity(&mut self, id: EntityId) -> DocumentResult<EntityId> {
+        let original = self
+            .cad()
+            .get_entity(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        if !read_entity(original).is_transformable() {
+            let kind = original.as_entity().entity_type();
+            return Err(DocumentError::NotEditable { id, kind });
+        }
+        let mut copy = original.clone();
+        let common = copy.common_mut();
+        common.handle = Handle::NULL;
+        common.owner_handle = Handle::NULL;
+        common.raw_record = None;
+        common.reactors.clear();
+        common.xdictionary_handle = None;
+        common.graphic_data = None;
+        if let EntityType::Insert(insert) = &mut copy {
+            for attribute in &mut insert.attributes {
+                let h = self.cad_mut().allocate_handle();
+                let common = &mut attribute.common;
+                common.handle = h;
+                common.raw_record = None;
+                common.reactors.clear();
+                common.xdictionary_handle = None;
+            }
+            insert.seqend_handle = None;
+        }
+        let h = self.cad_mut().add_entity(copy)?;
+        if let Some(EntityType::Insert(insert)) = self.cad_mut().get_entity_mut(h) {
+            for attribute in &mut insert.attributes {
+                attribute.common.owner_handle = h;
+            }
+        }
+        Ok(h.value())
     }
 
     /// Deletes an entity of any type (erasing needs no geometry, D3.4).
@@ -126,6 +194,10 @@ impl Document {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "whole_tests.rs"]
+mod whole_tests;
 
 #[cfg(test)]
 mod tests {
