@@ -64,6 +64,10 @@ the middle button, zoom with the wheel about the cursor, zoom extents.
 Rasterizing releases the GIL. Phase 7 adds the GPU renderer beside it; this
 one stays as the software fallback.
 
+Measured (`cargo bench -p arq-render`, development laptop i7-8750H, one
+core, 2026-10-12, 100,000 entities at 1920 × 1080): building the scene from
+the document 59 ms, rendering the whole drawing 69 ms, a 1 % view 10 ms.
+
 (First decided as `QPainter` from Python; changed on 2026-10-12 once the
 reference machine was known: a Python loop per polyline would take about
 half a second per frame there on large drawings.)

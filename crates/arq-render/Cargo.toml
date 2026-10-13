@@ -11,6 +11,16 @@ publish.workspace = true
 
 [dependencies]
 arq-core.workspace = true
+arq-geometry.workspace = true
+tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+arq-document = { workspace = true, features = ["test-support"] }
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "raster"
+harness = false
