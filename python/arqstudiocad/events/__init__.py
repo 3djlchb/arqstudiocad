@@ -37,6 +37,8 @@ __all__ = [
     "LanguageChanged",
     "SelectionChanged",
     "Subscription",
+    "WorkFinished",
+    "WorkStarted",
 ]
 
 log = logging.getLogger(__name__)
@@ -138,6 +140,19 @@ class CommandMessage(Event):
     """A line for the command window's history, translated."""
 
     text: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorkStarted(Event):
+    """Long work began on a worker thread (opening, saving); ``message`` is
+    translated, e.g. ``"Opening plano.dwg…"``."""
+
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class WorkFinished(Event):
+    """The long work ended, well or not."""
 
 
 @dataclass(frozen=True, slots=True)

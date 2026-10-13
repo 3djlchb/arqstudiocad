@@ -1,4 +1,5 @@
 from pytestqt.qtbot import QtBot
+from ui_fakes import QuietUi
 
 from arqstudiocad import _core
 from arqstudiocad.__main__ import main
@@ -33,7 +34,7 @@ def test_choose_language_order() -> None:
 
 
 def test_window_switches_language(qtbot: QtBot) -> None:
-    window = MainWindow()
+    window = MainWindow(ui=QuietUi())
     qtbot.addWidget(window)
     assert window.menuBar().actions()[0].text() == "&File"
 
@@ -52,7 +53,7 @@ def test_window_switches_language(qtbot: QtBot) -> None:
 
 
 def test_about_shows_versions_and_credits(qtbot: QtBot) -> None:
-    window = MainWindow()
+    window = MainWindow(ui=QuietUi())
     qtbot.addWidget(window)
     text = window.about_text()
     assert _core.__version__ in text

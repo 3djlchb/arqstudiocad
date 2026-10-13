@@ -7,6 +7,7 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
+from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadDocument
 from arqstudiocad.ui.main_window import MainWindow
@@ -34,7 +35,9 @@ def write_dxf(path: Path) -> Path:
 
 @pytest.fixture
 def window(qtbot: QtBot) -> MainWindow:
-    w = MainWindow()
+    ui = QuietUi()
+    w = MainWindow(ui=ui)
+    ui.view_for = w.viewport_for
     qtbot.addWidget(w)
     w.resize(900, 600)
     w.show()
@@ -79,7 +82,7 @@ def send_mouse(
 
 def test_an_opened_drawing_is_shown_whole(window: MainWindow, tmp_path: Path) -> None:
     _, viewport = open_plan(window, tmp_path)
-    assert window._stack.currentWidget() is viewport
+    assert window.tabs.currentWidget() is viewport
     assert viewport.view.shape_count == 5
     assert lit(viewport, 50, 0) and lit(viewport, 100, 25) and lit(viewport, 50, 25)
     assert not lit(viewport, 75, 10), "inside the rectangle, off the diagonal"
@@ -150,11 +153,10 @@ def test_each_document_has_its_view(window: MainWindow, tmp_path: Path) -> None:
     window.runner.execute("NEW")
     second = window.session.active
     assert second is not None and second != first
-    stack = window._stack
-    assert stack.currentWidget() is window.viewports[second.id]
+    assert window.tabs.currentWidget() is window.viewports[second.id]
     window.session.activate(first)
-    assert stack.currentWidget() is first_view
+    assert window.tabs.currentWidget() is first_view
     window.runner.execute("CLOSE")
     window.runner.execute("CLOSE")
     assert window.viewports == {}
-    assert stack.currentWidget() is window._welcome
+    assert window._stack.currentWidget() is window._welcome

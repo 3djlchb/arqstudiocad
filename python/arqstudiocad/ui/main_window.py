@@ -1,16 +1,23 @@
-"""Main window: viewports, menus, the command window, language switch and About."""
+"""Main window: document tabs, menus, the command window, language switch and About."""
 
 import platform
 from functools import partial
 from html import escape
 
 from PySide6.QtCore import QSettings, Qt, qVersion
-from PySide6.QtGui import QAction, QActionGroup, QKeySequence
-from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox, QStackedWidget
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
+from PySide6.QtWidgets import (
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QProgressBar,
+    QStackedWidget,
+    QTabWidget,
+)
 
 from arqstudiocad import _core
-from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl
-from arqstudiocad.commands.builtin import builtin_registry
+from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
+from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry
 from arqstudiocad.core import CadDocument
 from arqstudiocad.credits import load_credits
 from arqstudiocad.events import (
@@ -21,11 +28,13 @@ from arqstudiocad.events import (
     Event,
     EventBus,
     LanguageChanged,
+    WorkStarted,
 )
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
 from arqstudiocad.product import APP_NAME
 from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
+from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.qt_services import QtUiServices
@@ -43,6 +52,7 @@ class MainWindow(QMainWindow):
         settings: QSettings | None = None,
         bus: EventBus | None = None,
         ui: UiServices | None = None,
+        worker: Worker | None = None,
     ) -> None:
         super().__init__()
         self._settings = settings
@@ -51,11 +61,10 @@ class MainWindow(QMainWindow):
         self.events.language_changed.connect(self._on_language_changed)
         self.session = Session(self.bus)
         self.viewports: dict[int, Viewport] = {}
+        self.ui = ui if ui is not None else QtUiServices(self, self.viewport_for)
+        self.worker = worker if worker is not None else QtWorker(self)
         self.runner = CommandRunner(
-            builtin_registry(),
-            CommandContext(
-                self.session, ui if ui is not None else QtUiServices(self, self.viewport_for)
-            ),
+            builtin_registry(), CommandContext(self.session, self.ui, self.worker)
         )
         self.command_actions = CommandActions(self.runner, self)
         self.command_window = CommandWindow(self.runner, self.events, self)
@@ -73,11 +82,27 @@ class MainWindow(QMainWindow):
 
         self._welcome = QLabel()
         self._welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.setTabsClosable(True)
+        self.tabs.setMovable(True)
+        self.tabs.currentChanged.connect(self._on_tab_chosen)
+        self.tabs.tabCloseRequested.connect(self._on_tab_close_requested)
         self._stack = QStackedWidget()
         self._stack.addWidget(self._welcome)
+        self._stack.addWidget(self.tabs)
         self.setCentralWidget(self._stack)
         self._coordinates = QLabel()
+        self._busy = QProgressBar()
+        self._busy.setRange(0, 0)  # busy, without a percentage
+        self._busy.setMaximumWidth(120)
+        self._busy.hide()
+        self.statusBar().addPermanentWidget(self._busy)
         self.statusBar().addPermanentWidget(self._coordinates)
+        self.events.work_started.connect(self._on_work_started)
+        self.events.work_finished.connect(self._on_work_finished)
+        for signal in (self.events.document_changed, self.events.document_saved):
+            signal.connect(self._update_tab_titles)
         self.events.document_opened.connect(self._on_document_opened)
         self.events.active_document_changed.connect(self._on_active_document_changed)
         self.events.document_closed.connect(self._on_document_closed)
@@ -173,19 +198,81 @@ class MainWindow(QMainWindow):
         viewport = Viewport(document)
         viewport.cursor_moved.connect(self._show_coordinates)
         self.viewports[event.document_id] = viewport
-        self._stack.addWidget(viewport)
+        self.tabs.addTab(viewport, document.name)
+        self._update_tab_titles()
 
     def _on_active_document_changed(self, event: ActiveDocumentChanged) -> None:
         viewport = None if event.document_id is None else self.viewports.get(event.document_id)
-        self._stack.setCurrentWidget(viewport if viewport is not None else self._welcome)
         if viewport is None:
+            self._stack.setCurrentWidget(self._welcome)
             self._coordinates.clear()
+            return
+        self._stack.setCurrentWidget(self.tabs)
+        self.tabs.setCurrentWidget(viewport)
 
     def _on_document_closed(self, event: DocumentClosed) -> None:
         viewport = self.viewports.pop(event.document_id, None)
         if viewport is not None:
-            self._stack.removeWidget(viewport)
+            self.tabs.removeTab(self.tabs.indexOf(viewport))
             viewport.deleteLater()
+
+    def _on_tab_chosen(self, index: int) -> None:
+        viewport = self.tabs.widget(index)
+        if isinstance(viewport, Viewport) and viewport.document.is_open:
+            self.session.activate(viewport.document)
+
+    def _on_tab_close_requested(self, index: int) -> None:
+        viewport = self.tabs.widget(index)
+        if isinstance(viewport, Viewport):
+            self.session.activate(viewport.document)
+            self.command_actions.run("CLOSE")
+
+    def _update_tab_titles(self, event: Event | None = None) -> None:
+        for viewport in self.viewports.values():
+            document = viewport.document
+            if not document.is_open:
+                continue
+            index = self.tabs.indexOf(viewport)
+            self.tabs.setTabText(index, document.name + ("*" if document.is_modified else ""))
+            path = document.path
+            self.tabs.setTabToolTip(index, str(path) if path is not None else document.name)
+
+    def _on_work_started(self, event: WorkStarted) -> None:
+        self.statusBar().showMessage(event.message)
+        self._busy.show()
+
+    def _on_work_finished(self, event: Event) -> None:
+        self.statusBar().clearMessage()
+        self._busy.hide()
+
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 (Qt API)
+        """Quitting: wait for background work, and ask about every drawing
+        with unsaved changes (Save / Discard / Cancel)."""
+        if self.runner.busy is not None:
+            self.command_window.history.appendPlainText(
+                tr("Please wait: {work}", work=self.runner.busy)
+            )
+            event.ignore()
+            return
+        for document in self.session.documents:
+            if not document.is_modified:
+                continue
+            self.session.activate(document)
+            answer = self.ui.ask_save_changes(document.name)
+            if answer == "cancel":
+                event.ignore()
+                return
+            if answer == "yes":
+                path = document.path or self.ui.choose_save_path(
+                    document.name + DEFAULT_SAVE_EXTENSION
+                )
+                if path is None:
+                    event.ignore()
+                    return
+                self.session.save(document, path)
+        if isinstance(self.worker, QtWorker):
+            self.worker.shutdown()
+        event.accept()
 
     def _on_document_changed(self, event: DocumentChanged) -> None:
         viewport = self.viewports.get(event.document_id)

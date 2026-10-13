@@ -40,7 +40,11 @@ def open_(ctx: CommandContext) -> CommandScript:
             raise CommandCancelledError()
     else:
         path = Path((yield ctx.ask(tr("File to open"))))
-    document = ctx.session.open_document(path)
+    app = ctx.session.app
+    document = yield ctx.background(
+        lambda: app.open_document(path), tr("Opening {name}…", name=path.name)
+    )
+    ctx.session.adopt(document)
     ctx.message(
         tr(
             "Opened {name}: {count} entities, {version}.",
@@ -56,7 +60,7 @@ def save(ctx: CommandContext) -> CommandScript:
     if document.path is None:
         yield from _save_as(ctx, document)
     else:
-        _write(ctx, document, document.path)
+        yield from _write(ctx, document, document.path)
 
 
 def save_as(ctx: CommandContext) -> CommandScript:
@@ -73,11 +77,13 @@ def _save_as(ctx: CommandContext, document: CadDocument) -> CommandScript:
         path = Path((yield ctx.ask(tr("Save as"), default=suggested)))
     if not path.suffix:
         path = path.with_suffix(DEFAULT_SAVE_EXTENSION)
-    _write(ctx, document, path)
+    yield from _write(ctx, document, path)
 
 
-def _write(ctx: CommandContext, document: CadDocument, path: Path) -> None:
-    ctx.session.save(document, path)
+def _write(ctx: CommandContext, document: CadDocument, path: Path) -> CommandScript:
+    # The core saves a snapshot taken when it starts: drawing may go on.
+    yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
+    ctx.session.saved(document, path)
     ctx.message(tr("Saved {path}", path=str(path)))
 
 

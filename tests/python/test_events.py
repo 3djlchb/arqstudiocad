@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QCoreApplication, QThread
 from pytestqt.qtbot import QtBot
+from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadApplication
 from arqstudiocad.events import (
@@ -135,7 +136,7 @@ def test_events_from_a_worker_thread_reach_slots_on_the_gui_thread(qtbot: QtBot)
 
 def test_the_window_retranslates_on_language_changed(qtbot: QtBot) -> None:
     bus = EventBus()
-    window = MainWindow(bus=bus)
+    window = MainWindow(bus=bus, ui=QuietUi())
     qtbot.addWidget(window)
     seen: list[Event] = []
     bus.subscribe(LanguageChanged, seen.append)

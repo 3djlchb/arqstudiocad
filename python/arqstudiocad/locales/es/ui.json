@@ -56,5 +56,8 @@
   "Save drawing as": "Guardar dibujo como",
   "Unsaved changes": "Cambios sin guardar",
   "Create or open a drawing: File menu, or type NEW or OPEN below.": "Cree o abra un dibujo: menú Archivo, o escriba NEW u OPEN abajo.",
-  "&View": "&Ver"
+  "&View": "&Ver",
+  "Opening {name}…": "Abriendo {name}…",
+  "Saving {name}…": "Guardando {name}…",
+  "Please wait: {work}": "Espere: {work}"
 }

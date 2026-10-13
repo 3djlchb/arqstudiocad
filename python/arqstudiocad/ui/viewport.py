@@ -31,7 +31,9 @@ class Viewport(QWidget):
         self._image: QImage | None = None
         self._pixels: bytes = b""  # keeps the image's memory alive
         self._dirty = True
-        self._fitted = False
+        # Show the whole drawing at whatever size the widget ends up, until
+        # the user zooms or pans (a new tab starts tiny, then grows).
+        self._auto_fit = True
         self._drag: QPointF | None = None
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -47,6 +49,7 @@ class Viewport(QWidget):
 
     def zoom(self, factor: float) -> None:
         """Zooms about the middle of the view."""
+        self._auto_fit = False
         self.view.zoom_at(self.view.width / 2, self.view.height / 2, factor)
         self._redraw()
 
@@ -68,14 +71,15 @@ class Viewport(QWidget):
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
         ratio = self.devicePixelRatioF()
         self.view.resize(max(1, round(self.width() * ratio)), max(1, round(self.height() * ratio)))
-        if not self._fitted:
-            self._fitted = self.view.zoom_extents() or self._fitted
+        if self._auto_fit:
+            self.view.zoom_extents()
         self._redraw()
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 (Qt API)
         notches = event.angleDelta().y() / 120
         if notches:
             x, y = self._physical(event.position())
+            self._auto_fit = False
             self.view.zoom_at(x, y, WHEEL_STEP**notches)
             self._redraw()
         event.accept()
@@ -94,6 +98,7 @@ class Viewport(QWidget):
             ratio = self.devicePixelRatioF()
             delta = position - self._drag
             self._drag = position
+            self._auto_fit = False
             self.view.pan(delta.x() * ratio, delta.y() * ratio)
             self._redraw()
         self.cursor_moved.emit(*self.view.to_world(*self._physical(position)))

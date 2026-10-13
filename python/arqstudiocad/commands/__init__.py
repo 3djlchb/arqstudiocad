@@ -1,7 +1,10 @@
 """User commands (contract §5, ADR 0006, ADR 0013 D5.4).
 
 A command is a generator: it yields a :class:`Prompt`, receives what the
-user typed, and goes on until it returns. The :class:`CommandRunner` drives
+user typed, and goes on until it returns. It may also yield
+:class:`Background` work (opening, saving): the runner hands it to a
+:class:`Worker` thread and sends the result back, on the caller's thread,
+when it is done; without a worker it runs at once. The :class:`CommandRunner` drives
 it from the command window, publishes ``CommandStarted``, ``CommandPrompt``,
 ``CommandMessage``, ``CommandFinished`` and ``CommandCancelled``, and turns
 Esc into cancellation. Commands reach the drawing only through the
@@ -16,7 +19,7 @@ import logging
 from collections.abc import Callable, Generator, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from arqstudiocad.core import CadDocument, CadError
 from arqstudiocad.events import (
@@ -26,6 +29,8 @@ from arqstudiocad.events import (
     CommandPrompt,
     CommandStarted,
     EventBus,
+    WorkFinished,
+    WorkStarted,
 )
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
@@ -69,8 +74,32 @@ class Prompt:
         return text + ":"
 
 
+@dataclass(frozen=True, slots=True)
+class Background:
+    """Work too long for the interface thread (reading or writing a file).
+    Yield it to get what ``task`` returns, or have its exception raised at
+    the ``yield``. It cannot be interrupted: Esc waits for it."""
+
+    task: Callable[[], Any]
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class Outcome:
+    """How background work ended: its value, or the exception it raised."""
+
+    value: Any = None
+    error: Exception | None = None
+
+
+class Worker(Protocol):
+    """Runs background work and calls ``done`` on the thread that asked."""
+
+    def run(self, task: Callable[[], Any], done: Callable[[Outcome], None]) -> None: ...
+
+
 type Answer = str
-type CommandScript = Generator[Prompt, Answer, None]
+type CommandScript = Generator[Prompt | Background, Any, None]
 
 
 class ViewControl(Protocol):
@@ -99,6 +128,7 @@ class CommandContext:
 
     session: Session
     ui: UiServices | None = None
+    worker: Worker | None = None
 
     def message(self, text: str) -> None:
         """A line for the command window's history."""
@@ -118,6 +148,10 @@ class CommandContext:
     def ask(self, message: str, default: str | None = None) -> Prompt:
         """A prompt for any text; yield it to get the text."""
         return Prompt(message, "text", (), default)
+
+    def background(self, task: Callable[[], Any], message: str) -> Background:
+        """Work for a worker thread; yield it to get its result."""
+        return Background(task, message)
 
 
 type CommandFunction = Callable[[CommandContext], CommandScript]
@@ -174,6 +208,7 @@ class CommandRunner:
         self._command: Command | None = None
         self._prompt: Prompt | None = None
         self._last: Command | None = None
+        self._busy: Background | None = None
 
     @property
     def bus(self) -> EventBus:
@@ -189,11 +224,18 @@ class CommandRunner:
         """What the running command is asking for."""
         return self._prompt
 
+    @property
+    def busy(self) -> str | None:
+        """What background work the running command waits for, if any."""
+        return None if self._busy is None else self._busy.message
+
     def execute(self, line: str) -> None:
         """A line typed in the command window: a command to start, or the
         answer to the running command's prompt. An empty line with no
         command running repeats the last one, as Enter does in AutoCAD."""
         text = line.strip()
+        if self._refuse_while_busy():
+            return
         if self._command is None:
             if not text:
                 if self._last is not None:
@@ -209,6 +251,8 @@ class CommandRunner:
 
     def start(self, command: Command) -> None:
         """Starts ``command``, cancelling any running one."""
+        if self._refuse_while_busy():
+            return
         if self._command is not None:
             self.cancel()
         self._command = command
@@ -219,11 +263,12 @@ class CommandRunner:
         except Exception as error:  # a command failing to start
             self._fail(error)
             return
-        self._step(None)
+        self._advance(next)
 
     def cancel(self, reason: str = "") -> None:
-        """Esc: stops the running command."""
-        if self._command is None:
+        """Esc: stops the running command (not while it works in the
+        background: that cannot be interrupted)."""
+        if self._command is None or self._refuse_while_busy():
             return
         script, name = self._script, self._command.name
         self._clear()
@@ -243,13 +288,14 @@ class CommandRunner:
         if answer is None:
             self._show(prompt)  # ask again
             return
-        self._step(answer)
+        self._advance(lambda script: script.send(answer))
 
-    def _step(self, answer: str | None) -> None:
+    def _advance(self, resume: Callable[[CommandScript], Prompt | Background]) -> None:
+        """Runs the command to its next prompt, background work or end."""
         script = self._script
         assert script is not None
         try:
-            prompt = next(script) if answer is None else script.send(answer)
+            step = resume(script)
         except StopIteration:
             name = self.active or ""
             self._clear()
@@ -258,8 +304,41 @@ class CommandRunner:
         except Exception as error:
             self._fail(error)
             return
-        self._prompt = prompt
-        self._show(prompt)
+        if isinstance(step, Background):
+            self._run_background(step)
+            return
+        self._prompt = step
+        self._show(step)
+
+    def _run_background(self, work: Background) -> None:
+        self._busy = work
+        self.bus.publish(WorkStarted(work.message))
+        worker = self.context.worker
+        if worker is None:
+            try:
+                outcome = Outcome(value=work.task())
+            except Exception as error:
+                outcome = Outcome(error=error)
+            self._background_done(outcome)
+        else:
+            worker.run(work.task, self._background_done)
+
+    def _background_done(self, outcome: Outcome) -> None:
+        self._busy = None
+        self.bus.publish(WorkFinished())
+        if self._script is None:
+            return
+        error = outcome.error
+        if error is not None:
+            self._advance(lambda script: script.throw(error))
+        else:
+            self._advance(lambda script: script.send(outcome.value))
+
+    def _refuse_while_busy(self) -> bool:
+        if self._busy is None:
+            return False
+        self.context.message(tr("Please wait: {work}", work=self._busy.message))
+        return True
 
     def _show(self, prompt: Prompt) -> None:
         self.bus.publish(CommandPrompt(self.active or "", prompt.shown()))
@@ -297,6 +376,7 @@ def _option_key(options: Sequence[Option], typed: str) -> str | None:
 
 __all__ = [
     "Answer",
+    "Background",
     "Command",
     "CommandCancelledError",
     "CommandContext",
@@ -305,7 +385,9 @@ __all__ = [
     "CommandRunner",
     "CommandScript",
     "Option",
+    "Outcome",
     "Prompt",
     "UiServices",
     "ViewControl",
+    "Worker",
 ]

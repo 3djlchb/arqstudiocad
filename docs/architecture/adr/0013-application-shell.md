@@ -110,6 +110,21 @@ window keeps responding. Closing a modified document or quitting asks to
 save. Save As offers DXF first until the round-trip corpus makes DWG the
 default (contract §10, phase 8).
 
+Background work (a command yields `Background`; a `QtWorker` thread runs it
+and the command resumes on the GUI thread), answering contract §9:
+
+- **cancellation:** opening and saving cannot be interrupted; Esc, other
+  commands and quitting are refused with "Please wait" until they end;
+- **if the document changes meanwhile:** saving writes the snapshot taken
+  when it started, so drawing may go on;
+- **when results apply:** on completion, on the GUI thread;
+- **progress:** a busy indicator and the work's name in the status bar;
+- **failure:** a file that does not open adds nothing; a failed save leaves
+  the previous file untouched (the core's safe save).
+
+Tests never show a modal dialog: a test fixture makes any of them fail at
+once instead of waiting forever for a click.
+
 ### D5.8 — A guaranteed floor, scaling up from it
 
 The reference machine is now known (recorded in ADR 0007): GT 730 Kepler on

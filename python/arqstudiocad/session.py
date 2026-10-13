@@ -68,6 +68,11 @@ class Session:
     def save(self, document: CadDocument, path: Path) -> None:
         """Saves as DWG or DXF, by the extension."""
         document.save(path)
+        self.saved(document, path)
+
+    def saved(self, document: CadDocument, path: Path) -> None:
+        """Tells everyone ``document`` was saved to ``path`` (by work done
+        elsewhere, e.g. on a worker thread)."""
         self.bus.publish(DocumentSaved(document.id, path))
 
     def close(self, document: CadDocument) -> None:

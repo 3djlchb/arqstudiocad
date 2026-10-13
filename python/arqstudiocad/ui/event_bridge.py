@@ -24,6 +24,8 @@ from arqstudiocad.events import (
     EventBus,
     LanguageChanged,
     SelectionChanged,
+    WorkFinished,
+    WorkStarted,
 )
 
 
@@ -44,6 +46,8 @@ class QtEventBridge(QObject):
     command_prompt = Signal(object)
     command_message = Signal(object)
     language_changed = Signal(object)
+    work_started = Signal(object)
+    work_finished = Signal(object)
 
     def __init__(self, bus: EventBus, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -61,6 +65,8 @@ class QtEventBridge(QObject):
             CommandPrompt: self.command_prompt,
             CommandMessage: self.command_message,
             LanguageChanged: self.language_changed,
+            WorkStarted: self.work_started,
+            WorkFinished: self.work_finished,
         }
         self._subscription = bus.subscribe(Event, self._emit)
         self.destroyed.connect(self._subscription.cancel)

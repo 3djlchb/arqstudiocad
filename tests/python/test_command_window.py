@@ -1,54 +1,21 @@
 """The command window and the command menus (ADR 0013, D5.1 and D5.4)."""
 
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from pytestqt.qtbot import QtBot
+from ui_fakes import QuietUi
 
-from arqstudiocad.commands import CommandContext, CommandRunner, ViewControl
+from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.builtin import builtin_registry
-from arqstudiocad.core import CadDocument
 from arqstudiocad.events import EventBus
 from arqstudiocad.product import APP_NAME
 from arqstudiocad.session import Session
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.main_window import MainWindow
-
-
-@dataclass
-class Zooms:
-    count: int = 0
-
-    def zoom_extents(self) -> bool:
-        self.count += 1
-        return True
-
-    def zoom(self, factor: float) -> None:
-        self.count += 1
-
-
-@dataclass
-class QuietUi:
-    """No dialogs: every file dialog is cancelled; one view for everything."""
-
-    zooms: Zooms = field(default_factory=Zooms)
-
-    def choose_open_path(self) -> Path | None:
-        return None
-
-    def choose_save_path(self, suggested: str) -> Path | None:
-        return None
-
-    def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
-        return "no"
-
-    def view(self, document: CadDocument) -> ViewControl | None:
-        return self.zooms
 
 
 @pytest.fixture
