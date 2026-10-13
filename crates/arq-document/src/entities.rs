@@ -88,7 +88,7 @@ impl Document {
     /// Sets the color of an entity of any type.
     pub fn set_entity_color(&mut self, id: EntityId, color: Color) -> DocumentResult<()> {
         if color == Color::Index(0) {
-            return Err(DocumentError::InvalidLayerColor);
+            return Err(DocumentError::InvalidColorIndex(0));
         }
         let e = self
             .cad_mut()

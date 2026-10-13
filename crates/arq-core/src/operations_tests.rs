@@ -223,3 +223,19 @@ fn layer_operations_report_and_undo() {
     assert!(cad.document().layer(l).is_none());
     assert_eq!(cad.delete_layer(l).unwrap_err(), CadError::LayerNotFound(l));
 }
+
+#[test]
+fn color_index_zero_is_an_invalid_operation() {
+    let mut cad = CadDocument::new();
+    let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    let err = cad.set_entity_color(&[id], Color::Index(0)).unwrap_err();
+    assert!(matches!(err, CadError::InvalidOperation(_)), "{err:?}");
+    let err = CadError::from(Color::index(0).unwrap_err());
+    assert!(matches!(err, CadError::InvalidOperation(_)), "{err:?}");
+    assert_eq!(Color::index(255).unwrap(), Color::Index(255));
+    assert_eq!(
+        cad.undo_name(),
+        Some("LINE"),
+        "no step for the failed CHPROP"
+    );
+}

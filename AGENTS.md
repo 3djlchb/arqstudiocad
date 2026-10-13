@@ -31,6 +31,7 @@ cargo fmt --all && cargo clippy --workspace --all-targets -- -D warnings
 cargo test                                     # core crates, no Python
 uv run pytest                                  # Python tests
 uv run ruff check && uv run ruff format --check && uv run mypy
+uv run stubtest arqstudiocad._core            # the .pyi stub matches the module
 cargo deny check                               # dependency licenses + advisories
 ```
 

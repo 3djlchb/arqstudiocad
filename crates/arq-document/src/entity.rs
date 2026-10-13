@@ -33,9 +33,7 @@ impl Color {
     /// An ACI color; the index must be 1 to 255.
     pub fn index(i: u8) -> DocumentResult<Self> {
         if i == 0 {
-            return Err(DocumentError::Codec(
-                "color index 0 is BYBLOCK; use Color::ByBlock".into(),
-            ));
+            return Err(DocumentError::InvalidColorIndex(i));
         }
         Ok(Self::Index(i))
     }

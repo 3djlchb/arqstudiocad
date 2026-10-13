@@ -10,7 +10,8 @@ format and DXF as an open alternative.
 > core is done — lines, circles, arcs, transformations, intersections and snap
 > points (phase 2) — and so is the document core: it opens and saves DWG and
 > DXF, edits lines, circles, arcs and layers with undo and redo, and keeps
-> everything else in the drawing intact (phase 3). The interface cannot draw
+> everything else in the drawing intact (phase 3). All of it can be scripted
+> from Python through `arqstudiocad.core` (phase 4). The interface cannot draw
 > yet.
 
 | Layer | Technology | Owns |

@@ -76,6 +76,7 @@ name = "arq-python"
 version = "0.1.0"
 dependencies = [
  "arq-core",
+ "arq-geometry",
  "pyo3",
 ]
 
