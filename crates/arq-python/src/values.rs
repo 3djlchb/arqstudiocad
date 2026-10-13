@@ -8,7 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use arq_core::Color;
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2};
+use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Vector2};
 use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
@@ -17,6 +17,9 @@ use crate::errors::{IntoPy, InvalidOperationError};
 /// A point as Python passes it: any sequence of two numbers — a tuple, a
 /// list, a NumPy array of shape `(2,)`.
 pub struct PyPoint(pub Point2);
+
+/// A vector (a displacement) as Python passes it, like [`PyPoint`].
+pub struct PyVector(pub Vector2);
 
 /// The two numbers of a point-like Python object.
 fn pair(obj: &Bound<'_, PyAny>, what: &str) -> PyResult<(f64, f64)> {
@@ -45,6 +48,15 @@ impl<'a, 'py> FromPyObject<'a, 'py> for PyPoint {
     fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
         let (x, y) = pair(&obj, "point")?;
         Point2::new(x, y).py().map(Self)
+    }
+}
+
+impl<'a, 'py> FromPyObject<'a, 'py> for PyVector {
+    type Error = PyErr;
+
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
+        let (x, y) = pair(&obj, "vector")?;
+        Vector2::new(x, y).py().map(Self)
     }
 }
 

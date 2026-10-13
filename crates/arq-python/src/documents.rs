@@ -16,14 +16,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arq_core::{
-    CadApplication as CoreApplication, CadDocument as CoreDocument, CadError, DocumentId, EntityId,
-    LayerId,
+    CadApplication as CoreApplication, CadChangeSet as ChangeSet, CadDocument as CoreDocument,
+    CadError, DocumentId, EntityId, LayerId,
 };
+use arq_geometry::{Geometry2, Line};
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
 
+use crate::changes::{CadChangeSet, CadGroup};
 use crate::errors::IntoPy;
 use crate::info::{CadEntityInfo, CadLayerInfo};
-use crate::values::CadBounds2;
+use crate::values::{CadArc, CadBounds2, CadCircle, CadColor, CadLine, PyPoint, PyVector};
 
 /// The open documents of one application.
 #[pyclass(frozen, module = "arqstudiocad._core")]
@@ -131,12 +134,48 @@ impl CadDocument {
     }
 
     /// Runs `f` with write access, for this call only.
-    #[allow(dead_code, reason = "operations arrive in step 4.4")]
     pub fn edit<R>(
         &self,
         f: impl FnOnce(&mut CoreDocument) -> arq_core::CadResult<R>,
     ) -> PyResult<R> {
         self.store.edit(self.id, f).py()
+    }
+
+    /// One operation that returns only a change set.
+    fn change(
+        &self,
+        f: impl FnOnce(&mut CoreDocument) -> arq_core::CadResult<ChangeSet>,
+    ) -> PyResult<CadChangeSet> {
+        self.edit(f).map(CadChangeSet)
+    }
+
+    /// One operation that creates something and returns its id too.
+    fn create(
+        &self,
+        f: impl FnOnce(&mut CoreDocument) -> arq_core::CadResult<(u64, ChangeSet)>,
+    ) -> PyResult<(u64, CadChangeSet)> {
+        self.edit(f)
+            .map(|(id, changes)| (id, CadChangeSet(changes)))
+    }
+
+    /// Group plumbing for `CadGroup`.
+    pub fn begin(&self, name: &str) -> PyResult<()> {
+        self.edit(|cad| {
+            cad.begin_group(name);
+            Ok(())
+        })
+    }
+
+    pub fn end(&self) -> PyResult<ChangeSet> {
+        self.edit(CoreDocument::end_group)
+    }
+
+    pub fn cancel(&self) -> PyResult<ChangeSet> {
+        self.edit(CoreDocument::cancel_group)
+    }
+
+    pub fn group_open(&self) -> PyResult<bool> {
+        self.read(CoreDocument::in_group)
     }
 }
 
@@ -245,6 +284,218 @@ impl CadDocument {
         Ok(CadLayerInfo(
             self.read(|cad| cad.document().current_layer())?,
         ))
+    }
+
+    // Operations (contract §4 and §6). Each is one transaction: one undo
+    // step, or no change at all when it raises. Ids may be any sequence of
+    // ints; repeats are edited once; an empty list changes nothing.
+
+    /// Draws a line on the current layer; returns its id and what changed.
+    fn add_line(&self, start: PyPoint, end: PyPoint) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_line(start.0, end.0))
+    }
+
+    /// Draws a circle on the current layer.
+    fn add_circle(&self, center: PyPoint, radius: f64) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_circle(center.0, radius))
+    }
+
+    /// Draws an arc on the current layer, counterclockwise from
+    /// `start_angle` to `end_angle` (radians).
+    fn add_arc(
+        &self,
+        center: PyPoint,
+        radius: f64,
+        start_angle: f64,
+        end_angle: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_arc(center.0, radius, start_angle, end_angle))
+    }
+
+    /// Draws a `CadLine`, `CadCircle` or `CadArc` on the current layer.
+    fn add_geometry(&self, geometry: &Bound<'_, PyAny>) -> PyResult<(EntityId, CadChangeSet)> {
+        let g: Geometry2 = if let Ok(l) = geometry.cast::<CadLine>() {
+            l.get().0.into()
+        } else if let Ok(c) = geometry.cast::<CadCircle>() {
+            c.get().0.into()
+        } else if let Ok(a) = geometry.cast::<CadArc>() {
+            a.get().0.into()
+        } else {
+            return Err(PyTypeError::new_err(
+                "geometry must be a CadLine, CadCircle or CadArc",
+            ));
+        };
+        self.create(|cad| cad.add_geometry(g))
+    }
+
+    /// Erases entities of any type (ERASE).
+    fn delete_entities(&self, entity_ids: Vec<EntityId>) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.delete_entities(&entity_ids))
+    }
+
+    /// Moves entities by `offset` (MOVE).
+    fn move_entities(&self, entity_ids: Vec<EntityId>, offset: PyVector) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.move_entities(&entity_ids, offset.0))
+    }
+
+    /// Rotates entities by `angle` radians counterclockwise around `center`
+    /// (ROTATE).
+    fn rotate_entities(
+        &self,
+        entity_ids: Vec<EntityId>,
+        center: PyPoint,
+        angle: f64,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.rotate_entities(&entity_ids, center.0, angle))
+    }
+
+    /// Scales entities by `factor` around `center` (SCALE).
+    fn scale_entities(
+        &self,
+        entity_ids: Vec<EntityId>,
+        center: PyPoint,
+        factor: f64,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.scale_entities(&entity_ids, center.0, factor))
+    }
+
+    /// Mirrors entities across the line through `first` and `second`
+    /// (MIRROR).
+    fn mirror_entities(
+        &self,
+        entity_ids: Vec<EntityId>,
+        first: PyPoint,
+        second: PyPoint,
+    ) -> PyResult<CadChangeSet> {
+        let axis = Line::new(first.0, second.0).py()?;
+        self.change(|cad| cad.mirror_entities(&entity_ids, axis))
+    }
+
+    /// Moves entities to another layer (CHPROP).
+    fn set_entity_layer(
+        &self,
+        entity_ids: Vec<EntityId>,
+        layer_id: LayerId,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_entity_layer(&entity_ids, layer_id))
+    }
+
+    /// Sets the color of entities (CHPROP).
+    fn set_entity_color(
+        &self,
+        entity_ids: Vec<EntityId>,
+        color: CadColor,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_entity_color(&entity_ids, color.0))
+    }
+
+    /// Creates a layer with AutoCAD's defaults; returns its id.
+    fn create_layer(&self, name: &str) -> PyResult<(LayerId, CadChangeSet)> {
+        self.create(|cad| cad.create_layer(name))
+    }
+
+    /// Renames a layer; its entities follow.
+    fn rename_layer(&self, layer_id: LayerId, name: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.rename_layer(layer_id, name))
+    }
+
+    /// Sets a layer's color: an index or RGB color.
+    fn set_layer_color(&self, layer_id: LayerId, color: CadColor) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_color(layer_id, color.0))
+    }
+
+    /// Turns a layer on or off.
+    fn set_layer_visible(&self, layer_id: LayerId, visible: bool) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_visible(layer_id, visible))
+    }
+
+    /// Freezes or thaws a layer; the current layer cannot be frozen.
+    fn set_layer_frozen(&self, layer_id: LayerId, frozen: bool) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_frozen(layer_id, frozen))
+    }
+
+    /// Locks or unlocks a layer.
+    fn set_layer_locked(&self, layer_id: LayerId, locked: bool) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_locked(layer_id, locked))
+    }
+
+    /// Whether a layer is plotted.
+    fn set_layer_plottable(&self, layer_id: LayerId, plottable: bool) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_plottable(layer_id, plottable))
+    }
+
+    /// Deletes an empty layer that is not "0", "Defpoints" or current.
+    fn delete_layer(&self, layer_id: LayerId) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.delete_layer(layer_id))
+    }
+
+    /// Makes a layer current; a frozen layer cannot be current.
+    fn set_current_layer(&self, layer_id: LayerId) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_current_layer(layer_id))
+    }
+
+    // History.
+
+    /// Undoes the last step; returns what that did.
+    fn undo(&self) -> PyResult<CadChangeSet> {
+        self.change(CoreDocument::undo)
+    }
+
+    /// Redoes the last undone step; returns what that did.
+    fn redo(&self) -> PyResult<CadChangeSet> {
+        self.change(CoreDocument::redo)
+    }
+
+    /// Whether there is a step to undo.
+    #[getter]
+    fn can_undo(&self) -> PyResult<bool> {
+        self.read(CoreDocument::can_undo)
+    }
+
+    /// Whether there is a step to redo.
+    #[getter]
+    fn can_redo(&self) -> PyResult<bool> {
+        self.read(CoreDocument::can_redo)
+    }
+
+    /// Name of the step `undo` would revert (`"MOVE"`…), if any.
+    #[getter]
+    fn undo_name(&self) -> PyResult<Option<String>> {
+        self.read(|cad| cad.undo_name().map(str::to_owned))
+    }
+
+    /// Name of the step `redo` would apply, if any.
+    #[getter]
+    fn redo_name(&self) -> PyResult<Option<String>> {
+        self.read(|cad| cad.redo_name().map(str::to_owned))
+    }
+
+    /// A context manager making the operations inside one undo step:
+    /// `with doc.group("COPY") as group: ...`.
+    fn group(slf: Py<Self>, name: String) -> CadGroup {
+        CadGroup::new(slf, name)
+    }
+
+    /// Starts a group by hand (for a command spread over several calls);
+    /// prefer `group()`.
+    fn begin_group(&self, name: &str) -> PyResult<()> {
+        self.begin(name)
+    }
+
+    /// Ends the innermost group; the outermost returns what it did.
+    fn end_group(&self) -> PyResult<CadChangeSet> {
+        self.end().map(CadChangeSet)
+    }
+
+    /// Cancels the open group at every level, undoing it.
+    fn cancel_group(&self) -> PyResult<CadChangeSet> {
+        self.cancel().map(CadChangeSet)
+    }
+
+    /// Whether a group is open.
+    #[getter]
+    fn in_group(&self) -> PyResult<bool> {
+        self.group_open()
     }
 
     /// Saves as DWG or DXF, by the file extension (see

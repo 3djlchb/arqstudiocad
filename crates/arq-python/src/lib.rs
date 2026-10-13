@@ -5,6 +5,7 @@
 
 use pyo3::prelude::*;
 
+mod changes;
 mod documents;
 mod errors;
 mod info;
@@ -16,6 +17,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     errors::register(m)?;
     documents::register(m)?;
     info::register(m)?;
+    changes::register(m)?;
     values::register(m)?;
     Ok(())
 }
