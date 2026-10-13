@@ -39,5 +39,21 @@
   "Undone: {name}": "Deshecho: {name}",
   "Unknown command \"{name}\".": "Comando desconocido \"{name}\".",
   "Yes": "Sí",
-  "Zoom": "Zoom"
+  "Zoom": "Zoom",
+  "&Edit": "&Edición",
+  "&New": "&Nuevo",
+  "&Open…": "&Abrir…",
+  "&Save": "&Guardar",
+  "Save &As…": "Guardar &como…",
+  "&Close": "&Cerrar",
+  "&Undo": "&Deshacer",
+  "&Redo": "&Rehacer",
+  "&Zoom": "&Zoom",
+  "Command line": "Línea de comandos",
+  "Command:": "Comando:",
+  "Drawings (*.dwg *.dxf);;DWG drawings (*.dwg);;DXF drawings (*.dxf)": "Dibujos (*.dwg *.dxf);;Dibujos DWG (*.dwg);;Dibujos DXF (*.dxf)",
+  "DXF drawings (*.dxf);;DWG drawings (*.dwg)": "Dibujos DXF (*.dxf);;Dibujos DWG (*.dwg)",
+  "Open drawing": "Abrir dibujo",
+  "Save drawing as": "Guardar dibujo como",
+  "Unsaved changes": "Cambios sin guardar"
 }

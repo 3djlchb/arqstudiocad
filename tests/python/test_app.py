@@ -42,9 +42,12 @@ def test_window_switches_language(qtbot: QtBot) -> None:
     assert current_language() == "es"
     assert [a.text() for a in window.menuBar().actions()] == [
         "&Archivo",
+        "&Edición",
         "&Herramientas",
         "Ay&uda",
     ]
+    assert window.command_actions["SAVEAS"].text() == "Guardar &como…"
+    assert window.command_window.prompt.text() == "Comando:"
 
 
 def test_about_shows_versions_and_credits(qtbot: QtBot) -> None:
