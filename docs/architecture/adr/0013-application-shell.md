@@ -52,13 +52,21 @@ Every entity becomes drawable now, not only the editable kinds:
 
 Linetypes, lineweights, real text and hatch patterns are later work.
 
-### D5.3 — Provisional viewport with QPainter
+### D5.3 — Provisional viewport: rasterized in Rust, shown by Qt
 
-A widget paints the render scene with `QPainter` until phase 7 replaces it:
-camera in `f64` (center, scale), pan with the middle button, zoom with the
-wheel about the cursor, zoom extents. It reads the scene again only when a
-change set arrives, and skips polylines outside the view. It works on any
-machine, the GT 730 included.
+`arq-render` rasterizes the scene on the CPU into an RGBA image with
+**tiny-skia** (BSD-3-Clause; no GPU, no Qt), and the viewport widget only
+displays that image. No Python loop runs per entity, so pan and zoom stay
+smooth on large drawings and on the 2011 reference CPU (D5.8), whatever the
+graphics driver. The camera is `f64` (center, scale); the rasterizer works
+relative to the view, so survey coordinates keep their precision. Pan with
+the middle button, zoom with the wheel about the cursor, zoom extents.
+Rasterizing releases the GIL. Phase 7 adds the GPU renderer beside it; this
+one stays as the software fallback.
+
+(First decided as `QPainter` from Python; changed on 2026-10-12 once the
+reference machine was known: a Python loop per polyline would take about
+half a second per frame there on large drawings.)
 
 ### D5.4 — Commands and the command window
 
@@ -97,6 +105,43 @@ a worker thread (the core releases the GIL), with a busy indicator, so the
 window keeps responding. Closing a modified document or quitting asks to
 save. Save As offers DXF first until the round-trip corpus makes DWG the
 default (contract §10, phase 8).
+
+### D5.8 — A guaranteed floor, scaling up from it
+
+The reference machine is now known (recorded in ADR 0007): GT 730 Kepler on
+**nouveau**, whose Vulkan is **software only**, an **i7-2600** (Sandy Bridge,
+no AVX2), 16 GB, LMDE 7 on X11. It is the **floor**: everything works there.
+Above it, the application **detects at run time** what each machine offers
+and uses it, so one build runs well on as many configurations as possible,
+from that machine to current hardware. It amends ADR 0007 as follows.
+
+The floor:
+
+- **Build baseline: x86-64-v2 at most** (ARM64 and Apple Silicon builds use
+  their own baseline). No `target-cpu=native`, no `x86-64-v3`/AVX2/AVX-512 in
+  any build; a test fails if one appears.
+- **The CPU rasterizer of D5.3 always works**, whatever the graphics driver:
+  it is the guaranteed fallback, before llvmpipe or WARP.
+- **The GPU core path stays within wgpu's downlevel limits** (ADR 0007), as
+  OpenGL ES 3.0 on this machine; nouveau runs Kepler at low clocks, so that
+  path sends little work per frame.
+
+Scaling up, decided at run time:
+
+- **CPU instructions:** hot loops (flattening, rasterizing) may carry AVX2 or
+  NEON variants chosen by runtime detection, only where a benchmark shows the
+  gain; the baseline variant always exists.
+- **Cores:** parallel work uses the cores the machine has (four on the floor
+  machine, many more on current ones), never a fixed count.
+- **GPU:** the probe prefers hardware adapters — Vulkan, DirectX 12 or Metal
+  where available — and rejects an adapter whose device type is CPU while a
+  hardware one exists (on the floor machine its Vulkan is software, so it
+  uses OpenGL ES). Features beyond the downlevel path (MSAA, compute picking,
+  larger buffers) are enabled when the adapter offers them.
+- **Displays:** high-DPI scaling and both X11 and Wayland on Linux.
+
+Each scaled-up path is tested against the floor path on the same input, so
+a faster machine never draws something different.
 
 ## Consequences
 

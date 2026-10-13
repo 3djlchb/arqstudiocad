@@ -59,7 +59,7 @@ and detected at runtime; when absent, a compatible path is used.
 | Tier | Hardware (approx.) | Backend |
 |---|---|---|
 | **Supported** | 2012+: NVIDIA Kepler and later, AMD GCN and later, Intel Ivy Bridge and later, every Mac our macOS minimum supports | Vulkan / DX12 / Metal, or OpenGL where the driver lacks them |
-| **Supported (reference low end)** | NVIDIA GeForce GT 730 2 GB on LMDE 7 (Debian 13), Mesa drivers | OpenGL ES 3.0, Vulkan (NVK) if available |
+| **Supported (reference low end)** | NVIDIA GeForce GT 730 2 GB (Kepler) on LMDE 7 (Debian 13), nouveau | OpenGL ES 3.0 (its Vulkan is software only) |
 | **Best effort** | 2010–2011: NVIDIA Fermi, AMD TeraScale 2/3, Intel Sandy Bridge on Linux | OpenGL 3.3 / ES 3.0 |
 | **Software only** | Anything else that runs the OS, including Intel Sandy Bridge on Windows (driver stops at OpenGL 3.1) | WARP / llvmpipe |
 
@@ -67,19 +67,29 @@ The **reference low-end machine** — GeForce GT 730 2 GB, LMDE 7 — is a relea
 gate: the renderer is not accepted unless it works there. Best-effort failures
 do not block a release.
 
-> **Pending — reference machine details.** The machine is not available yet.
-> To be recorded here when it is: GT 730 variant (Kepler GK208 or Fermi
-> GF108, from `lspci -nn`), driver and Mesa version (`glxinfo -B`), Vulkan
-> availability (`vulkaninfo --summary`), CPU, RAM, kernel and LMDE 7 release.
-> Until then the downlevel rule above is the binding constraint, and
-> optimization for this machine starts once its configuration is known.
+**Reference machine details** (recorded 2026-10-12):
+
+| Component | Value |
+|---|---|
+| GPU | NVIDIA GeForce GT 730, **GK208B (Kepler)**, PCI ID `10de:1287` |
+| Driver | **nouveau** (Mesa); OpenGL and OpenGL ES enabled |
+| Vulkan | **software only** (lavapipe): no hardware Vulkan with this driver |
+| CPU | Intel Core i7-2600 @ 3.40 GHz (Sandy Bridge, 2011): AVX, no AVX2 |
+| RAM | 16 GB |
+| Board / firmware | BIOSTAR H61MGC, AMI UEFI (2011) |
+| OS | LMDE 7 (Debian 13), Cinnamon 6.6.9, **X11**, kernel 6.12 |
+
+Mesa and OpenGL versions (`glxinfo -B`) are still to be recorded. What this
+machine implies — software Vulkan rejected, OpenGL ES as its GPU path, a
+CPU rasterizer, the build baseline — is decided in
+[ADR 0013, D5.8](0013-application-shell.md).
 
 ### Test matrix available today
 
 | Machine | GPUs | Backends testable |
 |---|---|---|
 | Windows 11 laptop (i7-8750H) | NVIDIA GTX 1050 Ti, Intel UHD 630 | DX12, Vulkan, OpenGL, WARP on each GPU (`WGPU_BACKEND`, `WGPU_ADAPTER_NAME`) |
-| LMDE 7 desktop (details pending) | NVIDIA GT 730 2 GB | OpenGL ES 3.0, Vulkan if the driver offers it, llvmpipe |
+| LMDE 7 desktop (i7-2600, nouveau) | NVIDIA GT 730 2 GB (Kepler GK208B) | OpenGL / OpenGL ES 3.0 on nouveau, llvmpipe, lavapipe (software Vulkan) |
 
 AMD and macOS are covered by manual CI runs and volunteer testers.
 
