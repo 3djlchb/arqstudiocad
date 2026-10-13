@@ -45,8 +45,8 @@ One-time setup: `cargo install cargo-deny --locked` and `uv run pre-commit insta
 
 A change is done when all of the above pass locally and it has tests at the
 right layer (contract §12). A check that inspects nothing is a failure, not a
-pass. GitHub Actions CI is manual-only; it is not a substitute for running the
-checks locally.
+pass. GitHub Actions CI runs on every pull request and push to `main` (ADR 0014);
+it is not a substitute for running the checks locally.
 
 ## Git
 

@@ -43,7 +43,11 @@ new goal.
 8. **Rendering engines are external.** Blender + Cycles first, run headless
    in its own process (it is GPL); LuxCoreRender later, after evaluation.
    Neither enters the Rust core.
-9. **The 2D CAD comes first.** The CAD core is made complete and stable
+9. **CI on every pull request.** Amending ADR 0005, the CI workflow runs on
+   every pull request to `main`, every push to `main` and by hand, since the
+   public repository gets GitHub Actions without minute limits. Local checks
+   stay mandatory; the package workflow stays manual.
+10. **The 2D CAD comes first.** The CAD core is made complete and stable
    (milestones 2.4–2.8, then phase 3) before IFC, BIM and the discipline
    modules start.
 

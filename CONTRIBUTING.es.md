@@ -30,9 +30,10 @@ uv run pre-commit install
 
 A partir de ahí, cada commit ejecuta el formato, los linters, la comprobación
 de tipos y la revisión de licencias de las dependencias. La lista completa de
-comandos está en [AGENTS.md](AGENTS.md). **Las pruebas son locales**: la CI de
-GitHub solo se ejecuta a demanda, así que se espera que un pull request llegue
-con las comprobaciones ya en verde en tu máquina.
+comandos está en [AGENTS.md](AGENTS.md). **Las pruebas empiezan en local**: se
+espera que un pull request llegue con las comprobaciones ya en verde en tu
+máquina. Después, la CI de GitHub las ejecuta en cada pull request a `main`, en
+Windows, Linux y macOS.
 
 ## Reglas de la casa
 
