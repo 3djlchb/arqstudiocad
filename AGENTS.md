@@ -1,7 +1,11 @@
-# Instructions for coding agents (Codex, Claude Code, ...)
+# Instructions for coding agents (Claude Code, and any other)
 
 Read [docs/architecture/technical-contract.md](docs/architecture/technical-contract.md)
-before changing code. It is binding. Decisions are in [docs/architecture/adr/](docs/architecture/adr/).
+before changing code. It is binding. Decisions are in [docs/architecture/adr/](docs/architecture/adr/);
+the project's goals in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) and the
+order of work in [docs/ROADMAP.md](docs/ROADMAP.md). New designs must leave room
+for the platform's modules (IFC/BIM, associative documentation, rendering)
+without building them early (ADR 0014).
 
 ## Non-negotiable rules
 
@@ -21,7 +25,8 @@ before changing code. It is binding. Decisions are in [docs/architecture/adr/](d
   (English / Spanish) are kept in sync: a change to one is made to the other in
   the same commit. Everything else is English.
 - Code or ideas copied from other projects are recorded in `THIRD_PARTY.md`
-  and must be GPL-3.0-or-later compatible.
+  and must be GPL-3.0-or-later compatible. Code is GPL-3.0-or-later;
+  documentation is CC BY-SA 4.0 (`docs/LICENSE`).
 
 ## Commands
 

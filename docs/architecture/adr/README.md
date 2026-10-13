@@ -18,6 +18,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0011](0011-document-model-and-transactions.md) | Document over opencadcodec, 2D in plan, before/after-image undo, groups, change sets, round-trip corpus | Accepted |
 | [0012](0012-python-api.md) | Python API: tuples for points (any 2-sequence in, NumPy-readable arrays for bulk), immutable value classes, document handles, exception hierarchy, groups as context managers, GIL released for open/save | Accepted |
 | [0013](0013-application-shell.md) | Application shell: Classic and Ribbon workspaces over one action set, render representation and CPU rasterizer in Rust (arq-render), command window, events, panels, tabbed documents; guaranteed floor (reference machine) scaling up by runtime detection (amends 0007) | Accepted |
+| [0014](0014-platform-direction.md) | Platform direction: CAD/BIM multimodeler (charter, roadmap 0–10), no restart, names kept, docs CC BY-SA 4.0, external render engines, open questions | Accepted |
 
 Template:
 

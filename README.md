@@ -2,8 +2,11 @@
 
 **English** | [Español](README.es.md)
 
-Open-source 2D/3D CAD for architecture and engineering, with DWG as its native
-format and DXF as an open alternative.
+Open-source CAD/BIM platform for architecture and engineering: CAD drafting,
+BIM modeling (IFC), terrain, engineering studies and technical documentation
+that follows the model, with DWG as its native CAD format and DXF as an open
+alternative. Its goals are in the [project charter](docs/PROJECT_CHARTER.md)
+and the order of work in the [roadmap](docs/ROADMAP.md).
 
 > **Status:** pre-alpha. The application starts, switches between English and
 > Spanish and is packaged for every target platform (phase 1). The geometry
@@ -168,5 +171,5 @@ Contributions are welcome, in English or Spanish. Read
 
 ## License
 
-[GPL-3.0-or-later](LICENSE). Third-party code and ideas are credited in
-[THIRD_PARTY.md](THIRD_PARTY.md).
+Code: [GPL-3.0-or-later](LICENSE). Documentation: [CC BY-SA 4.0](docs/LICENSE).
+Third-party code and ideas are credited in [THIRD_PARTY.md](THIRD_PARTY.md).

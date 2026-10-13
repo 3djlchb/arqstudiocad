@@ -352,13 +352,9 @@ and [ADR 0005](adr/0005-development-conventions.md).
 
 ## 15. Implementation phases
 
-0. Foundation: workspace, tooling, CI, this contract.
-1. Walking skeleton: Rust → PyO3 → PySide6 window with i18n, packaged for every platform.
-2. `arq-geometry`.
-3. `arq-document` (over opencadcodec) + `arq-core`: handles, layers, transactions, undo/redo.
-4. `arq-python`: full binding API.
-5. PySide6 application: window, command line, panels, events, provisional viewport.
-6. First complete workflow: LINE, CIRCLE, select, MOVE, ROTATE, ERASE, UNDO/REDO.
-7. GPU renderer (wgpu, backend probing, Qt integration spike) and spatial index, with benchmarks.
-8. DWG/DXF round-trip corpus and fidelity; DWG becomes the default save format.
-9. Public distribution: signing, notarization, Flathub, AUR.
+The phases are in the [roadmap](../ROADMAP.md) (ADR 0014): 0 specification,
+1 foundation, 2 CAD core (milestones 2.1–2.8), 3 CAD exchange and 2D
+documentation, 4 IFC and BIM, 5 topography, 6 disciplines, 7 visualization,
+8 interactive walkthroughs and coordination, 9 LuxCoreRender, 10 optimization
+and distribution. The project's goals are in the
+[project charter](../PROJECT_CHARTER.md).

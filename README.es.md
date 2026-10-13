@@ -2,8 +2,11 @@
 
 [English](README.md) | **Español**
 
-CAD 2D/3D de código abierto para arquitectura e ingeniería, con DWG como
-formato nativo y DXF como alternativa abierta.
+Plataforma CAD/BIM de código abierto para arquitectura e ingeniería: dibujo
+CAD, modelado BIM (IFC), terreno, estudios de ingeniería y documentación técnica
+que sigue al modelo, con DWG como formato CAD nativo y DXF como alternativa
+abierta. Sus objetivos están en el [acta del proyecto](docs/PROJECT_CHARTER.md)
+(en inglés) y el orden de trabajo en la [hoja de ruta](docs/ROADMAP.md).
 
 > **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
 > se empaqueta para todas las plataformas objetivo (fase 1). El núcleo
@@ -169,5 +172,5 @@ reglas, y el [Código de Conducta](CODE_OF_CONDUCT.md).
 
 ## Licencia
 
-[GPL-3.0-or-later](LICENSE). El código y las ideas de terceros se reconocen en
-[THIRD_PARTY.md](THIRD_PARTY.md).
+Código: [GPL-3.0-or-later](LICENSE). Documentación: [CC BY-SA 4.0](docs/LICENSE).
+El código y las ideas de terceros se reconocen en [THIRD_PARTY.md](THIRD_PARTY.md).
