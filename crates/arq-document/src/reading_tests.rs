@@ -7,9 +7,18 @@ use std::path::Path;
 use acadrust::types::DxfVersion;
 use acadrust::{CadDocument, DwgWriter, DxfWriter, EntityType, Line};
 
-use super::read;
-use crate::error::DocumentError;
+use super::Recovery;
+use crate::error::{DocumentError, DocumentResult};
 use crate::format::FileFormat;
+
+/// The drawing and its recovery report, as most tests here need them.
+fn read(
+    bytes: Vec<u8>,
+    format: FileFormat,
+    path: &Path,
+) -> DocumentResult<(CadDocument, Option<Recovery>)> {
+    super::read(bytes, format, path).map(|read| (read.cad, read.recovery))
+}
 
 const LINES: usize = 300;
 

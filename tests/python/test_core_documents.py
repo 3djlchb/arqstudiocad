@@ -48,6 +48,15 @@ def test_a_file_with_nothing_to_recover_is_refused(app: CadApplication, tmp_path
     assert app.documents() == []
 
 
+def test_a_drawing_read_intact_keeps_nothing_undecoded(app: CadApplication, tmp_path: Path) -> None:
+    # The constraint drawings that have such objects are fetched for the
+    # Rust corpus (`codec_regression_constraints_kept_undecoded`).
+    doc = app.create_document("x")
+    doc.add_line((0, 0), (1, 1))
+    doc.save(tmp_path / "x.dwg")
+    assert app.open_document(tmp_path / "x.dwg").undecoded_objects == []
+
+
 def test_a_recovered_drawing_says_so_and_guards_its_file(
     app: CadApplication, tmp_path: Path
 ) -> None:

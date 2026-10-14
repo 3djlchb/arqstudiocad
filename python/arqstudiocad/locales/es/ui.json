@@ -128,5 +128,6 @@
   "Save anyway?": "¿Guardar de todos modos?",
   "Data would be lost": "Se perderían datos",
   "Saving as {name} would lose data its format or version cannot keep. The original file is unchanged until you agree. Save anyway?": "Guardar como {name} perdería datos que su formato o versión no puede conservar. El archivo original no cambia hasta que lo aceptes. ¿Guardar de todos modos?",
-  "Save anyway": "Guardar de todos modos"
+  "Save anyway": "Guardar de todos modos",
+  "{count} objects the program cannot read yet are kept as they are: {objects}": "{count} objetos que el programa aún no sabe leer se conservan tal cual: {objects}"
 }

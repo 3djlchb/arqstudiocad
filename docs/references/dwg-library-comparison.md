@@ -106,11 +106,20 @@ comparison between them focuses on where they part ways.
 - **Only in the fork:** fidelity work in DXF input/output, the document
   model, fields, sheet sets, ACIS, dynamic blocks and associative objects:
   block markers kept consistent with their records, FIELD hyperlinks and
-  block units carried across versions, spline flags. Measured: it reads the
-  **geometric-constraint groups** (`ACDBASSOC2DCONSTRAINTGROUP`) of all five
-  `Constraints.dwg` (R14 to 2010) that AcadRust misses, solid-history and
-  surface-action objects, and has fewer errors (5 against 19 over every
+  block units carried across versions, spline flags. Measured: it returns
+  the **geometric-constraint groups** (`ACDBASSOC2DCONSTRAINTGROUP`) of all
+  five `Constraints.dwg` (R14 to 2010) that AcadRust rejects, solid-history
+  and surface-action objects, and has fewer errors (5 against 19 over every
   operation).
+- **Correction (2026-10-13, milestone 03.2):** those constraint groups are
+  **not read correctly** by the fork. R14 to 2010 store them in an older
+  layout (`AcDbAssocAction` class version 1); the fork decodes it with the
+  new layout and, lacking AcadRust's bounds checks, returns garbage without
+  an error (node ids such as -801,111,547; 100,134 lines of output against
+  249 for the same drawing saved as 2013). AcadRust was right to reject
+  the records. Counting objects, as this comparison did, cannot tell a
+  correct read from a lenient one: a "reads more" finding is checked
+  against the same drawing in a version both libraries read well.
 - **Section 12** lists every drawing where the two behave differently.
 
 Repositories: [AcadRust](https://github.com/hakanaktt/acadrust),

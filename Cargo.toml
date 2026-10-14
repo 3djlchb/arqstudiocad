@@ -40,3 +40,9 @@ all = { level = "warn", priority = -1 }
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+[patch.crates-io]
+# AcadRust 0.6.4 with our changes, kept in our fork (ADR 0017 D2): class
+# objects that fail to decode are kept verbatim. Branch
+# arqstudiocad/preserve-undecoded of our fork; THIRD_PARTY.md lists it.
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "b2358aba4f4398809fe3c528f14eaca495f0cfd2" }

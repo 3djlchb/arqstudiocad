@@ -62,6 +62,17 @@ def open_(ctx: CommandContext) -> CommandScript:
             version=document.version,
         )
     )
+    undecoded = document.undecoded_objects
+    if undecoded:
+        # Kept verbatim: a save in the drawing's own version keeps them
+        # (ADR 0017 D2); another format asks before losing them.
+        ctx.message(
+            tr(
+                "{count} objects the program cannot read yet are kept as they are: {objects}",
+                count=len(undecoded),
+                objects=", ".join(undecoded),
+            )
+        )
     problems = document.recovery_problems
     if problems:
         # A damaged file is never taken for a valid drawing (ADR 0017 D5.1).

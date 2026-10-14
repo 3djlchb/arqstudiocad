@@ -39,18 +39,30 @@ impl Recovery {
     }
 }
 
-/// Reads a drawing from a file's bytes: the engine's document, and the
-/// recovery report if the file is damaged but drawing data could be read.
-pub(crate) fn read(
-    bytes: Vec<u8>,
-    format: FileFormat,
-    path: &Path,
-) -> DocumentResult<(CadDocument, Option<Recovery>)> {
+/// The engine's code for an object it could not decode and kept verbatim
+/// (our AcadRust patch, ADR 0017 D2): its bytes survive a same-version save,
+/// so it is a note, not damage.
+const KEPT_UNDECODED: &str = "record-kept-undecoded";
+
+/// A drawing read from a file.
+pub(crate) struct Read {
+    /// The engine's document.
+    pub(crate) cad: CadDocument,
+    /// Set if the file is damaged and the drawing was recovered.
+    pub(crate) recovery: Option<Recovery>,
+    /// Objects kept undecoded, as `"ACDBASSOC2DCONSTRAINTGROUP (3E3)"`.
+    pub(crate) undecoded: Vec<String>,
+}
+
+/// Reads a drawing from a file's bytes: the engine's document, the
+/// recovery report if the file is damaged but drawing data could be read,
+/// and the objects kept undecoded.
+pub(crate) fn read(bytes: Vec<u8>, format: FileFormat, path: &Path) -> DocumentResult<Read> {
     let mut problems = match attempt(bytes.clone(), format, false) {
         Ok(outcome) => {
             let problems = damage(&outcome.stats, format);
             if problems.is_empty() {
-                return Ok((outcome.document, None));
+                return Ok(finish(outcome, None));
             }
             problems
         }
@@ -63,18 +75,40 @@ pub(crate) fn read(
                     problems.push(problem);
                 }
             }
-            Ok((
-                outcome.document,
-                Some(Recovery {
-                    problems: capped(problems),
-                }),
-            ))
+            let recovery = Recovery {
+                problems: capped(problems),
+            };
+            Ok(finish(outcome, Some(recovery)))
         }
         Ok(_) => Err(damaged(path, problems)),
         Err(problem) => {
             problems.push(problem);
             Err(damaged(path, problems))
         }
+    }
+}
+
+fn finish(outcome: ReadOutcome, recovery: Option<Recovery>) -> Read {
+    let undecoded = outcome
+        .stats
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == KEPT_UNDECODED)
+        .filter_map(|d| d.record_handle)
+        .map(|handle| {
+            let name = match outcome.document.objects.get(&acadrust::Handle::new(handle)) {
+                Some(acadrust::objects::ObjectType::Unknown { type_name, .. }) => {
+                    type_name.as_str()
+                }
+                _ => "object",
+            };
+            format!("{name} ({handle:X})")
+        })
+        .collect();
+    Read {
+        cad: outcome.document,
+        recovery,
+        undecoded,
     }
 }
 
@@ -132,6 +166,7 @@ fn damage(stats: &ReadStats, format: FileFormat) -> Vec<String> {
     let mut problems: Vec<String> = stats
         .diagnostics
         .iter()
+        .filter(|d| d.code != KEPT_UNDECODED)
         .map(|d| d.message.clone())
         .collect();
     if format == FileFormat::Dwg && !stats.has_usable_drawing_data() {

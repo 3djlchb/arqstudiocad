@@ -488,6 +488,70 @@ fn codec_samples_round_trip() {
     run_all(drawings_in(&root), check_file);
 }
 
+/// The same constraint drawing in seven DWG versions (LibreDWG's test
+/// data). R14 to 2010 store their constraint group and its geometry
+/// dependencies in an old layout the engine cannot decode yet: they must
+/// open intact, keep those objects verbatim, and lose nothing when saved in
+/// their own version (ADR 0017 D2, D5.4).
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_regression_constraints_kept_undecoded() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    assert!(
+        root.is_dir(),
+        "{} is missing: run `uv run python tools/fetch_codec_samples.py`",
+        root.display()
+    );
+    let dir = tempfile::tempdir().expect("temporary folder");
+    let mut problems = Vec::new();
+    let mut checked = 0;
+    for (name, path) in drawings_in(&root) {
+        let doc = match Document::open(&path) {
+            Ok(doc) => doc,
+            Err(e) => {
+                problems.push(format!("{name}: {e}"));
+                continue;
+            }
+        };
+        checked += 1;
+        if doc.recovery().is_some() {
+            problems.push(format!("{name}: read as damaged"));
+        }
+        // The version is the folder: `r14/Constraints.dwg`.
+        let version = path
+            .parent()
+            .and_then(Path::file_name)
+            .map(|v| v.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let old_layout = ["r14", "2000", "2004", "2007", "2010"].contains(&version.as_str());
+        let undecoded = doc.undecoded_objects();
+        let has_group = undecoded
+            .iter()
+            .any(|o| o.starts_with("ACDBASSOC2DCONSTRAINTGROUP"));
+        if old_layout != has_group {
+            problems.push(format!("{name}: undecoded {undecoded:?}"));
+        }
+        if doc.snapshot().undecoded_objects() != undecoded {
+            problems.push(format!("{name}: a snapshot forgets what is undecoded"));
+        }
+        // R14 and 2000 cannot hold the multileader styles the file carries.
+        let saved = dir.path().join("saved.dwg");
+        if let Err(e) = doc.save_accepting(&saved, |l| l.kind() == "object MULTILEADERSTYLE") {
+            problems.push(format!("{name}: {e}"));
+            continue;
+        }
+        let back = Document::open(&saved).expect("our own save reads back");
+        if back.undecoded_objects() != undecoded {
+            problems.push(format!(
+                "{name}: kept {undecoded:?}, reopened with {:?}",
+                back.undecoded_objects()
+            ));
+        }
+    }
+    assert_eq!(checked, 7, "the seven versions: {problems:?}");
+    assert!(problems.is_empty(), "{problems:#?}");
+}
+
 #[test]
 #[ignore = "needs ARQ_CORPUS_DIR: real drawings (a folder or one file), never committed"]
 fn local_drawings_round_trip() {
