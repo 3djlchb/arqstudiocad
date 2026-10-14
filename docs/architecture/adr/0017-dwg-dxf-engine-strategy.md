@@ -39,10 +39,16 @@ then entity-fidelity fixes and diagnostics. Our changes live in **our own
 fork** of AcadRust ([3djlchb/acadrust](https://github.com/3djlchb/acadrust)),
 used through `[patch.crates-io]` pinned to a commit, with its origin and
 license recorded in `THIRD_PARTY.md`. *(Amended 2026-10-13, maintainer:)*
-they are **not sent upstream**; the fork is maintained by us. Each AcadRust
-upgrade re-applies our changes on the new version and runs their
-regression drawings, the round-trip corpus and the comparison bench before
-it is accepted (D1).
+
+- The fork's `main` **follows the original** (`hakanaktt/acadrust`), as a
+  mirror with none of our changes.
+- **Our features live only in the fork**, on a branch of ours on top of
+  the AcadRust version we use (today `arqstudiocad/preserve-undecoded`, on
+  0.6.4). They are not sent upstream.
+- We take the original's changes **only when they favour us** (a fix or
+  feature we need): our branch then moves to that version, re-applying our
+  changes, and its regression drawings, the round-trip corpus and the
+  comparison bench must pass before it is adopted (D1).
 
 ### D3 — LibreDWG stays out of the product
 
