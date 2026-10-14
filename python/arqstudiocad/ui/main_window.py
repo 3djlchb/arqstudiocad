@@ -21,7 +21,12 @@ from PySide6.QtWidgets import (
 from arqstudiocad import _core
 from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry
-from arqstudiocad.core import CadDocument, CadError, OverwritesDamagedError
+from arqstudiocad.core import (
+    CadDocument,
+    CadError,
+    LossyConversionError,
+    OverwritesDamagedError,
+)
 from arqstudiocad.credits import load_credits
 from arqstudiocad.events import (
     ActiveDocumentChanged,
@@ -427,6 +432,16 @@ class MainWindow(QMainWindow):
                     path = self.ui.choose_save_path(path.name)
                 else:
                     return False
+            except LossyConversionError as error:
+                if set(error.loss_kinds) <= set(document.accepted_losses):
+                    # Refused although accepted: report it, never ask in circles.
+                    self.command_window.history.appendPlainText(
+                        tr("Error: {message}", message=str(error))
+                    )
+                    return False
+                if not self.ui.ask_accept_losses(path.name, error.losses):
+                    return False
+                document.accept_losses(error.loss_kinds)
             except CadError as error:
                 # Not saved (a failed check, a full disk…): stay open.
                 self.command_window.history.appendPlainText(

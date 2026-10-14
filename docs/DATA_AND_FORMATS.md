@@ -24,7 +24,7 @@ one is for, its adapter and its state. Master plan §5–§6; decisions in
 
 | Format | Purpose | Adapter | State |
 |---|---|---|---|
-| **DWG (R13–2018)** | **Working format** (as BricsCAD) and exchange with CAD applications | AcadRust in `arq-document` (ADR 0017), into and out of the own model (ADR 0018) | read and write; protections in 03.3 |
+| **DWG (R13–2018)** | **Working format** (as BricsCAD) and exchange with CAD applications | AcadRust in `arq-document` (ADR 0017), into and out of the own model (ADR 0018) | read and write; damaged files, safe save and losses guarded (03.3) |
 | `.ascad` (reserved) | Native format for when DWG plus a project database are not enough | — | designed, not implemented (ADR 0018 D5) |
 | Project database | Project-wide data shared by several drawings (as BricsCAD's `.bsyslib`) | — | decided by the multidisciplinary test (ADR 0018 D4) |
 | DXF (R12–2018) | Open exchange | AcadRust | read and write |

@@ -104,6 +104,25 @@ class QtUiServices:
             return "overwrite"
         return "cancel"
 
+    def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Warning,
+            tr("Data would be lost"),
+            tr(
+                "Saving as {name} would lose data its format or version cannot keep. "
+                "The original file is unchanged until you agree. Save anyway?",
+                name=name,
+            ),
+            QMessageBox.StandardButton.NoButton,
+            self._parent,
+        )
+        box.setDetailedText("\n".join(losses))
+        save = box.addButton(tr("Save anyway"), QMessageBox.ButtonRole.DestructiveRole)
+        cancel = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(cancel)
+        box.exec()
+        return box.clickedButton() == save
+
     def view(self, document: CadDocument) -> ViewControl | None:
         return None if self._views is None else self._views(document)
 

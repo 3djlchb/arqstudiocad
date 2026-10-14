@@ -13,6 +13,7 @@ from arqstudiocad.core import (
     CadIoError,
     DamagedFileError,
     DocumentNotFoundError,
+    LossyConversionError,
     OverwritesDamagedError,
     SaveNotVerifiedError,
     UnsupportedFormatError,
@@ -65,6 +66,21 @@ def test_a_recovered_drawing_says_so_and_guards_its_file(
     doc.allow_overwriting_damaged()
     doc.save(path)
     assert app.open_document(path).recovery_problems == []
+
+
+def test_a_lossy_save_is_an_io_error_and_losses_are_accepted_by_kind(
+    app: CadApplication,
+) -> None:
+    # The core's tests make a save lose data, which Python cannot: here the
+    # class and the acceptance call are checked.
+    assert issubclass(LossyConversionError, CadIoError)
+    assert LossyConversionError.code == "lossy_conversion"
+    doc = app.create_document("x")
+    assert doc.accepted_losses == []
+    doc.accept_losses(["object AECS_WALL", "XDATA on entities"])
+    assert doc.accepted_losses == ["XDATA on entities", "object AECS_WALL"]
+    with pytest.raises(TypeError):
+        doc.accept_losses("object AECS_WALL")  # a str is not a list of kinds
 
 
 def test_an_unverified_save_is_an_io_error_with_its_own_code() -> None:

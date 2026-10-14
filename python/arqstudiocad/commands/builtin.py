@@ -5,7 +5,7 @@ NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER. Without an interface
 as AutoCAD does with FILEDIA=0.
 """
 
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -19,7 +19,12 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.core import CadDocument, OverwritesDamagedError, SaveNotVerifiedError
+from arqstudiocad.core import (
+    CadDocument,
+    LossyConversionError,
+    OverwritesDamagedError,
+    SaveNotVerifiedError,
+)
 from arqstudiocad.i18n import tr
 
 #: Saving defaults to DXF until the round-trip corpus makes DWG the default
@@ -122,21 +127,46 @@ def _save_to(
 ) -> Generator[Prompt | Background, Any, bool]:
     """Saves to ``path``; False if the user chose to save elsewhere instead
     (that save reported itself)."""
-    # The core saves a snapshot taken when it starts: drawing may go on.
-    try:
-        yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
-    except OverwritesDamagedError:
-        # The drawing was recovered from this very file: replacing it is the
-        # user's decision (ADR 0017 D5.1).
-        answer = yield from _ask_overwrite_damaged(ctx, path)
-        if answer == "cancel":
-            raise CommandCancelledError() from None
-        if answer == "save_as":
-            yield from _save_as(ctx, document)
-            return False
-        document.allow_overwriting_damaged()
-        yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
-    return True
+    while True:
+        # The core saves a snapshot taken when it starts: drawing may go on.
+        try:
+            yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
+        except OverwritesDamagedError:
+            # The drawing was recovered from this very file: replacing it is
+            # the user's decision (ADR 0017 D5.1).
+            answer = yield from _ask_overwrite_damaged(ctx, path)
+            if answer == "cancel":
+                raise CommandCancelledError() from None
+            if answer == "save_as":
+                yield from _save_as(ctx, document)
+                return False
+            document.allow_overwriting_damaged()
+        except LossyConversionError as error:
+            # The file would hold less than the drawing (ADR 0017 D5.3):
+            # asked once per document, never silent.
+            if set(error.loss_kinds) <= set(document.accepted_losses):
+                raise  # refused although accepted: never ask in circles
+            if not (yield from _accept_losses(ctx, path, error.losses)):
+                raise CommandCancelledError() from None
+            document.accept_losses(error.loss_kinds)
+        else:
+            return True
+
+
+def _accept_losses(
+    ctx: CommandContext, path: Path, losses: Sequence[str]
+) -> Generator[Prompt | Background, Any, bool]:
+    if ctx.ui is not None:
+        return ctx.ui.ask_accept_losses(path.name, losses)
+    ctx.message(tr("Saving as {name} would lose data the format cannot keep:", name=path.name))
+    for loss in losses:
+        ctx.message(f"  {loss}")
+    key = yield ctx.choose(
+        tr("Save anyway?"),
+        [Option("Y", tr("Yes")), Option("N", tr("No"))],
+        default="N",
+    )
+    return bool(key == "Y")
 
 
 def _ask_overwrite_damaged(

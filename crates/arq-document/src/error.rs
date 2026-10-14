@@ -33,6 +33,14 @@ pub enum DocumentError {
         /// How it differed, at least one line.
         differences: Vec<String>,
     },
+    /// Not saved: the file would hold less than the drawing, data its format
+    /// or version cannot keep (ADR 0017 D5.3). The target is untouched.
+    Lossy {
+        /// The file that was to be saved.
+        path: PathBuf,
+        /// What would be lost, at least one.
+        losses: Vec<crate::inventory::Loss>,
+    },
     /// The file is damaged and no drawing data could be recovered from it
     /// (ADR 0017 D5.1).
     Damaged {
@@ -121,6 +129,12 @@ impl fmt::Display for DocumentError {
                     None => Ok(()),
                 }
             }
+            Self::Lossy { path, losses } => write!(
+                f,
+                "{}: not saved, the file would lose data ({}); the original is unchanged",
+                path.display(),
+                crate::inventory::describe(losses)
+            ),
             Self::Damaged { path, problems } => write!(
                 f,
                 "{}: the file is damaged and no drawing could be recovered from it: {}",

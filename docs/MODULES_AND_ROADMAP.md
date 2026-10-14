@@ -13,8 +13,9 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   recovers the working document (DWG) from the own internal model.
 - **Working format:** DWG, as BricsCAD does, with an own internal model; the
   native format `.ascad` is designed and reserved (ADR 0018).
-- **Next, in this order:** 03.3 the four data protections → 03.2
-  opencadcodec's constraint reading → back to 02.5 editing (step 2.5.2).
+- **Data protections (03.3):** done (ADR 0017 D5).
+- **Next, in this order:** 03.2 opencadcodec's constraint reading → back
+  to 02.5 editing (step 2.5.2).
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -57,7 +58,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 |---|---|---|
 | 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ |
 | 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; offered upstream | ○ |
-| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ◐ steps 1–2 done: damaged files refused or recovered and marked; saves read back and checked |
+| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ✅ damaged files refused or recovered and marked; saves read back and checked; losses asked before saving; regression drawings made by the tests |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ first matrix from the comparison |
 | 03.5 External validation | Outputs opened in independent CAD applications; Xref and BIM drawings in the corpus | ○ |
 | 03.6 Fidelity across versions | DWG as the default save format once the corpus allows it (contract §10); linetypes, lineweights, layouts | ○ |

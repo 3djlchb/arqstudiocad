@@ -57,8 +57,12 @@ fn save_and_reopen(
     ext: &str,
 ) -> Result<Vec<String>, String> {
     let path = dir.join(format!("{stem}.{ext}"));
+    // Losses of what the platform does not show (a format or version that
+    // cannot keep some objects) stop a save until the user accepts them
+    // (ADR 0017 D5.3); here they are accepted, as the user could, and
+    // what the platform shows is checked.
     cad.snapshot()
-        .save(&path)
+        .save_accepting(&path, |_| true)
         .map_err(|e| format!("save as {ext}: {e}"))?;
     let back = CadDocument::open(&path).map_err(|e| format!("reopen {ext}: {e}"))?;
     if let Some(recovery) = back.document().recovery() {

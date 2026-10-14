@@ -193,6 +193,61 @@ fn a_save_that_does_not_read_back_changes_nothing() {
 }
 
 #[test]
+fn losses_are_accepted_once_per_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("origen.dxf");
+    let mut doc = arq_document::Document::new();
+    let layer = doc.current_layer().id();
+    let line = arq_geometry::Line::new(p(0.0, 0.0), p(4.0, 3.0)).unwrap();
+    let id = doc
+        .add_entity(
+            arq_document::PlanGeometry::at_elevation(line.into(), 0.0).unwrap(),
+            layer,
+        )
+        .unwrap();
+    doc.attach_xdata_for_tests(id, "ARQ_TEST");
+    doc.save(&source).unwrap();
+
+    let path = dir.path().join("plano.dxf");
+    let app = CadApplication::new();
+    let id = app.open_document(&source).unwrap();
+    let drop = arq_document::Document::drop_dxf_xdata_for_tests;
+    arq_document::Document::damage_next_save_for_tests(drop);
+    let CadError::Lossy {
+        kinds,
+        losses,
+        message,
+    } = app.save_document(id, &path).unwrap_err()
+    else {
+        panic!("not a lossy save")
+    };
+    assert_eq!(kinds, ["XDATA on entities"]);
+    assert_eq!(losses, ["XDATA on entities: 1 → 0"]);
+    assert!(message.contains("the original is unchanged"), "{message}");
+    assert!(!path.exists());
+    assert_eq!(
+        app.document_path(id).unwrap(),
+        Some(source.clone()),
+        "not moved"
+    );
+
+    assert_eq!(app.accepted_losses(id).unwrap(), Vec::<String>::new());
+    app.accept_losses(id, &kinds).unwrap();
+    assert_eq!(app.accepted_losses(id).unwrap(), kinds);
+    arq_document::Document::damage_next_save_for_tests(drop);
+    app.save_document(id, &path).unwrap();
+    arq_document::Document::damage_next_save_for_tests(drop);
+    app.save_document(id, &path).unwrap();
+
+    let other = app.open_document(&source).unwrap();
+    arq_document::Document::damage_next_save_for_tests(drop);
+    assert!(
+        matches!(app.save_document(other, &path), Err(CadError::Lossy { .. })),
+        "accepted for that document only"
+    );
+}
+
+#[test]
 fn concurrent_edits_form_one_stream() {
     const THREADS: usize = 8;
     const EACH: usize = 25;

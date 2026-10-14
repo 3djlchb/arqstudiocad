@@ -36,6 +36,7 @@ class QuietUi:
     save_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
     overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
+    accept_losses: bool = False
     zooms: Zooms = field(default_factory=Zooms)
     view_for: Callable[[CadDocument], ViewControl | None] | None = None
     panel_for: Callable[[str], bool] | None = None
@@ -61,6 +62,12 @@ class QuietUi:
     def ask_overwrite_damaged(self, name: str) -> Literal["overwrite", "save_as", "cancel"]:
         self.asked.append(f"overwrite damaged {name}")
         return self.overwrite_damaged
+
+    def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
+        self.asked.append(f"losses {name}: {len(losses)}")
+        # Asking again and again for the same save is a bug: fail, do not hang.
+        assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
+        return self.accept_losses
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.zooms if self.view_for is None else self.view_for(document)

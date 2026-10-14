@@ -24,7 +24,7 @@ from arqstudiocad.commands import (
     ViewControl,
 )
 from arqstudiocad.commands.builtin import _write, builtin_registry
-from arqstudiocad.core import CadDocument, SaveNotVerifiedError
+from arqstudiocad.core import CadDocument, LossyConversionError, SaveNotVerifiedError
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     CommandCancelled,
@@ -49,6 +49,7 @@ class Harness:
     session: Session
     runner: CommandRunner
     events: list[Event]
+    answers: list[str] = field(default_factory=list)
 
     def run(self, *lines: str) -> None:
         for line in lines:
@@ -94,6 +95,7 @@ class FakeUi:
     save_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
     overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
+    accept_losses: bool = False
     the_view: FakeView | None = None
     asked: list[str] = field(default_factory=list)
 
@@ -115,6 +117,12 @@ class FakeUi:
     def ask_overwrite_damaged(self, name: str) -> Literal["overwrite", "save_as", "cancel"]:
         self.asked.append(f"overwrite damaged {name}")
         return self.overwrite_damaged
+
+    def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
+        self.asked.append(f"losses {name}: {list(losses)}")
+        # Asking again and again for the same save is a bug: fail, do not hang.
+        assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
+        return self.accept_losses
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.the_view
@@ -326,6 +334,98 @@ def test_a_save_that_fails_its_check_says_the_original_is_unchanged(tmp_path: Pa
         "  plano.dxf: not saved; kept as plano.unverified.dxf",
     ]
     assert h.of(DocumentSaved) == []
+
+
+class Lossy:
+    """A document whose saves would lose a kind of object until the user
+    accepts it, as the core does (ADR 0017 D5.3)."""
+
+    id = 1
+    path: Path | None = None
+    accepted: list[str]
+    saved: list[Path]
+
+    def __init__(self, *, ignores_acceptance: bool = False) -> None:
+        self.accepted = []
+        self.saved = []
+        self.ignores_acceptance = ignores_acceptance
+
+    def save(self, path: Path) -> None:
+        if self.ignores_acceptance or "object AECS_WALL" not in self.accepted:
+            error = LossyConversionError("plano.dxf: not saved, the file would lose data")
+            error.loss_kinds = ["object AECS_WALL"]
+            error.losses = ["object AECS_WALL: 26 → 0"]
+            raise error
+        self.saved.append(path)
+
+    def accept_losses(self, kinds: Sequence[str]) -> None:
+        self.accepted.extend(kinds)
+
+    @property
+    def accepted_losses(self) -> list[str]:
+        return sorted(self.accepted)
+
+
+def test_a_save_refused_although_accepted_stops_instead_of_asking_again(
+    tmp_path: Path,
+) -> None:
+    ui = FakeUi(accept_losses=True)
+    h = harness(ui)
+    document = Lossy(ignores_acceptance=True)
+    with pytest.raises(LossyConversionError):
+        run_write(h, document, tmp_path / "plano.dxf")
+    assert len(ui.asked) == 1, "asked once, then stopped"
+
+
+def run_write(h: Harness, document: Lossy, path: Path) -> None:
+    """Drives SAVE's writing step as the runner would, answering prompts
+    with ``h``'s queued answers."""
+    script = _write(h.runner.context, cast(CadDocument, document), path)
+    step = next(script)
+    while True:
+        try:
+            if isinstance(step, Background):
+                try:
+                    value = step.task()
+                except Exception as error:
+                    step = script.throw(error)
+                    continue
+                step = script.send(value)
+            else:
+                step = script.send(h.answers.pop(0))
+        except StopIteration:
+            return
+
+
+def test_a_save_that_would_lose_data_asks_first(tmp_path: Path) -> None:
+    h = harness()
+    document = Lossy()
+    h.answers = ["N"]
+    with pytest.raises(CommandCancelledError):
+        run_write(h, document, tmp_path / "plano.dxf")
+    assert h.messages() == [
+        "Saving as plano.dxf would lose data the format cannot keep:",
+        "  object AECS_WALL: 26 → 0",
+    ]
+    assert document.saved == [] and document.accepted == []
+
+    h.answers = ["Y"]
+    run_write(h, document, tmp_path / "plano.dxf")
+    assert document.saved == [tmp_path / "plano.dxf"]
+    assert h.messages()[-1] == f"Saved {tmp_path / 'plano.dxf'}"
+
+    h.answers = []
+    run_write(h, document, tmp_path / "plano.dxf")
+    assert len(document.saved) == 2, "accepted once for the document: not asked again"
+
+
+def test_with_an_interface_losses_are_asked_in_a_dialog(tmp_path: Path) -> None:
+    ui = FakeUi(accept_losses=True)
+    h = harness(ui)
+    document = Lossy()
+    run_write(h, document, tmp_path / "plano.dxf")
+    assert ui.asked == ["losses plano.dxf: ['object AECS_WALL: 26 → 0']"]
+    assert document.saved == [tmp_path / "plano.dxf"]
 
 
 def test_undo_and_redo_report_their_changes() -> None:

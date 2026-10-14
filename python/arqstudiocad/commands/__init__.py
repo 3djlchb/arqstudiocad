@@ -124,6 +124,10 @@ class UiServices(Protocol):
         recovered from, save elsewhere, or cancel."""
         ...
 
+    def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
+        """Whether to save ``name`` although it would lose ``losses``."""
+        ...
+
     def view(self, document: CadDocument) -> ViewControl | None: ...
     def show_panel(self, name: str) -> bool:
         """Shows and raises a panel (``"layers"``…); False if there is none."""

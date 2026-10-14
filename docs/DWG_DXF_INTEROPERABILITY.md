@@ -13,7 +13,7 @@ evidence is the [library comparison](references/dwg-library-comparison.md)
 |---|---|
 | Damaged and partial files reported, not opened as valid empty drawings | ✅ see [Damaged files](#damaged-files) |
 | Safe save: temporary file, read back, validate, then replace | ✅ see [Safe save](#safe-save) |
-| No silent loss on version conversion; warn and allow cancelling | ◐ DWG saves keep the drawing's own version (only R12 is upgraded, and R12 has no custom objects); AcadRust refuses lossy conversions; the warning in the interface comes in 03.3 |
+| No silent loss on version conversion; warn and allow cancelling | ✅ see [No silent loss](#no-silent-loss) |
 | Unknown data preserved where possible | ✅ same-version DWG saves keep custom objects byte for byte (measured: 279 AutoCAD Architecture objects, 26 TCH walls, 300 AEC objects) |
 | Written files validated by reading back and in independent applications | ◐ round-trip corpus; independent applications pending (03.5) |
 
@@ -43,7 +43,7 @@ when its parameters change).
 | Geometric and dimensional constraints | ◐ AcadRust misses `ACDBASSOC2DCONSTRAINTGROUP` (opencadcodec reads it) | ✅ preserved as data | — | ○ | ○ | milestone 03.2 brings the reading in |
 | Associative network (ASSOC*) | ✅ | 100 % / 100 % | — | ○ | ○ | |
 | XDATA, XRECORD | ✅ | 100 % (measured on 14,169 entities) | — | ○ | — | where application data goes in DWG |
-| Custom / proxy / AEC objects (BIM) | ✅ preserved | 100 % in the same DWG version; refused on conversion to 2018 | ○ proxy graphics | — | — | conversion warning in 03.3 |
+| Custom / proxy / AEC objects (BIM) | ✅ preserved | 100 % in the same DWG version; refused on conversion to 2018 | ○ proxy graphics | — | — | lost as DXF: asked first ([No silent loss](#no-silent-loss)) |
 | External references (Xrefs) | ? | ? | ? | ○ | — | **not in the corpus yet** (03.5) |
 | BIM drawings (AutoCAD Architecture, Civil 3D, Revit/ArchiCAD exports) | ◐ | ◐ | ◐ | ○ | — | few samples; the maintainer will produce more |
 | DWG R11/R12 | ✅ (one R11 file rejected) | — | ✅ | ✅ | — | saved as DWG 2018 |
@@ -97,6 +97,33 @@ If the check fails, the target is untouched and the save fails with
 beside it as `<name>.unverified.<ext>`, so the work never stays only in
 memory. Cost, measured on 200,000 lines: save and check 0.85 s as DWG,
 1.6 s as DXF (on the worker thread; drawing goes on).
+
+## No silent loss
+
+Milestone 03.3, step 3 (ADR 0017 D5.3). The safe save's read-back also
+compares an **inventory** of the drawing and of the file: every entity and
+object type (unknown, proxy and AEC objects included), the XDATA on
+entities and the table records. If the file holds less of anything, the
+save stops **before replacing anything** with `LossyConversionError`,
+listing what would be lost; the user chooses *Save anyway* or *Cancel*
+(Cancel by default). An accepted loss is not asked again for that
+document while it stays open; a new one is.
+
+Not counted as losses: more of something (a writer adding its own
+dictionaries); a 2D POLYLINE written as an LWPOLYLINE (as AutoCAD does with
+PLINETYPE 2); and what an empty drawing loses the same way: the engine's
+own default objects (a multileader style and a table style, with their
+dictionaries) that DWG 2000 cannot hold.
+
+Measured (2026-10-13) on the engine's samples and the maintainer's
+drawings; what saving loses today, now always asked:
+
+| Drawing | Saved as | Lost |
+|---|---|---|
+| AutoCAD Architecture house (2013) | DXF | AEC display objects (`AECS_DISP_*`), dynamic-block markers |
+| Dynamic-block samples (2018) | DXF | `ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION` |
+| `point_object_id.dxf` | DWG | `DATAOBJECT` |
+| Every other drawing, both formats; every DWG in its own version | — | nothing |
 
 ## Version support
 

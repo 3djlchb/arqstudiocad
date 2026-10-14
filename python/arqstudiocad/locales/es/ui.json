@@ -123,5 +123,10 @@
   "Replace the damaged file?": "¿Reemplazar el archivo dañado?",
   "This drawing was recovered from {name}, which is damaged. Replacing it loses whatever recovery could not read.": "Este dibujo se recuperó de {name}, que está dañado. Al reemplazarlo se pierde lo que la recuperación no pudo leer.",
   "Save as…": "Guardar como…",
-  "{name} was not saved: the file written did not read back as the drawing. The original file is unchanged; what was written is kept beside it.": "{name} no se ha guardado: el archivo escrito no se releyó como el dibujo. El archivo original no ha cambiado; lo escrito se conserva a su lado."
+  "{name} was not saved: the file written did not read back as the drawing. The original file is unchanged; what was written is kept beside it.": "{name} no se ha guardado: el archivo escrito no se releyó como el dibujo. El archivo original no ha cambiado; lo escrito se conserva a su lado.",
+  "Saving as {name} would lose data the format cannot keep:": "Guardar como {name} perdería datos que el formato no puede conservar:",
+  "Save anyway?": "¿Guardar de todos modos?",
+  "Data would be lost": "Se perderían datos",
+  "Saving as {name} would lose data its format or version cannot keep. The original file is unchanged until you agree. Save anyway?": "Guardar como {name} perdería datos que su formato o versión no puede conservar. El archivo original no cambia hasta que lo aceptes. ¿Guardar de todos modos?",
+  "Save anyway": "Guardar de todos modos"
 }

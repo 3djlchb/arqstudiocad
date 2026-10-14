@@ -9,6 +9,7 @@ use acadrust::{CadDocument, DwgWriter, DxfReader, DxfWriter};
 
 use crate::error::{DocumentError, DocumentResult};
 use crate::format::FileFormat;
+use crate::inventory::Loss;
 use crate::reading::Recovery;
 
 /// One drawing.
@@ -33,6 +34,11 @@ impl Document {
     /// An empty drawing.
     pub fn new() -> Self {
         Self::from_cad(CadDocument::new())
+    }
+
+    /// A document around an engine database just read (this crate only).
+    pub(crate) fn from_engine(cad: CadDocument) -> Self {
+        Self::from_cad(cad)
     }
 
     fn from_cad(mut cad: CadDocument) -> Self {
@@ -122,7 +128,23 @@ impl Document {
     /// left untouched. A file that does not read back as the drawing is
     /// [`DocumentError::NotVerified`], and what was written is kept beside
     /// the target as `<name>.unverified.<ext>`, so no work is lost.
+    ///
+    /// No silent loss (ADR 0017 D5.3): if the file holds less of anything
+    /// than the drawing ([`losses_in`](Self::losses_in), less the engine's
+    /// own defaults an old version cannot hold), nothing is replaced
+    /// and the error is [`DocumentError::Lossy`];
+    /// [`save_accepting`](Self::save_accepting) saves anyway.
     pub fn save(&self, path: impl AsRef<Path>) -> DocumentResult<()> {
+        self.save_accepting(path, |_| false)
+    }
+
+    /// Like [`save`](Self::save), but the losses `accepted` says yes to do
+    /// not stop it: the user agreed to lose them.
+    pub fn save_accepting(
+        &self,
+        path: impl AsRef<Path>,
+        accepted: impl Fn(&Loss) -> bool,
+    ) -> DocumentResult<()> {
         let path = path.as_ref();
         let format = format_of(path)?;
         #[allow(unused_mut)] // changed only by the tests' fault injection
@@ -138,7 +160,25 @@ impl Document {
             message: e.to_string(),
         };
         fs::write(&temp, bytes).map_err(io_error)?;
-        let differences = self.check_written(&temp, format);
+        let differences = match self.read_written(&temp, format) {
+            Ok(written) => {
+                let differences = self.validate_roundtrip(&written);
+                let losses: Vec<Loss> = self
+                    .save_losses(&written, format)
+                    .into_iter()
+                    .filter(|loss| !accepted(loss))
+                    .collect();
+                if differences.is_empty() && !losses.is_empty() {
+                    let _ = fs::remove_file(&temp);
+                    return Err(DocumentError::Lossy {
+                        path: path.to_path_buf(),
+                        losses,
+                    });
+                }
+                differences
+            }
+            Err(problem) => vec![problem],
+        };
         if !differences.is_empty() {
             let unverified = unverified_path(path);
             let kept = match fs::rename(&temp, &unverified) {
@@ -160,20 +200,16 @@ impl Document {
         })
     }
 
-    /// Reads back a file just written and says how it differs from this
-    /// drawing: nothing, if it holds the same drawing.
-    fn check_written(&self, file: &Path, format: FileFormat) -> Vec<String> {
-        let bytes = match fs::read(file) {
-            Ok(bytes) => bytes,
-            Err(e) => return vec![format!("the written file cannot be read: {e}")],
-        };
+    /// Reads back a file just written; it must read clean.
+    fn read_written(&self, file: &Path, format: FileFormat) -> Result<Self, String> {
+        let bytes = fs::read(file).map_err(|e| format!("the written file cannot be read: {e}"))?;
         match crate::reading::read(bytes, format, file) {
-            Err(e) => vec![format!("the written file cannot be read: {e}")],
-            Ok((_, Some(recovery))) => vec![format!(
+            Err(e) => Err(format!("the written file cannot be read: {e}")),
+            Ok((_, Some(recovery))) => Err(format!(
                 "the written file reads as damaged: {}",
                 recovery.problems().join("; ")
-            )],
-            Ok((cad, None)) => self.validate_roundtrip(&Self::from_cad(cad)),
+            )),
+            Ok((cad, None)) => Ok(Self::from_cad(cad)),
         }
     }
 
