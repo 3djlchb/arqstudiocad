@@ -505,7 +505,10 @@ fn codec_regression_constraints_kept_undecoded() {
     let dir = tempfile::tempdir().expect("temporary folder");
     let mut problems = Vec::new();
     let mut checked = 0;
-    for (name, path) in drawings_in(&root) {
+    let constraints = drawings_in(&root)
+        .into_iter()
+        .filter(|(_, path)| path.file_name().is_some_and(|n| n == "Constraints.dwg"));
+    for (name, path) in constraints {
         let doc = match Document::open(&path) {
             Ok(doc) => doc,
             Err(e) => {
@@ -550,6 +553,56 @@ fn codec_regression_constraints_kept_undecoded() {
     }
     assert_eq!(checked, 7, "the seven versions: {problems:?}");
     assert!(problems.is_empty(), "{problems:#?}");
+}
+
+/// Drawings our AcadRust fork reads that AcadRust 0.6.4 did not (milestone
+/// 03.2, LibreDWG's test data): each must open intact with what the fork
+/// fix recovers.
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_regression_fork_fixes() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    let open = |relative: &str| -> Document {
+        let path = root.join(relative);
+        let doc = Document::open(&path).unwrap_or_else(|e| panic!("{relative}: {e}"));
+        assert!(doc.recovery().is_none(), "{relative}: read as damaged");
+        doc
+    };
+    let count =
+        |doc: &Document, kind: &str| doc.entities().iter().filter(|e| e.kind() == kind).count();
+
+    // R11/R12: a 16-bit linetype index (it was read as one byte).
+    // Every entity, block contents included: LibreDWG's 1,817 less the 224
+    // VERTEX, SEQEND, BLOCK and ENDBLK records the engine folds into their
+    // owners. Before the fix the drawing did not open at all.
+    let aceb10 = open("r11/ACEB10.dwg");
+    assert_eq!(aceb10.entity_count(), 1593, "ACEB10, as LibreDWG reads it");
+    assert_eq!(count(&aceb10, "LINE"), 266, "ACEB10 model-space lines");
+    // R2004 lofted surface with a binary extra modeler block.
+    assert_eq!(count(&open("2004/Surface.dwg"), "SURFACE"), 5);
+    // Solid history (ACSH_*) and old-layout geometry dependencies, kept.
+    let atmos = open("2007/ATMOS-DC22S.dwg");
+    assert_eq!(
+        atmos.undecoded_objects().len(),
+        9,
+        "{:?}",
+        atmos.undecoded_objects()
+    );
+    for name in ["example_r14.dwg", "example_2000.dwg", "example_2007.dwg"] {
+        let undecoded = open(name).undecoded_objects().to_vec();
+        assert!(
+            undecoded
+                .iter()
+                .any(|o| o.starts_with("ACDBASSOCGEOMDEPENDENCY")),
+            "{name}: {undecoded:?}"
+        );
+    }
+    assert!(open("example_2013.dwg").undecoded_objects().is_empty());
+
+    // Their full round trip is not run yet: it found engine bugs of its
+    // own (a RAY rewritten in R14/2000 DWG, ACIS bodies and RAY/TOLERANCE
+    // ids in DXF output), which the safe save refuses rather than lose;
+    // they are milestone 03.2's next fixes.
 }
 
 #[test]

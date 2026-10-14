@@ -36,7 +36,7 @@ when its parameters change).
 | Leaders, multileaders | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Tables | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Images, underlays, wipeouts | ✅ | 100 % / 100 % | ◐ frame or box | ○ | — | |
-| 3D solids, regions, surfaces (ACIS) | ✅ geometry kept (761 kB measured) | 100 % / 100 % | ◐ bounding box in plan | ○ | ○ | 3D model in 02.8 |
+| 3D solids, regions, surfaces (ACIS) | ✅ geometry kept (761 kB measured); R2004 lofted surfaces fixed in our fork | 100 % / ◐ DXF output loses some ACIS bodies (save refused, 03.2) | ◐ bounding box in plan | ○ | ○ | 3D model in 02.8 |
 | Meshes, 3D faces | ✅ | 100 % / 100 % | ◐ edges in plan | ○ | — | |
 | Ellipses, splines, 2D solids | ✅ | ✅ (not measured separately) | ◐ broken into lines and arcs | ○ | — | |
 | Dynamic blocks | ✅ definitions, parameters, actions, grips | 100 % / 100 % | ✅ current state (the evaluated block) | ○ | ○ visibility, stretch… | ADR 0016 D7, our parametric engine (ADR 0017 D6) |
@@ -46,7 +46,7 @@ when its parameters change).
 | Custom / proxy / AEC objects (BIM) | ✅ preserved | 100 % in the same DWG version; refused on conversion to 2018 | ○ proxy graphics | — | — | lost as DXF: asked first ([No silent loss](#no-silent-loss)) |
 | External references (Xrefs) | ? | ? | ? | ○ | — | **not in the corpus yet** (03.5) |
 | BIM drawings (AutoCAD Architecture, Civil 3D, Revit/ArchiCAD exports) | ◐ | ◐ | ◐ | ○ | — | few samples; the maintainer will produce more |
-| DWG R11/R12 | ✅ (one R11 file rejected) | — | ✅ | ✅ | — | saved as DWG 2018 |
+| DWG R11/R12 | ✅ (R11 16-bit linetype indices fixed in our fork; ACEB10 reads in full) | — | ✅ | ✅ | — | saved as DWG 2018 |
 | Damaged files | ✅ refused, or recovered and marked | — | — | — | — | [Damaged files](#damaged-files) |
 
 ## Damaged files
