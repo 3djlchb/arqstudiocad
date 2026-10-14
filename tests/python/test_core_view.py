@@ -4,6 +4,8 @@ Pixels are found through the view's own camera (to_screen), and checked
 against hand-picked world points on the drawn geometry.
 """
 
+import math
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -146,14 +148,20 @@ def test_a_closed_document(doc: CadDocument) -> None:
 
 
 def test_rendering_releases_the_gil(tmp_path: Path) -> None:
-    app = CadApplication()
-    for lines in (200_000, 400_000, 800_000):
-        doc = app.open_document(big_dxf(tmp_path / f"grande-{lines}.dxf", lines))
-        view = CadView(doc, 2000, 2000)
-        share, elapsed = share_of_time_other_threads_ran(view.render)
-        doc.close()
-        if elapsed > 0.1:
-            break
-    else:
-        pytest.fail(f"render took {elapsed:.3f} s: too short to tell")
+    doc = CadApplication().open_document(big_dxf(tmp_path / "grande.dxf", 200_000))
+    view = CadView(doc, 2000, 2000)
+    start = time.perf_counter()
+    view.render()
+    once = time.perf_counter() - start
+    # Fast machines (CI runners among them) draw it in well under 0.1 s:
+    # render as many times as it takes to measure for about half a second.
+    times = max(1, math.ceil(0.5 / once))
+
+    def render_repeatedly() -> None:
+        for _ in range(times):
+            view.render()
+
+    share, elapsed = share_of_time_other_threads_ran(render_repeatedly)
+    doc.close()
+    assert elapsed > 0.1, f"{times} renders took {elapsed:.3f} s: too short to tell"
     assert share > 0.3, f"other threads ran {share:.0%} of the time while rendering"
