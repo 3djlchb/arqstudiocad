@@ -150,9 +150,9 @@ fn default_losses(format: FileFormat, version: &str) -> BTreeMap<String, usize> 
     let losses: BTreeMap<String, usize> = bytes
         .ok()
         .and_then(|b| crate::reading::read(b, format, std::path::Path::new("empty")).ok())
-        .map(|(cad, _)| {
+        .map(|read| {
             empty
-                .losses_in(&Document::from_engine(cad))
+                .losses_in(&Document::from_engine(read.cad))
                 .into_iter()
                 .map(|l| (l.kind, l.before - l.after))
                 .collect()

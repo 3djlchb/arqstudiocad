@@ -28,6 +28,8 @@ pub struct Document {
     pub(crate) recording: Option<crate::change::Recording>,
     /// Set when the drawing was recovered from a damaged file.
     recovery: Option<Recovery>,
+    /// Objects read but kept undecoded (see `undecoded_objects`).
+    undecoded: Vec<String>,
 }
 
 impl Document {
@@ -54,6 +56,7 @@ impl Document {
             model: crate::model::OwnModel::default(),
             recording: None,
             recovery: None,
+            undecoded: Vec::new(),
         };
         doc.rebuild_model();
         doc
@@ -77,10 +80,20 @@ impl Document {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
-        let (cad, recovery) = crate::reading::read(bytes, format, path)?;
-        let mut doc = Self::from_cad(cad);
-        doc.recovery = recovery;
+        let read = crate::reading::read(bytes, format, path)?;
+        let mut doc = Self::from_cad(read.cad);
+        doc.recovery = read.recovery;
+        doc.undecoded = read.undecoded;
         Ok(doc)
+    }
+
+    /// Objects of the file this drawing was read from that the engine could
+    /// not decode (a layout it does not know yet) and keeps verbatim, as
+    /// `"ACDBASSOC2DCONSTRAINTGROUP (3E3)"`. A save in the drawing's own
+    /// version writes them back unchanged; another format or version may
+    /// not, and then the save asks first (ADR 0017 D5.3).
+    pub fn undecoded_objects(&self) -> &[String] {
+        &self.undecoded
     }
 
     /// What was wrong with the file this drawing was recovered from; `None`
@@ -205,11 +218,13 @@ impl Document {
         let bytes = fs::read(file).map_err(|e| format!("the written file cannot be read: {e}"))?;
         match crate::reading::read(bytes, format, file) {
             Err(e) => Err(format!("the written file cannot be read: {e}")),
-            Ok((_, Some(recovery))) => Err(format!(
-                "the written file reads as damaged: {}",
-                recovery.problems().join("; ")
-            )),
-            Ok((cad, None)) => Ok(Self::from_cad(cad)),
+            Ok(read) => match read.recovery {
+                Some(recovery) => Err(format!(
+                    "the written file reads as damaged: {}",
+                    recovery.problems().join("; ")
+                )),
+                None => Ok(Self::from_cad(read.cad)),
+            },
         }
     }
 
@@ -226,6 +241,7 @@ impl Document {
             model: self.model.clone(),
             recording: None,
             recovery: self.recovery.clone(),
+            undecoded: self.undecoded.clone(),
         }
     }
 

@@ -120,3 +120,4 @@ copyright notices of the specific files.
 | Date | Engine | Corpus | Notes |
 |---|---|---|---|
 | 2026-10-13 | AcadRust 0.6.4 (measured) | 220 drawings, all three libraries | comparison; decision taken |
+| 2026-10-13 | AcadRust 0.6.4 + our patch `b2358ab` ([fork](https://github.com/3djlchb/acadrust/tree/arqstudiocad/preserve-undecoded)) | round-trip corpus; LibreDWG `Constraints.dwg` R14–2018 | 03.2: the fork's constraint-group reading turned out to be garbage for R14–2010 (old layout); instead, class objects that fail to decode are kept verbatim, so those drawings open intact and keep their constraints byte for byte in a same-version save. Decoding the old layout is pending. |

@@ -2,6 +2,7 @@
 ADR 0006, ADR 0013 D5.4). No Qt: commands run here as from a script."""
 
 import logging
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -269,6 +270,40 @@ def test_new_save_open_close_from_the_command_line(tmp_path: Path) -> None:
     assert h.session.active is None and h.session.documents == []
     h.run("SAVE")
     assert h.messages()[-1] == "No drawing is open."
+
+
+#: LibreDWG's constraint drawing in the 2010 version: its constraint group
+#: is kept undecoded (fetched by tools/fetch_codec_samples.py).
+CONSTRAINTS_2010 = (
+    Path(__file__).resolve().parents[2] / "target/corpus/libredwg/2010/Constraints.dwg"
+)
+
+
+def regression_drawing(path: Path) -> Path:
+    """The fetched drawing; CI requires it (ARQ_REQUIRE_SAMPLES), a local
+    run without it skips."""
+    if not path.is_file():
+        if os.environ.get("ARQ_REQUIRE_SAMPLES"):
+            pytest.fail(f"{path} is missing: run tools/fetch_codec_samples.py")
+        pytest.skip("run `uv run python tools/fetch_codec_samples.py`")
+    return path
+
+
+def test_open_notes_objects_kept_undecoded() -> None:
+    h = harness()
+    h.run("OPEN", str(regression_drawing(CONSTRAINTS_2010)))
+    doc = h.session.active
+    assert doc is not None and doc.recovery_problems == []
+    assert doc.undecoded_objects == [
+        "ACDBASSOC2DCONSTRAINTGROUP (3E3)",
+        "ACDBASSOCGEOMDEPENDENCY (3E4)",
+        "ACDBASSOCGEOMDEPENDENCY (3E5)",
+    ]
+    assert h.messages()[-1] == (
+        "3 objects the program cannot read yet are kept as they are: "
+        "ACDBASSOC2DCONSTRAINTGROUP (3E3), ACDBASSOCGEOMDEPENDENCY (3E4), "
+        "ACDBASSOCGEOMDEPENDENCY (3E5)"
+    )
 
 
 def test_a_recovered_drawing_is_reported_and_not_saved_over_unasked(tmp_path: Path) -> None:

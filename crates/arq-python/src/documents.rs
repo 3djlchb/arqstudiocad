@@ -236,6 +236,14 @@ impl CadDocument {
         })
     }
 
+    /// Objects of the file the engine could not decode and keeps verbatim,
+    /// as `"ACDBASSOC2DCONSTRAINTGROUP (3E3)"`: a save in the drawing's own
+    /// version writes them back unchanged.
+    #[getter]
+    fn undecoded_objects(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.document().undecoded_objects().to_vec())
+    }
+
     /// The user accepts the recovered drawing: saving may now replace the
     /// damaged file it came from (otherwise `OverwritesDamagedError`).
     fn allow_overwriting_damaged(&self) -> PyResult<()> {

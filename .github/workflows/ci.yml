@@ -86,7 +86,12 @@ jobs:
       - run: uv run ruff format --check
       - run: uv run mypy
       - run: uv run stubtest arqstudiocad._core
+      # Regression drawings some tests read (ADR 0017 D5.4); required here.
+      - name: Fetch the sample and regression drawings
+        run: uv run python tools/fetch_codec_samples.py
       - run: uv run pytest --junitxml=pytest-results.xml
+        env:
+          ARQ_REQUIRE_SAMPLES: "1"
       # The log is private but annotations are public: one per failed test,
       # so an intermittent failure can be identified from the pull request.
       - name: Failed tests as annotations
