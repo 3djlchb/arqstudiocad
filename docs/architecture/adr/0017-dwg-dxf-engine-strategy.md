@@ -35,10 +35,14 @@ No wholesale merge of the two code bases. The concrete differences are
 listed (the comparison's annex and section 12) and each valuable one is
 brought in as a small change with a regression drawing that proves it:
 first the **geometric-constraint groups** (`ACDBASSOC2DCONSTRAINTGROUP`),
-then entity-fidelity fixes and diagnostics. Each change is offered upstream
-to AcadRust; until it is accepted it lives in a fork of ours, used through
-`[patch.crates-io]`, with its origin and license recorded in
-`THIRD_PARTY.md`.
+then entity-fidelity fixes and diagnostics. Our changes live in **our own
+fork** of AcadRust ([3djlchb/acadrust](https://github.com/3djlchb/acadrust)),
+used through `[patch.crates-io]` pinned to a commit, with its origin and
+license recorded in `THIRD_PARTY.md`. *(Amended 2026-10-13, maintainer:)*
+they are **not sent upstream**; the fork is maintained by us. Each AcadRust
+upgrade re-applies our changes on the new version and runs their
+regression drawings, the round-trip corpus and the comparison bench before
+it is accepted (D1).
 
 ### D3 — LibreDWG stays out of the product
 
@@ -109,8 +113,8 @@ copyright notices of the specific files.
 
 ## Consequences
 
-- One Rust engine, published and maintained, with a place for our fixes
-  until upstream takes them.
+- One Rust engine, published and maintained upstream, with our own fixes
+  kept in our fork; upgrades cost re-applying them.
 - The editing work of milestone 2.5 is re-validated on AcadRust before it
   goes on.
 - Saving costs a re-read; for the drawings measured it is milliseconds.
@@ -120,4 +124,4 @@ copyright notices of the specific files.
 | Date | Engine | Corpus | Notes |
 |---|---|---|---|
 | 2026-10-13 | AcadRust 0.6.4 (measured) | 220 drawings, all three libraries | comparison; decision taken |
-| 2026-10-13 | AcadRust 0.6.4 + our patch `b2358ab` ([fork](https://github.com/3djlchb/acadrust/tree/arqstudiocad/preserve-undecoded)) | round-trip corpus; LibreDWG `Constraints.dwg` R14–2018 | 03.2: the fork's constraint-group reading turned out to be garbage for R14–2010 (old layout); instead, class objects that fail to decode are kept verbatim, so those drawings open intact and keep their constraints byte for byte in a same-version save. Decoding the old layout is pending. |
+| 2026-10-13 | AcadRust 0.6.4 + our patch `b2358ab` ([fork](https://github.com/3djlchb/acadrust/tree/arqstudiocad/preserve-undecoded)) | round-trip corpus; LibreDWG `Constraints.dwg` R14–2018 | 03.2: the fork's constraint-group reading turned out to be garbage for R14–2010 (old layout); instead, class objects that fail to decode are kept verbatim, so those drawings open intact and keep their constraints byte for byte in a same-version save. Decoding the old layout is pending. Our changes stay in our fork, not sent upstream (D2 amended). |

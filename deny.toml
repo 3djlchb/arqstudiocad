@@ -47,6 +47,6 @@ allow-wildcard-paths = true
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-# The DWG/DXF engine is AcadRust from crates.io, patched from our fork while
-# our changes wait upstream (ADR 0017 D2); no other git sources.
+# The DWG/DXF engine is AcadRust from crates.io, patched from our fork with
+# our own changes (ADR 0017 D2); no other git sources.
 allow-git = ["https://github.com/3djlchb/acadrust"]
