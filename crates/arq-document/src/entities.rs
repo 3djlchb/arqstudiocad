@@ -14,14 +14,22 @@ use crate::translate::{
 };
 
 impl Document {
-    /// A snapshot of the entity with this id, in any space.
+    /// A snapshot of the entity with this id, in any space: from the own
+    /// model when it owns the entity, else from the engine.
     pub fn entity(&self, id: EntityId) -> Option<Entity> {
-        self.cad().get_entity(handle(id)).map(read_entity)
+        self.owned_view(id)
+            .or_else(|| self.cad().get_entity(handle(id)).map(read_entity))
     }
 
     /// Snapshots of every entity in model space, in drawing order.
     pub fn entities(&self) -> Vec<Entity> {
-        self.cad().model_space_entities().map(read_entity).collect()
+        self.cad()
+            .model_space_entities()
+            .map(|e| {
+                let id = e.as_entity().handle().value();
+                self.owned_view(id).unwrap_or_else(|| read_entity(e))
+            })
+            .collect()
     }
 
     /// The plan bounds of every model-space entity that has them, in drawing
@@ -40,6 +48,7 @@ impl Document {
             .name()
             .to_owned();
         let h = self.cad_mut().add_entity(new_entity(plan, &name))?;
+        self.sync_entity(h.value());
         Ok(h.value())
     }
 
@@ -58,7 +67,9 @@ impl Document {
             let kind = e.as_entity().entity_type();
             return Err(DocumentError::NotEditable { id, kind });
         }
-        write_plan(e, plan)
+        write_plan(e, plan)?;
+        self.sync_entity(id);
+        Ok(())
     }
 
     /// Moves, rotates, scales or mirrors an entity that
@@ -79,6 +90,7 @@ impl Document {
             let kind = raw.as_entity().entity_type();
             return Err(DocumentError::NotEditable { id, kind });
         }
+        // Kinds transformed whole are not owned by the model: nothing to sync.
         transform_whole(raw, t);
         Ok(())
     }
@@ -122,6 +134,7 @@ impl Document {
                 attribute.common.owner_handle = h;
             }
         }
+        self.sync_entity(h.value());
         Ok(h.value())
     }
 
@@ -132,8 +145,9 @@ impl Document {
     pub fn delete_entity(&mut self, id: EntityId) -> DocumentResult<()> {
         self.cad_mut()
             .remove_entity_arc(handle(id))
-            .map(|_| ())
-            .ok_or(DocumentError::EntityNotFound(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        self.model.entities.remove(&id);
+        Ok(())
     }
 
     /// Moves an entity of any type to another layer.
@@ -150,6 +164,7 @@ impl Document {
         let common = e.common_mut();
         common.layer = name;
         common.layer_handle = Some(acadrust::Handle::new(layer));
+        self.sync_entity(id);
         Ok(())
     }
 
@@ -163,6 +178,7 @@ impl Document {
             .get_entity_mut(handle(id))
             .ok_or(DocumentError::EntityNotFound(id))?;
         e.common_mut().color = color_to_codec(color);
+        self.sync_entity(id);
         Ok(())
     }
 }

@@ -157,7 +157,17 @@ fn save_and_reopen(
         .save(&path)
         .map_err(|e| format!("save as {ext}: {e}"))?;
     let back = CadDocument::open(&path).map_err(|e| format!("reopen {ext}: {e}"))?;
+    model_in_step(back.document(), &format!("reopened {ext}"))?;
     Ok(observe(back.document()))
+}
+
+/// The own model and the engine describe the same drawing (ADR 0018 D2).
+fn model_in_step(doc: &Document, when: &str) -> Result<(), String> {
+    let problems = doc.check_model();
+    if problems.is_empty() {
+        return Ok(());
+    }
+    Err(format!("own model out of step {when}: {problems:?}"))
 }
 
 /// Every drawing is saved in both formats; an R12 one becomes 2018 as DWG.
@@ -233,11 +243,18 @@ fn round_trip(mut cad: CadDocument, dir: &Path) -> Vec<String> {
             }
         }
     };
+    let mut model_problems = Vec::new();
+    if let Err(e) = model_in_step(cad.document(), "after opening") {
+        model_problems.push(e);
+    }
     let before = observe(cad.document());
     check_files(&cad, "as-opened", &before);
     if let Err(e) = edit(&mut cad) {
         problems.push(format!("edit: {e}"));
         return problems;
+    }
+    if let Err(e) = model_in_step(cad.document(), "after editing") {
+        model_problems.push(e);
     }
     let edited = observe(cad.document());
     check_files(&cad, "edited", &edited);
@@ -253,6 +270,7 @@ fn round_trip(mut cad: CadDocument, dir: &Path) -> Vec<String> {
             }
         }
     }
+    problems.extend(model_problems);
     problems
 }
 

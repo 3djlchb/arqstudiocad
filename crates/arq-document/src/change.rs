@@ -265,6 +265,7 @@ impl Document {
             }
         }
         self.swap_structure(change);
+        self.sync_after(change);
         Ok(change.summary.inverted())
     }
 
@@ -289,7 +290,16 @@ impl Document {
                 _ => {}
             }
         }
+        self.sync_after(change);
         Ok(change.summary.clone())
+    }
+
+    /// The engine's images were put back: the own model follows them.
+    fn sync_after(&mut self, change: &Change) {
+        for img in &change.images {
+            self.sync_entity(img.handle.value());
+        }
+        self.sync_layers();
     }
 
     fn swap_structure(&mut self, change: &mut Change) {

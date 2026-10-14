@@ -1,7 +1,9 @@
 //! Document model for ArqStudioCAD: entities, layers and blocks.
 //!
-//! The drawing is stored in AcadRust's DWG database (ADR 0011, ADR 0017);
-//! codec types never leave this crate. The model mirrors DWG concepts
+//! The drawing has an own internal model (ADR 0018 D2, stage 1: layers, the
+//! current layer, LINE, CIRCLE, ARC) written through to AcadRust's DWG
+//! database (ADR 0011, ADR 0017), which keeps everything the model does not
+//! own; codec types never leave this crate. Both mirror DWG concepts
 //! (handles, symbol tables, model/paper space) so DWG/DXF load and save
 //! without lossy translation.
 //!
@@ -16,6 +18,7 @@
 //! | Plan geometry of LINE, CIRCLE, ARC | [`PlanGeometry`] |
 //! | Layers | [`Document::layers`] → [`Layer`], [`Document::create_layer`]… |
 //! | Record, undo and redo a change | [`Document::begin_change`] → [`Change`], [`ChangeSet`] |
+//! | Check the own model against the engine | [`Document::check_model`] |
 //! | Errors | [`DocumentError`] |
 
 mod change;
@@ -26,6 +29,7 @@ mod entity;
 mod error;
 mod format;
 mod layers;
+mod model;
 mod ocs;
 #[cfg(test)]
 mod test_dxf;

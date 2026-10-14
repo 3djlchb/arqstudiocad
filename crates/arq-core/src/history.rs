@@ -131,6 +131,7 @@ impl CadDocument {
             }
         };
         let change = self.doc.commit_change()?;
+        check_model(&self.doc);
         let summary = change.summary().clone();
         if summary.is_empty() {
             return Ok((value, summary));
@@ -227,6 +228,7 @@ impl CadDocument {
         for change in step.changes.iter_mut().rev() {
             self.doc.undo_change(change)?;
         }
+        check_model(&self.doc);
         let summary = step.summary.inverted();
         self.redo.push(step);
         Ok(summary)
@@ -242,6 +244,7 @@ impl CadDocument {
         for change in &mut step.changes {
             self.doc.redo_change(change)?;
         }
+        check_model(&self.doc);
         let summary = step.summary.clone();
         self.undo.push(step);
         Ok(summary)
@@ -323,6 +326,16 @@ impl Default for CadDocument {
 
 fn no_group() -> CadError {
     CadError::InvalidOperation("no group is open".to_owned())
+}
+
+/// Debug builds (tests, the corpus) check after every transaction, undo and
+/// redo that the own model and the engine still describe the same drawing
+/// (ADR 0018 D2); release builds skip the cost.
+fn check_model(doc: &Document) {
+    if cfg!(debug_assertions) {
+        let problems = doc.check_model();
+        assert!(problems.is_empty(), "own model out of step: {problems:?}");
+    }
 }
 
 #[cfg(test)]
