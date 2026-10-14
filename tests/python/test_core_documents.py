@@ -14,6 +14,7 @@ from arqstudiocad.core import (
     DamagedFileError,
     DocumentNotFoundError,
     OverwritesDamagedError,
+    SaveNotVerifiedError,
     UnsupportedFormatError,
 )
 
@@ -64,6 +65,13 @@ def test_a_recovered_drawing_says_so_and_guards_its_file(
     doc.allow_overwriting_damaged()
     doc.save(path)
     assert app.open_document(path).recovery_problems == []
+
+
+def test_an_unverified_save_is_an_io_error_with_its_own_code() -> None:
+    # Saving reads the file back (ADR 0017 D5.2); the core's tests make a
+    # write fail, which Python cannot: here only the class is checked.
+    assert issubclass(SaveNotVerifiedError, CadIoError)
+    assert SaveNotVerifiedError.code == "save_not_verified"
 
 
 def test_handles_to_the_same_document_are_equal(app: CadApplication) -> None:

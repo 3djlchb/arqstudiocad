@@ -114,25 +114,67 @@ impl Document {
 
     /// Saves to `path` in the format its extension names.
     ///
-    /// Safe save: the whole file is produced in memory, written next to the
-    /// target under a temporary name, then renamed over it. If anything fails,
-    /// an existing file at `path` is left untouched.
+    /// Safe save (ADR 0017 D5.2): the whole file is produced in memory and
+    /// written next to the target under a temporary name; that file is read
+    /// back and compared with this drawing
+    /// ([`validate_roundtrip`](Self::validate_roundtrip)); only then is it
+    /// renamed over `path`. If anything fails, an existing file at `path` is
+    /// left untouched. A file that does not read back as the drawing is
+    /// [`DocumentError::NotVerified`], and what was written is kept beside
+    /// the target as `<name>.unverified.<ext>`, so no work is lost.
     pub fn save(&self, path: impl AsRef<Path>) -> DocumentResult<()> {
         let path = path.as_ref();
-        let bytes = match format_of(path)? {
+        let format = format_of(path)?;
+        #[allow(unused_mut)] // changed only by the tests' fault injection
+        let mut bytes = match format {
             FileFormat::Dwg => self.to_dwg_bytes()?,
             FileFormat::Dxf => self.to_dxf_bytes()?,
         };
+        #[cfg(any(test, feature = "test-support"))]
+        crate::verify::fault::apply(&mut bytes);
         let temp = temp_path(path);
         let io_error = |e: std::io::Error| DocumentError::Io {
             path: path.to_path_buf(),
             message: e.to_string(),
         };
         fs::write(&temp, bytes).map_err(io_error)?;
+        let differences = self.check_written(&temp, format);
+        if !differences.is_empty() {
+            let unverified = unverified_path(path);
+            let kept = match fs::rename(&temp, &unverified) {
+                Ok(()) => Some(unverified),
+                Err(_) => {
+                    let _ = fs::remove_file(&temp);
+                    None
+                }
+            };
+            return Err(DocumentError::NotVerified {
+                path: path.to_path_buf(),
+                kept,
+                differences,
+            });
+        }
         fs::rename(&temp, path).map_err(|e| {
             let _ = fs::remove_file(&temp);
             io_error(e)
         })
+    }
+
+    /// Reads back a file just written and says how it differs from this
+    /// drawing: nothing, if it holds the same drawing.
+    fn check_written(&self, file: &Path, format: FileFormat) -> Vec<String> {
+        let bytes = match fs::read(file) {
+            Ok(bytes) => bytes,
+            Err(e) => return vec![format!("the written file cannot be read: {e}")],
+        };
+        match crate::reading::read(bytes, format, file) {
+            Err(e) => vec![format!("the written file cannot be read: {e}")],
+            Ok((_, Some(recovery))) => vec![format!(
+                "the written file reads as damaged: {}",
+                recovery.problems().join("; ")
+            )],
+            Ok((cad, None)) => self.validate_roundtrip(&Self::from_cad(cad)),
+        }
     }
 
     /// An independent copy of the drawing as it is now, for long reads
@@ -194,6 +236,18 @@ fn format_of(path: &Path) -> DocumentResult<FileFormat> {
 fn temp_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".arqstudiocad-tmp");
+    path.with_file_name(name)
+}
+
+/// `plano.dwg` → `plano.unverified.dwg`: where a written file that failed
+/// its check is kept, still openable by its extension.
+pub(crate) fn unverified_path(path: &Path) -> PathBuf {
+    let mut name = path.file_stem().unwrap_or_default().to_os_string();
+    name.push(".unverified");
+    if let Some(ext) = path.extension() {
+        name.push(".");
+        name.push(ext);
+    }
     path.with_file_name(name)
 }
 

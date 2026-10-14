@@ -19,7 +19,7 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.core import CadDocument, OverwritesDamagedError
+from arqstudiocad.core import CadDocument, OverwritesDamagedError, SaveNotVerifiedError
 from arqstudiocad.i18n import tr
 
 #: Saving defaults to DXF until the round-trip corpus makes DWG the default
@@ -98,6 +98,30 @@ def _save_as(ctx: CommandContext, document: CadDocument) -> CommandScript:
 
 
 def _write(ctx: CommandContext, document: CadDocument, path: Path) -> CommandScript:
+    try:
+        saved = yield from _save_to(ctx, document, path)
+    except SaveNotVerifiedError as error:
+        # The core read the file back and it was not the drawing (ADR 0017
+        # D5.2): nothing was replaced, and what was written is kept aside.
+        ctx.message(
+            tr(
+                "{name} was not saved: the file written did not read back as the drawing. "
+                "The original file is unchanged; what was written is kept beside it.",
+                name=path.name,
+            )
+        )
+        ctx.message(f"  {error}")
+        raise CommandCancelledError() from None
+    if saved:
+        ctx.session.saved(document, path)
+        ctx.message(tr("Saved {path}", path=str(path)))
+
+
+def _save_to(
+    ctx: CommandContext, document: CadDocument, path: Path
+) -> Generator[Prompt | Background, Any, bool]:
+    """Saves to ``path``; False if the user chose to save elsewhere instead
+    (that save reported itself)."""
     # The core saves a snapshot taken when it starts: drawing may go on.
     try:
         yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
@@ -109,11 +133,10 @@ def _write(ctx: CommandContext, document: CadDocument, path: Path) -> CommandScr
             raise CommandCancelledError() from None
         if answer == "save_as":
             yield from _save_as(ctx, document)
-            return
+            return False
         document.allow_overwriting_damaged()
         yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
-    ctx.session.saved(document, path)
-    ctx.message(tr("Saved {path}", path=str(path)))
+    return True
 
 
 def _ask_overwrite_damaged(

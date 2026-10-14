@@ -25,6 +25,10 @@ pub enum CadError {
     /// The file is damaged and no drawing could be recovered from it
     /// (ADR 0017 D5.1).
     DamagedFile(String),
+    /// Not saved: the written file did not read back as the drawing; the
+    /// original is unchanged and what was written is kept beside it
+    /// (ADR 0017 D5.2).
+    NotVerified(String),
     /// Saving would replace the damaged file a drawing was recovered from;
     /// the user must accept that first
     /// ([`CadApplication::allow_overwriting_damaged`](crate::CadApplication::allow_overwriting_damaged)).
@@ -41,7 +45,7 @@ impl fmt::Display for CadError {
             Self::LayerNotFound(id) => write!(f, "no layer with id {id}"),
             Self::DocumentNotFound(id) => write!(f, "no document with id {id}"),
             Self::InvalidOperation(m) => write!(f, "{m}"),
-            Self::Io(m) | Self::DamagedFile(m) => write!(f, "{m}"),
+            Self::Io(m) | Self::DamagedFile(m) | Self::NotVerified(m) => write!(f, "{m}"),
             Self::OverwritesDamaged(path) => write!(
                 f,
                 "{path}: the drawing was recovered from this damaged file; replacing it needs confirmation"
@@ -64,6 +68,7 @@ impl From<DocumentError> for CadError {
         match e {
             DocumentError::Io { .. } | DocumentError::Codec(_) => Self::Io(e.to_string()),
             DocumentError::Damaged { .. } => Self::DamagedFile(e.to_string()),
+            DocumentError::NotVerified { .. } => Self::NotVerified(e.to_string()),
             DocumentError::UnsupportedFormat { path } => {
                 Self::UnsupportedFormat(path.display().to_string())
             }

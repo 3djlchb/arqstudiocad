@@ -5,13 +5,15 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 from damaged_files import recovered_dxf
 
 from arqstudiocad.commands import (
+    Background,
     Command,
+    CommandCancelledError,
     CommandContext,
     CommandRegistry,
     CommandRunner,
@@ -21,8 +23,8 @@ from arqstudiocad.commands import (
     UiServices,
     ViewControl,
 )
-from arqstudiocad.commands.builtin import builtin_registry
-from arqstudiocad.core import CadDocument
+from arqstudiocad.commands.builtin import _write, builtin_registry
+from arqstudiocad.core import CadDocument, SaveNotVerifiedError
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     CommandCancelled,
@@ -303,6 +305,27 @@ def test_with_an_interface_recovery_is_shown_and_asked_in_dialogs(tmp_path: Path
     h.run("SAVE")
     assert ui.asked[-2:] == ["overwrite damaged danado.dxf", f"save {path}"]
     assert doc.path == tmp_path / "copia.dxf"
+
+
+def test_a_save_that_fails_its_check_says_the_original_is_unchanged(tmp_path: Path) -> None:
+    class Unverified:
+        def save(self, path: Path) -> None:
+            raise SaveNotVerifiedError("plano.dxf: not saved; kept as plano.unverified.dxf")
+
+    h = harness()
+    script = _write(h.runner.context, cast(CadDocument, Unverified()), tmp_path / "plano.dxf")
+    work = next(script)
+    assert isinstance(work, Background)
+    with pytest.raises(SaveNotVerifiedError) as raised:
+        work.task()
+    with pytest.raises(CommandCancelledError):
+        script.throw(raised.value)
+    assert h.messages() == [
+        "plano.dxf was not saved: the file written did not read back as the drawing. "
+        "The original file is unchanged; what was written is kept beside it.",
+        "  plano.dxf: not saved; kept as plano.unverified.dxf",
+    ]
+    assert h.of(DocumentSaved) == []
 
 
 def test_undo_and_redo_report_their_changes() -> None:

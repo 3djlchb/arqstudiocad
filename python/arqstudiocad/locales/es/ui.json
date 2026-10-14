@@ -122,5 +122,6 @@
   "{name} is damaged. It was opened by recovery and part of the drawing may be missing. Check it, and save it under a new name to keep the original.": "{name} está dañado. Se ha abierto recuperándolo y puede faltar parte del dibujo. Revísalo y guárdalo con otro nombre para conservar el original.",
   "Replace the damaged file?": "¿Reemplazar el archivo dañado?",
   "This drawing was recovered from {name}, which is damaged. Replacing it loses whatever recovery could not read.": "Este dibujo se recuperó de {name}, que está dañado. Al reemplazarlo se pierde lo que la recuperación no pudo leer.",
-  "Save as…": "Guardar como…"
+  "Save as…": "Guardar como…",
+  "{name} was not saved: the file written did not read back as the drawing. The original file is unchanged; what was written is kept beside it.": "{name} no se ha guardado: el archivo escrito no se releyó como el dibujo. El archivo original no ha cambiado; lo escrito se conserva a su lado."
 }

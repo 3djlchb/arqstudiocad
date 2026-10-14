@@ -12,7 +12,7 @@ evidence is the [library comparison](references/dwg-library-comparison.md)
 | Protection | State |
 |---|---|
 | Damaged and partial files reported, not opened as valid empty drawings | ✅ see [Damaged files](#damaged-files) |
-| Safe save: temporary file, read back, validate, then replace | ◐ temporary file and rename exist; read-back validation in 03.3 |
+| Safe save: temporary file, read back, validate, then replace | ✅ see [Safe save](#safe-save) |
 | No silent loss on version conversion; warn and allow cancelling | ◐ DWG saves keep the drawing's own version (only R12 is upgraded, and R12 has no custom objects); AcadRust refuses lossy conversions; the warning in the interface comes in 03.3 |
 | Unknown data preserved where possible | ✅ same-version DWG saves keep custom objects byte for byte (measured: 279 AutoCAD Architecture objects, 26 TCH walls, 300 AEC objects) |
 | Written files validated by reading back and in independent applications | ◐ round-trip corpus; independent applications pending (03.5) |
@@ -76,6 +76,27 @@ Known limits: a few changed bytes the engine reads without noticing (in
 detected: checking the file's CRCs would be the next guard. A DXF value
 that is not a number (a coordinate written as text) is read without an
 error; that is a reader fidelity issue (03.2).
+
+## Safe save
+
+Milestone 03.3, step 2 (ADR 0017 D5.2). Every save writes the whole file
+next to the target under a temporary name, **reads it back** and compares
+it with the drawing (`Document::validate_roundtrip`, the same rule the
+round-trip corpus applies): every entity by id (kind, layer, color,
+geometry within tolerance), every layer and the current layer. The read
+must be clean, not a recovery. Only then is the file renamed over the
+target.
+
+Allowed as no loss: geometry within the contract's tolerance; a linetype
+name in other capitals (an R12 `CONTINUOUS` is `Continuous` in DWG); RGB as
+an ACI index before 2004 and every layer plotted before 2000, which those
+versions cannot hold.
+
+If the check fails, the target is untouched and the save fails with
+`SaveNotVerifiedError`, naming the differences; what was written is kept
+beside it as `<name>.unverified.<ext>`, so the work never stays only in
+memory. Cost, measured on 200,000 lines: save and check 0.85 s as DWG,
+1.6 s as DXF (on the worker thread; drawing goes on).
 
 ## Version support
 

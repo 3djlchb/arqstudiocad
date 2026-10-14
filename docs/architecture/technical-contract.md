@@ -168,6 +168,7 @@ pub enum CadError {
     Io(String),
     DamagedFile(String),       // nothing recoverable (ADR 0017 D5.1)
     OverwritesDamaged(String), // saving over the file a drawing was recovered from
+    NotVerified(String),       // the written file did not read back as the drawing
     UnsupportedFormat(String),
 }
 ```

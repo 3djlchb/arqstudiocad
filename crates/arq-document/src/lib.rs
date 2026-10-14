@@ -14,6 +14,7 @@
 //! | Need | Use |
 //! |---|---|
 //! | Open, save, snapshot a drawing | [`Document`], [`FileFormat`] |
+//! | What survives a save (checked by every save) | [`Document::validate_roundtrip`] |
 //! | Damaged files: recovered or refused | [`Document::recovery`] → [`Recovery`], [`DocumentError::Damaged`] |
 //! | Read entities | [`Document::entity`], [`Document::entities`] → [`Entity`] |
 //! | Plan geometry of LINE, CIRCLE, ARC | [`PlanGeometry`] |
@@ -36,6 +37,7 @@ mod reading;
 #[cfg(test)]
 mod test_dxf;
 mod translate;
+mod verify;
 
 pub use change::{Change, ChangeSet};
 pub use document::Document;

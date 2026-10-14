@@ -167,6 +167,32 @@ fn a_recovered_drawing_is_not_saved_over_its_damaged_file_unasked() {
 }
 
 #[test]
+fn a_save_that_does_not_read_back_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plano.dxf");
+    let app = CadApplication::new();
+    let id = app.create_document("Plano1");
+    app.edit(id, |cad| cad.add_line(p(0.0, 0.0), p(4.0, 3.0)))
+        .unwrap();
+    arq_document::Document::damage_next_save_for_tests(|b| b.truncate(b.len() / 3));
+    let error = app.save_document(id, &path).unwrap_err();
+    assert!(matches!(error, CadError::NotVerified(_)), "{error:?}");
+    assert!(!path.exists());
+    assert!(
+        dir.path().join("plano.unverified.dxf").exists(),
+        "the work is kept"
+    );
+    assert_eq!(app.document_name(id).unwrap(), "Plano1", "not renamed");
+    assert_eq!(app.document_path(id).unwrap(), None);
+    assert!(
+        app.read(id, CadDocument::is_modified).unwrap(),
+        "still unsaved"
+    );
+    app.save_document(id, &path).unwrap();
+    assert!(!app.read(id, CadDocument::is_modified).unwrap());
+}
+
+#[test]
 fn concurrent_edits_form_one_stream() {
     const THREADS: usize = 8;
     const EACH: usize = 25;

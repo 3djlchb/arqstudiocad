@@ -30,6 +30,7 @@ from arqstudiocad._core import (
     InvalidOperationError,
     LayerNotFoundError,
     OverwritesDamagedError,
+    SaveNotVerifiedError,
     UnsupportedFormatError,
 )
 
@@ -69,5 +70,6 @@ __all__ = [
     "OverwritesDamagedError",
     "Point",
     "PointLike",
+    "SaveNotVerifiedError",
     "UnsupportedFormatError",
 ]

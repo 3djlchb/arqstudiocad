@@ -22,6 +22,17 @@ pub enum DocumentError {
     },
     /// The DWG/DXF engine could not read or write the drawing.
     Codec(String),
+    /// Not saved: the file written did not read back as the drawing
+    /// (ADR 0017 D5.2). The target is untouched; what was written is kept
+    /// beside it, if that was possible.
+    NotVerified {
+        /// The file that was to be saved.
+        path: PathBuf,
+        /// Where what was written is kept (`<name>.unverified.<ext>`).
+        kept: Option<PathBuf>,
+        /// How it differed, at least one line.
+        differences: Vec<String>,
+    },
     /// The file is damaged and no drawing data could be recovered from it
     /// (ADR 0017 D5.1).
     Damaged {
@@ -94,6 +105,22 @@ impl fmt::Display for DocumentError {
                 )
             }
             Self::Codec(message) => write!(f, "drawing could not be processed: {message}"),
+            Self::NotVerified {
+                path,
+                kept,
+                differences,
+            } => {
+                write!(
+                    f,
+                    "{}: not saved, the written file does not read back as the drawing ({});                      the original is unchanged",
+                    path.display(),
+                    differences.join("; ")
+                )?;
+                match kept {
+                    Some(kept) => write!(f, "; what was written is kept as {}", kept.display()),
+                    None => Ok(()),
+                }
+            }
             Self::Damaged { path, problems } => write!(
                 f,
                 "{}: the file is damaged and no drawing could be recovered from it: {}",

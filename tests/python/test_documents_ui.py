@@ -9,6 +9,7 @@ from gil_helpers import big_dxf
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
+from arqstudiocad.core import SaveNotVerifiedError
 from arqstudiocad.events import CommandCancelled, DocumentSaved, Event
 from arqstudiocad.ui.main_window import MainWindow
 
@@ -178,6 +179,30 @@ def test_quitting_asks_before_replacing_a_damaged_file(
     ui.overwrite_damaged = "overwrite"
     assert window.close()
     assert path.read_bytes() != original and not document.is_modified
+
+
+def test_quitting_stays_open_when_a_save_fails(
+    qtbot: QtBot,
+    window: MainWindow,
+    ui: QuietUi,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window.command_actions.run("NEW")
+    document = window.session.active
+    assert document is not None
+    _, changes = document.add_line((0, 0), (1, 1))
+    window.session.report(document, changes)
+
+    def unverified(document: object, path: Path) -> None:
+        raise SaveNotVerifiedError("plano.dxf: not saved")
+
+    monkeypatch.setattr(window.session, "save", unverified)
+    ui.save_changes = "yes"
+    ui.save_path = tmp_path / "plano.dxf"
+    assert not window.close() and window.isVisible()
+    assert history(window)[-1] == "Error: plano.dxf: not saved"
+    assert document.is_modified
 
 
 def test_quitting_waits_for_background_work(
