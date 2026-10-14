@@ -21,3 +21,6 @@ python/arqstudiocad/*.so
 *.swp
 .DS_Store
 Thumbs.db
+
+# pytest JUnit report written by CI
+pytest-results.xml
