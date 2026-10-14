@@ -5,7 +5,7 @@
 //! Saving copies the drawing under the lock ([`CadDocument::snapshot`]) and
 //! writes the file without it, so drawing goes on while a file is written.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -20,6 +20,12 @@ struct OpenDocument {
     cad: CadDocument,
     name: String,
     path: Option<PathBuf>,
+    /// The damaged file the drawing was recovered from, while replacing it
+    /// still needs the user's confirmation (ADR 0017 D5.1).
+    damaged: Option<PathBuf>,
+    /// Kinds of data the user agreed to lose when saving it (ADR 0017
+    /// D5.3), asked once per document.
+    accepted_losses: BTreeSet<String>,
 }
 
 type Shared = Arc<Mutex<OpenDocument>>;
@@ -49,33 +55,75 @@ impl CadApplication {
             cad: CadDocument::new(),
             name: name.to_owned(),
             path: None,
+            damaged: None,
+            accepted_losses: BTreeSet::new(),
         })
     }
 
-    /// Opens a DWG or DXF file, named after it.
+    /// Opens a DWG or DXF file, named after it. A damaged file opens only
+    /// if a drawing can be recovered from it (`CadError::DamagedFile`
+    /// otherwise); then the document's `recovery()` says what was wrong, and
+    /// saving over that file needs [`allow_overwriting_damaged`](Self::allow_overwriting_damaged).
     pub fn open_document(&self, path: impl AsRef<Path>) -> CadResult<DocumentId> {
         let path = path.as_ref();
         let cad = CadDocument::open(path)?;
+        let damaged = cad.document().recovery().map(|_| path.to_path_buf());
         Ok(self.insert(OpenDocument {
             cad,
             name: file_name(path),
             path: Some(path.to_path_buf()),
+            damaged,
+            accepted_losses: BTreeSet::new(),
         }))
     }
 
-    /// Saves a document as DWG or DXF, by the file extension; it then takes
+    /// Saves a document as DWG or DXF, by the file extension (refusing to
+    /// replace a damaged original unasked, and stopping before data would be
+    /// lost unless accepted, [`CadError::Lossy`]); it then takes
     /// the file's name and path and is unmodified (unless it changed while
     /// the file was being written).
     pub fn save_document(&self, id: DocumentId, path: impl AsRef<Path>) -> CadResult<()> {
         let path = path.as_ref();
         let shared = self.shared(id)?;
-        let snapshot = lock(id, &shared)?.cad.snapshot();
-        snapshot.save(path)?;
+        let (snapshot, accepted) = {
+            let open = lock(id, &shared)?;
+            if open.damaged.as_deref().is_some_and(|d| same_file(d, path)) {
+                return Err(CadError::OverwritesDamaged(path.display().to_string()));
+            }
+            (open.cad.snapshot(), open.accepted_losses.clone())
+        };
+        snapshot.save_accepting(path, |loss| accepted.contains(loss.kind()))?;
         let mut open = lock(id, &shared)?;
         open.cad.mark_saved(&snapshot);
         open.name = file_name(path);
         open.path = Some(path.to_path_buf());
         Ok(())
+    }
+
+    /// The user accepts the recovered drawing: it may now be saved over the
+    /// damaged file it came from. Does nothing for an intact drawing.
+    pub fn allow_overwriting_damaged(&self, id: DocumentId) -> CadResult<()> {
+        lock(id, &self.shared(id)?)?.damaged = None;
+        Ok(())
+    }
+
+    /// The user agrees that saving this document loses these kinds of data
+    /// (the `kinds` of a [`CadError::Lossy`]); later saves stop only for
+    /// other losses. Kept until the document is closed.
+    pub fn accept_losses(&self, id: DocumentId, kinds: &[String]) -> CadResult<()> {
+        lock(id, &self.shared(id)?)?
+            .accepted_losses
+            .extend(kinds.iter().cloned());
+        Ok(())
+    }
+
+    /// The kinds of data the user agreed to lose when saving this document.
+    pub fn accepted_losses(&self, id: DocumentId) -> CadResult<Vec<String>> {
+        Ok(lock(id, &self.shared(id)?)?
+            .accepted_losses
+            .iter()
+            .cloned()
+            .collect())
     }
 
     /// Closes a document, discarding unsaved changes; asking the user first
@@ -160,6 +208,15 @@ fn lock(id: DocumentId, shared: &Shared) -> CadResult<MutexGuard<'_, OpenDocumen
             "document {id} is unusable after an internal error; close it"
         ))
     })
+}
+
+/// Whether two paths name the same file (when both exist, as the file
+/// system resolves them; otherwise as written).
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 fn file_name(path: &Path) -> String {

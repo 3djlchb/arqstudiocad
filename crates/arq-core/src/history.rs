@@ -316,6 +316,16 @@ impl Snapshot {
     pub fn save(&self, path: impl AsRef<Path>) -> CadResult<()> {
         Ok(self.doc.save(path)?)
     }
+
+    /// Like [`save`](Self::save), but losses whose kind `accepted` says
+    /// yes to do not stop it (ADR 0017 D5.3).
+    pub fn save_accepting(
+        &self,
+        path: impl AsRef<Path>,
+        accepted: impl Fn(&arq_document::Loss) -> bool,
+    ) -> CadResult<()> {
+        Ok(self.doc.save_accepting(path, accepted)?)
+    }
 }
 
 impl Default for CadDocument {

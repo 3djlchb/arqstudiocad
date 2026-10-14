@@ -21,7 +21,12 @@ from PySide6.QtWidgets import (
 from arqstudiocad import _core
 from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import (
+    CadDocument,
+    CadError,
+    LossyConversionError,
+    OverwritesDamagedError,
+)
 from arqstudiocad.credits import load_credits
 from arqstudiocad.events import (
     ActiveDocumentChanged,
@@ -404,18 +409,48 @@ class MainWindow(QMainWindow):
             if answer == "cancel":
                 event.ignore()
                 return
-            if answer == "yes":
-                path = document.path or self.ui.choose_save_path(
-                    document.name + DEFAULT_SAVE_EXTENSION
-                )
-                if path is None:
-                    event.ignore()
-                    return
-                self.session.save(document, path)
+            if answer == "yes" and not self._save_on_quit(document):
+                event.ignore()
+                return
         self.workspaces.save_state()
         if isinstance(self.worker, QtWorker):
             self.worker.shutdown()
         event.accept()
+
+    def _save_on_quit(self, document: CadDocument) -> bool:
+        """Saves ``document`` while quitting; False if the user cancelled.
+        Replacing the damaged file it was recovered from is asked first."""
+        path = document.path or self.ui.choose_save_path(document.name + DEFAULT_SAVE_EXTENSION)
+        while path is not None:
+            try:
+                self.session.save(document, path)
+            except OverwritesDamagedError:
+                answer = self.ui.ask_overwrite_damaged(path.name)
+                if answer == "overwrite":
+                    document.allow_overwriting_damaged()
+                elif answer == "save_as":
+                    path = self.ui.choose_save_path(path.name)
+                else:
+                    return False
+            except LossyConversionError as error:
+                if set(error.loss_kinds) <= set(document.accepted_losses):
+                    # Refused although accepted: report it, never ask in circles.
+                    self.command_window.history.appendPlainText(
+                        tr("Error: {message}", message=str(error))
+                    )
+                    return False
+                if not self.ui.ask_accept_losses(path.name, error.losses):
+                    return False
+                document.accept_losses(error.loss_kinds)
+            except CadError as error:
+                # Not saved (a failed check, a full disk…): stay open.
+                self.command_window.history.appendPlainText(
+                    tr("Error: {message}", message=str(error))
+                )
+                return False
+            else:
+                return True
+        return False
 
     def _on_document_changed(self, event: DocumentChanged) -> None:
         viewport = self.viewports.get(event.document_id)

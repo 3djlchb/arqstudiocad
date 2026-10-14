@@ -14,6 +14,9 @@
 //! | Need | Use |
 //! |---|---|
 //! | Open, save, snapshot a drawing | [`Document`], [`FileFormat`] |
+//! | What survives a save (checked by every save) | [`Document::validate_roundtrip`] |
+//! | Data a save would lose (stops it unless accepted) | [`Document::losses_in`] → [`Loss`], [`Document::save_accepting`] |
+//! | Damaged files: recovered or refused | [`Document::recovery`] → [`Recovery`], [`DocumentError::Damaged`] |
 //! | Read entities | [`Document::entity`], [`Document::entities`] → [`Entity`] |
 //! | Plan geometry of LINE, CIRCLE, ARC | [`PlanGeometry`] |
 //! | Layers | [`Document::layers`] → [`Layer`], [`Document::create_layer`]… |
@@ -28,12 +31,15 @@ mod entities;
 mod entity;
 mod error;
 mod format;
+mod inventory;
 mod layers;
 mod model;
 mod ocs;
+mod reading;
 #[cfg(test)]
 mod test_dxf;
 mod translate;
+mod verify;
 
 pub use change::{Change, ChangeSet};
 pub use document::Document;
@@ -41,4 +47,6 @@ pub use drawing::{DrawItem, Shape};
 pub use entity::{Color, Entity, EntityId, PlanGeometry};
 pub use error::{DocumentError, DocumentResult};
 pub use format::FileFormat;
+pub use inventory::Loss;
 pub use layers::{Layer, LayerId};
+pub use reading::Recovery;

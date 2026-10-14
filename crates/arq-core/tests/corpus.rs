@@ -19,9 +19,7 @@ use std::fmt::Write as _;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 
-use arq_core::{
-    CadDocument, Color, Document, Entity, EntityId, Layer, LayerId, PlanGeometry, Shape,
-};
+use arq_core::{CadDocument, Color, Document, Entity, EntityId, Layer, LayerId, Shape};
 use arq_geometry::{Point2, Tolerance, Vector2};
 
 /// DXF versions the codec writes; DWG starts at R13 (AC1012).
@@ -51,114 +49,32 @@ fn observe(doc: &Document) -> Observed {
     }
 }
 
-/// How a saved and reopened drawing may differ from the one saved without
-/// losing anything: geometry within the contract's tolerance (DXF stores
-/// angles in degrees, so radians come back within an ulp or two); before
-/// AutoCAD 2004 (AC1018), which has no true color, RGB as an ACI index; and
-/// before AutoCAD 2000 (AC1015), which cannot mark a layer not plottable,
-/// every layer plottable.
-fn difference(expected: &Observed, found: &Observed, version: &str) -> Option<String> {
-    let true_color = version >= "AC1018";
-    let plot_flag = version >= "AC1015";
-    let color_ok = |a: Color, b: Color| {
-        a == b || (!true_color && matches!((a, b), (Color::Rgb { .. }, Color::Index(1..))))
-    };
-    if expected.current != found.current {
-        return Some(format!(
-            "current layer {} became {}",
-            expected.current, found.current
-        ));
-    }
-    if expected.entities.len() != found.entities.len() {
-        return Some(format!(
-            "{} entities became {}",
-            expected.entities.len(),
-            found.entities.len()
-        ));
-    }
-    for (a, b) in expected.entities.iter().zip(&found.entities) {
-        let same = a.id() == b.id()
-            && a.kind() == b.kind()
-            && a.layer() == b.layer()
-            && color_ok(a.color(), b.color())
-            && option_eq(a.bounds(), b.bounds(), |x, y| x.approx_eq(y, tol()))
-            && option_eq(a.plan(), b.plan(), same_plan);
-        if !same {
-            return Some(format!(
-                "entity changed:
-      was {a:?}
-      now {b:?}"
-            ));
-        }
-    }
-    if expected.layers.len() != found.layers.len() {
-        return Some(format!(
-            "{} layers became {}",
-            expected.layers.len(),
-            found.layers.len()
-        ));
-    }
-    for (a, b) in expected.layers.iter().zip(&found.layers) {
-        let same = a.id() == b.id()
-            && a.name() == b.name()
-            && color_ok(a.color(), b.color())
-            && a.linetype() == b.linetype()
-            && a.is_visible() == b.is_visible()
-            && a.is_frozen() == b.is_frozen()
-            && a.is_locked() == b.is_locked()
-            && (a.is_plottable() == b.is_plottable() || (!plot_flag && b.is_plottable()));
-        if !same {
-            return Some(format!(
-                "layer changed:
-      was {a:?}
-      now {b:?}"
-            ));
-        }
-    }
-    None
-}
-
-fn tol() -> Tolerance {
-    Tolerance::default()
-}
-
-fn option_eq<T: Copy>(a: Option<T>, b: Option<T>, eq: impl Fn(T, T) -> bool) -> bool {
-    match (a, b) {
-        (Some(a), Some(b)) => eq(a, b),
-        (None, None) => true,
-        _ => false,
-    }
-}
-
-/// Same curve: kind, ends, box and length within tolerance. For a circle the
-/// box fixes center and radius; for an arc ends, box and length fix it.
-fn same_plan(a: PlanGeometry, b: PlanGeometry) -> bool {
-    let (ga, gb) = (a.geometry(), b.geometry());
-    let near = |x: f64, y: f64| (x - y).abs() <= tol().linear() * (1.0 + x.abs());
-    ga.kind() == gb.kind()
-        && near(a.elevation(), b.elevation())
-        && option_eq(ga.start_point(), gb.start_point(), |x, y| {
-            x.approx_eq(y, tol())
-        })
-        && option_eq(ga.end_point(), gb.end_point(), |x, y| x.approx_eq(y, tol()))
-        && ga.bounds().approx_eq(gb.bounds(), tol())
-        && near(ga.length(), gb.length())
-}
-
 /// Saves a copy of `cad` as `<stem>.<ext>` and reads it back.
 fn save_and_reopen(
     cad: &CadDocument,
     dir: &Path,
     stem: &str,
     ext: &str,
-) -> Result<Observed, String> {
+) -> Result<Vec<String>, String> {
     let path = dir.join(format!("{stem}.{ext}"));
+    // Losses of what the platform does not show (a format or version that
+    // cannot keep some objects) stop a save until the user accepts them
+    // (ADR 0017 D5.3); here they are accepted, as the user could, and
+    // what the platform shows is checked.
     cad.snapshot()
-        .save(&path)
+        .save_accepting(&path, |_| true)
         .map_err(|e| format!("save as {ext}: {e}"))?;
     let back = CadDocument::open(&path).map_err(|e| format!("reopen {ext}: {e}"))?;
+    if let Some(recovery) = back.document().recovery() {
+        return Err(format!(
+            "reopen {ext}: read as damaged: {:?}",
+            recovery.problems()
+        ));
+    }
     model_in_step(back.document(), &format!("reopened {ext}"))?;
-    Ok(observe(back.document()))
+    // Saving checked this already (ADR 0017 D5.2); checked again here, the
+    // reopened file must hold the drawing.
+    Ok(cad.document().validate_roundtrip(back.document()))
 }
 
 /// The own model and the engine describe the same drawing (ADR 0018 D2).
@@ -231,14 +147,14 @@ fn edit(cad: &mut CadDocument) -> Result<(), String> {
 fn round_trip(mut cad: CadDocument, dir: &Path) -> Vec<String> {
     let mut problems = Vec::new();
     let version = cad.document().version_code();
-    let mut check_files = |cad: &CadDocument, stem: &str, expected: &Observed| {
+    let mut check_files = |cad: &CadDocument, stem: &str| {
         for ext in formats(&version) {
             match save_and_reopen(cad, dir, stem, ext) {
-                Ok(found) => {
-                    if let Some(d) = difference(expected, &found, &version) {
-                        problems.push(format!("{ext} {stem}: {d}"));
-                    }
-                }
+                Ok(differences) => problems.extend(
+                    differences
+                        .into_iter()
+                        .map(|d| format!("{ext} {stem}: {d}")),
+                ),
                 Err(e) => problems.push(e),
             }
         }
@@ -248,7 +164,8 @@ fn round_trip(mut cad: CadDocument, dir: &Path) -> Vec<String> {
         model_problems.push(e);
     }
     let before = observe(cad.document());
-    check_files(&cad, "as-opened", &before);
+    let opened = cad.document().snapshot();
+    check_files(&cad, "as-opened");
     if let Err(e) = edit(&mut cad) {
         problems.push(format!("edit: {e}"));
         return problems;
@@ -256,17 +173,15 @@ fn round_trip(mut cad: CadDocument, dir: &Path) -> Vec<String> {
     if let Err(e) = model_in_step(cad.document(), "after editing") {
         model_problems.push(e);
     }
-    let edited = observe(cad.document());
-    check_files(&cad, "edited", &edited);
+    check_files(&cad, "edited");
     // In memory nothing is converted: undo must restore exactly.
     match cad.undo() {
         Err(e) => problems.push(format!("undo: {e}")),
         Ok(_) => {
             let after = observe(cad.document());
             if after != before {
-                let d = difference(&before, &after, "AC1032")
-                    .unwrap_or_else(|| "differs within tolerance".to_owned());
-                problems.push(format!("undo: {d}"));
+                let d = opened.validate_roundtrip(cad.document());
+                problems.push(format!("undo: {d:?}"));
             }
         }
     }
@@ -313,6 +228,10 @@ fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
 fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
     let cad = CadDocument::open(&path).map_err(|e| vec![format!("open: {e}")])?;
     let doc = cad.document();
+    // The corpus holds intact drawings: none may read as damaged (ADR 0017 D5.1).
+    if let Some(recovery) = doc.recovery() {
+        return Err(vec![format!("read as damaged: {:?}", recovery.problems())]);
+    }
     let model = doc.entities();
     let editable = model.iter().filter(|e| e.is_editable()).count();
     let transformable = model.iter().filter(|e| e.is_transformable()).count();

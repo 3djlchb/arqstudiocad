@@ -4,10 +4,12 @@ changes (ADR 0013, D5.7). The window's real worker thread is used."""
 from pathlib import Path
 
 import pytest
+from damaged_files import recovered_dxf
 from gil_helpers import big_dxf
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
+from arqstudiocad.core import CadDocument, LossyConversionError, SaveNotVerifiedError
 from arqstudiocad.events import CommandCancelled, DocumentSaved, Event
 from arqstudiocad.ui.main_window import MainWindow
 
@@ -152,6 +154,116 @@ def test_quitting_asks_about_unsaved_drawings(
     assert window.close()
     assert (tmp_path / "antes de salir.dxf").is_file() and not changed.is_modified
     assert kept.is_open, "closing the window does not close documents by itself"
+
+
+def test_quitting_asks_before_replacing_a_damaged_file(
+    qtbot: QtBot, window: MainWindow, ui: QuietUi, tmp_path: Path
+) -> None:
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    original = path.read_bytes()
+    ui.open_path = path
+    window.command_actions.run("OPEN")
+    wait_idle(qtbot, window)
+    document = window.session.active
+    assert document is not None
+    assert ui.recovered == [("danado.dxf", document.recovery_problems)]
+    _, changes = document.add_line((0, 0), (1, 1))
+    window.session.report(document, changes)
+
+    ui.save_changes = "yes"
+    ui.overwrite_damaged = "cancel"
+    assert not window.close() and path.read_bytes() == original
+    ui.overwrite_damaged = "save_as"
+    ui.save_path = None
+    assert not window.close(), "the file dialog was cancelled"
+    ui.overwrite_damaged = "overwrite"
+    assert window.close()
+    assert path.read_bytes() != original and not document.is_modified
+
+
+def test_quitting_stays_open_when_a_save_fails(
+    qtbot: QtBot,
+    window: MainWindow,
+    ui: QuietUi,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window.command_actions.run("NEW")
+    document = window.session.active
+    assert document is not None
+    _, changes = document.add_line((0, 0), (1, 1))
+    window.session.report(document, changes)
+
+    def unverified(document: object, path: Path) -> None:
+        raise SaveNotVerifiedError("plano.dxf: not saved")
+
+    monkeypatch.setattr(window.session, "save", unverified)
+    ui.save_changes = "yes"
+    ui.save_path = tmp_path / "plano.dxf"
+    assert not window.close() and window.isVisible()
+    assert history(window)[-1] == "Error: plano.dxf: not saved"
+    assert document.is_modified
+
+
+def test_quitting_asks_before_losing_data(
+    qtbot: QtBot,
+    window: MainWindow,
+    ui: QuietUi,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window.command_actions.run("NEW")
+    document = window.session.active
+    assert document is not None
+    _, changes = document.add_line((0, 0), (1, 1))
+    window.session.report(document, changes)
+    real_save = window.session.save
+
+    def lossy(document: CadDocument, path: Path) -> None:
+        # As the core: refused until this loss is accepted for the document.
+        if "object AECS_WALL" not in document.accepted_losses:
+            error = LossyConversionError("plano.dxf: not saved, the file would lose data")
+            error.loss_kinds = ["object AECS_WALL"]
+            error.losses = ["object AECS_WALL: 26 → 0"]
+            raise error
+        real_save(document, path)
+
+    monkeypatch.setattr(window.session, "save", lossy)
+    ui.save_changes = "yes"
+    ui.save_path = tmp_path / "plano.dxf"
+    ui.accept_losses = False
+    assert not window.close() and ui.asked[-1] == "losses plano.dxf: 1"
+    assert not (tmp_path / "plano.dxf").exists()
+    ui.accept_losses = True
+    assert window.close() and (tmp_path / "plano.dxf").is_file()
+
+
+def test_quitting_stops_when_a_loss_is_refused_although_accepted(
+    qtbot: QtBot,
+    window: MainWindow,
+    ui: QuietUi,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    window.command_actions.run("NEW")
+    document = window.session.active
+    assert document is not None
+    _, changes = document.add_line((0, 0), (1, 1))
+    window.session.report(document, changes)
+
+    def always_lossy(document: CadDocument, path: Path) -> None:
+        error = LossyConversionError("plano.dxf: not saved, the file would lose data")
+        error.loss_kinds = ["object AECS_WALL"]
+        error.losses = ["object AECS_WALL: 26 → 0"]
+        raise error
+
+    monkeypatch.setattr(window.session, "save", always_lossy)
+    ui.save_changes = "yes"
+    ui.save_path = tmp_path / "plano.dxf"
+    ui.accept_losses = True
+    assert not window.close(), "never asks in circles"
+    assert ui.asked.count("losses plano.dxf: 1") == 1
+    assert history(window)[-1].startswith("Error: plano.dxf: not saved")
 
 
 def test_quitting_waits_for_background_work(

@@ -5,10 +5,12 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use acadrust::types::DxfVersion;
-use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter};
+use acadrust::{CadDocument, DwgWriter, DxfReader, DxfWriter};
 
 use crate::error::{DocumentError, DocumentResult};
 use crate::format::FileFormat;
+use crate::inventory::Loss;
+use crate::reading::Recovery;
 
 /// One drawing.
 ///
@@ -24,12 +26,19 @@ pub struct Document {
     pub(crate) model: crate::model::OwnModel,
     /// The change being recorded, if any (see `change.rs`).
     pub(crate) recording: Option<crate::change::Recording>,
+    /// Set when the drawing was recovered from a damaged file.
+    recovery: Option<Recovery>,
 }
 
 impl Document {
     /// An empty drawing.
     pub fn new() -> Self {
         Self::from_cad(CadDocument::new())
+    }
+
+    /// A document around an engine database just read (this crate only).
+    pub(crate) fn from_engine(cad: CadDocument) -> Self {
+        Self::from_cad(cad)
     }
 
     fn from_cad(mut cad: CadDocument) -> Self {
@@ -44,12 +53,17 @@ impl Document {
             cad: Box::new(cad),
             model: crate::model::OwnModel::default(),
             recording: None,
+            recovery: None,
         };
         doc.rebuild_model();
         doc
     }
 
     /// Opens a `.dwg` or `.dxf` file; the extension decides the format.
+    ///
+    /// A damaged file opens only if drawing data can be recovered from it,
+    /// and then [`recovery`](Self::recovery) says what was wrong; otherwise
+    /// the error is [`DocumentError::Damaged`] (ADR 0017 D5.1).
     pub fn open(path: impl AsRef<Path>) -> DocumentResult<Self> {
         let path = path.as_ref();
         let format = format_of(path)?;
@@ -59,11 +73,20 @@ impl Document {
                 message: "file not found".into(),
             });
         }
-        let cad = match format {
-            FileFormat::Dwg => DwgReader::from_file(path)?.read()?,
-            FileFormat::Dxf => DxfReader::from_file(path)?.read()?,
-        };
-        Ok(Self::from_cad(cad))
+        let bytes = fs::read(path).map_err(|e| DocumentError::Io {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let (cad, recovery) = crate::reading::read(bytes, format, path)?;
+        let mut doc = Self::from_cad(cad);
+        doc.recovery = recovery;
+        Ok(doc)
+    }
+
+    /// What was wrong with the file this drawing was recovered from; `None`
+    /// for a drawing read intact (or created, not read).
+    pub fn recovery(&self) -> Option<&Recovery> {
+        self.recovery.as_ref()
     }
 
     /// Reads a DXF drawing from memory.
@@ -97,25 +120,97 @@ impl Document {
 
     /// Saves to `path` in the format its extension names.
     ///
-    /// Safe save: the whole file is produced in memory, written next to the
-    /// target under a temporary name, then renamed over it. If anything fails,
-    /// an existing file at `path` is left untouched.
+    /// Safe save (ADR 0017 D5.2): the whole file is produced in memory and
+    /// written next to the target under a temporary name; that file is read
+    /// back and compared with this drawing
+    /// ([`validate_roundtrip`](Self::validate_roundtrip)); only then is it
+    /// renamed over `path`. If anything fails, an existing file at `path` is
+    /// left untouched. A file that does not read back as the drawing is
+    /// [`DocumentError::NotVerified`], and what was written is kept beside
+    /// the target as `<name>.unverified.<ext>`, so no work is lost.
+    ///
+    /// No silent loss (ADR 0017 D5.3): if the file holds less of anything
+    /// than the drawing ([`losses_in`](Self::losses_in), less the engine's
+    /// own defaults an old version cannot hold), nothing is replaced
+    /// and the error is [`DocumentError::Lossy`];
+    /// [`save_accepting`](Self::save_accepting) saves anyway.
     pub fn save(&self, path: impl AsRef<Path>) -> DocumentResult<()> {
+        self.save_accepting(path, |_| false)
+    }
+
+    /// Like [`save`](Self::save), but the losses `accepted` says yes to do
+    /// not stop it: the user agreed to lose them.
+    pub fn save_accepting(
+        &self,
+        path: impl AsRef<Path>,
+        accepted: impl Fn(&Loss) -> bool,
+    ) -> DocumentResult<()> {
         let path = path.as_ref();
-        let bytes = match format_of(path)? {
+        let format = format_of(path)?;
+        #[allow(unused_mut)] // changed only by the tests' fault injection
+        let mut bytes = match format {
             FileFormat::Dwg => self.to_dwg_bytes()?,
             FileFormat::Dxf => self.to_dxf_bytes()?,
         };
+        #[cfg(any(test, feature = "test-support"))]
+        crate::verify::fault::apply(&mut bytes);
         let temp = temp_path(path);
         let io_error = |e: std::io::Error| DocumentError::Io {
             path: path.to_path_buf(),
             message: e.to_string(),
         };
         fs::write(&temp, bytes).map_err(io_error)?;
+        let differences = match self.read_written(&temp, format) {
+            Ok(written) => {
+                let differences = self.validate_roundtrip(&written);
+                let losses: Vec<Loss> = self
+                    .save_losses(&written, format)
+                    .into_iter()
+                    .filter(|loss| !accepted(loss))
+                    .collect();
+                if differences.is_empty() && !losses.is_empty() {
+                    let _ = fs::remove_file(&temp);
+                    return Err(DocumentError::Lossy {
+                        path: path.to_path_buf(),
+                        losses,
+                    });
+                }
+                differences
+            }
+            Err(problem) => vec![problem],
+        };
+        if !differences.is_empty() {
+            let unverified = unverified_path(path);
+            let kept = match fs::rename(&temp, &unverified) {
+                Ok(()) => Some(unverified),
+                Err(_) => {
+                    let _ = fs::remove_file(&temp);
+                    None
+                }
+            };
+            return Err(DocumentError::NotVerified {
+                path: path.to_path_buf(),
+                kept,
+                differences,
+            });
+        }
         fs::rename(&temp, path).map_err(|e| {
             let _ = fs::remove_file(&temp);
             io_error(e)
         })
+    }
+
+    /// Reads back a file just written; it must read clean.
+    fn read_written(&self, file: &Path, format: FileFormat) -> Result<Self, String> {
+        let bytes = fs::read(file).map_err(|e| format!("the written file cannot be read: {e}"))?;
+        match crate::reading::read(bytes, format, file) {
+            Err(e) => Err(format!("the written file cannot be read: {e}")),
+            Ok((_, Some(recovery))) => Err(format!(
+                "the written file reads as damaged: {}",
+                recovery.problems().join("; ")
+            )),
+            Ok((cad, None)) => Ok(Self::from_cad(cad)),
+        }
     }
 
     /// An independent copy of the drawing as it is now, for long reads
@@ -130,6 +225,7 @@ impl Document {
             cad: Box::new(CadDocument::clone(&self.cad)),
             model: self.model.clone(),
             recording: None,
+            recovery: self.recovery.clone(),
         }
     }
 
@@ -176,6 +272,18 @@ fn format_of(path: &Path) -> DocumentResult<FileFormat> {
 fn temp_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".arqstudiocad-tmp");
+    path.with_file_name(name)
+}
+
+/// `plano.dwg` → `plano.unverified.dwg`: where a written file that failed
+/// its check is kept, still openable by its extension.
+pub(crate) fn unverified_path(path: &Path) -> PathBuf {
+    let mut name = path.file_stem().unwrap_or_default().to_os_string();
+    name.push(".unverified");
+    if let Some(ext) = path.extension() {
+        name.push(".");
+        name.push(ext);
+    }
     path.with_file_name(name)
 }
 

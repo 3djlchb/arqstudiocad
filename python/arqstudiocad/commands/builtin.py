@@ -5,17 +5,26 @@ NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER. Without an interface
 as AutoCAD does with FILEDIA=0.
 """
 
+from collections.abc import Generator, Sequence
 from pathlib import Path
+from typing import Any, Literal
 
 from arqstudiocad.commands import (
+    Background,
     Command,
     CommandCancelledError,
     CommandContext,
     CommandRegistry,
     CommandScript,
     Option,
+    Prompt,
 )
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import (
+    CadDocument,
+    LossyConversionError,
+    OverwritesDamagedError,
+    SaveNotVerifiedError,
+)
 from arqstudiocad.i18n import tr
 
 #: Saving defaults to DXF until the round-trip corpus makes DWG the default
@@ -53,6 +62,19 @@ def open_(ctx: CommandContext) -> CommandScript:
             version=document.version,
         )
     )
+    problems = document.recovery_problems
+    if problems:
+        # A damaged file is never taken for a valid drawing (ADR 0017 D5.1).
+        ctx.message(
+            tr(
+                "{name} is damaged: it was recovered and part of it may be missing.",
+                name=document.name,
+            )
+        )
+        for problem in problems:
+            ctx.message(f"  {problem}")
+        if ctx.ui is not None:
+            ctx.ui.report_recovered(document.name, problems)
 
 
 def save(ctx: CommandContext) -> CommandScript:
@@ -81,10 +103,90 @@ def _save_as(ctx: CommandContext, document: CadDocument) -> CommandScript:
 
 
 def _write(ctx: CommandContext, document: CadDocument, path: Path) -> CommandScript:
-    # The core saves a snapshot taken when it starts: drawing may go on.
-    yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
-    ctx.session.saved(document, path)
-    ctx.message(tr("Saved {path}", path=str(path)))
+    try:
+        saved = yield from _save_to(ctx, document, path)
+    except SaveNotVerifiedError as error:
+        # The core read the file back and it was not the drawing (ADR 0017
+        # D5.2): nothing was replaced, and what was written is kept aside.
+        ctx.message(
+            tr(
+                "{name} was not saved: the file written did not read back as the drawing. "
+                "The original file is unchanged; what was written is kept beside it.",
+                name=path.name,
+            )
+        )
+        ctx.message(f"  {error}")
+        raise CommandCancelledError() from None
+    if saved:
+        ctx.session.saved(document, path)
+        ctx.message(tr("Saved {path}", path=str(path)))
+
+
+def _save_to(
+    ctx: CommandContext, document: CadDocument, path: Path
+) -> Generator[Prompt | Background, Any, bool]:
+    """Saves to ``path``; False if the user chose to save elsewhere instead
+    (that save reported itself)."""
+    while True:
+        # The core saves a snapshot taken when it starts: drawing may go on.
+        try:
+            yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
+        except OverwritesDamagedError:
+            # The drawing was recovered from this very file: replacing it is
+            # the user's decision (ADR 0017 D5.1).
+            answer = yield from _ask_overwrite_damaged(ctx, path)
+            if answer == "cancel":
+                raise CommandCancelledError() from None
+            if answer == "save_as":
+                yield from _save_as(ctx, document)
+                return False
+            document.allow_overwriting_damaged()
+        except LossyConversionError as error:
+            # The file would hold less than the drawing (ADR 0017 D5.3):
+            # asked once per document, never silent.
+            if set(error.loss_kinds) <= set(document.accepted_losses):
+                raise  # refused although accepted: never ask in circles
+            if not (yield from _accept_losses(ctx, path, error.losses)):
+                raise CommandCancelledError() from None
+            document.accept_losses(error.loss_kinds)
+        else:
+            return True
+
+
+def _accept_losses(
+    ctx: CommandContext, path: Path, losses: Sequence[str]
+) -> Generator[Prompt | Background, Any, bool]:
+    if ctx.ui is not None:
+        return ctx.ui.ask_accept_losses(path.name, losses)
+    ctx.message(tr("Saving as {name} would lose data the format cannot keep:", name=path.name))
+    for loss in losses:
+        ctx.message(f"  {loss}")
+    key = yield ctx.choose(
+        tr("Save anyway?"),
+        [Option("Y", tr("Yes")), Option("N", tr("No"))],
+        default="N",
+    )
+    return bool(key == "Y")
+
+
+def _ask_overwrite_damaged(
+    ctx: CommandContext, path: Path
+) -> Generator[Prompt | Background, Any, Literal["overwrite", "save_as", "cancel"]]:
+    if ctx.ui is not None:
+        return ctx.ui.ask_overwrite_damaged(path.name)
+    key = yield ctx.choose(
+        tr(
+            "{name} is the damaged file this drawing was recovered from. Replace it?",
+            name=path.name,
+        ),
+        [Option("R", tr("Replace")), Option("S", tr("Save as")), Option("C", tr("Cancel"))],
+        default="S",
+    )
+    if key == "R":
+        return "overwrite"
+    if key == "S":
+        return "save_as"
+    return "cancel"
 
 
 def _suggested_name(document: CadDocument) -> str:

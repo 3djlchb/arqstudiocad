@@ -22,6 +22,29 @@ pub enum CadError {
     InvalidOperation(String),
     /// Reading or writing a file failed.
     Io(String),
+    /// The file is damaged and no drawing could be recovered from it
+    /// (ADR 0017 D5.1).
+    DamagedFile(String),
+    /// Not saved: the file would lose data its format or version cannot
+    /// keep (ADR 0017 D5.3); the original is unchanged. Once the user agrees,
+    /// [`CadApplication::accept_losses`](crate::CadApplication::accept_losses)
+    /// with these kinds lets the save go on.
+    Lossy {
+        /// The English technical message.
+        message: String,
+        /// What would be lost, e.g. `"object TCH_WALL"`.
+        kinds: Vec<String>,
+        /// The same, with counts: `"object TCH_WALL: 26 → 0"`.
+        losses: Vec<String>,
+    },
+    /// Not saved: the written file did not read back as the drawing; the
+    /// original is unchanged and what was written is kept beside it
+    /// (ADR 0017 D5.2).
+    NotVerified(String),
+    /// Saving would replace the damaged file a drawing was recovered from;
+    /// the user must accept that first
+    /// ([`CadApplication::allow_overwriting_damaged`](crate::CadApplication::allow_overwriting_damaged)).
+    OverwritesDamaged(String),
     /// The file format is not supported.
     UnsupportedFormat(String),
 }
@@ -34,7 +57,12 @@ impl fmt::Display for CadError {
             Self::LayerNotFound(id) => write!(f, "no layer with id {id}"),
             Self::DocumentNotFound(id) => write!(f, "no document with id {id}"),
             Self::InvalidOperation(m) => write!(f, "{m}"),
-            Self::Io(m) => write!(f, "{m}"),
+            Self::Io(m) | Self::DamagedFile(m) | Self::NotVerified(m) => write!(f, "{m}"),
+            Self::Lossy { message, .. } => write!(f, "{message}"),
+            Self::OverwritesDamaged(path) => write!(
+                f,
+                "{path}: the drawing was recovered from this damaged file; replacing it needs confirmation"
+            ),
             Self::UnsupportedFormat(m) => write!(f, "unsupported format: {m}"),
         }
     }
@@ -52,6 +80,13 @@ impl From<DocumentError> for CadError {
     fn from(e: DocumentError) -> Self {
         match e {
             DocumentError::Io { .. } | DocumentError::Codec(_) => Self::Io(e.to_string()),
+            DocumentError::Damaged { .. } => Self::DamagedFile(e.to_string()),
+            DocumentError::NotVerified { .. } => Self::NotVerified(e.to_string()),
+            DocumentError::Lossy { ref losses, .. } => Self::Lossy {
+                kinds: losses.iter().map(|l| l.kind().to_owned()).collect(),
+                losses: losses.iter().map(ToString::to_string).collect(),
+                message: e.to_string(),
+            },
             DocumentError::UnsupportedFormat { path } => {
                 Self::UnsupportedFormat(path.display().to_string())
             }

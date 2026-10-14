@@ -196,6 +196,42 @@ impl Document {
             .value()
     }
 
+    /// Attaches XDATA of application `app` to an entity: data the platform
+    /// does not show, which only the inventory of a save sees.
+    pub fn attach_xdata_for_tests(&mut self, id: EntityId, app: &str) {
+        let _ = self
+            .cad_mut()
+            .app_ids
+            .add(acadrust::tables::AppId::new(app));
+        let mut record = acadrust::xdata::ExtendedDataRecord::new(app);
+        record.add_value(acadrust::xdata::XDataValue::String("kept?".to_owned()));
+        self.cad_mut()
+            .get_entity_mut(acadrust::Handle::new(id))
+            .expect("an entity")
+            .common_mut()
+            .extended_data
+            .add_record(record);
+    }
+
+    /// A fault for [`damage_next_save_for_tests`](Self::damage_next_save_for_tests):
+    /// drops every XDATA group (codes 1000 to 1071) from a DXF.
+    pub fn drop_dxf_xdata_for_tests(bytes: &mut Vec<u8>) {
+        let text = String::from_utf8(bytes.clone()).expect("a DXF");
+        let lines: Vec<&str> = text.split('\n').collect();
+        let mut kept = Vec::new();
+        let mut i = 0;
+        while i + 1 < lines.len() {
+            let code: i32 = lines[i].trim().parse().unwrap_or(0);
+            if !(1000..=1071).contains(&code) {
+                kept.push(lines[i]);
+                kept.push(lines[i + 1]);
+            }
+            i += 2;
+        }
+        kept.extend(&lines[i..]);
+        *bytes = kept.join("\n").into_bytes();
+    }
+
     /// Sets the file-format version the next save writes, by code
     /// (`"AC1015"`…); `false` for an unknown code. Choosing the version is
     /// not a user feature yet; the round-trip corpus needs it.

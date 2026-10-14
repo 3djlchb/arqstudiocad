@@ -54,7 +54,8 @@ closed, any call raises `DocumentNotFoundError`.
 `CadError` (a subclass of `Exception`) is the base; each `CadError` variant
 of contract §4 is a subclass: `InvalidGeometryError`, `EntityNotFoundError`,
 `LayerNotFoundError`, `DocumentNotFoundError`, `InvalidOperationError`,
-`CadIoError`, `UnsupportedFormatError`. Each carries a stable `code`
+`CadIoError` (and, since milestone 03.3, its subclasses `DamagedFileError`,
+`OverwritesDamagedError`, `SaveNotVerifiedError` and `LossyConversionError`), `UnsupportedFormatError`. Each carries a stable `code`
 (`"invalid_geometry"`, `"entity_not_found"`…) and an English technical
 message; the not-found errors also carry the id. Translated text is produced
 in Python from the code (contract §13).

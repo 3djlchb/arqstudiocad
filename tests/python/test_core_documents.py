@@ -4,13 +4,18 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from damaged_files import LINES, recovered_dxf, unreadable_dwg
 from gil_helpers import big_dxf, share_of_time_other_threads_ran
 
 from arqstudiocad.core import (
     CadApplication,
     CadDocument,
     CadIoError,
+    DamagedFileError,
     DocumentNotFoundError,
+    LossyConversionError,
+    OverwritesDamagedError,
+    SaveNotVerifiedError,
     UnsupportedFormatError,
 )
 
@@ -32,6 +37,57 @@ def test_a_new_document(app: CadApplication) -> None:
     assert app.document_ids() == [doc.id]
     assert repr(doc) == f"CadDocument(id={doc.id}, name='Plano1')"
     assert repr(app.create_document("it's")) == f'CadDocument(id={doc.id + 1}, name="it\'s")'
+
+
+def test_a_file_with_nothing_to_recover_is_refused(app: CadApplication, tmp_path: Path) -> None:
+    with pytest.raises(DamagedFileError) as raised:
+        app.open_document(unreadable_dwg(tmp_path / "cortado.dwg"))
+    assert isinstance(raised.value, CadIoError), "old handlers still catch it"
+    assert raised.value.code == "damaged_file"
+    assert "damaged" in str(raised.value)
+    assert app.documents() == []
+
+
+def test_a_recovered_drawing_says_so_and_guards_its_file(
+    app: CadApplication, tmp_path: Path
+) -> None:
+    assert app.create_document("x").recovery_problems == [], "nothing to report"
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    original = path.read_bytes()
+    doc = app.open_document(path)
+    assert doc.entity_count == 5 < LINES
+    assert any("zz" in p for p in doc.recovery_problems), doc.recovery_problems
+
+    with pytest.raises(OverwritesDamagedError) as raised:
+        doc.save(path)
+    assert raised.value.code == "overwrites_damaged"
+    assert path.read_bytes() == original
+    doc.save(tmp_path / "copia.dxf")
+    doc.allow_overwriting_damaged()
+    doc.save(path)
+    assert app.open_document(path).recovery_problems == []
+
+
+def test_a_lossy_save_is_an_io_error_and_losses_are_accepted_by_kind(
+    app: CadApplication,
+) -> None:
+    # The core's tests make a save lose data, which Python cannot: here the
+    # class and the acceptance call are checked.
+    assert issubclass(LossyConversionError, CadIoError)
+    assert LossyConversionError.code == "lossy_conversion"
+    doc = app.create_document("x")
+    assert doc.accepted_losses == []
+    doc.accept_losses(["object AECS_WALL", "XDATA on entities"])
+    assert doc.accepted_losses == ["XDATA on entities", "object AECS_WALL"]
+    with pytest.raises(TypeError):
+        doc.accept_losses("object AECS_WALL")  # a str is not a list of kinds
+
+
+def test_an_unverified_save_is_an_io_error_with_its_own_code() -> None:
+    # Saving reads the file back (ADR 0017 D5.2); the core's tests make a
+    # write fail, which Python cannot: here only the class is checked.
+    assert issubclass(SaveNotVerifiedError, CadIoError)
+    assert SaveNotVerifiedError.code == "save_not_verified"
 
 
 def test_handles_to_the_same_document_are_equal(app: CadApplication) -> None:

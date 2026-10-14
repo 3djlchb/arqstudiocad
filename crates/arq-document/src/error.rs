@@ -22,6 +22,33 @@ pub enum DocumentError {
     },
     /// The DWG/DXF engine could not read or write the drawing.
     Codec(String),
+    /// Not saved: the file written did not read back as the drawing
+    /// (ADR 0017 D5.2). The target is untouched; what was written is kept
+    /// beside it, if that was possible.
+    NotVerified {
+        /// The file that was to be saved.
+        path: PathBuf,
+        /// Where what was written is kept (`<name>.unverified.<ext>`).
+        kept: Option<PathBuf>,
+        /// How it differed, at least one line.
+        differences: Vec<String>,
+    },
+    /// Not saved: the file would hold less than the drawing, data its format
+    /// or version cannot keep (ADR 0017 D5.3). The target is untouched.
+    Lossy {
+        /// The file that was to be saved.
+        path: PathBuf,
+        /// What would be lost, at least one.
+        losses: Vec<crate::inventory::Loss>,
+    },
+    /// The file is damaged and no drawing data could be recovered from it
+    /// (ADR 0017 D5.1).
+    Damaged {
+        /// The file involved.
+        path: PathBuf,
+        /// What the reader found wrong, at least one line.
+        problems: Vec<String>,
+    },
     /// No entity has this id.
     EntityNotFound(u64),
     /// The entity exists but its geometry cannot be edited yet: an
@@ -86,6 +113,34 @@ impl fmt::Display for DocumentError {
                 )
             }
             Self::Codec(message) => write!(f, "drawing could not be processed: {message}"),
+            Self::NotVerified {
+                path,
+                kept,
+                differences,
+            } => {
+                write!(
+                    f,
+                    "{}: not saved, the written file does not read back as the drawing ({});                      the original is unchanged",
+                    path.display(),
+                    differences.join("; ")
+                )?;
+                match kept {
+                    Some(kept) => write!(f, "; what was written is kept as {}", kept.display()),
+                    None => Ok(()),
+                }
+            }
+            Self::Lossy { path, losses } => write!(
+                f,
+                "{}: not saved, the file would lose data ({}); the original is unchanged",
+                path.display(),
+                crate::inventory::describe(losses)
+            ),
+            Self::Damaged { path, problems } => write!(
+                f,
+                "{}: the file is damaged and no drawing could be recovered from it: {}",
+                path.display(),
+                problems.join("; ")
+            ),
             Self::EntityNotFound(id) => write!(f, "no entity with id {id}"),
             Self::NotEditable { id, kind } => {
                 write!(f, "entity {id} ({kind}) cannot be edited yet")

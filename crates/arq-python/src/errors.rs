@@ -53,13 +53,37 @@ create_exception!(
 );
 create_exception!(
     arqstudiocad._core,
+    DamagedFileError,
+    CadIoError,
+    "The file is damaged and no drawing could be recovered from it."
+);
+create_exception!(
+    arqstudiocad._core,
+    SaveNotVerifiedError,
+    CadIoError,
+    "Not saved: the written file did not read back as the drawing."
+);
+create_exception!(
+    arqstudiocad._core,
+    LossyConversionError,
+    CadIoError,
+    "Not saved: the file would lose data its format or version cannot keep."
+);
+create_exception!(
+    arqstudiocad._core,
+    OverwritesDamagedError,
+    CadIoError,
+    "Saving would replace the damaged file the drawing was recovered from."
+);
+create_exception!(
+    arqstudiocad._core,
     UnsupportedFormatError,
     CadError,
     "The file format is not supported."
 );
 
 /// Each exception class and its stable code, for registration.
-fn classes(py: Python<'_>) -> [(Bound<'_, pyo3::types::PyType>, &'static str); 8] {
+fn classes(py: Python<'_>) -> [(Bound<'_, pyo3::types::PyType>, &'static str); 12] {
     [
         (py.get_type::<CadError>(), "cad_error"),
         (py.get_type::<InvalidGeometryError>(), "invalid_geometry"),
@@ -68,6 +92,13 @@ fn classes(py: Python<'_>) -> [(Bound<'_, pyo3::types::PyType>, &'static str); 8
         (py.get_type::<DocumentNotFoundError>(), "document_not_found"),
         (py.get_type::<InvalidOperationError>(), "invalid_operation"),
         (py.get_type::<CadIoError>(), "io_error"),
+        (py.get_type::<DamagedFileError>(), "damaged_file"),
+        (py.get_type::<LossyConversionError>(), "lossy_conversion"),
+        (py.get_type::<SaveNotVerifiedError>(), "save_not_verified"),
+        (
+            py.get_type::<OverwritesDamagedError>(),
+            "overwrites_damaged",
+        ),
         (
             py.get_type::<UnsupportedFormatError>(),
             "unsupported_format",
@@ -102,6 +133,18 @@ pub fn to_py(error: CoreError) -> PyErr {
         ),
         CoreError::InvalidOperation(_) => (InvalidOperationError::new_err(message), None),
         CoreError::Io(_) => (CadIoError::new_err(message), None),
+        CoreError::DamagedFile(_) => (DamagedFileError::new_err(message), None),
+        CoreError::NotVerified(_) => (SaveNotVerifiedError::new_err(message), None),
+        CoreError::Lossy { kinds, losses, .. } => {
+            let err = LossyConversionError::new_err(message);
+            Python::attach(|py| {
+                // As for the ids below: cannot fail in practice.
+                let _ = err.value(py).setattr("loss_kinds", kinds);
+                let _ = err.value(py).setattr("losses", losses);
+            });
+            return err;
+        }
+        CoreError::OverwritesDamaged(_) => (OverwritesDamagedError::new_err(message), None),
         CoreError::UnsupportedFormat(_) => (UnsupportedFormatError::new_err(message), None),
     };
     if let Some((name, id)) = id {

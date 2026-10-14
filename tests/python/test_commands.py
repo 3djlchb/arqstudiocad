@@ -2,14 +2,18 @@
 ADR 0006, ADR 0013 D5.4). No Qt: commands run here as from a script."""
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
+from damaged_files import recovered_dxf
 
 from arqstudiocad.commands import (
+    Background,
     Command,
+    CommandCancelledError,
     CommandContext,
     CommandRegistry,
     CommandRunner,
@@ -19,8 +23,8 @@ from arqstudiocad.commands import (
     UiServices,
     ViewControl,
 )
-from arqstudiocad.commands.builtin import builtin_registry
-from arqstudiocad.core import CadDocument
+from arqstudiocad.commands.builtin import _write, builtin_registry
+from arqstudiocad.core import CadDocument, LossyConversionError, SaveNotVerifiedError
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     CommandCancelled,
@@ -45,6 +49,7 @@ class Harness:
     session: Session
     runner: CommandRunner
     events: list[Event]
+    answers: list[str] = field(default_factory=list)
 
     def run(self, *lines: str) -> None:
         for line in lines:
@@ -89,6 +94,8 @@ class FakeUi:
     open_path: Path | None = None
     save_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
+    overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
+    accept_losses: bool = False
     the_view: FakeView | None = None
     asked: list[str] = field(default_factory=list)
 
@@ -103,6 +110,19 @@ class FakeUi:
     def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
         self.asked.append(f"changes {name}")
         return self.save_changes
+
+    def report_recovered(self, name: str, problems: Sequence[str]) -> None:
+        self.asked.append(f"recovered {name}: {len(problems)} problems")
+
+    def ask_overwrite_damaged(self, name: str) -> Literal["overwrite", "save_as", "cancel"]:
+        self.asked.append(f"overwrite damaged {name}")
+        return self.overwrite_damaged
+
+    def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
+        self.asked.append(f"losses {name}: {list(losses)}")
+        # Asking again and again for the same save is a bug: fail, do not hang.
+        assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
+        return self.accept_losses
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.the_view
@@ -249,6 +269,163 @@ def test_new_save_open_close_from_the_command_line(tmp_path: Path) -> None:
     assert h.session.active is None and h.session.documents == []
     h.run("SAVE")
     assert h.messages()[-1] == "No drawing is open."
+
+
+def test_a_recovered_drawing_is_reported_and_not_saved_over_unasked(tmp_path: Path) -> None:
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    original = path.read_bytes()
+    h = harness()
+    h.run("OPEN", str(path))
+    doc = h.session.active
+    assert doc is not None and doc.entity_count == 5
+    assert h.messages()[-len(doc.recovery_problems) - 1] == (
+        "danado.dxf is damaged: it was recovered and part of it may be missing."
+    )
+    assert h.messages()[-1] == f"  {doc.recovery_problems[-1]}"
+
+    doc.add_line((0, 0), (1, 1))
+    h.run("SAVE")
+    assert h.prompts()[-1] == (
+        "danado.dxf is the damaged file this drawing was recovered from. Replace it?"
+        " [Replace(R)/Save as(S)/Cancel(C)] <S>:"
+    )
+    h.run("C")
+    assert h.of(CommandCancelled) and path.read_bytes() == original and doc.is_modified
+
+    h.run("SAVE", "S", str(tmp_path / "rescatado.dxf"))
+    assert doc.path == tmp_path / "rescatado.dxf" and not doc.is_modified
+    assert path.read_bytes() == original
+
+    h.run("SAVEAS", str(path), "R")
+    assert path.read_bytes() != original and doc.path == path
+    h.run("OPEN", str(path))
+    assert h.session.active is not None and h.session.active.recovery_problems == []
+
+
+def test_with_an_interface_recovery_is_shown_and_asked_in_dialogs(tmp_path: Path) -> None:
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    ui = FakeUi(open_path=path, save_path=tmp_path / "copia.dxf", overwrite_damaged="save_as")
+    h = harness(ui)
+    h.run("OPEN")
+    doc = h.session.active
+    assert doc is not None
+    assert ui.asked[-1] == f"recovered danado.dxf: {len(doc.recovery_problems)} problems"
+    h.run("SAVE")
+    assert ui.asked[-2:] == ["overwrite damaged danado.dxf", f"save {path}"]
+    assert doc.path == tmp_path / "copia.dxf"
+
+
+def test_a_save_that_fails_its_check_says_the_original_is_unchanged(tmp_path: Path) -> None:
+    class Unverified:
+        def save(self, path: Path) -> None:
+            raise SaveNotVerifiedError("plano.dxf: not saved; kept as plano.unverified.dxf")
+
+    h = harness()
+    script = _write(h.runner.context, cast(CadDocument, Unverified()), tmp_path / "plano.dxf")
+    work = next(script)
+    assert isinstance(work, Background)
+    with pytest.raises(SaveNotVerifiedError) as raised:
+        work.task()
+    with pytest.raises(CommandCancelledError):
+        script.throw(raised.value)
+    assert h.messages() == [
+        "plano.dxf was not saved: the file written did not read back as the drawing. "
+        "The original file is unchanged; what was written is kept beside it.",
+        "  plano.dxf: not saved; kept as plano.unverified.dxf",
+    ]
+    assert h.of(DocumentSaved) == []
+
+
+class Lossy:
+    """A document whose saves would lose a kind of object until the user
+    accepts it, as the core does (ADR 0017 D5.3)."""
+
+    id = 1
+    path: Path | None = None
+    accepted: list[str]
+    saved: list[Path]
+
+    def __init__(self, *, ignores_acceptance: bool = False) -> None:
+        self.accepted = []
+        self.saved = []
+        self.ignores_acceptance = ignores_acceptance
+
+    def save(self, path: Path) -> None:
+        if self.ignores_acceptance or "object AECS_WALL" not in self.accepted:
+            error = LossyConversionError("plano.dxf: not saved, the file would lose data")
+            error.loss_kinds = ["object AECS_WALL"]
+            error.losses = ["object AECS_WALL: 26 → 0"]
+            raise error
+        self.saved.append(path)
+
+    def accept_losses(self, kinds: Sequence[str]) -> None:
+        self.accepted.extend(kinds)
+
+    @property
+    def accepted_losses(self) -> list[str]:
+        return sorted(self.accepted)
+
+
+def test_a_save_refused_although_accepted_stops_instead_of_asking_again(
+    tmp_path: Path,
+) -> None:
+    ui = FakeUi(accept_losses=True)
+    h = harness(ui)
+    document = Lossy(ignores_acceptance=True)
+    with pytest.raises(LossyConversionError):
+        run_write(h, document, tmp_path / "plano.dxf")
+    assert len(ui.asked) == 1, "asked once, then stopped"
+
+
+def run_write(h: Harness, document: Lossy, path: Path) -> None:
+    """Drives SAVE's writing step as the runner would, answering prompts
+    with ``h``'s queued answers."""
+    script = _write(h.runner.context, cast(CadDocument, document), path)
+    step = next(script)
+    while True:
+        try:
+            if isinstance(step, Background):
+                try:
+                    value = step.task()
+                except Exception as error:
+                    step = script.throw(error)
+                    continue
+                step = script.send(value)
+            else:
+                step = script.send(h.answers.pop(0))
+        except StopIteration:
+            return
+
+
+def test_a_save_that_would_lose_data_asks_first(tmp_path: Path) -> None:
+    h = harness()
+    document = Lossy()
+    h.answers = ["N"]
+    with pytest.raises(CommandCancelledError):
+        run_write(h, document, tmp_path / "plano.dxf")
+    assert h.messages() == [
+        "Saving as plano.dxf would lose data the format cannot keep:",
+        "  object AECS_WALL: 26 → 0",
+    ]
+    assert document.saved == [] and document.accepted == []
+
+    h.answers = ["Y"]
+    run_write(h, document, tmp_path / "plano.dxf")
+    assert document.saved == [tmp_path / "plano.dxf"]
+    assert h.messages()[-1] == f"Saved {tmp_path / 'plano.dxf'}"
+
+    h.answers = []
+    run_write(h, document, tmp_path / "plano.dxf")
+    assert len(document.saved) == 2, "accepted once for the document: not asked again"
+
+
+def test_with_an_interface_losses_are_asked_in_a_dialog(tmp_path: Path) -> None:
+    ui = FakeUi(accept_losses=True)
+    h = harness(ui)
+    document = Lossy()
+    run_write(h, document, tmp_path / "plano.dxf")
+    assert ui.asked == ["losses plano.dxf: ['object AECS_WALL: 26 → 0']"]
+    assert document.saved == [tmp_path / "plano.dxf"]
 
 
 def test_undo_and_redo_report_their_changes() -> None:

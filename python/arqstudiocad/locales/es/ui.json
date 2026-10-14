@@ -113,5 +113,20 @@
   "General": "General",
   "Contents": "Contenido",
   "Geometry": "Geometría",
-  "Drawing": "Dibujo"
+  "Drawing": "Dibujo",
+  "{name} is damaged: it was recovered and part of it may be missing.": "{name} está dañado: se ha recuperado y puede faltar parte del dibujo.",
+  "{name} is the damaged file this drawing was recovered from. Replace it?": "{name} es el archivo dañado del que se recuperó este dibujo. ¿Reemplazarlo?",
+  "Replace": "Reemplazar",
+  "Cancel": "Cancelar",
+  "Damaged drawing": "Dibujo dañado",
+  "{name} is damaged. It was opened by recovery and part of the drawing may be missing. Check it, and save it under a new name to keep the original.": "{name} está dañado. Se ha abierto recuperándolo y puede faltar parte del dibujo. Revísalo y guárdalo con otro nombre para conservar el original.",
+  "Replace the damaged file?": "¿Reemplazar el archivo dañado?",
+  "This drawing was recovered from {name}, which is damaged. Replacing it loses whatever recovery could not read.": "Este dibujo se recuperó de {name}, que está dañado. Al reemplazarlo se pierde lo que la recuperación no pudo leer.",
+  "Save as…": "Guardar como…",
+  "{name} was not saved: the file written did not read back as the drawing. The original file is unchanged; what was written is kept beside it.": "{name} no se ha guardado: el archivo escrito no se releyó como el dibujo. El archivo original no ha cambiado; lo escrito se conserva a su lado.",
+  "Saving as {name} would lose data the format cannot keep:": "Guardar como {name} perdería datos que el formato no puede conservar:",
+  "Save anyway?": "¿Guardar de todos modos?",
+  "Data would be lost": "Se perderían datos",
+  "Saving as {name} would lose data its format or version cannot keep. The original file is unchanged until you agree. Save anyway?": "Guardar como {name} perdería datos que su formato o versión no puede conservar. El archivo original no cambia hasta que lo aceptes. ¿Guardar de todos modos?",
+  "Save anyway": "Guardar de todos modos"
 }

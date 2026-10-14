@@ -4,6 +4,7 @@ Checked against the built module by ``stubtest`` (ADR 0012, D4.8). Import
 these names from :mod:`arqstudiocad.core`, not from here.
 """
 
+from collections.abc import Sequence
 from os import PathLike
 from pathlib import Path
 from types import TracebackType
@@ -26,11 +27,15 @@ __all__ = [
     "CadLayerInfo",
     "CadLine",
     "CadView",
+    "DamagedFileError",
     "DocumentNotFoundError",
     "EntityNotFoundError",
     "InvalidGeometryError",
     "InvalidOperationError",
     "LayerNotFoundError",
+    "LossyConversionError",
+    "OverwritesDamagedError",
+    "SaveNotVerifiedError",
     "UnsupportedFormatError",
     "__version__",
 ]
@@ -68,6 +73,14 @@ class DocumentNotFoundError(CadError):
 
 class InvalidOperationError(CadError): ...
 class CadIoError(CadError): ...
+class DamagedFileError(CadIoError): ...
+class OverwritesDamagedError(CadIoError): ...
+class SaveNotVerifiedError(CadIoError): ...
+
+class LossyConversionError(CadIoError):
+    loss_kinds: list[str]
+    losses: list[str]
+
 class UnsupportedFormatError(CadError): ...
 
 # Values (ADR 0012, D4.1, D4.2)
@@ -192,6 +205,12 @@ class CadDocument:
     def is_open(self) -> bool: ...
     @property
     def version(self) -> str: ...
+    @property
+    def recovery_problems(self) -> list[str]: ...
+    def allow_overwriting_damaged(self) -> None: ...
+    def accept_losses(self, kinds: Sequence[str]) -> None: ...
+    @property
+    def accepted_losses(self) -> list[str]: ...
     @property
     def entity_count(self) -> int: ...
     def get_entity(self, entity_id: int) -> CadEntityInfo: ...
