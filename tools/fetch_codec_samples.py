@@ -78,6 +78,16 @@ LIBREDWG_SAMPLES: dict[str, str] = {
     "2010/Constraints.dwg": "bbac6b21d4edd199794a47af639263d0b36a62bcd2d1cce330904800b1ba8fb4",
     "2013/Constraints.dwg": "bdd7458bda6c1464faa5836b8aa85640199fbd01c510fa00e25550c043185429",
     "2018/Constraints.dwg": "6989a481735268caebe99bd64c3376c0e769d5b8f77762ece3920159cc52cc2e",
+    # Fixed in our AcadRust fork (milestone 03.2): an R11 drawing whose
+    # linetype indices are 16-bit, an R2004 lofted surface, and objects the
+    # engine keeps undecoded.
+    "r11/ACEB10.dwg": "cc5808621cfdc597f6e726a4f3591402b92ea627e581ce4380344c5dd02392f1",
+    "2004/Surface.dwg": "7ba7ea2e6e89a01094d4ffe104dd1cfc03513d1991bd223aeac1a3186a6c38d3",
+    "2007/ATMOS-DC22S.dwg": "0e3eccc70ea6b82120c77449bb1d1d27ee280a1ed1c0f2e88e31b1db503ca66f",
+    "example_r14.dwg": "aec626c5680584c763418497495950089854ff9682af36076851fd793d9e2c0b",
+    "example_2000.dwg": "34574244d7556d1ef7b437443d9b3d1ad8662e1c669c42d80cff6a8a19799be9",
+    "example_2007.dwg": "fe2d27229f67ae801b64cc01b50d4f7cdf53770de3e23640be9c24a14de5bc12",
+    "example_2013.dwg": "ce80953e4881899cde8c42b97919feb2697259554ca54dc4005b19068a12c18f",
 }
 
 LIBREDWG_DESTINATION = DESTINATION.parent / "libredwg"
