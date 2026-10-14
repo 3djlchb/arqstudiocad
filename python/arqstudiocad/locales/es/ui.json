@@ -113,5 +113,14 @@
   "General": "General",
   "Contents": "Contenido",
   "Geometry": "Geometría",
-  "Drawing": "Dibujo"
+  "Drawing": "Dibujo",
+  "{name} is damaged: it was recovered and part of it may be missing.": "{name} está dañado: se ha recuperado y puede faltar parte del dibujo.",
+  "{name} is the damaged file this drawing was recovered from. Replace it?": "{name} es el archivo dañado del que se recuperó este dibujo. ¿Reemplazarlo?",
+  "Replace": "Reemplazar",
+  "Cancel": "Cancelar",
+  "Damaged drawing": "Dibujo dañado",
+  "{name} is damaged. It was opened by recovery and part of the drawing may be missing. Check it, and save it under a new name to keep the original.": "{name} está dañado. Se ha abierto recuperándolo y puede faltar parte del dibujo. Revísalo y guárdalo con otro nombre para conservar el original.",
+  "Replace the damaged file?": "¿Reemplazar el archivo dañado?",
+  "This drawing was recovered from {name}, which is damaged. Replacing it loses whatever recovery could not read.": "Este dibujo se recuperó de {name}, que está dañado. Al reemplazarlo se pierde lo que la recuperación no pudo leer.",
+  "Save as…": "Guardar como…"
 }

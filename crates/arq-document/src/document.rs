@@ -5,10 +5,11 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use acadrust::types::DxfVersion;
-use acadrust::{CadDocument, DwgReader, DwgWriter, DxfReader, DxfWriter};
+use acadrust::{CadDocument, DwgWriter, DxfReader, DxfWriter};
 
 use crate::error::{DocumentError, DocumentResult};
 use crate::format::FileFormat;
+use crate::reading::Recovery;
 
 /// One drawing.
 ///
@@ -24,6 +25,8 @@ pub struct Document {
     pub(crate) model: crate::model::OwnModel,
     /// The change being recorded, if any (see `change.rs`).
     pub(crate) recording: Option<crate::change::Recording>,
+    /// Set when the drawing was recovered from a damaged file.
+    recovery: Option<Recovery>,
 }
 
 impl Document {
@@ -44,12 +47,17 @@ impl Document {
             cad: Box::new(cad),
             model: crate::model::OwnModel::default(),
             recording: None,
+            recovery: None,
         };
         doc.rebuild_model();
         doc
     }
 
     /// Opens a `.dwg` or `.dxf` file; the extension decides the format.
+    ///
+    /// A damaged file opens only if drawing data can be recovered from it,
+    /// and then [`recovery`](Self::recovery) says what was wrong; otherwise
+    /// the error is [`DocumentError::Damaged`] (ADR 0017 D5.1).
     pub fn open(path: impl AsRef<Path>) -> DocumentResult<Self> {
         let path = path.as_ref();
         let format = format_of(path)?;
@@ -59,11 +67,20 @@ impl Document {
                 message: "file not found".into(),
             });
         }
-        let cad = match format {
-            FileFormat::Dwg => DwgReader::from_file(path)?.read()?,
-            FileFormat::Dxf => DxfReader::from_file(path)?.read()?,
-        };
-        Ok(Self::from_cad(cad))
+        let bytes = fs::read(path).map_err(|e| DocumentError::Io {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let (cad, recovery) = crate::reading::read(bytes, format, path)?;
+        let mut doc = Self::from_cad(cad);
+        doc.recovery = recovery;
+        Ok(doc)
+    }
+
+    /// What was wrong with the file this drawing was recovered from; `None`
+    /// for a drawing read intact (or created, not read).
+    pub fn recovery(&self) -> Option<&Recovery> {
+        self.recovery.as_ref()
     }
 
     /// Reads a DXF drawing from memory.
@@ -130,6 +147,7 @@ impl Document {
             cad: Box::new(CadDocument::clone(&self.cad)),
             model: self.model.clone(),
             recording: None,
+            recovery: self.recovery.clone(),
         }
     }
 

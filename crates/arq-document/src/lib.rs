@@ -14,6 +14,7 @@
 //! | Need | Use |
 //! |---|---|
 //! | Open, save, snapshot a drawing | [`Document`], [`FileFormat`] |
+//! | Damaged files: recovered or refused | [`Document::recovery`] → [`Recovery`], [`DocumentError::Damaged`] |
 //! | Read entities | [`Document::entity`], [`Document::entities`] → [`Entity`] |
 //! | Plan geometry of LINE, CIRCLE, ARC | [`PlanGeometry`] |
 //! | Layers | [`Document::layers`] → [`Layer`], [`Document::create_layer`]… |
@@ -31,6 +32,7 @@ mod format;
 mod layers;
 mod model;
 mod ocs;
+mod reading;
 #[cfg(test)]
 mod test_dxf;
 mod translate;
@@ -42,3 +44,4 @@ pub use entity::{Color, Entity, EntityId, PlanGeometry};
 pub use error::{DocumentError, DocumentResult};
 pub use format::FileFormat;
 pub use layers::{Layer, LayerId};
+pub use reading::Recovery;

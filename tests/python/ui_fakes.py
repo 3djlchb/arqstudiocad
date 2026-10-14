@@ -1,7 +1,7 @@
 """Interface services for tests: answers decided by the test, never a
 dialog (a modal dialog in a test would wait forever)."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -35,10 +35,12 @@ class QuietUi:
     open_path: Path | None = None
     save_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
+    overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
     zooms: Zooms = field(default_factory=Zooms)
     view_for: Callable[[CadDocument], ViewControl | None] | None = None
     panel_for: Callable[[str], bool] | None = None
     asked: list[str] = field(default_factory=list)
+    recovered: list[tuple[str, list[str]]] = field(default_factory=list)
     panels_shown: list[str] = field(default_factory=list)
 
     def choose_open_path(self) -> Path | None:
@@ -52,6 +54,13 @@ class QuietUi:
     def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
         self.asked.append(f"changes {name}")
         return self.save_changes
+
+    def report_recovered(self, name: str, problems: Sequence[str]) -> None:
+        self.recovered.append((name, list(problems)))
+
+    def ask_overwrite_damaged(self, name: str) -> Literal["overwrite", "save_as", "cancel"]:
+        self.asked.append(f"overwrite damaged {name}")
+        return self.overwrite_damaged
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.zooms if self.view_for is None else self.view_for(document)

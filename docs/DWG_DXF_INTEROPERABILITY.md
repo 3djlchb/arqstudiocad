@@ -11,7 +11,7 @@ evidence is the [library comparison](references/dwg-library-comparison.md)
 
 | Protection | State |
 |---|---|
-| Damaged and partial files reported, not opened as valid empty drawings | ○ milestone 03.3 (today a truncated DWG opens empty) |
+| Damaged and partial files reported, not opened as valid empty drawings | ✅ see [Damaged files](#damaged-files) |
 | Safe save: temporary file, read back, validate, then replace | ◐ temporary file and rename exist; read-back validation in 03.3 |
 | No silent loss on version conversion; warn and allow cancelling | ◐ DWG saves keep the drawing's own version (only R12 is upgraded, and R12 has no custom objects); AcadRust refuses lossy conversions; the warning in the interface comes in 03.3 |
 | Unknown data preserved where possible | ✅ same-version DWG saves keep custom objects byte for byte (measured: 279 AutoCAD Architecture objects, 26 TCH walls, 300 AEC objects) |
@@ -47,7 +47,35 @@ when its parameters change).
 | External references (Xrefs) | ? | ? | ? | ○ | — | **not in the corpus yet** (03.5) |
 | BIM drawings (AutoCAD Architecture, Civil 3D, Revit/ArchiCAD exports) | ◐ | ◐ | ◐ | ○ | — | few samples; the maintainer will produce more |
 | DWG R11/R12 | ✅ (one R11 file rejected) | — | ✅ | ✅ | — | saved as DWG 2018 |
-| Damaged files | ◐ recovered or empty | — | — | — | — | detection in 03.3 |
+| Damaged files | ✅ refused, or recovered and marked | — | — | — | — | [Damaged files](#damaged-files) |
+
+## Damaged files
+
+Milestone 03.3, step 1 (ADR 0017 D5.1). A file is read strictly first; a
+damaged file is then read in AcadRust's recovery (failsafe) mode:
+
+- **Nothing usable:** opening fails with `DamagedFileError`, listing what
+  the reader found wrong.
+- **Something usable:** the drawing opens **marked as recovered**: the
+  command line and a dialog say it is damaged and part of it may be
+  missing, with the reader's problems. Saving over the damaged file is
+  refused until the user chooses *Replace* (or *Save as*, the default);
+  saving elsewhere does not lift that guard.
+
+Measured on DWG R13–2018 and DXF, cut, zeroed or with bytes changed (the
+regression drawings are made by the tests, `reading_tests.rs`):
+
+| Damage | Before 03.3 | Now |
+|---|---|---|
+| R13–2000 DWG cut short or zeroed | opened as an **empty drawing**, no error (the engine's statistics showed it) | refused as damaged |
+| 2007 DWG with bytes changed | the engine **panicked** (the application crashed) | the panic is caught: refused or recovered |
+| DWG/DXF the strict read refuses | an error | recovered and marked when something is usable |
+
+Known limits: a few changed bytes the engine reads without noticing (in
+2013 and 2018 DWG measured so far without losing entities) are not
+detected: checking the file's CRCs would be the next guard. A DXF value
+that is not a number (a coordinate written as text) is read without an
+error; that is a reader fidelity issue (03.2).
 
 ## Version support
 

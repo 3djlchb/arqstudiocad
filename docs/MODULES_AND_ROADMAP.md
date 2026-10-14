@@ -57,7 +57,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 |---|---|---|
 | 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ |
 | 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; offered upstream | ○ |
-| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ○ **next** |
+| 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ◐ step 1 done: damaged files refused or recovered and marked |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ first matrix from the comparison |
 | 03.5 External validation | Outputs opened in independent CAD applications; Xref and BIM drawings in the corpus | ○ |
 | 03.6 Fidelity across versions | DWG as the default save format once the corpus allows it (contract §10); linetypes, lineweights, layouts | ○ |

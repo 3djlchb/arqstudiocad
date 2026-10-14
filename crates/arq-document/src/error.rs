@@ -22,6 +22,14 @@ pub enum DocumentError {
     },
     /// The DWG/DXF engine could not read or write the drawing.
     Codec(String),
+    /// The file is damaged and no drawing data could be recovered from it
+    /// (ADR 0017 D5.1).
+    Damaged {
+        /// The file involved.
+        path: PathBuf,
+        /// What the reader found wrong, at least one line.
+        problems: Vec<String>,
+    },
     /// No entity has this id.
     EntityNotFound(u64),
     /// The entity exists but its geometry cannot be edited yet: an
@@ -86,6 +94,12 @@ impl fmt::Display for DocumentError {
                 )
             }
             Self::Codec(message) => write!(f, "drawing could not be processed: {message}"),
+            Self::Damaged { path, problems } => write!(
+                f,
+                "{}: the file is damaged and no drawing could be recovered from it: {}",
+                path.display(),
+                problems.join("; ")
+            ),
             Self::EntityNotFound(id) => write!(f, "no entity with id {id}"),
             Self::NotEditable { id, kind } => {
                 write!(f, "entity {id} ({kind}) cannot be edited yet")

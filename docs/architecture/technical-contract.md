@@ -166,6 +166,8 @@ pub enum CadError {
     DocumentNotFound(u64),
     InvalidOperation(String),
     Io(String),
+    DamagedFile(String),       // nothing recoverable (ADR 0017 D5.1)
+    OverwritesDamaged(String), // saving over the file a drawing was recovered from
     UnsupportedFormat(String),
 }
 ```

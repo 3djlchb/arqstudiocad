@@ -5,17 +5,21 @@ NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER. Without an interface
 as AutoCAD does with FILEDIA=0.
 """
 
+from collections.abc import Generator
 from pathlib import Path
+from typing import Any, Literal
 
 from arqstudiocad.commands import (
+    Background,
     Command,
     CommandCancelledError,
     CommandContext,
     CommandRegistry,
     CommandScript,
     Option,
+    Prompt,
 )
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import CadDocument, OverwritesDamagedError
 from arqstudiocad.i18n import tr
 
 #: Saving defaults to DXF until the round-trip corpus makes DWG the default
@@ -53,6 +57,19 @@ def open_(ctx: CommandContext) -> CommandScript:
             version=document.version,
         )
     )
+    problems = document.recovery_problems
+    if problems:
+        # A damaged file is never taken for a valid drawing (ADR 0017 D5.1).
+        ctx.message(
+            tr(
+                "{name} is damaged: it was recovered and part of it may be missing.",
+                name=document.name,
+            )
+        )
+        for problem in problems:
+            ctx.message(f"  {problem}")
+        if ctx.ui is not None:
+            ctx.ui.report_recovered(document.name, problems)
 
 
 def save(ctx: CommandContext) -> CommandScript:
@@ -82,9 +99,41 @@ def _save_as(ctx: CommandContext, document: CadDocument) -> CommandScript:
 
 def _write(ctx: CommandContext, document: CadDocument, path: Path) -> CommandScript:
     # The core saves a snapshot taken when it starts: drawing may go on.
-    yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
+    try:
+        yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
+    except OverwritesDamagedError:
+        # The drawing was recovered from this very file: replacing it is the
+        # user's decision (ADR 0017 D5.1).
+        answer = yield from _ask_overwrite_damaged(ctx, path)
+        if answer == "cancel":
+            raise CommandCancelledError() from None
+        if answer == "save_as":
+            yield from _save_as(ctx, document)
+            return
+        document.allow_overwriting_damaged()
+        yield ctx.background(lambda: document.save(path), tr("Saving {name}…", name=path.name))
     ctx.session.saved(document, path)
     ctx.message(tr("Saved {path}", path=str(path)))
+
+
+def _ask_overwrite_damaged(
+    ctx: CommandContext, path: Path
+) -> Generator[Prompt | Background, Any, Literal["overwrite", "save_as", "cancel"]]:
+    if ctx.ui is not None:
+        return ctx.ui.ask_overwrite_damaged(path.name)
+    key = yield ctx.choose(
+        tr(
+            "{name} is the damaged file this drawing was recovered from. Replace it?",
+            name=path.name,
+        ),
+        [Option("R", tr("Replace")), Option("S", tr("Save as")), Option("C", tr("Cancel"))],
+        default="S",
+    )
+    if key == "R":
+        return "overwrite"
+    if key == "S":
+        return "save_as"
+    return "cancel"
 
 
 def _suggested_name(document: CadDocument) -> str:

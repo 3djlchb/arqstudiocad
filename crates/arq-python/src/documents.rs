@@ -223,6 +223,25 @@ impl CadDocument {
         self.read(|cad| cad.document().version_code())
     }
 
+    /// What was wrong with the damaged file this drawing was recovered
+    /// from, in English as the reader reports it; empty for a drawing read
+    /// intact or created here.
+    #[getter]
+    fn recovery_problems(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| {
+            cad.document()
+                .recovery()
+                .map(|r| r.problems().to_vec())
+                .unwrap_or_default()
+        })
+    }
+
+    /// The user accepts the recovered drawing: saving may now replace the
+    /// damaged file it came from (otherwise `OverwritesDamagedError`).
+    fn allow_overwriting_damaged(&self) -> PyResult<()> {
+        self.store.allow_overwriting_damaged(self.id).py()
+    }
+
     /// How many entities model space holds, without reading them.
     #[getter]
     fn entity_count(&self) -> PyResult<usize> {

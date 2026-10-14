@@ -1,7 +1,7 @@
 """The interface services commands may ask for, built with Qt dialogs
 (the :class:`~arqstudiocad.commands.UiServices` protocol)."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -62,6 +62,46 @@ class QtUiServices:
             return "yes"
         if answer == QMessageBox.StandardButton.Discard:
             return "no"
+        return "cancel"
+
+    def report_recovered(self, name: str, problems: Sequence[str]) -> None:
+        box = QMessageBox(
+            QMessageBox.Icon.Warning,
+            tr("Damaged drawing"),
+            tr(
+                "{name} is damaged. It was opened by recovery and part of the "
+                "drawing may be missing. Check it, and save it under a new name "
+                "to keep the original.",
+                name=name,
+            ),
+            QMessageBox.StandardButton.Ok,
+            self._parent,
+        )
+        box.setDetailedText("\n".join(problems))
+        box.exec()
+
+    def ask_overwrite_damaged(self, name: str) -> Literal["overwrite", "save_as", "cancel"]:
+        box = QMessageBox(
+            QMessageBox.Icon.Warning,
+            tr("Replace the damaged file?"),
+            tr(
+                "This drawing was recovered from {name}, which is damaged. "
+                "Replacing it loses whatever recovery could not read.",
+                name=name,
+            ),
+            QMessageBox.StandardButton.NoButton,
+            self._parent,
+        )
+        save_as = box.addButton(tr("Save as…"), QMessageBox.ButtonRole.AcceptRole)
+        replace = box.addButton(tr("Replace"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(save_as)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked == save_as:
+            return "save_as"
+        if clicked == replace:
+            return "overwrite"
         return "cancel"
 
     def view(self, document: CadDocument) -> ViewControl | None:

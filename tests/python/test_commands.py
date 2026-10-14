@@ -2,11 +2,13 @@
 ADR 0006, ADR 0013 D5.4). No Qt: commands run here as from a script."""
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 import pytest
+from damaged_files import recovered_dxf
 
 from arqstudiocad.commands import (
     Command,
@@ -89,6 +91,7 @@ class FakeUi:
     open_path: Path | None = None
     save_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
+    overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
     the_view: FakeView | None = None
     asked: list[str] = field(default_factory=list)
 
@@ -103,6 +106,13 @@ class FakeUi:
     def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
         self.asked.append(f"changes {name}")
         return self.save_changes
+
+    def report_recovered(self, name: str, problems: Sequence[str]) -> None:
+        self.asked.append(f"recovered {name}: {len(problems)} problems")
+
+    def ask_overwrite_damaged(self, name: str) -> Literal["overwrite", "save_as", "cancel"]:
+        self.asked.append(f"overwrite damaged {name}")
+        return self.overwrite_damaged
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.the_view
@@ -249,6 +259,50 @@ def test_new_save_open_close_from_the_command_line(tmp_path: Path) -> None:
     assert h.session.active is None and h.session.documents == []
     h.run("SAVE")
     assert h.messages()[-1] == "No drawing is open."
+
+
+def test_a_recovered_drawing_is_reported_and_not_saved_over_unasked(tmp_path: Path) -> None:
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    original = path.read_bytes()
+    h = harness()
+    h.run("OPEN", str(path))
+    doc = h.session.active
+    assert doc is not None and doc.entity_count == 5
+    assert h.messages()[-len(doc.recovery_problems) - 1] == (
+        "danado.dxf is damaged: it was recovered and part of it may be missing."
+    )
+    assert h.messages()[-1] == f"  {doc.recovery_problems[-1]}"
+
+    doc.add_line((0, 0), (1, 1))
+    h.run("SAVE")
+    assert h.prompts()[-1] == (
+        "danado.dxf is the damaged file this drawing was recovered from. Replace it?"
+        " [Replace(R)/Save as(S)/Cancel(C)] <S>:"
+    )
+    h.run("C")
+    assert h.of(CommandCancelled) and path.read_bytes() == original and doc.is_modified
+
+    h.run("SAVE", "S", str(tmp_path / "rescatado.dxf"))
+    assert doc.path == tmp_path / "rescatado.dxf" and not doc.is_modified
+    assert path.read_bytes() == original
+
+    h.run("SAVEAS", str(path), "R")
+    assert path.read_bytes() != original and doc.path == path
+    h.run("OPEN", str(path))
+    assert h.session.active is not None and h.session.active.recovery_problems == []
+
+
+def test_with_an_interface_recovery_is_shown_and_asked_in_dialogs(tmp_path: Path) -> None:
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    ui = FakeUi(open_path=path, save_path=tmp_path / "copia.dxf", overwrite_damaged="save_as")
+    h = harness(ui)
+    h.run("OPEN")
+    doc = h.session.active
+    assert doc is not None
+    assert ui.asked[-1] == f"recovered danado.dxf: {len(doc.recovery_problems)} problems"
+    h.run("SAVE")
+    assert ui.asked[-2:] == ["overwrite damaged danado.dxf", f"save {path}"]
+    assert doc.path == tmp_path / "copia.dxf"
 
 
 def test_undo_and_redo_report_their_changes() -> None:

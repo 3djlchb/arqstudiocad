@@ -4,13 +4,16 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
+from damaged_files import LINES, recovered_dxf, unreadable_dwg
 from gil_helpers import big_dxf, share_of_time_other_threads_ran
 
 from arqstudiocad.core import (
     CadApplication,
     CadDocument,
     CadIoError,
+    DamagedFileError,
     DocumentNotFoundError,
+    OverwritesDamagedError,
     UnsupportedFormatError,
 )
 
@@ -32,6 +35,35 @@ def test_a_new_document(app: CadApplication) -> None:
     assert app.document_ids() == [doc.id]
     assert repr(doc) == f"CadDocument(id={doc.id}, name='Plano1')"
     assert repr(app.create_document("it's")) == f'CadDocument(id={doc.id + 1}, name="it\'s")'
+
+
+def test_a_file_with_nothing_to_recover_is_refused(app: CadApplication, tmp_path: Path) -> None:
+    with pytest.raises(DamagedFileError) as raised:
+        app.open_document(unreadable_dwg(tmp_path / "cortado.dwg"))
+    assert isinstance(raised.value, CadIoError), "old handlers still catch it"
+    assert raised.value.code == "damaged_file"
+    assert "damaged" in str(raised.value)
+    assert app.documents() == []
+
+
+def test_a_recovered_drawing_says_so_and_guards_its_file(
+    app: CadApplication, tmp_path: Path
+) -> None:
+    assert app.create_document("x").recovery_problems == [], "nothing to report"
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    original = path.read_bytes()
+    doc = app.open_document(path)
+    assert doc.entity_count == 5 < LINES
+    assert any("zz" in p for p in doc.recovery_problems), doc.recovery_problems
+
+    with pytest.raises(OverwritesDamagedError) as raised:
+        doc.save(path)
+    assert raised.value.code == "overwrites_damaged"
+    assert path.read_bytes() == original
+    doc.save(tmp_path / "copia.dxf")
+    doc.allow_overwriting_damaged()
+    doc.save(path)
+    assert app.open_document(path).recovery_problems == []
 
 
 def test_handles_to_the_same_document_are_equal(app: CadApplication) -> None:

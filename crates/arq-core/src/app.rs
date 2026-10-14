@@ -20,6 +20,9 @@ struct OpenDocument {
     cad: CadDocument,
     name: String,
     path: Option<PathBuf>,
+    /// The damaged file the drawing was recovered from, while replacing it
+    /// still needs the user's confirmation (ADR 0017 D5.1).
+    damaged: Option<PathBuf>,
 }
 
 type Shared = Arc<Mutex<OpenDocument>>;
@@ -49,17 +52,23 @@ impl CadApplication {
             cad: CadDocument::new(),
             name: name.to_owned(),
             path: None,
+            damaged: None,
         })
     }
 
-    /// Opens a DWG or DXF file, named after it.
+    /// Opens a DWG or DXF file, named after it. A damaged file opens only
+    /// if a drawing can be recovered from it (`CadError::DamagedFile`
+    /// otherwise); then the document's `recovery()` says what was wrong, and
+    /// saving over that file needs [`allow_overwriting_damaged`](Self::allow_overwriting_damaged).
     pub fn open_document(&self, path: impl AsRef<Path>) -> CadResult<DocumentId> {
         let path = path.as_ref();
         let cad = CadDocument::open(path)?;
+        let damaged = cad.document().recovery().map(|_| path.to_path_buf());
         Ok(self.insert(OpenDocument {
             cad,
             name: file_name(path),
             path: Some(path.to_path_buf()),
+            damaged,
         }))
     }
 
@@ -69,12 +78,25 @@ impl CadApplication {
     pub fn save_document(&self, id: DocumentId, path: impl AsRef<Path>) -> CadResult<()> {
         let path = path.as_ref();
         let shared = self.shared(id)?;
-        let snapshot = lock(id, &shared)?.cad.snapshot();
+        let snapshot = {
+            let open = lock(id, &shared)?;
+            if open.damaged.as_deref().is_some_and(|d| same_file(d, path)) {
+                return Err(CadError::OverwritesDamaged(path.display().to_string()));
+            }
+            open.cad.snapshot()
+        };
         snapshot.save(path)?;
         let mut open = lock(id, &shared)?;
         open.cad.mark_saved(&snapshot);
         open.name = file_name(path);
         open.path = Some(path.to_path_buf());
+        Ok(())
+    }
+
+    /// The user accepts the recovered drawing: it may now be saved over the
+    /// damaged file it came from. Does nothing for an intact drawing.
+    pub fn allow_overwriting_damaged(&self, id: DocumentId) -> CadResult<()> {
+        lock(id, &self.shared(id)?)?.damaged = None;
         Ok(())
     }
 
@@ -160,6 +182,15 @@ fn lock(id: DocumentId, shared: &Shared) -> CadResult<MutexGuard<'_, OpenDocumen
             "document {id} is unusable after an internal error; close it"
         ))
     })
+}
+
+/// Whether two paths name the same file (when both exist, as the file
+/// system resolves them; otherwise as written).
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
 }
 
 fn file_name(path: &Path) -> String {

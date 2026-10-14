@@ -4,6 +4,7 @@ changes (ADR 0013, D5.7). The window's real worker thread is used."""
 from pathlib import Path
 
 import pytest
+from damaged_files import recovered_dxf
 from gil_helpers import big_dxf
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
@@ -152,6 +153,31 @@ def test_quitting_asks_about_unsaved_drawings(
     assert window.close()
     assert (tmp_path / "antes de salir.dxf").is_file() and not changed.is_modified
     assert kept.is_open, "closing the window does not close documents by itself"
+
+
+def test_quitting_asks_before_replacing_a_damaged_file(
+    qtbot: QtBot, window: MainWindow, ui: QuietUi, tmp_path: Path
+) -> None:
+    path = recovered_dxf(tmp_path / "danado.dxf")
+    original = path.read_bytes()
+    ui.open_path = path
+    window.command_actions.run("OPEN")
+    wait_idle(qtbot, window)
+    document = window.session.active
+    assert document is not None
+    assert ui.recovered == [("danado.dxf", document.recovery_problems)]
+    _, changes = document.add_line((0, 0), (1, 1))
+    window.session.report(document, changes)
+
+    ui.save_changes = "yes"
+    ui.overwrite_damaged = "cancel"
+    assert not window.close() and path.read_bytes() == original
+    ui.overwrite_damaged = "save_as"
+    ui.save_path = None
+    assert not window.close(), "the file dialog was cancelled"
+    ui.overwrite_damaged = "overwrite"
+    assert window.close()
+    assert path.read_bytes() != original and not document.is_modified
 
 
 def test_quitting_waits_for_background_work(

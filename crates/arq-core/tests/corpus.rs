@@ -157,6 +157,12 @@ fn save_and_reopen(
         .save(&path)
         .map_err(|e| format!("save as {ext}: {e}"))?;
     let back = CadDocument::open(&path).map_err(|e| format!("reopen {ext}: {e}"))?;
+    if let Some(recovery) = back.document().recovery() {
+        return Err(format!(
+            "reopen {ext}: read as damaged: {:?}",
+            recovery.problems()
+        ));
+    }
     model_in_step(back.document(), &format!("reopened {ext}"))?;
     Ok(observe(back.document()))
 }
@@ -313,6 +319,10 @@ fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
 fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
     let cad = CadDocument::open(&path).map_err(|e| vec![format!("open: {e}")])?;
     let doc = cad.document();
+    // The corpus holds intact drawings: none may read as damaged (ADR 0017 D5.1).
+    if let Some(recovery) = doc.recovery() {
+        return Err(vec![format!("read as damaged: {:?}", recovery.problems())]);
+    }
     let model = doc.entities();
     let editable = model.iter().filter(|e| e.is_editable()).count();
     let transformable = model.iter().filter(|e| e.is_transformable()).count();
