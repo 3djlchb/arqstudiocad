@@ -6,7 +6,7 @@ the interface go through it, never around it, so every change becomes an
 event. It has no Qt.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from arqstudiocad.core import CadApplication, CadChangeSet, CadDocument
@@ -18,6 +18,7 @@ from arqstudiocad.events import (
     DocumentOpened,
     DocumentSaved,
     EventBus,
+    SelectionChanged,
 )
 from arqstudiocad.i18n import tr
 
@@ -31,6 +32,9 @@ class Session:
         self._documents: list[CadDocument] = []
         self._active: CadDocument | None = None
         self._new_count = 0
+        # The selected entities of each document, in the order selected
+        # (ADR 0016 D3).
+        self._selection: dict[int, tuple[int, ...]] = {}
 
     @property
     def documents(self) -> list[CadDocument]:
@@ -82,6 +86,7 @@ class Session:
         index = self._documents.index(document)
         document.close()
         self._documents.remove(document)
+        self._selection.pop(document.id, None)
         self.bus.publish(DocumentClosed(document.id))
         if self._active == document:
             self._active = None
@@ -89,6 +94,35 @@ class Session:
             self.activate(following)
             if following is None:
                 self.bus.publish(ActiveDocumentChanged(None))
+
+    # Selection (ADR 0016 D3): per document, published as SelectionChanged.
+
+    def selection(self, document: CadDocument) -> tuple[int, ...]:
+        """The selected entities of ``document``, in the order selected."""
+        return self._selection.get(document.id, ())
+
+    def select(self, document: CadDocument, entity_ids: Iterable[int]) -> None:
+        """Adds entities to the selection of ``document`` (a click, a window)."""
+        current = self.selection(document)
+        added = tuple(dict.fromkeys(i for i in entity_ids if i not in current))
+        self._set_selection(document.id, current + added)
+
+    def deselect(self, document: CadDocument, entity_ids: Iterable[int]) -> None:
+        """Removes entities from the selection of ``document`` (Shift+click)."""
+        removed = set(entity_ids)
+        self._set_selection(
+            document.id, tuple(i for i in self.selection(document) if i not in removed)
+        )
+
+    def clear_selection(self, document: CadDocument) -> None:
+        """Empties the selection of ``document`` (Esc, the end of an editing
+        command)."""
+        self._set_selection(document.id, ())
+
+    def _set_selection(self, document_id: int, entity_ids: tuple[int, ...]) -> None:
+        if entity_ids != self._selection.get(document_id, ()):
+            self._selection[document_id] = entity_ids
+            self.bus.publish(SelectionChanged(document_id, entity_ids))
 
     def edit(
         self, document: CadDocument, operation: Callable[[CadDocument], CadChangeSet]
@@ -104,6 +138,10 @@ class Session:
             self.bus.publish(DocumentChanged(document.id, changes))
             if changes.document_changed:
                 self.bus.publish(ActiveLayerChanged(document.id, document.current_layer.id))
+            if changes.deleted:
+                # What no longer exists is no longer selected (an erase, an
+                # undo of a creation).
+                self.deselect(document, changes.deleted)
         return changes
 
     def _adopt(self, document: CadDocument) -> CadDocument:

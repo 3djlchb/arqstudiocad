@@ -110,8 +110,13 @@ class CommandWindow(QDockWidget):
             assert isinstance(event, QKeyEvent)
             key = event.key()
             if key == Qt.Key.Key_Escape:
+                # As AutoCAD: Esc cancels the command and empties the
+                # selection (ADR 0016 D3).
                 self.input.clear()
                 self._runner.cancel()
+                session = self._runner.context.session
+                if session.active is not None:
+                    session.clear_selection(session.active)
                 return True
             if key == Qt.Key.Key_Space and not self._typing_text():
                 self._send()

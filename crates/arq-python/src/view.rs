@@ -139,6 +139,15 @@ impl CadView {
         self.state().camera.to_screen(x, y)
     }
 
+    /// The outlines of these entities in pixels, as polylines, for an
+    /// overlay painted over the image (selection, highlight; ADR 0016 D4):
+    /// curves fine enough for their size on screen, texts and entities not
+    /// drawn yet as their boxes. Hidden or unknown entities give nothing.
+    fn outlines(&self, entity_ids: Vec<u64>) -> Vec<Vec<(f64, f64)>> {
+        let state = self.state();
+        arq_render::outline(&state.scene, &state.camera, &entity_ids)
+    }
+
     /// Width in pixels.
     #[getter]
     fn width(&self) -> u32 {
