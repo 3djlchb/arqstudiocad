@@ -9,9 +9,9 @@
 use arq_geometry::snap::{SnapKind, SnapPoint};
 use arq_geometry::{Bounds2, Point2, Tolerance};
 
-use crate::EntityId;
 use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
+use crate::{EntityId, Grip};
 
 impl CadDocument {
     /// The box around every model-space entity that has plan bounds; `None`
@@ -49,6 +49,12 @@ impl CadDocument {
     /// frozen layer (ADR 0016 D2). In drawing order.
     pub fn select_window(&self, area: Bounds2, crossing: bool) -> Vec<EntityId> {
         self.document().select_window(area, crossing)
+    }
+
+    /// The grips of `ids` (ADR 0016 D7), entity by entity in the order
+    /// given; kinds without grips yet have none.
+    pub fn grips(&self, ids: &[EntityId]) -> Vec<Grip> {
+        self.document().grips(ids)
     }
 
     /// The object snap for the cursor at `cursor` among the active `modes`

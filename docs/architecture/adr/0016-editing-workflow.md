@@ -130,6 +130,14 @@ Rotate → Scale → Mirror** around the hot grip, with the options Base point,
 Copy (each pick makes a copy), Undo and eXit. Every grip edit is one undo
 step; with Copy, the copies made in one session of the grip are one step.
 
+Details settled when building it (step 2.5.7): grips show only while no
+command runs (or a grip edit), and not for entities on locked layers. The
+core computes them (`grips`) and edits a line, circle or arc in place
+(`set_entity_geometry`). Stretching an arc's end keeps its other end and
+its midpoint. Move, Rotate, Scale and Mirror apply to every selected entity
+that can be transformed. With Copy, Enter ends the grip edit instead of
+cycling. The selection stays after the edit, as in AutoCAD.
+
 ### D8 — First commands
 
 `LINE` (Undo, Close), `CIRCLE` (center and radius or Diameter, 2P, 3P),

@@ -24,6 +24,10 @@ An editing command's selection follows the cursor from that point, moved,
 rotated, scaled or mirrored (its ``Drag``): the outlines are drawn through
 a Qt transform, so the preview never re-renders the drawing either.
 
+Selected entities show their grips (ADR 0016 D7), blue squares; a click
+on one asks for a grip edit (:attr:`Viewport.grip_clicked`) instead of
+selecting, and the hot grip turns red.
+
 Keys typed in the viewport go to the command line (:attr:`Viewport.key_typed`),
 as in AutoCAD, where typing anywhere answers the command.
 """
@@ -46,7 +50,14 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from arqstudiocad.core import CadBounds2, CadChangeSet, CadDocument, CadSnap, CadView
+from arqstudiocad.core import (
+    CadBounds2,
+    CadChangeSet,
+    CadDocument,
+    CadGrip,
+    CadSnap,
+    CadView,
+)
 from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
@@ -74,6 +85,11 @@ FILL_ALPHA = 40
 SNAP_PIXELS = 10
 #: Half the size of a snap marker, in logical pixels.
 MARKER_PIXELS = 6
+#: Half the side of a grip, in logical pixels (AutoCAD's GRIPSIZE is 5).
+GRIP_PIXELS = 5
+#: The hot grip, the one being edited (AutoCAD's red).
+HOT = QColor(230, 40, 40)
+
 #: Snap markers and their names (AutoCAD's AutoSnap color).
 MARKER = QColor(255, 200, 0)
 
@@ -110,6 +126,8 @@ class Viewport(QWidget):
     point_picked = Signal(object)
     #: A key typed in the viewport, for the command line (a ``QKeyEvent``).
     key_typed = Signal(object)
+    #: A grip was clicked (a ``CadGrip``): it should be edited.
+    grip_clicked = Signal(object)
 
     def __init__(
         self,
@@ -141,6 +159,9 @@ class Viewport(QWidget):
         self._target: Point | None = None
         self._snap: CadSnap | None = None
         self._dragged: Drag | None = None  # what follows the cursor from the base
+        # Grips of the selection, and the one being edited.
+        self._grips: tuple[CadGrip, ...] = ()
+        self._hot: CadGrip | None = None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -217,6 +238,33 @@ class Viewport(QWidget):
             self._asking, self._base, self._target, self._snap = False, None, None, None
             self.update()
 
+    @property
+    def grips(self) -> tuple[CadGrip, ...]:
+        """The grips shown."""
+        return self._grips
+
+    @property
+    def hot(self) -> CadGrip | None:
+        """The grip being edited, drawn red."""
+        return self._hot
+
+    def show_grips(self, grips: tuple[CadGrip, ...], hot: CadGrip | None = None) -> None:
+        """Shows these grips, ``hot`` the one being edited."""
+        if (grips, hot) != (self._grips, self._hot):
+            self._grips, self._hot = grips, hot
+            self.update()
+
+    def grip_at(self, position: QPointF) -> CadGrip | None:
+        """The grip under ``position`` (logical pixels), the closest."""
+        ratio = self.devicePixelRatioF()
+        best: tuple[float, CadGrip] | None = None
+        for grip in self._grips:
+            x, y = self.view.to_screen(*grip.point)
+            d = max(abs(x / ratio - position.x()), abs(y / ratio - position.y()))
+            if d <= GRIP_PIXELS and (best is None or d < best[0]):
+                best = (d, grip)
+        return None if best is None else best[1]
+
     def show_selection(self, entity_ids: tuple[int, ...]) -> None:
         """Shows these entities as selected (the session's selection)."""
         if entity_ids != self._selected:
@@ -261,6 +309,11 @@ class Viewport(QWidget):
                 self._aim(event.position())
                 if self._target is not None:
                     self.point_picked.emit(self._target)
+                event.accept()
+                return
+            grip = self.grip_at(event.position())
+            if grip is not None:
+                self.grip_clicked.emit(grip)
                 event.accept()
                 return
             self._press = event.position()
@@ -399,6 +452,7 @@ class Viewport(QWidget):
             painter.setPen(QPen(self.palette().text().color(), 1 * ratio))
             self._draw_outlines(painter, self._dragged.entity_ids)
         painter.restore()
+        self._paint_grips(painter)
         if self._asking:
             self._paint_point(painter)
         if self._press is not None and self._band is not None:
@@ -412,6 +466,17 @@ class Viewport(QWidget):
             painter.setPen(pen)
             painter.setBrush(fill)
             painter.drawRect(QRectF(self._press, self._band).normalized())
+
+    def _paint_grips(self, painter: QPainter) -> None:
+        """Grips as filled squares, the hot one red."""
+        ratio = self.devicePixelRatioF()
+        r = GRIP_PIXELS
+        painter.setPen(QPen(self.palette().base().color(), 1))
+        for grip in self._grips:
+            x, y = self.view.to_screen(*grip.point)
+            painter.setBrush(HOT if grip == self._hot else SELECTED)
+            painter.drawRect(QRectF(x / ratio - r, y / ratio - r, 2 * r, 2 * r))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
 
     def _paint_point(self, painter: QPainter) -> None:
         """The rubber band from the last point and the snap marker."""

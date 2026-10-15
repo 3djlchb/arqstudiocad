@@ -5,7 +5,9 @@
 //! Entities on a locked layer cannot be modified or erased; new entities may
 //! still be drawn on a locked current layer, as in AutoCAD.
 
-use arq_document::{ChangeSet, Color, Document, Entity, EntityId, LayerId, PlanGeometry};
+use arq_document::{
+    ChangeSet, Color, Document, DocumentError, Entity, EntityId, LayerId, PlanGeometry,
+};
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Transform2, Vector2};
 
 use crate::error::{CadError, CadResult};
@@ -117,6 +119,22 @@ impl CadDocument {
         self.edit_entities(name, ids, |doc, e| {
             check_transformable(e)?;
             Ok(doc.transform_entity(e.id(), t)?)
+        })
+    }
+
+    /// Gives a line, circle or arc new geometry of the same kind, keeping
+    /// its id, layer, color and elevation (a grip stretch, a property
+    /// edit). Any other entity, or geometry of another kind, fails.
+    pub fn set_entity_geometry(
+        &mut self,
+        id: EntityId,
+        geometry: Geometry2,
+    ) -> CadResult<ChangeSet> {
+        self.edit_entities("EDIT", &[id], |doc, e| {
+            let plan = e
+                .plan()
+                .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
+            Ok(doc.set_plan_geometry(id, plan.with_geometry(geometry))?)
         })
     }
 

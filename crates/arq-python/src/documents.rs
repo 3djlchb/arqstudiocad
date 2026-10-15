@@ -27,7 +27,8 @@ use crate::changes::{CadChangeSet, CadGroup};
 use crate::errors::IntoPy;
 use crate::info::{CadEntityInfo, CadLayerInfo};
 use crate::values::{
-    CadArc, CadBounds2, CadCircle, CadColor, CadLine, CadSnap, PyPoint, PyVector, snap_kinds,
+    CadArc, CadBounds2, CadCircle, CadColor, CadGrip, CadLine, CadSnap, PyPoint, PyVector,
+    snap_kinds,
 };
 
 /// The open documents of one application.
@@ -345,6 +346,13 @@ impl CadDocument {
         Ok(found.map(CadSnap))
     }
 
+    /// The grips of `entity_ids` (ADR 0016 D7), entity by entity in the
+    /// order given; kinds without grips yet (texts…) have none.
+    fn grips(&self, entity_ids: Vec<EntityId>) -> PyResult<Vec<CadGrip>> {
+        let grips = self.read(|cad| cad.grips(&entity_ids))?;
+        Ok(grips.into_iter().map(CadGrip).collect())
+    }
+
     /// Every layer: "0" first, then by name ignoring case.
     fn get_layers(&self) -> PyResult<Vec<CadLayerInfo>> {
         let layers = self.read(|cad| cad.document().layers())?;
@@ -402,18 +410,19 @@ impl CadDocument {
 
     /// Draws a `CadLine`, `CadCircle` or `CadArc` on the current layer.
     fn add_geometry(&self, geometry: &Bound<'_, PyAny>) -> PyResult<(EntityId, CadChangeSet)> {
-        let g: Geometry2 = if let Ok(l) = geometry.cast::<CadLine>() {
-            l.get().0.into()
-        } else if let Ok(c) = geometry.cast::<CadCircle>() {
-            c.get().0.into()
-        } else if let Ok(a) = geometry.cast::<CadArc>() {
-            a.get().0.into()
-        } else {
-            return Err(PyTypeError::new_err(
-                "geometry must be a CadLine, CadCircle or CadArc",
-            ));
-        };
+        let g = geometry_arg(geometry)?;
         self.create(|cad| cad.add_geometry(g))
+    }
+
+    /// Gives a line, circle or arc new geometry of the same kind, keeping
+    /// its id, layer, color and elevation (a grip stretch, a property edit).
+    fn set_entity_geometry(
+        &self,
+        entity_id: EntityId,
+        geometry: &Bound<'_, PyAny>,
+    ) -> PyResult<CadChangeSet> {
+        let g = geometry_arg(geometry)?;
+        self.change(|cad| cad.set_entity_geometry(entity_id, g))
     }
 
     /// Erases entities of any type (ERASE).
@@ -637,6 +646,21 @@ impl CadDocument {
             }
             Err(_) => format!("CadDocument(id={}, closed)", self.id),
         })
+    }
+}
+
+/// A `CadLine`, `CadCircle` or `CadArc` passed from Python.
+fn geometry_arg(geometry: &Bound<'_, PyAny>) -> PyResult<Geometry2> {
+    if let Ok(l) = geometry.cast::<CadLine>() {
+        Ok(l.get().0.into())
+    } else if let Ok(c) = geometry.cast::<CadCircle>() {
+        Ok(c.get().0.into())
+    } else if let Ok(a) = geometry.cast::<CadArc>() {
+        Ok(a.get().0.into())
+    } else {
+        Err(PyTypeError::new_err(
+            "geometry must be a CadLine, CadCircle or CadArc",
+        ))
     }
 }
 

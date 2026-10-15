@@ -21,9 +21,11 @@ from PySide6.QtWidgets import (
 from arqstudiocad import _core
 from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry
+from arqstudiocad.commands.grips import grip_edit, shown_grips
 from arqstudiocad.core import (
     CadDocument,
     CadError,
+    CadGrip,
     LossyConversionError,
     OverwritesDamagedError,
 )
@@ -168,6 +170,11 @@ class MainWindow(QMainWindow):
         self.events.command_prompt.connect(self._on_command_prompt)
         self.events.command_finished.connect(self._end_point_prompts)
         self.events.command_cancelled.connect(self._end_point_prompts)
+        # Grips show while no command runs, or while one of them is edited.
+        self._hot_grip: CadGrip | None = None
+        self.events.command_started.connect(self._refresh_grips)
+        self.events.command_finished.connect(self._end_grip_edit)
+        self.events.command_cancelled.connect(self._end_grip_edit)
         self.events.work_started.connect(self._on_work_started)
         self.events.work_finished.connect(self._on_work_finished)
         for signal in (self.events.document_changed, self.events.document_saved):
@@ -345,6 +352,7 @@ class MainWindow(QMainWindow):
         viewport.cursor_moved.connect(self._show_coordinates)
         viewport.point_picked.connect(self.runner.answer_point)
         viewport.key_typed.connect(self.command_window.type_key)
+        viewport.grip_clicked.connect(self._edit_grip)
         # The viewport asks; the session decides and publishes the selection.
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
@@ -484,6 +492,7 @@ class MainWindow(QMainWindow):
         viewport = self.viewports.get(event.document_id)
         if viewport is not None:
             viewport.apply(event.changes)
+        self._refresh_grips()
 
     def _on_command_prompt(self, event: CommandPrompt) -> None:
         """A point prompt lets the active viewport pick the point."""
@@ -502,6 +511,29 @@ class MainWindow(QMainWindow):
         viewport = self.viewports.get(event.document_id)
         if viewport is not None:
             viewport.show_selection(event.entity_ids)
+        self._refresh_grips()
+
+    def _edit_grip(self, grip: CadGrip) -> None:
+        """A click on a grip: it turns hot and its edit starts (ADR 0016 D7)."""
+        if self.runner.active is not None:
+            return
+        self._hot_grip = grip
+        self.runner.start(grip_edit(grip))
+
+    def _end_grip_edit(self, event: Event | None = None) -> None:
+        self._hot_grip = None
+        self._refresh_grips()
+
+    def _refresh_grips(self, event: Event | None = None) -> None:
+        """Every viewport shows its selection's grips while no command runs
+        but a grip edit."""
+        idle = self.runner.active in (None, "GRIP")
+        for document in self.session.documents:
+            viewport = self.viewports.get(document.id)
+            if viewport is None or not document.is_open:
+                continue
+            grips = tuple(shown_grips(self.session, document)) if idle else ()
+            viewport.show_grips(grips, self._hot_grip if idle else None)
 
     def _show_coordinates(self, x: float, y: float) -> None:
         self._coordinates.setText(f"{x:.4f}, {y:.4f}")
