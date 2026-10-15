@@ -24,6 +24,7 @@
 //! | Check the own model against the engine | [`Document::check_model`] |
 //! | Errors | [`DocumentError`] |
 
+mod acis;
 mod change;
 mod document;
 mod drawing;

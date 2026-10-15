@@ -101,9 +101,20 @@ fn point(x: f64, y: f64) -> Option<Point2> {
     Point2::new(x, y).ok()
 }
 
-/// Plan extent from the codec, for entities we cannot edit yet.
+/// Plan extent from the codec, for entities we cannot edit yet. An ACIS
+/// body without a wireframe cache (as read from DXF) is boxed from its
+/// vertices instead of the codec's empty box (`acis.rs`).
 pub(crate) fn codec_bounds(e: &EntityType) -> Option<Bounds2> {
     let b = e.as_entity().bounding_box();
+    let empty = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z]
+        .iter()
+        .all(|c| *c == 0.0);
+    if empty
+        && crate::acis::is_body(e)
+        && let Some(bounds) = crate::acis::bounds(e)
+    {
+        return Some(bounds);
+    }
     let min = Point2::new(b.min.x, b.min.y).ok()?;
     let max = Point2::new(b.max.x, b.max.y).ok()?;
     (min.x() <= max.x() && min.y() <= max.y()).then(|| Bounds2::new(min, max))

@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use arq_geometry::Tolerance;
+use arq_geometry::{Bounds2, Tolerance};
 
 use crate::document::Document;
 use crate::entity::{Color, Entity, PlanGeometry};
@@ -18,7 +18,8 @@ impl Document {
     /// it: an empty list when nothing the platform shows was lost.
     ///
     /// Allowed, as no loss: geometry within the contract's tolerance (DXF
-    /// stores angles in degrees); a linetype name in other capitals (names
+    /// stores angles in degrees; a box within it relative to its size, so a
+    /// ray's far-out box survives a direction rounded in the last place); a linetype name in other capitals (names
     /// ignore case: an R12 drawing's `CONTINUOUS` is `Continuous` in DWG);
     /// before AutoCAD 2004 (AC1018), which has
     /// no true color, RGB as an ACI index; before AutoCAD 2000 (AC1015),
@@ -40,7 +41,7 @@ impl Document {
             &sorted(written.entities()),
             "entities",
             Entity::id,
-            |a, b| rules.same_entity(a, b),
+            |a, b| rules.same_entity(a, b, || self.same_body(written, a.id())),
             &mut differences,
         );
         compare(
@@ -104,11 +105,14 @@ impl Rules {
         a == b || (!self.true_color && matches!((a, b), (Color::Rgb { .. }, Color::Index(1..))))
     }
 
-    fn same_entity(&self, a: &Entity, b: &Entity) -> bool {
+    /// `same_body` is asked only when the boxes differ: an ACIS body's box
+    /// comes from a wireframe cache DXF does not keep, so its vertices
+    /// decide.
+    fn same_entity(&self, a: &Entity, b: &Entity, same_body: impl Fn() -> bool) -> bool {
         a.kind() == b.kind()
             && a.layer() == b.layer()
             && self.color(a.color(), b.color())
-            && option_eq(a.bounds(), b.bounds(), |x, y| x.approx_eq(y, tol()))
+            && (option_eq(a.bounds(), b.bounds(), same_bounds) || same_body())
             && option_eq(a.plan(), b.plan(), same_plan)
     }
 
@@ -123,8 +127,47 @@ impl Rules {
     }
 }
 
+impl Document {
+    /// Whether entity `id` is an ACIS body here and in `written` with the
+    /// same vertices, within the relative tolerance.
+    fn same_body(&self, written: &Document, id: u64) -> bool {
+        let body = |doc: &Document| {
+            doc.cad()
+                .get_entity(crate::translate::handle(id))
+                .filter(|e| crate::acis::is_body(e))
+                .and_then(crate::acis::vertices)
+        };
+        match (body(self), body(written)) {
+            (Some(a), Some(b)) => {
+                a.len() == b.len()
+                    && a.iter()
+                        .zip(&b)
+                        .all(|(p, q)| p.iter().zip(q).all(|(x, y)| near(*x, *y)))
+            }
+            _ => false,
+        }
+    }
+}
+
 fn tol() -> Tolerance {
     Tolerance::default()
+}
+
+/// Equal within the linear tolerance, relative to the value's size:
+/// rounding grows with magnitude.
+fn near(x: f64, y: f64) -> bool {
+    (x - y).abs() <= tol().linear() * (1.0 + x.abs())
+}
+
+/// Same box, each coordinate within the relative tolerance. A ray or
+/// construction line is boxed far out along its direction, so a direction
+/// rewritten one unit in the last place moves its box by far more than
+/// the absolute tolerance, though nothing changed.
+fn same_bounds(a: Bounds2, b: Bounds2) -> bool {
+    near(a.min().x(), b.min().x())
+        && near(a.min().y(), b.min().y())
+        && near(a.max().x(), b.max().x())
+        && near(a.max().y(), b.max().y())
 }
 
 fn option_eq<T: Copy>(a: Option<T>, b: Option<T>, eq: impl Fn(T, T) -> bool) -> bool {
@@ -139,7 +182,6 @@ fn option_eq<T: Copy>(a: Option<T>, b: Option<T>, eq: impl Fn(T, T) -> bool) -> 
 /// box fixes center and radius; for an arc ends, box and length fix it.
 fn same_plan(a: PlanGeometry, b: PlanGeometry) -> bool {
     let (ga, gb) = (a.geometry(), b.geometry());
-    let near = |x: f64, y: f64| (x - y).abs() <= tol().linear() * (1.0 + x.abs());
     ga.kind() == gb.kind()
         && near(a.elevation(), b.elevation())
         && option_eq(ga.start_point(), gb.start_point(), |x, y| {
