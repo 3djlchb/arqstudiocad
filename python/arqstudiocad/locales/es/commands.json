@@ -34,5 +34,26 @@
   ],
   "ARC": [
     "ARCO"
+  ],
+  "ERASE": [
+    "BORRA"
+  ],
+  "MOVE": [
+    "DESPLAZA"
+  ],
+  "COPY": [
+    "COPIA"
+  ],
+  "ROTATE": [
+    "GIRA",
+    "GI"
+  ],
+  "SCALE": [
+    "ESCALA",
+    "ES"
+  ],
+  "MIRROR": [
+    "SIMETRIA",
+    "SI"
   ]
 }

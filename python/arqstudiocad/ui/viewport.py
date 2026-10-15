@@ -19,9 +19,17 @@ At a point prompt (ADR 0016 D5, D6) a click answers it instead: the point
 under the cursor, taken to the object snap found there (its AutoCAD marker
 and translated name are shown) or, with ORTHO and no snap, kept horizontal
 or vertical from the last point, which a rubber band joins to the cursor.
+An editing command's selection follows the cursor from that point, moved,
+rotated, scaled or mirrored (its ``Drag``): the outlines are drawn through
+a Qt transform, so the preview never re-renders the drawing either.
+
+Keys typed in the viewport go to the command line (:attr:`Viewport.key_typed`),
+as in AutoCAD, where typing anywhere answers the command.
 """
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+import math
+
+from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QImage,
@@ -32,12 +40,14 @@ from PySide6.QtGui import (
     QPen,
     QPolygonF,
     QResizeEvent,
+    QTransform,
     QWheelEvent,
 )
 from PySide6.QtWidgets import QWidget
 
 from arqstudiocad.core import CadBounds2, CadChangeSet, CadDocument, CadSnap, CadView
 from arqstudiocad.drafting import Drafting
+from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point, ortho
 
@@ -96,6 +106,8 @@ class Viewport(QWidget):
     clear_requested = Signal()
     #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
     point_picked = Signal(object)
+    #: A key typed in the viewport, for the command line (a ``QKeyEvent``).
+    key_typed = Signal(object)
 
     def __init__(
         self,
@@ -126,6 +138,7 @@ class Viewport(QWidget):
         self._base: Point | None = None
         self._target: Point | None = None
         self._snap: CadSnap | None = None
+        self._dragged: Drag | None = None  # what follows the cursor from the base
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -175,9 +188,23 @@ class Viewport(QWidget):
         """The object snap under the cursor, at a point prompt."""
         return self._snap
 
-    def ask_point(self, base: Point | None) -> None:
-        """A command asks for a point, from ``base`` if it has one."""
-        self._asking, self._base = True, base
+    @property
+    def preview(self) -> QTransform | None:
+        """How the dragged entities are drawn now, in physical pixels: the
+        transform the point under the cursor would apply to them."""
+        if self._dragged is None or self._base is None or self._target is None:
+            return None
+        return _screen_transform(
+            self._dragged.kind,
+            self.view.to_screen(*self._base),
+            self.view.to_screen(*self._target),
+            math.dist(self._base, self._target),
+        )
+
+    def ask_point(self, base: Point | None, drag: Drag | None = None) -> None:
+        """A command asks for a point, from ``base`` if it has one; ``drag``
+        follows the cursor from it."""
+        self._asking, self._base, self._dragged = True, base, drag
         self._target = self._snap = None
         self._set_hover(None)
         self.update()
@@ -297,6 +324,13 @@ class Viewport(QWidget):
             self.clear_requested.emit()
             event.accept()
             return
+        if event.text() or event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            # A copy: Qt deletes the event when this handler returns.
+            self.key_typed.emit(
+                QKeyEvent(QEvent.Type.KeyPress, event.key(), event.modifiers(), event.text())
+            )
+            event.accept()
+            return
         super().keyPressEvent(event)
 
     def leaveEvent(self, event: object) -> None:  # noqa: N802 (Qt API)
@@ -357,6 +391,11 @@ class Viewport(QWidget):
             color = SELECTED if self._hover in self._selected else self.palette().text().color()
             painter.setPen(QPen(color, 3 * ratio))
             self._draw_outlines(painter, (self._hover,))
+        preview = self.preview
+        if preview is not None and self._dragged is not None:
+            painter.setTransform(preview, combine=True)
+            painter.setPen(QPen(self.palette().text().color(), 1 * ratio))
+            self._draw_outlines(painter, self._dragged.entity_ids)
         painter.restore()
         if self._asking:
             self._paint_point(painter)
@@ -446,6 +485,33 @@ def draw_marker(painter: QPainter, kind: str, at: QPointF, r: float) -> None:
         painter.drawLine(p(-r, -r), p(r, -r))
     else:  # NEA: an hourglass
         painter.drawPolygon(QPolygonF([p(-r, -r), p(r, -r), p(-r, r), p(r, r)]))
+
+
+def _screen_transform(
+    kind: str, base: tuple[float, float], target: tuple[float, float], distance: float
+) -> QTransform | None:
+    """The screen transform of a drag from ``base`` to ``target`` (screen
+    points; ``distance`` between them in the world). The view only scales,
+    flips and shifts, so moving, rotating, scaling and mirroring look on
+    screen as they do in the world, about the same points."""
+    (bx, by), (tx, ty) = base, target
+    if kind == "move":
+        return QTransform.fromTranslate(tx - bx, ty - by)
+    if distance == 0.0:
+        return None  # no direction, no factor
+    t = QTransform()
+    t.translate(bx, by)
+    direction = math.atan2(ty - by, tx - bx)
+    if kind == "rotate":
+        t.rotateRadians(direction)
+    elif kind == "scale":
+        t.scale(distance, distance)
+    else:  # mirror about the line from base to target
+        t.rotateRadians(direction)
+        t.scale(1.0, -1.0)
+        t.rotateRadians(-direction)
+    t.translate(-bx, -by)
+    return t
 
 
 def _distance(a: QPointF, b: QPointF) -> float:

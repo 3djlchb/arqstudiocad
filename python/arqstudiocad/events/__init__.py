@@ -17,6 +17,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from arqstudiocad.core import CadChangeSet
 
@@ -33,6 +34,7 @@ __all__ = [
     "DocumentOpened",
     "DocumentSaved",
     "DraftingChanged",
+    "Drag",
     "Event",
     "EventBus",
     "LanguageChanged",
@@ -128,16 +130,28 @@ class CommandCancelled(Event):
 
 
 @dataclass(frozen=True, slots=True)
+class Drag:
+    """What a point prompt shows following the cursor (ADR 0016 D3): the
+    entities, moved, rotated, scaled or mirrored as the point picked at
+    that moment would leave them, from the prompt's base point."""
+
+    kind: Literal["move", "rotate", "scale", "mirror"]
+    entity_ids: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CommandPrompt(Event):
     """A running command asks for input; ``text`` is ready to show,
     translated, e.g. ``"Zoom [Extents(E)/In(I)/Out(O)] <E>:"``. With
     ``point``, it asks for a point the viewport may pick; ``base`` is the
-    last point, for ORTHO and the rubber band."""
+    last point, for ORTHO and the rubber band, and ``drag`` what follows the
+    cursor."""
 
     name: str
     text: str
     point: bool = False
     base: tuple[float, float] | None = None
+    drag: Drag | None = None
 
 
 @dataclass(frozen=True, slots=True)

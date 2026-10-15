@@ -14,7 +14,7 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **Working format:** DWG, as BricsCAD does, with an own internal model; the
   native format `.ascad` is designed and reserved (ADR 0018).
 - **Data protections (03.3):** done (ADR 0017 D5).
-- **Next:** 02.5 step 2.5.6 (MOVE, COPY, ROTATE, SCALE, MIRROR, ERASE); 03.2 is done.
+- **Next:** 02.5 step 2.5.7 (multifunction grips); 03.2 is done.
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -42,7 +42,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.2 Document | `arq-document`: entities, layers, ids, change recording; `arq-core`: transactions, groups, undo/redo, queries, document store; round-trip corpus (ADR 0011) | ✅ PR #6 |
 | 02.3 Python API | `arq-python`: the whole core from Python, typed (ADR 0012) | ✅ PR #7 |
 | 02.4 Application shell | Drawing primitives, CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels, Ribbon and Classic workspaces, themes (ADR 0013, 0015) | ✅ PR #8 |
-| 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ◐ steps 2.5.1–2.5.5 done (transforms as a whole; pick, window and crossing selection, object snaps in Rust and Python; selection in the viewport, with its overlay and hover highlight; point input in AutoCAD syntax, snap markers, ORTHO, F3/F8 in the status bar; LINE, CIRCLE and ARC, and Spanish command names) |
+| 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ◐ steps 2.5.1–2.5.6 done (transforms as a whole; pick, window and crossing selection, object snaps in Rust and Python; selection in the viewport, with its overlay and hover highlight; point input in AutoCAD syntax, snap markers, ORTHO, F3/F8 in the status bar; LINE, CIRCLE and ARC, and Spanish command names; ERASE, MOVE, COPY, ROTATE, SCALE and MIRROR with a drag preview) |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0011 D3.8); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ○ |
 | 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; 3D primitives and the 3D document model (an ADR first) | ○ |

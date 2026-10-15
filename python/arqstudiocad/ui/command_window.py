@@ -10,6 +10,7 @@ and command names complete as they are typed.
 from PySide6.QtCore import QEvent, QObject, QStringListModel, Qt
 from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QCompleter,
     QDockWidget,
     QHBoxLayout,
@@ -84,6 +85,13 @@ class CommandWindow(QDockWidget):
         model.setStringList(self._runner.registry.names())
         if self._runner.active is None:
             self.prompt.setText(tr("Command:"))
+
+    def type_key(self, event: QKeyEvent) -> None:
+        """A key typed elsewhere (the viewport): the command line takes it,
+        shown if it was closed, as AutoCAD's does."""
+        self.show()
+        self.input.setFocus()
+        QApplication.sendEvent(self.input, event)
 
     def _send(self) -> None:
         text = self.input.text()
