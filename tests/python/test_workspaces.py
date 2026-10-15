@@ -183,7 +183,7 @@ def test_ribbon_tabs_groups_and_buttons(qtbot: QtBot) -> None:
     shown = ribbon(window)
     assert [shown.tabText(i) for i in range(shown.count())] == ["Home", "View"]
     titles = [group.title.text() for group in shown.groups]
-    assert titles == ["File", "Draw", "History", "Layers", "Navigate"]
+    assert titles == ["File", "Draw", "Modify", "History", "Layers", "Navigate"]
     new_button = shown.groups[0].buttons[0]
     assert new_button.defaultAction() is window.command_actions["NEW"]
     new_button.click()

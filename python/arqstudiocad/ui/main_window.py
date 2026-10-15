@@ -238,6 +238,9 @@ class MainWindow(QMainWindow):
         self._draw_menu = menu_bar.addMenu("")
         for name in ("LINE", "CIRCLE", "ARC"):
             self._draw_menu.addAction(self.command_actions[name])
+        self._modify_menu = menu_bar.addMenu("")
+        for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR"):
+            self._modify_menu.addAction(self.command_actions[name])
 
         self._help_menu = menu_bar.addMenu("")
         self._about_action = self._help_menu.addAction("")
@@ -272,6 +275,7 @@ class MainWindow(QMainWindow):
         for theme, theme_action in self.theme_actions.items():
             theme_action.setText(theme_title(theme))
         self._draw_menu.setTitle(tr("&Draw"))
+        self._modify_menu.setTitle(tr("&Modify"))
         self._help_menu.setTitle(tr("&Help"))
         self._about_action.setText(tr("&About {app}"))
         self._welcome.setText(
@@ -340,10 +344,11 @@ class MainWindow(QMainWindow):
         viewport = Viewport(document, drafting=self.session.drafting)
         viewport.cursor_moved.connect(self._show_coordinates)
         viewport.point_picked.connect(self.runner.answer_point)
+        viewport.key_typed.connect(self.command_window.type_key)
         # The viewport asks; the session decides and publishes the selection.
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
-        viewport.clear_requested.connect(lambda: self.session.clear_selection(document))
+        viewport.escape_pressed.connect(self.command_window.escape)
         self.viewports[event.document_id] = viewport
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()
@@ -485,7 +490,7 @@ class MainWindow(QMainWindow):
         active = self.session.active
         for document_id, viewport in self.viewports.items():
             if event.point and active is not None and document_id == active.id:
-                viewport.ask_point(event.base)
+                viewport.ask_point(event.base, event.drag)
             else:
                 viewport.end_point()
 

@@ -45,7 +45,8 @@ override this data, not a second mechanism.
 
 - **Ribbon** is the default on first run, as in current CAD and BIM tools.
   Our own widget: tabs holding groups of buttons with a title underneath,
-  text until there are icons. Double-clicking a tab folds the ribbon to
+  text until there are icons, stacked in columns of up to three as
+  AutoCAD stacks a panel's small buttons. Double-clicking a tab folds the ribbon to
   its tab bar, and again unfolds it, for small screens such as the
   reference machine's.
 - **Classic** shows the discipline's toolbars.

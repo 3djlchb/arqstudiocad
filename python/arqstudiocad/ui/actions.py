@@ -25,6 +25,12 @@ SHORTCUTS: dict[str, QKeySequence.StandardKey | None] = {
     "LINE": None,
     "CIRCLE": None,
     "ARC": None,
+    "ERASE": QKeySequence.StandardKey.Delete,
+    "MOVE": None,
+    "COPY": None,
+    "ROTATE": None,
+    "SCALE": None,
+    "MIRROR": None,
 }
 
 
@@ -44,6 +50,12 @@ def labels() -> dict[str, str]:
         "LINE": tr("&Line"),
         "CIRCLE": tr("&Circle"),
         "ARC": tr("&Arc"),
+        "ERASE": tr("&Erase"),
+        "MOVE": tr("&Move"),
+        "COPY": tr("C&opy"),
+        "ROTATE": tr("&Rotate"),
+        "SCALE": tr("&Scale"),
+        "MIRROR": tr("M&irror"),
     }
 
 

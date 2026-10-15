@@ -10,6 +10,7 @@ and command names complete as they are typed.
 from PySide6.QtCore import QEvent, QObject, QStringListModel, Qt
 from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QCompleter,
     QDockWidget,
     QHBoxLayout,
@@ -85,6 +86,23 @@ class CommandWindow(QDockWidget):
         if self._runner.active is None:
             self.prompt.setText(tr("Command:"))
 
+    def escape(self) -> None:
+        """Esc, wherever it is pressed: as AutoCAD, it cancels the running
+        command, drops what was typed and empties the selection (ADR 0016
+        D3)."""
+        self.input.clear()
+        self._runner.cancel()
+        session = self._runner.context.session
+        if session.active is not None:
+            session.clear_selection(session.active)
+
+    def type_key(self, event: QKeyEvent) -> None:
+        """A key typed elsewhere (the viewport): the command line takes it,
+        shown if it was closed, as AutoCAD's does."""
+        self.show()
+        self.input.setFocus()
+        QApplication.sendEvent(self.input, event)
+
     def _send(self) -> None:
         text = self.input.text()
         self.input.clear()
@@ -114,13 +132,7 @@ class CommandWindow(QDockWidget):
             assert isinstance(event, QKeyEvent)
             key = event.key()
             if key == Qt.Key.Key_Escape:
-                # As AutoCAD: Esc cancels the command and empties the
-                # selection (ADR 0016 D3).
-                self.input.clear()
-                self._runner.cancel()
-                session = self._runner.context.session
-                if session.active is not None:
-                    session.clear_selection(session.active)
+                self.escape()
                 return True
             if key == Qt.Key.Key_Space and not self._typing_text():
                 self._send()

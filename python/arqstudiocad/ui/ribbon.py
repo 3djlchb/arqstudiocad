@@ -1,8 +1,10 @@
 """The ribbon (ADR 0015): tabs holding groups of tool buttons.
 
 Qt has no ribbon, so this is a tab widget whose pages are rows of groups,
-each group a row of buttons with its title underneath. Buttons show the
-commands' actions, as text until there are icons. Double-clicking a tab
+each group its buttons with its title underneath. Buttons show the
+commands' actions, as text until there are icons, stacked in columns of up
+to :data:`ROWS`, as AutoCAD stacks a panel's small buttons, so a tab stays
+narrow enough for small screens. Double-clicking a tab
 folds the ribbon to its tab bar, and again unfolds it.
 """
 
@@ -12,6 +14,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QSizePolicy,
@@ -24,6 +27,9 @@ from PySide6.QtWidgets import (
 
 from arqstudiocad.workspaces import Discipline, RibbonGroup
 
+#: Buttons stacked in one column of a group.
+ROWS = 3
+
 
 class RibbonGroupWidget(QFrame):
     def __init__(self, group: RibbonGroup, actions: Mapping[str, QAction]) -> None:
@@ -32,21 +38,21 @@ class RibbonGroupWidget(QFrame):
         self.setObjectName(f"ribbon_group_{group.name}")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.buttons: list[QToolButton] = []
-        row = QHBoxLayout()
-        row.setSpacing(2)
-        for name in group.commands:
+        grid = QGridLayout()
+        grid.setSpacing(2)
+        for index, name in enumerate(group.commands):
             button = QToolButton()
             button.setDefaultAction(actions[name])
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setAutoRaise(True)
-            row.addWidget(button)
+            grid.addWidget(button, index % ROWS, index // ROWS)
             self.buttons.append(button)
         self.title = QLabel()
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         column = QVBoxLayout(self)
         column.setContentsMargins(4, 2, 4, 2)
         column.setSpacing(0)
-        column.addLayout(row, 1)
+        column.addLayout(grid, 1)
         column.addWidget(self.title)
         self.retranslate()
 

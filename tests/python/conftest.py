@@ -36,3 +36,18 @@ def _no_modal_dialogs(monkeypatch: pytest.MonkeyPatch) -> None:
         (QFileDialog, "getSaveFileName"),
     ):
         monkeypatch.setattr(owner, name, staticmethod(refuse))
+
+
+@pytest.fixture(autouse=True)
+def _no_windows_left() -> Iterator[None]:
+    """Destroys the windows a test leaves: pytest-qt only closes them, and
+    every live widget is restyled again by each later theme change."""
+    yield
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QApplication
+
+    if QApplication.instance() is None:
+        return
+    for widget in QApplication.topLevelWidgets():
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

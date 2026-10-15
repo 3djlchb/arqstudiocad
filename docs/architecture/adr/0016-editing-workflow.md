@@ -66,6 +66,18 @@ the reference machine within one frame for the maintainer's drawings
   command that asks "Select objects:" (verb–noun) both work; at that prompt
   the same gestures apply and Enter ends the selection. An editing command
   empties the selection when it finishes.
+- At "Select objects:", `ALL` (everything that can be selected), `L` (the
+  last entity drawn) and `P` (the previous editing command's selection)
+  add to the selection *(maintainer, 2026-10-15)*.
+- Entities on locked layers are left out of an editing command with a
+  message ("2 were on a locked layer."), as in AutoCAD, and the command
+  goes on with the rest *(maintainer, 2026-10-15)*.
+- While a command asks for the point that completes a move, copy,
+  rotation, scaling or mirroring, the selection is drawn following the
+  cursor, transformed as that point would leave it, as part of the
+  overlay *(maintainer, 2026-10-15)*.
+- Keys typed while the viewport has the focus go to the command line, as
+  in AutoCAD.
 - The selection is per document, in Python (`Session`), published as
   `SelectionChanged`.
 

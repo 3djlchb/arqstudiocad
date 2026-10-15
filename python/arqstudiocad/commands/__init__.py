@@ -31,6 +31,7 @@ from arqstudiocad.events import (
     CommandMessage,
     CommandPrompt,
     CommandStarted,
+    Drag,
     EventBus,
     WorkFinished,
     WorkStarted,
@@ -63,25 +64,30 @@ class Prompt:
     ``kind`` is ``"option"`` (one of ``options``, by key), ``"text"`` (any
     text, e.g. a file name), ``"point"`` (typed as AutoCAD reads points,
     or picked in the viewport; the command receives an ``(x, y)`` tuple, or
-    an option's key) or ``"distance"`` (a positive number, typed, or the
+    an option's key), ``"distance"`` (a positive number, typed, or the
     distance from ``base`` to a point typed or picked; the command receives
-    a float). ``base`` is the last point, for relative input, ORTHO and the
-    rubber band. An empty answer takes ``default`` when there is one; else
-    an ``optional`` point prompt receives ``None`` (Enter ends LINE), and
-    any other prompt is asked again.
+    a float), ``"angle"`` (degrees, typed, or the direction from ``base``
+    to a point; the command receives radians, ADR 0010) or ``"select"``
+    (the viewport selects; Enter sends ``None``, an option its key).
+    ``base`` is the last point, for relative input, ORTHO and the rubber
+    band; ``drag`` what follows the cursor. An empty answer takes
+    ``default`` when there is one; else an ``optional`` point prompt
+    receives ``None`` (Enter ends LINE), and any other prompt is asked
+    again.
     """
 
     message: str
-    kind: Literal["option", "text", "point", "distance"] = "text"
+    kind: Literal["option", "text", "point", "distance", "angle", "select"] = "text"
     options: tuple[Option, ...] = ()
     default: str | None = None
     base: tuple[float, float] | None = None
     optional: bool = False
+    drag: Drag | None = None
 
     @property
     def picks(self) -> bool:
         """Whether a point picked in the viewport answers it."""
-        return self.kind in ("point", "distance")
+        return self.kind in ("point", "distance", "angle")
 
     def shown(self) -> str:
         """The prompt as the command window shows it."""
@@ -194,11 +200,13 @@ class CommandContext:
         options: Sequence[Option] = (),
         default: str | None = None,
         optional: bool = False,
+        drag: Drag | None = None,
     ) -> Prompt:
         """A prompt for a point (ADR 0016 D6); yield it to get ``(x, y)``,
         or the key of one of ``options``, or ``None`` for Enter if it is
-        ``optional``. ``base`` is the last point."""
-        return Prompt(message, "point", tuple(options), default, base, optional)
+        ``optional``. ``base`` is the last point; ``drag`` follows the
+        cursor from it."""
+        return Prompt(message, "point", tuple(options), default, base, optional, drag)
 
     def distance(
         self,
@@ -206,11 +214,30 @@ class CommandContext:
         base: tuple[float, float],
         options: Sequence[Option] = (),
         default: float | None = None,
+        drag: Drag | None = None,
     ) -> Prompt:
-        """A prompt for a distance from ``base`` (a radius); yield it to get
-        a positive float, or the key of one of ``options``."""
+        """A prompt for a distance from ``base`` (a radius, a scale factor);
+        yield it to get a positive float, or the key of one of ``options``."""
         shown = None if default is None else f"{default:.10g}"
-        return Prompt(message, "distance", tuple(options), shown, base)
+        return Prompt(message, "distance", tuple(options), shown, base, drag=drag)
+
+    def angle(
+        self,
+        message: str,
+        base: tuple[float, float],
+        default: float | None = None,
+        drag: Drag | None = None,
+    ) -> Prompt:
+        """A prompt for an angle, typed in degrees or shown by a point from
+        ``base``; yield it to get radians. ``default`` is in radians."""
+        shown = None if default is None else f"{math.degrees(default):.10g}"
+        return Prompt(message, "angle", (), shown, base, drag=drag)
+
+    def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
+        """A prompt while the user selects in the viewport (ADR 0016 D3);
+        yield it to get ``None`` when Enter ends the selection, or the key
+        of one of ``options``."""
+        return Prompt(message, "select", tuple(options))
 
     def background(self, task: Callable[[], Any], message: str) -> Background:
         """Work for a worker thread; yield it to get its result."""
@@ -368,6 +395,9 @@ class CommandRunner:
         if prompt.picks:
             self._answer_point(prompt, text)
             return
+        if prompt.kind == "select":
+            self._answer_select(prompt, text)
+            return
         answer: str | None = text or prompt.default
         if prompt.kind == "option" and answer is not None:
             answer = _option_key(prompt.options, answer)
@@ -398,11 +428,14 @@ class CommandRunner:
             drafting.override = snap
             self._show(prompt)
             return
-        if prompt.kind == "distance":
-            distance = _number(typed)
-            if distance is not None:
+        if prompt.kind in ("distance", "angle"):
+            number = _number(typed)
+            if number is not None:
                 drafting.override = None
-                self._send_distance(prompt, distance)
+                if prompt.kind == "distance":
+                    self._send_distance(prompt, number)
+                else:
+                    self._send_angle(prompt, math.radians(number))
                 return
         try:
             point = parse_point(typed, last=prompt.base, toward=drafting.cursor)
@@ -414,13 +447,38 @@ class CommandRunner:
         self._send_point(prompt, point)
 
     def _send_point(self, prompt: Prompt, point: tuple[float, float]) -> None:
-        """A point answers a point prompt, and gives a distance prompt the
-        distance from its base."""
-        if prompt.kind == "distance" and prompt.base is not None:
-            bx, by = prompt.base
-            self._send_distance(prompt, math.hypot(point[0] - bx, point[1] - by))
+        """A point answers a point prompt, gives a distance prompt the
+        distance from its base and an angle prompt the direction from it."""
+        if prompt.kind != "point" and prompt.base is not None:
+            dx, dy = point[0] - prompt.base[0], point[1] - prompt.base[1]
+            if prompt.kind == "distance":
+                self._send_distance(prompt, math.hypot(dx, dy))
+            elif dx == dy == 0.0:
+                self.context.message(tr("A point on the base point shows no direction."))
+                self._show(prompt)
+            else:
+                self._send_angle(prompt, math.atan2(dy, dx))
         else:
             self._advance(lambda script: script.send(point))
+
+    def _send_angle(self, prompt: Prompt, angle: float) -> None:
+        if not math.isfinite(angle):
+            self.context.message(tr("The angle must be a finite number."))
+            self._show(prompt)
+            return
+        self._advance(lambda script: script.send(angle))
+
+    def _answer_select(self, prompt: Prompt, text: str) -> None:
+        """Enter ends a selection; an option is sent by its key."""
+        if not text:
+            self._advance(lambda script: script.send(None))
+            return
+        key = _option_key(prompt.options, text)
+        if key is None:
+            self.context.message(tr("Select objects in the drawing, or type an option."))
+            self._show(prompt)
+            return
+        self._advance(lambda script: script.send(key))
 
     def _send_distance(self, prompt: Prompt, distance: float) -> None:
         if not (math.isfinite(distance) and distance > 0.0):
@@ -481,7 +539,7 @@ class CommandRunner:
 
     def _show(self, prompt: Prompt) -> None:
         self.bus.publish(
-            CommandPrompt(self.active or "", prompt.shown(), prompt.picks, prompt.base)
+            CommandPrompt(self.active or "", prompt.shown(), prompt.picks, prompt.base, prompt.drag)
         )
 
     def _fail(self, error: Exception) -> None:
