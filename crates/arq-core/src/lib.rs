@@ -76,6 +76,7 @@ pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
     Color, Document, DrawItem, Entity, EntityId, FileFormat, Layer, LayerId, PlanGeometry, Shape,
 };
+pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};
 pub use history::{CadDocument, Snapshot};
 

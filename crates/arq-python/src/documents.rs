@@ -26,7 +26,9 @@ use pyo3::prelude::*;
 use crate::changes::{CadChangeSet, CadGroup};
 use crate::errors::IntoPy;
 use crate::info::{CadEntityInfo, CadLayerInfo};
-use crate::values::{CadArc, CadBounds2, CadCircle, CadColor, CadLine, PyPoint, PyVector};
+use crate::values::{
+    CadArc, CadBounds2, CadCircle, CadColor, CadLine, CadSnap, PyPoint, PyVector, snap_kinds,
+};
 
 /// The open documents of one application.
 #[pyclass(frozen, module = "arqstudiocad._core")]
@@ -307,6 +309,40 @@ impl CadDocument {
     /// drawing order: candidates, whatever their layer state.
     fn query_entities(&self, area: CadBounds2) -> PyResult<Vec<EntityId>> {
         self.read(|cad| cad.query_entities(area.0))
+    }
+
+    /// The entity whose drawn geometry passes closest to `point` within
+    /// `aperture` (world units), the one drawn last on a tie; `None` if
+    /// none. Blocks count as a whole; off and frozen layers are skipped,
+    /// locked ones are not (ADR 0016 D2).
+    fn pick(&self, point: PyPoint, aperture: f64) -> PyResult<Option<EntityId>> {
+        self.read(|cad| cad.pick(point.0, aperture))?.py()
+    }
+
+    /// Entities wholly inside `area` or, with `crossing`, those whose drawn
+    /// geometry touches it, exactly; in drawing order (ADR 0016 D2).
+    #[pyo3(signature = (area, crossing = false))]
+    fn select_window(&self, area: CadBounds2, crossing: bool) -> PyResult<Vec<EntityId>> {
+        self.read(|cad| cad.select_window(area.0, crossing))
+    }
+
+    /// The object snap under `cursor` within `aperture` (world units) among
+    /// the active `modes` (AutoCAD keys: END, MID, CEN, QUA, INT, PER, TAN,
+    /// NEA); `last_point` is needed for PER and TAN (ADR 0016 D5).
+    #[pyo3(signature = (cursor, aperture, modes, last_point = None))]
+    fn snap(
+        &self,
+        cursor: PyPoint,
+        aperture: f64,
+        modes: Vec<String>,
+        last_point: Option<PyPoint>,
+    ) -> PyResult<Option<CadSnap>> {
+        let modes = snap_kinds(&modes)?;
+        let from = last_point.map(|p| p.0);
+        let found = self
+            .read(|cad| cad.snap(cursor.0, aperture, &modes, from))?
+            .py()?;
+        Ok(found.map(CadSnap))
     }
 
     /// Every layer: "0" first, then by name ignoring case.

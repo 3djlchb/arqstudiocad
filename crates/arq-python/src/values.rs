@@ -7,9 +7,9 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use arq_core::Color;
+use arq_core::{Color, SnapKind, SnapPoint};
 use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Vector2};
-use pyo3::exceptions::PyTypeError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
 use crate::errors::{IntoPy, InvalidOperationError};
@@ -425,7 +425,78 @@ impl CadArc {
 }
 
 /// Adds the value classes to the module.
+/// Every object snap, by AutoCAD's key.
+const SNAP_KINDS: [SnapKind; 8] = [
+    SnapKind::Endpoint,
+    SnapKind::Midpoint,
+    SnapKind::Center,
+    SnapKind::Quadrant,
+    SnapKind::Intersection,
+    SnapKind::Perpendicular,
+    SnapKind::Tangent,
+    SnapKind::Nearest,
+];
+
+/// The snap kinds named by AutoCAD's keys (`"END"`, `"mid"`…, any case);
+/// an unknown key is a `ValueError`.
+pub fn snap_kinds(keys: &[String]) -> PyResult<Vec<SnapKind>> {
+    keys.iter()
+        .map(|key| {
+            SNAP_KINDS
+                .into_iter()
+                .find(|k| k.name().eq_ignore_ascii_case(key))
+                .ok_or_else(|| {
+                    PyValueError::new_err(format!(
+                        "unknown object snap {key:?}: use END, MID, CEN, QUA, INT, PER, TAN or NEA"
+                    ))
+                })
+        })
+        .collect()
+}
+
+/// An object snap found under the cursor (ADR 0016 D5): its kind, by
+/// AutoCAD's key (`"END"`…), and its point.
+#[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, Copy, PartialEq)]
+pub struct CadSnap(pub SnapPoint);
+
+#[pymethods]
+impl CadSnap {
+    #[classattr]
+    fn __match_args__() -> (&'static str, &'static str) {
+        ("kind", "point")
+    }
+
+    /// The snap's AutoCAD key: END, MID, CEN, QUA, INT, PER, TAN or NEA.
+    #[getter]
+    fn kind(&self) -> &'static str {
+        self.0.kind.name()
+    }
+
+    /// Where it snaps.
+    #[getter]
+    fn point(&self) -> (f64, f64) {
+        xy(self.0.point)
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.0.kind.hash(&mut h);
+        hash_floats(&[self.0.point.x(), self.0.point.y()]).hash(&mut h);
+        h.finish()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadSnap(kind={:?}, point={})",
+            self.0.kind.name(),
+            fmt_xy(self.0.point)
+        )
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<CadSnap>()?;
     m.add_class::<CadColor>()?;
     m.add_class::<CadBounds2>()?;
     m.add_class::<CadLine>()?;

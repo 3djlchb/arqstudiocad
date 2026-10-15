@@ -25,6 +25,7 @@ removed.
 | Measure | Result | Source |
 |---|---|---|
 | Spatial query, 100,000 entities (scan) | ≈ 17 ms per query | `cargo bench -p arq-core`, ADR 0011 D3.8 |
+| Pick, window/crossing selection, object snap; 100,000 entities (scan of what is drawn) | ≈ 54–56 ms each; 1–2 ms on the maintainer's drawings (a few thousand entities), within the one-frame budget; the spatial index (02.7) is what speeds the large case | `cargo bench -p arq-core`, ADR 0016 D2, D5 |
 | One recorded change plus its undo | ≈ 1.5 µs | same |
 | Scene build / render, 100,000 entities at 1080p (CPU) | 59 ms / 69 ms, 1 % redraw 10 ms | `cargo bench -p arq-render`, ADR 0013 |
 | Read DWG/DXF, 201 drawings, median / p95 | 12.6 ms / 38.5 ms; peak memory median 11 MiB | `tools/dwg-bench` |
