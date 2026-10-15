@@ -36,6 +36,7 @@ from arqstudiocad.events import (
     Event,
     EventBus,
     LanguageChanged,
+    SelectionChanged,
     WorkStarted,
 )
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
@@ -165,6 +166,7 @@ class MainWindow(QMainWindow):
         self.events.active_document_changed.connect(self._on_active_document_changed)
         self.events.document_closed.connect(self._on_document_closed)
         self.events.document_changed.connect(self._on_document_changed)
+        self.events.selection_changed.connect(self._on_selection_changed)
 
         menu_bar = self.menuBar()
         self._file_menu = menu_bar.addMenu("")
@@ -321,6 +323,10 @@ class MainWindow(QMainWindow):
             return
         viewport = Viewport(document)
         viewport.cursor_moved.connect(self._show_coordinates)
+        # The viewport asks; the session decides and publishes the selection.
+        viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
+        viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
+        viewport.clear_requested.connect(lambda: self.session.clear_selection(document))
         self.viewports[event.document_id] = viewport
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()
@@ -456,6 +462,11 @@ class MainWindow(QMainWindow):
         viewport = self.viewports.get(event.document_id)
         if viewport is not None:
             viewport.apply(event.changes)
+
+    def _on_selection_changed(self, event: SelectionChanged) -> None:
+        viewport = self.viewports.get(event.document_id)
+        if viewport is not None:
+            viewport.show_selection(event.entity_ids)
 
     def _show_coordinates(self, x: float, y: float) -> None:
         self._coordinates.setText(f"{x:.4f}, {y:.4f}")
