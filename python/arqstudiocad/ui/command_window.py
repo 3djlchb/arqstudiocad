@@ -7,7 +7,7 @@ while a command asks for text, Esc cancels, Up/Down recall earlier lines,
 and command names complete as they are typed.
 """
 
-from PySide6.QtCore import QEvent, QObject, Qt
+from PySide6.QtCore import QEvent, QObject, QStringListModel, Qt
 from PySide6.QtGui import QFontDatabase, QKeyEvent
 from PySide6.QtWidgets import (
     QCompleter,
@@ -78,6 +78,10 @@ class CommandWindow(QDockWidget):
 
     def retranslate(self) -> None:
         self.setWindowTitle(tr("Command line"))
+        # The language may add command names of its own (ADR 0016 D9).
+        model = self._completer.model()
+        assert isinstance(model, QStringListModel)
+        model.setStringList(self._runner.registry.names())
         if self._runner.active is None:
             self.prompt.setText(tr("Command:"))
 

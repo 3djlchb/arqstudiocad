@@ -2,6 +2,7 @@
 
 use std::f64::consts::{PI, TAU};
 
+use crate::arc::Arc;
 use crate::bounds::Bounds2;
 use crate::error::{GeometryError, GeometryResult};
 use crate::point::Point2;
@@ -31,6 +32,23 @@ impl Circle {
     pub fn new(center: Point2, radius: f64) -> GeometryResult<Self> {
         check_radius(radius)?;
         Ok(Self { center, radius })
+    }
+
+    /// The circle with `a` and `b` at the ends of a diameter (the CIRCLE
+    /// command's two-point mode).
+    pub fn from_diameter(a: Point2, b: Point2) -> GeometryResult<Self> {
+        Self::new(a.midpoint(b), a.distance_to(b) / 2.0)
+    }
+
+    /// The circle through `a`, `b` and `c` (the CIRCLE command's
+    /// three-point mode).
+    pub fn from_three_points(
+        a: Point2,
+        b: Point2,
+        c: Point2,
+        tol: Tolerance,
+    ) -> GeometryResult<Self> {
+        Arc::from_three_points(a, b, c, tol).map(Arc::circle)
     }
 
     /// Center point.
@@ -113,6 +131,29 @@ mod tests {
 
     fn p(x: f64, y: f64) -> Point2 {
         Point2::new(x, y).unwrap()
+    }
+
+    #[test]
+    fn from_diameter_and_three_points() {
+        let c = Circle::from_diameter(p(1.0, 1.0), p(5.0, 1.0)).unwrap();
+        assert!(c.center().approx_eq(p(3.0, 1.0), TOL) && (c.radius() - 2.0).abs() < 1e-12);
+        assert_eq!(
+            Circle::from_diameter(p(1.0, 1.0), p(1.0, 1.0)),
+            Err(GeometryError::InvalidRadius)
+        );
+        // Either turning direction gives the same circle.
+        for (a, b, c) in [
+            (p(15.0, 5.0), p(10.0, 10.0), p(5.0, 5.0)),
+            (p(5.0, 5.0), p(10.0, 10.0), p(15.0, 5.0)),
+        ] {
+            let circle = Circle::from_three_points(a, b, c, TOL).unwrap();
+            assert!(circle.center().approx_eq(p(10.0, 5.0), TOL));
+            assert!((circle.radius() - 5.0).abs() < 1e-12);
+        }
+        assert_eq!(
+            Circle::from_three_points(p(0.0, 0.0), p(1.0, 1.0), p(2.0, 2.0), TOL),
+            Err(GeometryError::Collinear)
+        );
     }
 
     #[test]

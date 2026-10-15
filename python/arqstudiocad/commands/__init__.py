@@ -12,12 +12,15 @@ Esc into cancellation. Commands reach the drawing only through the
 :class:`UiServices` protocol; they never touch widgets.
 
 Command names, aliases and option keys are English and always work, in
-every language; ``_LINE`` forces the English name (ADR 0006).
+every language; ``_LINE`` forces the English name (ADR 0006). The active
+language may add names of its own (``LINEA``), found after the English ones
+(ADR 0016 D9).
 """
 
 import logging
+import math
 from collections.abc import Callable, Generator, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -32,7 +35,7 @@ from arqstudiocad.events import (
     WorkFinished,
     WorkStarted,
 )
-from arqstudiocad.i18n import tr
+from arqstudiocad.i18n import fold_name, localized_commands, tr
 from arqstudiocad.points import PointSyntaxError, parse_point, snap_key
 from arqstudiocad.session import Session
 
@@ -48,6 +51,8 @@ class Option:
     label: str
 
     def shown(self) -> str:
+        if self.label.upper() == self.key.upper():
+            return self.label  # "3P", not "3P(3P)"
         return f"{self.label}({self.key})"
 
 
@@ -56,18 +61,27 @@ class Prompt:
     """What a command asks for.
 
     ``kind`` is ``"option"`` (one of ``options``, by key), ``"text"`` (any
-    text, e.g. a file name) or ``"point"`` (typed as AutoCAD reads points,
+    text, e.g. a file name), ``"point"`` (typed as AutoCAD reads points,
     or picked in the viewport; the command receives an ``(x, y)`` tuple, or
-    an option's key). ``base`` is the last point, for relative input, ORTHO
-    and the rubber band. An empty answer takes ``default`` when there is
-    one, else the prompt is asked again.
+    an option's key) or ``"distance"`` (a positive number, typed, or the
+    distance from ``base`` to a point typed or picked; the command receives
+    a float). ``base`` is the last point, for relative input, ORTHO and the
+    rubber band. An empty answer takes ``default`` when there is one; else
+    an ``optional`` point prompt receives ``None`` (Enter ends LINE), and
+    any other prompt is asked again.
     """
 
     message: str
-    kind: Literal["option", "text", "point"] = "text"
+    kind: Literal["option", "text", "point", "distance"] = "text"
     options: tuple[Option, ...] = ()
     default: str | None = None
     base: tuple[float, float] | None = None
+    optional: bool = False
+
+    @property
+    def picks(self) -> bool:
+        """Whether a point picked in the viewport answers it."""
+        return self.kind in ("point", "distance")
 
     def shown(self) -> str:
         """The prompt as the command window shows it."""
@@ -150,6 +164,9 @@ class CommandContext:
     session: Session
     ui: UiServices | None = None
     worker: Worker | None = None
+    #: Values commands remember from one run to the next, as AutoCAD's
+    #: system variables (``CIRCLERAD``: the last circle radius).
+    remembered: dict[str, Any] = field(default_factory=dict)
 
     def message(self, text: str) -> None:
         """A line for the command window's history."""
@@ -176,10 +193,24 @@ class CommandContext:
         base: tuple[float, float] | None = None,
         options: Sequence[Option] = (),
         default: str | None = None,
+        optional: bool = False,
     ) -> Prompt:
         """A prompt for a point (ADR 0016 D6); yield it to get ``(x, y)``,
-        or the key of one of ``options``. ``base`` is the last point."""
-        return Prompt(message, "point", tuple(options), default, base)
+        or the key of one of ``options``, or ``None`` for Enter if it is
+        ``optional``. ``base`` is the last point."""
+        return Prompt(message, "point", tuple(options), default, base, optional)
+
+    def distance(
+        self,
+        message: str,
+        base: tuple[float, float],
+        options: Sequence[Option] = (),
+        default: float | None = None,
+    ) -> Prompt:
+        """A prompt for a distance from ``base`` (a radius); yield it to get
+        a positive float, or the key of one of ``options``."""
+        shown = None if default is None else f"{default:.10g}"
+        return Prompt(message, "distance", tuple(options), shown, base)
 
     def background(self, task: Callable[[], Any], message: str) -> Background:
         """Work for a worker thread; yield it to get its result."""
@@ -220,14 +251,27 @@ class CommandRegistry:
             self._lookup[key.upper()] = command
 
     def find(self, typed: str) -> Command | None:
-        """The command typed, by name or alias; ``_NAME`` forces the English
-        name (ADR 0006)."""
-        key = typed.strip().upper().removeprefix("_")
-        return self._lookup.get(key)
+        """The command typed, by English name or alias, then by a name the
+        active language adds, ignoring case and accents; ``_NAME`` forces
+        the English name (ADR 0006)."""
+        key = fold_name(typed)
+        if key.startswith("_"):
+            return self._lookup.get(key[1:])
+        found = self._lookup.get(key)
+        if found is None:
+            english = localized_commands().get(key)
+            found = None if english is None else self._commands.get(english)
+        return found
 
     def names(self) -> list[str]:
-        """Every command name and alias, sorted, for completion."""
-        return sorted(self._lookup)
+        """Every command name and alias, the active language's too, sorted,
+        for completion."""
+        localized = {
+            name
+            for name, english in localized_commands().items()
+            if english in self._commands and name not in self._lookup
+        }
+        return sorted(self._lookup.keys() | localized)
 
 
 class CommandRunner:
@@ -311,17 +355,17 @@ class CommandRunner:
 
     def answer_point(self, point: tuple[float, float]) -> None:
         """A point picked in the viewport, already snapped (ADR 0016 D5):
-        the answer to a point prompt; ignored at any other prompt."""
+        the answer to a point or distance prompt; ignored at any other."""
         prompt = self._prompt
-        if prompt is None or prompt.kind != "point" or self._refuse_while_busy():
+        if prompt is None or not prompt.picks or self._refuse_while_busy():
             return
         self.context.session.drafting.override = None
-        self._advance(lambda script: script.send(point))
+        self._send_point(prompt, point)
 
     def _answer(self, text: str) -> None:
         prompt = self._prompt
         assert prompt is not None
-        if prompt.kind == "point":
+        if prompt.picks:
             self._answer_point(prompt, text)
             return
         answer: str | None = text or prompt.default
@@ -335,10 +379,15 @@ class CommandRunner:
         self._advance(lambda script: script.send(answer))
 
     def _answer_point(self, prompt: Prompt, text: str) -> None:
-        """A typed answer to a point prompt: an option, a snap that applies
-        to the next point only, or a point in AutoCAD's syntax."""
+        """A typed answer to a point or distance prompt: an option, a snap
+        that applies to the next point only, a number (a distance prompt's
+        distance) or a point in AutoCAD's syntax."""
         drafting = self.context.session.drafting
         typed = text or prompt.default or ""
+        if not typed and prompt.optional:
+            drafting.override = None
+            self._advance(lambda script: script.send(None))
+            return
         key = _option_key(prompt.options, typed) if typed else None
         if key is not None:
             drafting.override = None
@@ -349,6 +398,12 @@ class CommandRunner:
             drafting.override = snap
             self._show(prompt)
             return
+        if prompt.kind == "distance":
+            distance = _number(typed)
+            if distance is not None:
+                drafting.override = None
+                self._send_distance(prompt, distance)
+                return
         try:
             point = parse_point(typed, last=prompt.base, toward=drafting.cursor)
         except PointSyntaxError as error:
@@ -356,7 +411,23 @@ class CommandRunner:
             self._show(prompt)
             return
         drafting.override = None
-        self._advance(lambda script: script.send(point))
+        self._send_point(prompt, point)
+
+    def _send_point(self, prompt: Prompt, point: tuple[float, float]) -> None:
+        """A point answers a point prompt, and gives a distance prompt the
+        distance from its base."""
+        if prompt.kind == "distance" and prompt.base is not None:
+            bx, by = prompt.base
+            self._send_distance(prompt, math.hypot(point[0] - bx, point[1] - by))
+        else:
+            self._advance(lambda script: script.send(point))
+
+    def _send_distance(self, prompt: Prompt, distance: float) -> None:
+        if not (math.isfinite(distance) and distance > 0.0):
+            self.context.message(tr("The distance must be greater than zero."))
+            self._show(prompt)
+            return
+        self._advance(lambda script: script.send(distance))
 
     def _advance(self, resume: Callable[[CommandScript], Prompt | Background]) -> None:
         """Runs the command to its next prompt, background work or end."""
@@ -410,7 +481,7 @@ class CommandRunner:
 
     def _show(self, prompt: Prompt) -> None:
         self.bus.publish(
-            CommandPrompt(self.active or "", prompt.shown(), prompt.kind == "point", prompt.base)
+            CommandPrompt(self.active or "", prompt.shown(), prompt.picks, prompt.base)
         )
 
     def _fail(self, error: Exception) -> None:
@@ -434,6 +505,14 @@ class CommandRunner:
         self._command = None
         self._prompt = None
         self.context.session.drafting.override = None
+
+
+def _number(typed: str) -> float | None:
+    """A typed number, or None if it is not one."""
+    try:
+        return float(typed)
+    except ValueError:
+        return None
 
 
 def _option_key(options: Sequence[Option], typed: str) -> str | None:

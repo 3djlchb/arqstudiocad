@@ -76,6 +76,25 @@ impl Arc {
         Self::new(center, offset.length(), angle_of(start), angle_of(end))
     }
 
+    /// The arc around `center` from `start`, counterclockwise to the
+    /// direction of `end` (the ARC command's start, center, end mode). As in
+    /// AutoCAD, the radius is the distance to `start` and `end` only gives
+    /// the end angle.
+    pub fn from_start_center_end(
+        start: Point2,
+        center: Point2,
+        end: Point2,
+    ) -> GeometryResult<Self> {
+        let end_angle = (end - center).normalized()?.angle();
+        // A start on the center gives a zero radius, which `new` refuses.
+        Self::new(
+            center,
+            start.distance_to(center),
+            (start - center).angle(),
+            end_angle,
+        )
+    }
+
     /// Center point.
     pub fn center(self) -> Point2 {
         self.center
@@ -226,6 +245,34 @@ mod tests {
             Arc::new(c, 1.0, 0.0, TAU),
             Err(GeometryError::ZeroSweep),
             "a full turn is a circle"
+        );
+    }
+
+    #[test]
+    fn from_start_center_end_runs_counterclockwise_to_the_end_direction() {
+        let a = Arc::from_start_center_end(p(10.0, 0.0), p(0.0, 0.0), p(0.0, 3.0)).unwrap();
+        assert!((a.radius() - 10.0).abs() < 1e-12);
+        assert!(a.start_point().approx_eq(p(10.0, 0.0), TOL));
+        assert!(
+            a.end_point().approx_eq(p(0.0, 10.0), TOL),
+            "the end is on the arc's circle"
+        );
+        assert!((a.sweep() - FRAC_PI_2).abs() < 1e-12);
+        // Clockwise of the start is the long way round.
+        let b = Arc::from_start_center_end(p(10.0, 0.0), p(0.0, 0.0), p(0.0, -3.0)).unwrap();
+        assert!((b.sweep() - 3.0 * FRAC_PI_2).abs() < 1e-12);
+        let o = p(0.0, 0.0);
+        assert_eq!(
+            Arc::from_start_center_end(o, o, p(1.0, 0.0)),
+            Err(GeometryError::InvalidRadius)
+        );
+        assert_eq!(
+            Arc::from_start_center_end(p(1.0, 0.0), o, o),
+            Err(GeometryError::ZeroVector)
+        );
+        assert_eq!(
+            Arc::from_start_center_end(p(1.0, 0.0), o, p(5.0, 0.0)),
+            Err(GeometryError::ZeroSweep)
         );
     }
 

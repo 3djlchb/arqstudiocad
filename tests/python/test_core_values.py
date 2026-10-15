@@ -167,3 +167,30 @@ def test_bounds_order_their_corners() -> None:
     match box:
         case CadBounds2(low, high):
             assert (low, high) == ((4.0, -2.0), (10.0, 6.0))
+
+
+def test_circles_and_arcs_from_the_points_commands_take() -> None:
+    circle = CadCircle.from_diameter((1.0, 1.0), (5.0, 1.0))
+    assert circle.center == pytest.approx((3.0, 1.0)) and circle.radius == pytest.approx(2.0)
+    through = CadCircle.through((15.0, 5.0), (10.0, 10.0), (5.0, 5.0))
+    assert through.center == pytest.approx((10.0, 5.0)) and through.radius == pytest.approx(5.0)
+    # Clockwise through the three points: stored counterclockwise, c to a.
+    arc = CadArc.through((15.0, 5.0), (10.0, 10.0), (5.0, 5.0))
+    assert arc.start_point == pytest.approx((15.0, 5.0)) and arc.end_point == pytest.approx(
+        (5.0, 5.0)
+    )
+    arc = CadArc.through((5.0, 5.0), (10.0, 10.0), (15.0, 5.0))
+    assert arc.start_point == pytest.approx((15.0, 5.0)) and arc.end_point == pytest.approx(
+        (5.0, 5.0)
+    )
+    sce = CadArc.from_start_center_end((10.0, 0.0), (0.0, 0.0), (0.0, 3.0))
+    assert sce.radius == pytest.approx(10.0)
+    assert (sce.start_angle, sce.end_angle) == pytest.approx((0.0, math.pi / 2))
+    with pytest.raises(InvalidGeometryError, match="one line"):
+        CadCircle.through((0.0, 0.0), (1.0, 1.0), (2.0, 2.0))
+    with pytest.raises(InvalidGeometryError, match="one line"):
+        CadArc.through((0.0, 0.0), (1.0, 1.0), (2.0, 2.0))
+    with pytest.raises(InvalidGeometryError):
+        CadCircle.from_diameter((1.0, 1.0), (1.0, 1.0))
+    with pytest.raises(InvalidGeometryError):
+        CadArc.from_start_center_end((1.0, 0.0), (0.0, 0.0), (0.0, 0.0))
