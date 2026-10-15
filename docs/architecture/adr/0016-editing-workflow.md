@@ -136,7 +136,12 @@ its Spanish name in the same step that creates it, not later
 `SIMETRIA`, `BORRA`…) in `locales/es/commands.json`, starting with the
 commands of 2.4 (`NUEVO`, `ABRIR`, `GUARDAR`, `CAPA`…). As ADR 0006 requires, English names
 and aliases always work, `_LINE` forces English, and a pack may add a name
-but never shadow an English name or alias; a test checks it.
+but never shadow an English name or alias; a test checks it. Short Spanish
+aliases are added only where AutoCAD's English aliases do not use the
+letters (`CA` for `CAPA`, but not `B`, `D` or `H`, which are `BLOCK`,
+`DIMSTYLE` and `HATCH` in English), so no Spanish alias stops working when
+an English command arrives; names are found with or without accents
+(`CÍRCULO` finds `CIRCULO`) *(maintainer, 2026-10-15)*.
 
 ### D10 — Editing from Properties *(maintainer)*
 

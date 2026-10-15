@@ -2,13 +2,19 @@
 
 Everything the user reads goes through `tr()`; everything the user types
 (command names, prompt option keys) stays English. A language is a folder
-under `arqstudiocad/locales/<code>/` with `meta.json` and `ui.json`; adding
-one needs no code change. A missing translation falls back to the English
-source, never to a key or an error.
+under `arqstudiocad/locales/<code>/` with `meta.json`, `ui.json` and
+`commands.json`; adding one needs no code change. A missing translation
+falls back to the English source, never to a key or an error.
+
+`commands.json` *adds* names in the language to English commands
+(`{"LINE": ["LINEA"]}`, ADR 0016 D9); they are looked up ignoring case and
+accents, so `CÍRCULO` finds `CIRCULO`, and never shadow an English name or
+alias.
 """
 
 import json
 import logging
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,7 +28,9 @@ __all__ = [
     "available_languages",
     "current_language",
     "discover",
+    "fold_name",
     "load_pack",
+    "localized_commands",
     "set_language",
     "tr",
 ]
@@ -45,6 +53,14 @@ class LanguagePack:
     maintainer: str = ""
     maintained: bool = False
     ui: dict[str, str] = field(default_factory=dict)
+    #: English command name → the names this language adds for it.
+    commands: dict[str, tuple[str, ...]] = field(default_factory=dict)
+
+
+def fold_name(text: str) -> str:
+    """A command name as it is looked up: upper case, without accents."""
+    decomposed = unicodedata.normalize("NFKD", text.strip())
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).upper()
 
 
 def _read_json_object(path: Path) -> dict[str, object]:
@@ -76,13 +92,30 @@ def load_pack(folder: Path) -> LanguagePack:
                 raise LanguagePackError(f"{ui_path}: translation of {source!r} is not a string")
             ui[source] = translation
 
+    commands: dict[str, tuple[str, ...]] = {}
+    commands_path = folder / "commands.json"
+    if commands_path.exists():
+        for command, names in _read_json_object(commands_path).items():
+            if not isinstance(names, list) or not all(_valid_name(n) for n in names):
+                raise LanguagePackError(
+                    f"{commands_path}: names of {command!r} must be a list of "
+                    "upper-case ASCII names (letters and digits)"
+                )
+            commands[command.upper()] = tuple(names)
+
     return LanguagePack(
         code=folder.name,
         name=name,
         maintainer=maintainer if isinstance(maintainer, str) else "",
         maintained=maintained is True,
         ui=ui,
+        commands=commands,
     )
+
+
+def _valid_name(name: object) -> bool:
+    """A pack writes command names as AutoCAD does: upper case, no accents."""
+    return isinstance(name, str) and name.isascii() and name.isalnum() and name == name.upper()
 
 
 def discover(root: Path | None = None, *, strict: bool = False) -> dict[str, LanguagePack]:
@@ -134,6 +167,13 @@ def set_language(code: str) -> bool:
 def current_language() -> str:
     """Code of the active language."""
     return _active.code if _active is not None else SOURCE_LANGUAGE
+
+
+def localized_commands() -> dict[str, str]:
+    """The command names the active language adds: name → English command."""
+    if _active is None:
+        return {}
+    return {name: command for command, names in _active.commands.items() for name in names}
 
 
 def tr(source: str, /, **values: object) -> str:

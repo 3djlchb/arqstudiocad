@@ -1,0 +1,38 @@
+{
+  "NEW": [
+    "NUEVO"
+  ],
+  "OPEN": [
+    "ABRIR"
+  ],
+  "SAVE": [
+    "GUARDAR"
+  ],
+  "SAVEAS": [
+    "GUARDARCOMO"
+  ],
+  "CLOSE": [
+    "CERRAR"
+  ],
+  "UNDO": [
+    "DESHACER"
+  ],
+  "REDO": [
+    "REHACER"
+  ],
+  "ZOOM": [],
+  "LAYER": [
+    "CAPA",
+    "CA"
+  ],
+  "ID": [],
+  "LINE": [
+    "LINEA"
+  ],
+  "CIRCLE": [
+    "CIRCULO"
+  ],
+  "ARC": [
+    "ARCO"
+  ]
+}

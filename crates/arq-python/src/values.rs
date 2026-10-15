@@ -8,7 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use arq_core::{Color, SnapKind, SnapPoint};
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Vector2};
+use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Tolerance, Vector2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -301,6 +301,20 @@ impl CadCircle {
         Circle::new(center.0, radius).py().map(Self)
     }
 
+    /// The circle with `a` and `b` at the ends of a diameter.
+    #[staticmethod]
+    fn from_diameter(a: PyPoint, b: PyPoint) -> PyResult<Self> {
+        Circle::from_diameter(a.0, b.0).py().map(Self)
+    }
+
+    /// The circle through three points; they must not lie on one line.
+    #[staticmethod]
+    fn through(a: PyPoint, b: PyPoint, c: PyPoint) -> PyResult<Self> {
+        Circle::from_three_points(a.0, b.0, c.0, Tolerance::DEFAULT)
+            .py()
+            .map(Self)
+    }
+
     #[classattr]
     fn __match_args__() -> (&'static str, &'static str) {
         ("center", "radius")
@@ -351,6 +365,24 @@ impl CadArc {
     #[new]
     fn new(center: PyPoint, radius: f64, start_angle: f64, end_angle: f64) -> PyResult<Self> {
         Arc::new(center.0, radius, start_angle, end_angle)
+            .py()
+            .map(Self)
+    }
+
+    /// The arc that passes through `a`, then `b`, then `c`; they must not
+    /// lie on one line.
+    #[staticmethod]
+    fn through(a: PyPoint, b: PyPoint, c: PyPoint) -> PyResult<Self> {
+        Arc::from_three_points(a.0, b.0, c.0, Tolerance::DEFAULT)
+            .py()
+            .map(Self)
+    }
+
+    /// The arc around `center` from `start`, counterclockwise to the
+    /// direction of `end`; the radius is the distance to `start`.
+    #[staticmethod]
+    fn from_start_center_end(start: PyPoint, center: PyPoint, end: PyPoint) -> PyResult<Self> {
+        Arc::from_start_center_end(start.0, center.0, end.0)
             .py()
             .map(Self)
     }

@@ -125,8 +125,10 @@ change is needed: the language appears in *Tools > Language* by itself.
 Partial translations are fine: a missing string falls back to English, and no
 release is ever blocked on a translation. Keep `{placeholders}` such as
 `{app}` or `{version}` exactly as they are — the tests check it. Localized
-command names (`LINEA`, in a future `commands.json`) may be *added*, but never
-replace or shadow an English name.
+command names go in `commands.json` (`{"LINE": ["LINEA"]}`), written in upper
+case without accents, as AutoCAD writes them (users may type them with
+accents). They are *added*: they never replace or shadow an English name or
+alias, nor take one of AutoCAD's English aliases kept for commands to come.
 
 ---
 

@@ -46,6 +46,7 @@ def test_window_switches_language(qtbot: QtBot) -> None:
         "&Edición",
         "&Ver",
         "&Herramientas",
+        "&Dibujo",
         "Ay&uda",
     ]
     assert window.command_actions["SAVEAS"].text() == "Guardar &como…"

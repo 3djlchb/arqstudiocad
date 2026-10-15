@@ -131,9 +131,11 @@ copia `es/` como modelo. No hace falta tocar código: el idioma aparece solo en
 *Herramientas > Idioma*. Las traducciones parciales están bien: un texto sin
 traducir se muestra en inglés, y nunca se retrasa una versión por una
 traducción. Respeta los `{marcadores}` como `{app}` o `{version}` tal cual: las
-pruebas lo comprueban. Se pueden *añadir* nombres de comando localizados
-(`LINEA`, en un futuro `commands.json`), pero nunca sustituir ni tapar un
-nombre en inglés.
+pruebas lo comprueban. Los nombres de comando localizados van en
+`commands.json` (`{"LINE": ["LINEA"]}`), en mayúsculas y sin tildes, como los
+escribe AutoCAD (el usuario puede escribirlos con tilde). Se *añaden*: nunca
+sustituyen ni tapan un nombre o alias en inglés, ni toman uno de los alias
+ingleses de AutoCAD reservados para comandos futuros.
 
 ---
 

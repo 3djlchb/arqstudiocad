@@ -1,7 +1,8 @@
 """The document and view commands of phase 5 (ADR 0013, D5.4).
 
 NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER; ID (ADR 0016) shows
-a point's coordinates. Without an interface
+a point's coordinates. The registry also holds the drawing commands of
+:mod:`arqstudiocad.commands.draw`. Without an interface
 (scripts, tests), OPEN and SAVEAS ask for the file name on the command line,
 as AutoCAD does with FILEDIA=0.
 """
@@ -20,6 +21,7 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
+from arqstudiocad.commands.draw import DRAW_COMMANDS
 from arqstudiocad.core import (
     CadDocument,
     LossyConversionError,
@@ -303,4 +305,4 @@ BUILTIN_COMMANDS = (
 
 def builtin_registry() -> CommandRegistry:
     """A registry with every built-in command."""
-    return CommandRegistry(BUILTIN_COMMANDS)
+    return CommandRegistry((*BUILTIN_COMMANDS, *DRAW_COMMANDS))

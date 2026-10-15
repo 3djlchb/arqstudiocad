@@ -235,6 +235,10 @@ class MainWindow(QMainWindow):
         self._view_menu.addMenu(self.workspaces.menu)
         self.statusBar().addPermanentWidget(self.workspaces.button)
 
+        self._draw_menu = menu_bar.addMenu("")
+        for name in ("LINE", "CIRCLE", "ARC"):
+            self._draw_menu.addAction(self.command_actions[name])
+
         self._help_menu = menu_bar.addMenu("")
         self._about_action = self._help_menu.addAction("")
         self._about_action.triggered.connect(self.show_about)
@@ -267,6 +271,7 @@ class MainWindow(QMainWindow):
         self._theme_menu.setTitle(tr("T&heme"))
         for theme, theme_action in self.theme_actions.items():
             theme_action.setText(theme_title(theme))
+        self._draw_menu.setTitle(tr("&Draw"))
         self._help_menu.setTitle(tr("&Help"))
         self._about_action.setText(tr("&About {app}"))
         self._welcome.setText(
