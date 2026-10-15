@@ -348,7 +348,7 @@ class MainWindow(QMainWindow):
         # The viewport asks; the session decides and publishes the selection.
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
-        viewport.clear_requested.connect(lambda: self.session.clear_selection(document))
+        viewport.escape_pressed.connect(self.command_window.escape)
         self.viewports[event.document_id] = viewport
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()

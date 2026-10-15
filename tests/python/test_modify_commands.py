@@ -332,3 +332,43 @@ def test_the_erase_action_erases_the_selection_with_the_delete_key(
     assert [e.id for e in document.get_entities()] != [] and first not in [
         e.id for e in document.get_entities()
     ]
+
+
+def escape(widget: object) -> None:
+    event = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier)
+    QApplication.sendEvent(widget, event)  # type: ignore[arg-type]
+
+
+def test_esc_in_the_drawing_ends_a_drawing_command(window: MainWindow, tmp_path: Path) -> None:
+    viewport = plan(window, tmp_path)
+    document = window.session.active
+    assert document is not None
+    before = len(document.get_entities())
+    window.session.drafting.set_osnap(False)
+    window.runner.execute("LINE")
+    for world in ((10.0, 60.0), (30.0, 60.0)):  # clicks give the viewport the focus
+        mouse(viewport, QEvent.Type.MouseMove, world)
+        mouse(viewport, QEvent.Type.MouseButtonPress, world)
+    escape(viewport)
+    assert window.runner.active is None, "Esc in the drawing cancels, as on the command line"
+    assert viewport.target is None
+    assert len(document.get_entities()) == before + 1, "the segment drawn stays"
+    assert window.command_window.history.toPlainText().splitlines()[-1] == "*Cancel*"
+
+
+def test_esc_in_the_drawing_ends_an_editing_command(window: MainWindow, tmp_path: Path) -> None:
+    viewport = plan(window, tmp_path)
+    document = window.session.active
+    assert document is not None
+    line_id = document.get_entities()[0].id
+    window.session.drafting.set_osnap(False)
+    window.session.select(document, [line_id])
+    window.runner.execute("MOVE")
+    window.runner.execute("0,0")
+    mouse(viewport, QEvent.Type.MouseMove, (20.0, 30.0))
+    assert viewport.preview is not None
+    escape(viewport)
+    assert window.runner.active is None and viewport.preview is None
+    assert window.session.selection(document) == ()
+    geometry = document.get_entity(line_id).geometry
+    assert geometry == CadLine((0.0, 0.0), (100.0, 0.0)), "nothing moved"

@@ -9,7 +9,8 @@ middle-button double click zooms to the extents, as in AutoCAD.
 Selection, as AutoCAD (ADR 0016 D3, D4): a click adds the entity under the
 cursor and Shift+click removes it; dragging left to right is a window (blue,
 solid: what lies wholly inside), right to left a crossing (green, dashed:
-whatever it touches); Esc empties the selection. What is selected is drawn
+whatever it touches); Esc, as on the command line, cancels the running command
+and empties the selection. What is selected is drawn
 blue and whatever the cursor rests on thicker, as an overlay painted over
 the image: hovering and selecting never re-render the drawing. The viewport
 only asks for selection changes (its signals); the session decides and
@@ -102,8 +103,9 @@ class Viewport(QWidget):
     select_requested = Signal(object)
     #: Entities to remove from the selection (Shift+click or Shift+window).
     deselect_requested = Signal(object)
-    #: The selection should be emptied (Esc).
-    clear_requested = Signal()
+    #: Esc: the running command should be cancelled and the selection
+    #: emptied, as Esc does on the command line.
+    escape_pressed = Signal()
     #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
     point_picked = Signal(object)
     #: A key typed in the viewport, for the command line (a ``QKeyEvent``).
@@ -321,7 +323,7 @@ class Viewport(QWidget):
         if event.key() == Qt.Key.Key_Escape:
             self._press = self._band = None
             self.update()
-            self.clear_requested.emit()
+            self.escape_pressed.emit()
             event.accept()
             return
         if event.text() or event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
