@@ -14,6 +14,11 @@ blue and whatever the cursor rests on thicker, as an overlay painted over
 the image: hovering and selecting never re-render the drawing. The viewport
 only asks for selection changes (its signals); the session decides and
 tells it what is selected (:meth:`Viewport.show_selection`).
+
+At a point prompt (ADR 0016 D5, D6) a click answers it instead: the point
+under the cursor, taken to the object snap found there (its AutoCAD marker
+and translated name are shown) or, with ORTHO and no snap, kept horizontal
+or vertical from the last point, which a rubber band joins to the cursor.
 """
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
@@ -31,7 +36,10 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from arqstudiocad.core import CadBounds2, CadChangeSet, CadDocument, CadView
+from arqstudiocad.core import CadBounds2, CadChangeSet, CadDocument, CadSnap, CadView
+from arqstudiocad.drafting import Drafting
+from arqstudiocad.i18n import tr
+from arqstudiocad.points import Point, ortho
 
 #: Zoom factor of one wheel notch (120 eighths of a degree).
 WHEEL_STEP = 1.25
@@ -50,6 +58,29 @@ CROSSING = QColor(60, 200, 90)
 #: How opaque the window and crossing fills are, 0 to 255.
 FILL_ALPHA = 40
 
+#: Half the side of the snap aperture, in logical pixels (AutoCAD's
+#: APERTURE is 10).
+SNAP_PIXELS = 10
+#: Half the size of a snap marker, in logical pixels.
+MARKER_PIXELS = 6
+#: Snap markers and their names (AutoCAD's AutoSnap color).
+MARKER = QColor(255, 200, 0)
+
+
+def snap_name(kind: str) -> str:
+    """A snap's name in the interface language."""
+    names = {
+        "END": tr("Endpoint"),
+        "MID": tr("Midpoint"),
+        "CEN": tr("Center"),
+        "QUA": tr("Quadrant"),
+        "INT": tr("Intersection"),
+        "PER": tr("Perpendicular"),
+        "TAN": tr("Tangent"),
+        "NEA": tr("Nearest"),
+    }
+    return names.get(kind, kind)
+
 
 class Viewport(QWidget):
     """Shows one document; also the :class:`~arqstudiocad.commands.ViewControl`
@@ -63,10 +94,18 @@ class Viewport(QWidget):
     deselect_requested = Signal(object)
     #: The selection should be emptied (Esc).
     clear_requested = Signal()
+    #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
+    point_picked = Signal(object)
 
-    def __init__(self, document: CadDocument, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        document: CadDocument,
+        parent: QWidget | None = None,
+        drafting: Drafting | None = None,
+    ) -> None:
         super().__init__(parent)
         self.document = document
+        self.drafting = drafting
         self.view = CadView(document, 1, 1)
         self._image: QImage | None = None
         self._pixels: bytes = b""  # keeps the image's memory alive
@@ -81,6 +120,12 @@ class Viewport(QWidget):
         self._hover: int | None = None
         self._press: QPointF | None = None
         self._band: QPointF | None = None  # the other corner while dragging a window
+        # A point prompt: whether one is open, its last point, and where a
+        # click would put the point now (snapped or ORTHO) with its snap.
+        self._asking = False
+        self._base: Point | None = None
+        self._target: Point | None = None
+        self._snap: CadSnap | None = None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.CrossCursor)
@@ -119,6 +164,29 @@ class Viewport(QWidget):
     def hovered(self) -> int | None:
         """The entity under the cursor, highlighted."""
         return self._hover
+
+    @property
+    def target(self) -> Point | None:
+        """Where a click would put the point, at a point prompt."""
+        return self._target
+
+    @property
+    def snap(self) -> CadSnap | None:
+        """The object snap under the cursor, at a point prompt."""
+        return self._snap
+
+    def ask_point(self, base: Point | None) -> None:
+        """A command asks for a point, from ``base`` if it has one."""
+        self._asking, self._base = True, base
+        self._target = self._snap = None
+        self._set_hover(None)
+        self.update()
+
+    def end_point(self) -> None:
+        """No point is asked for any more."""
+        if self._asking:
+            self._asking, self._base, self._target, self._snap = False, None, None, None
+            self.update()
 
     def show_selection(self, entity_ids: tuple[int, ...]) -> None:
         """Shows these entities as selected (the session's selection)."""
@@ -160,6 +228,12 @@ class Viewport(QWidget):
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton:
+            if self._asking:
+                self._aim(event.position())
+                if self._target is not None:
+                    self.point_picked.emit(self._target)
+                event.accept()
+                return
             self._press = event.position()
             self._band = None
             event.accept()
@@ -179,9 +253,14 @@ class Viewport(QWidget):
             if self._band is not None or _distance(position, self._press) > DRAG_PIXELS:
                 self._band = position
                 self.update()
+        elif self._asking:
+            self._aim(position)
         else:
             self._set_hover(self.pick_at(position))
-        self.cursor_moved.emit(*self.view.to_world(*self._physical(position)))
+        world = self.view.to_world(*self._physical(position))
+        if self.drafting is not None:
+            self.drafting.cursor = world
+        self.cursor_moved.emit(*world)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.MouseButton.MiddleButton:
@@ -239,6 +318,25 @@ class Viewport(QWidget):
         crossing = end.x() < start.x()
         return tuple(self.document.select_window(CadBounds2(a, b), crossing=crossing))
 
+    def _aim(self, position: QPointF) -> None:
+        """Where a click at ``position`` puts the point: the snap found
+        there, else the cursor kept by ORTHO, else the cursor."""
+        world = self.view.to_world(*self._physical(position))
+        snaps = self.drafting.active_snaps() if self.drafting is not None else ()
+        found = None
+        if snaps:
+            aperture = SNAP_PIXELS * self.devicePixelRatioF() / self.view.scale
+            found = self.document.snap(world, aperture, list(snaps), last_point=self._base)
+        if found is not None:
+            target = found.point
+        elif self.drafting is not None and self.drafting.ortho and self._base is not None:
+            target = ortho(self._base, world)
+        else:
+            target = world
+        if (target, found) != (self._target, self._snap):
+            self._target, self._snap = target, found
+            self.update()
+
     # Helpers
 
     def _set_hover(self, entity_id: int | None) -> None:
@@ -260,6 +358,8 @@ class Viewport(QWidget):
             painter.setPen(QPen(color, 3 * ratio))
             self._draw_outlines(painter, (self._hover,))
         painter.restore()
+        if self._asking:
+            self._paint_point(painter)
         if self._press is not None and self._band is not None:
             crossing = self._band.x() < self._press.x()
             color = CROSSING if crossing else SELECTED
@@ -271,6 +371,27 @@ class Viewport(QWidget):
             painter.setPen(pen)
             painter.setBrush(fill)
             painter.drawRect(QRectF(self._press, self._band).normalized())
+
+    def _paint_point(self, painter: QPainter) -> None:
+        """The rubber band from the last point and the snap marker."""
+        if self._target is None:
+            return
+        ratio = self.devicePixelRatioF()
+
+        def logical(p: Point) -> QPointF:
+            x, y = self.view.to_screen(*p)
+            return QPointF(x / ratio, y / ratio)
+
+        at = logical(self._target)
+        if self._base is not None:
+            painter.setPen(QPen(self.palette().text().color(), 1, Qt.PenStyle.DashLine))
+            painter.drawLine(logical(self._base), at)
+        if self._snap is not None:
+            painter.setPen(QPen(MARKER, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            draw_marker(painter, self._snap.kind, at, MARKER_PIXELS)
+            label = at + QPointF(MARKER_PIXELS + 4, -MARKER_PIXELS - 4)
+            painter.drawText(label, snap_name(self._snap.kind))
 
     def _draw_outlines(self, painter: QPainter, entity_ids: tuple[int, ...]) -> None:
         for polyline in self.view.outlines(entity_ids):
@@ -295,6 +416,36 @@ class Viewport(QWidget):
         image.setDevicePixelRatio(self.devicePixelRatioF())
         self._image = image
         self._dirty = False
+
+
+def draw_marker(painter: QPainter, kind: str, at: QPointF, r: float) -> None:
+    """AutoCAD's AutoSnap glyph for a snap, centred on ``at``."""
+    x, y = at.x(), at.y()
+
+    def p(dx: float, dy: float) -> QPointF:
+        return QPointF(x + dx, y + dy)
+
+    if kind == "END":
+        painter.drawRect(QRectF(x - r, y - r, 2 * r, 2 * r))
+    elif kind == "MID":
+        painter.drawPolygon(QPolygonF([p(0, -r), p(r, r), p(-r, r)]))
+    elif kind == "CEN":
+        painter.drawEllipse(at, r, r)
+    elif kind == "QUA":
+        painter.drawPolygon(QPolygonF([p(0, -r), p(r, 0), p(0, r), p(-r, 0)]))
+    elif kind == "INT":
+        painter.drawLine(p(-r, -r), p(r, r))
+        painter.drawLine(p(-r, r), p(r, -r))
+    elif kind == "PER":
+        painter.drawLine(p(-r, r), p(r, r))
+        painter.drawLine(p(-r, r), p(-r, -r))
+        painter.drawLine(p(-r, 0), p(0, 0))
+        painter.drawLine(p(0, 0), p(0, r))
+    elif kind == "TAN":
+        painter.drawEllipse(at, r, r)
+        painter.drawLine(p(-r, -r), p(r, -r))
+    else:  # NEA: an hourglass
+        painter.drawPolygon(QPolygonF([p(-r, -r), p(r, -r), p(-r, r), p(r, r)]))
 
 
 def _distance(a: QPointF, b: QPointF) -> float:

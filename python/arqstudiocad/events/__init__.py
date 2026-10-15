@@ -32,6 +32,7 @@ __all__ = [
     "DocumentClosed",
     "DocumentOpened",
     "DocumentSaved",
+    "DraftingChanged",
     "Event",
     "EventBus",
     "LanguageChanged",
@@ -129,10 +130,24 @@ class CommandCancelled(Event):
 @dataclass(frozen=True, slots=True)
 class CommandPrompt(Event):
     """A running command asks for input; ``text`` is ready to show,
-    translated, e.g. ``"Zoom [Extents(E)/In(I)/Out(O)] <E>:"``."""
+    translated, e.g. ``"Zoom [Extents(E)/In(I)/Out(O)] <E>:"``. With
+    ``point``, it asks for a point the viewport may pick; ``base`` is the
+    last point, for ORTHO and the rubber band."""
 
     name: str
     text: str
+    point: bool = False
+    base: tuple[float, float] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DraftingChanged(Event):
+    """The running object snaps (on and which, by AutoCAD's key) or ORTHO
+    changed (ADR 0016 D5)."""
+
+    osnap: bool
+    snaps: tuple[str, ...]
+    ortho: bool
 
 
 @dataclass(frozen=True, slots=True)

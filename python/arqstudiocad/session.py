@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from arqstudiocad.core import CadApplication, CadChangeSet, CadDocument
+from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     ActiveLayerChanged,
@@ -35,6 +36,8 @@ class Session:
         # The selected entities of each document, in the order selected
         # (ADR 0016 D3).
         self._selection: dict[int, tuple[int, ...]] = {}
+        #: How points are picked: running snaps, ORTHO, the cursor.
+        self.drafting = Drafting(bus)
 
     @property
     def documents(self) -> list[CadDocument]:

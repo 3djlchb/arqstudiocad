@@ -30,6 +30,7 @@ from arqstudiocad.core import (
 from arqstudiocad.credits import load_credits
 from arqstudiocad.events import (
     ActiveDocumentChanged,
+    CommandPrompt,
     DocumentChanged,
     DocumentClosed,
     DocumentOpened,
@@ -47,6 +48,7 @@ from arqstudiocad.ui.auto_hide import AutoHide
 from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.document_tabs import DocumentTabs
+from arqstudiocad.ui.drafting_bar import DraftingBar
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.history_panel import HistoryPanel
 from arqstudiocad.ui.layers_panel import LayersPanel
@@ -158,6 +160,14 @@ class MainWindow(QMainWindow):
         self._busy.hide()
         self.statusBar().addPermanentWidget(self._busy)
         self.statusBar().addPermanentWidget(self._coordinates)
+        # Running snaps (F3) and ORTHO (F8): the window gets their shortcuts.
+        self.drafting_bar = DraftingBar(self.session.drafting, self.events)
+        self.statusBar().addPermanentWidget(self.drafting_bar)
+        self.addAction(self.drafting_bar.osnap_action)
+        self.addAction(self.drafting_bar.ortho_action)
+        self.events.command_prompt.connect(self._on_command_prompt)
+        self.events.command_finished.connect(self._end_point_prompts)
+        self.events.command_cancelled.connect(self._end_point_prompts)
         self.events.work_started.connect(self._on_work_started)
         self.events.work_finished.connect(self._on_work_finished)
         for signal in (self.events.document_changed, self.events.document_saved):
@@ -246,6 +256,7 @@ class MainWindow(QMainWindow):
         self._view_menu.setTitle(tr("&View"))
         self.command_actions.retranslate()
         self.command_window.retranslate()
+        self.drafting_bar.retranslate()
         self.layers_panel.retranslate()
         self.properties_panel.retranslate()
         self.history_panel.retranslate()
@@ -321,8 +332,9 @@ class MainWindow(QMainWindow):
         document = self._document(event.document_id)
         if document is None or event.document_id in self.viewports:
             return
-        viewport = Viewport(document)
+        viewport = Viewport(document, drafting=self.session.drafting)
         viewport.cursor_moved.connect(self._show_coordinates)
+        viewport.point_picked.connect(self.runner.answer_point)
         # The viewport asks; the session decides and publishes the selection.
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
@@ -462,6 +474,19 @@ class MainWindow(QMainWindow):
         viewport = self.viewports.get(event.document_id)
         if viewport is not None:
             viewport.apply(event.changes)
+
+    def _on_command_prompt(self, event: CommandPrompt) -> None:
+        """A point prompt lets the active viewport pick the point."""
+        active = self.session.active
+        for document_id, viewport in self.viewports.items():
+            if event.point and active is not None and document_id == active.id:
+                viewport.ask_point(event.base)
+            else:
+                viewport.end_point()
+
+    def _end_point_prompts(self, event: Event) -> None:
+        for viewport in self.viewports.values():
+            viewport.end_point()
 
     def _on_selection_changed(self, event: SelectionChanged) -> None:
         viewport = self.viewports.get(event.document_id)

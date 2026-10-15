@@ -33,6 +33,7 @@ from arqstudiocad.events import (
     WorkStarted,
 )
 from arqstudiocad.i18n import tr
+from arqstudiocad.points import PointSyntaxError, parse_point, snap_key
 from arqstudiocad.session import Session
 
 log = logging.getLogger(__name__)
@@ -54,15 +55,19 @@ class Option:
 class Prompt:
     """What a command asks for.
 
-    ``kind`` is ``"option"`` (one of ``options``, by key) or ``"text"`` (any
-    text, e.g. a file name). An empty answer takes ``default`` when there is
+    ``kind`` is ``"option"`` (one of ``options``, by key), ``"text"`` (any
+    text, e.g. a file name) or ``"point"`` (typed as AutoCAD reads points,
+    or picked in the viewport; the command receives an ``(x, y)`` tuple, or
+    an option's key). ``base`` is the last point, for relative input, ORTHO
+    and the rubber band. An empty answer takes ``default`` when there is
     one, else the prompt is asked again.
     """
 
     message: str
-    kind: Literal["option", "text"] = "text"
+    kind: Literal["option", "text", "point"] = "text"
     options: tuple[Option, ...] = ()
     default: str | None = None
+    base: tuple[float, float] | None = None
 
     def shown(self) -> str:
         """The prompt as the command window shows it."""
@@ -164,6 +169,17 @@ class CommandContext:
     def ask(self, message: str, default: str | None = None) -> Prompt:
         """A prompt for any text; yield it to get the text."""
         return Prompt(message, "text", (), default)
+
+    def point(
+        self,
+        message: str,
+        base: tuple[float, float] | None = None,
+        options: Sequence[Option] = (),
+        default: str | None = None,
+    ) -> Prompt:
+        """A prompt for a point (ADR 0016 D6); yield it to get ``(x, y)``,
+        or the key of one of ``options``. ``base`` is the last point."""
+        return Prompt(message, "point", tuple(options), default, base)
 
     def background(self, task: Callable[[], Any], message: str) -> Background:
         """Work for a worker thread; yield it to get its result."""
@@ -293,9 +309,21 @@ class CommandRunner:
         self.context.message(tr("*Cancel*"))
         self.bus.publish(CommandCancelled(name, reason or "cancelled by the user"))
 
+    def answer_point(self, point: tuple[float, float]) -> None:
+        """A point picked in the viewport, already snapped (ADR 0016 D5):
+        the answer to a point prompt; ignored at any other prompt."""
+        prompt = self._prompt
+        if prompt is None or prompt.kind != "point" or self._refuse_while_busy():
+            return
+        self.context.session.drafting.override = None
+        self._advance(lambda script: script.send(point))
+
     def _answer(self, text: str) -> None:
         prompt = self._prompt
         assert prompt is not None
+        if prompt.kind == "point":
+            self._answer_point(prompt, text)
+            return
         answer: str | None = text or prompt.default
         if prompt.kind == "option" and answer is not None:
             answer = _option_key(prompt.options, answer)
@@ -305,6 +333,30 @@ class CommandRunner:
             self._show(prompt)  # ask again
             return
         self._advance(lambda script: script.send(answer))
+
+    def _answer_point(self, prompt: Prompt, text: str) -> None:
+        """A typed answer to a point prompt: an option, a snap that applies
+        to the next point only, or a point in AutoCAD's syntax."""
+        drafting = self.context.session.drafting
+        typed = text or prompt.default or ""
+        key = _option_key(prompt.options, typed) if typed else None
+        if key is not None:
+            drafting.override = None
+            self._advance(lambda script: script.send(key))
+            return
+        snap = snap_key(typed)
+        if snap is not None:
+            drafting.override = snap
+            self._show(prompt)
+            return
+        try:
+            point = parse_point(typed, last=prompt.base, toward=drafting.cursor)
+        except PointSyntaxError as error:
+            self.context.message(str(error))
+            self._show(prompt)
+            return
+        drafting.override = None
+        self._advance(lambda script: script.send(point))
 
     def _advance(self, resume: Callable[[CommandScript], Prompt | Background]) -> None:
         """Runs the command to its next prompt, background work or end."""
@@ -357,7 +409,9 @@ class CommandRunner:
         return True
 
     def _show(self, prompt: Prompt) -> None:
-        self.bus.publish(CommandPrompt(self.active or "", prompt.shown()))
+        self.bus.publish(
+            CommandPrompt(self.active or "", prompt.shown(), prompt.kind == "point", prompt.base)
+        )
 
     def _fail(self, error: Exception) -> None:
         name = self.active or ""
@@ -379,6 +433,7 @@ class CommandRunner:
         self._script = None
         self._command = None
         self._prompt = None
+        self.context.session.drafting.override = None
 
 
 def _option_key(options: Sequence[Option], typed: str) -> str | None:

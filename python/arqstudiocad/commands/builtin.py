@@ -1,6 +1,7 @@
 """The document and view commands of phase 5 (ADR 0013, D5.4).
 
-NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER. Without an interface
+NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER; ID (ADR 0016) shows
+a point's coordinates. Without an interface
 (scripts, tests), OPEN and SAVEAS ask for the file name on the command line,
 as AutoCAD does with FILEDIA=0.
 """
@@ -268,6 +269,14 @@ def zoom(ctx: CommandContext) -> CommandScript:
         view.zoom(ZOOM_STEP if choice == "I" else 1 / ZOOM_STEP)
 
 
+def id_(ctx: CommandContext) -> CommandScript:
+    """AutoCAD's ID: the coordinates of a point, typed or picked."""
+    ctx.document()
+    point = yield ctx.point(tr("Specify point"))
+    x, y = point
+    ctx.message(f"X = {x:.4f}     Y = {y:.4f}")
+
+
 def layer(ctx: CommandContext) -> CommandScript:
     """Opens the layers panel, as AutoCAD's LAYER opens its palette."""
     ctx.document()
@@ -288,6 +297,7 @@ BUILTIN_COMMANDS = (
     Command("REDO", redo),
     Command("ZOOM", zoom, ("Z",)),
     Command("LAYER", layer, ("LA",)),
+    Command("ID", id_),
 )
 
 
