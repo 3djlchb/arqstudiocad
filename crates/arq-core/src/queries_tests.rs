@@ -93,3 +93,69 @@ fn read_only_entities_are_found_by_their_codec_box() {
     assert_eq!(cad.query_entities(area(49.0, 49.0, 60.0, 60.0)), [text]);
     assert!(cad.query_entities(area(0.0, 0.0, 10.0, 10.0)).is_empty());
 }
+
+#[test]
+fn pick_window_and_snap_answer_on_drawn_geometry() {
+    use arq_geometry::snap::SnapKind;
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let (circle, _) = cad.add_circle(p(20.0, 0.0), 2.0).unwrap();
+    assert_eq!(cad.pick(p(5.0, 0.2), 0.5).unwrap(), Some(line));
+    assert_eq!(cad.pick(p(5.0, 1.0), 0.5).unwrap(), None);
+    assert_eq!(
+        cad.select_window(area(-1.0, -1.0, 11.0, 1.0), false),
+        [line]
+    );
+    assert_eq!(
+        cad.select_window(area(21.5, -1.0, 23.0, 1.0), true),
+        [circle]
+    );
+    let snap = cad
+        .snap(p(9.8, 0.1), 0.5, &[SnapKind::Endpoint], None)
+        .unwrap();
+    assert_eq!(
+        snap.map(|s| (s.kind, s.point)),
+        Some((SnapKind::Endpoint, p(10.0, 0.0)))
+    );
+}
+
+#[test]
+fn an_aperture_must_be_a_finite_distance() {
+    let cad = CadDocument::new();
+    for bad in [f64::NAN, f64::INFINITY, -0.5] {
+        assert!(
+            matches!(
+                cad.pick(p(0.0, 0.0), bad),
+                Err(CadError::InvalidGeometry(_))
+            ),
+            "{bad}"
+        );
+        assert!(matches!(
+            cad.snap(
+                p(0.0, 0.0),
+                bad,
+                &[arq_geometry::snap::SnapKind::Nearest],
+                None
+            ),
+            Err(CadError::InvalidGeometry(_))
+        ));
+    }
+    assert_eq!(cad.pick(p(0.0, 0.0), 0.0).unwrap(), None, "zero is allowed");
+}
+
+/// Locked layers are picked (ADR 0016 D2); every operation still refuses
+/// their entities.
+#[test]
+fn entities_on_locked_layers_are_picked_but_not_edited() {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let layer0 = cad.document().layer_by_name("0").unwrap().id();
+    let (other, _) = cad.create_layer("OTRA").unwrap();
+    cad.set_current_layer(other).unwrap();
+    cad.set_layer_locked(layer0, true).unwrap();
+    assert_eq!(cad.pick(p(5.0, 0.1), 0.5).unwrap(), Some(line));
+    assert!(
+        cad.move_entities(&[line], arq_geometry::Vector2::new(1.0, 0.0).unwrap())
+            .is_err()
+    );
+}

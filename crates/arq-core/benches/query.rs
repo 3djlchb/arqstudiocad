@@ -5,7 +5,7 @@
 
 use std::hint::black_box;
 
-use arq_core::{CadDocument, Document, PlanGeometry};
+use arq_core::{CadDocument, Document, PlanGeometry, SnapKind};
 use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2};
 use criterion::{Criterion, criterion_group, criterion_main};
 
@@ -58,6 +58,32 @@ fn queries(c: &mut Criterion) {
     });
     group.bench_function("query everything", |b| {
         b.iter(|| black_box(cad.query_entities(black_box(all))))
+    });
+    // Hover and selection (ADR 0016 D2, D5): the budget is one frame on
+    // the reference machine for a few thousand entities; this records 100k.
+    let cursor = p(0.5 * extent + 0.1, 0.5 * extent + 0.1);
+    group.bench_function("pick", |b| {
+        b.iter(|| black_box(cad.pick(black_box(cursor), 1.0).expect("pick")))
+    });
+    group.bench_function("select 1% window", |b| {
+        b.iter(|| black_box(cad.select_window(black_box(window), false)))
+    });
+    group.bench_function("select 1% crossing", |b| {
+        b.iter(|| black_box(cad.select_window(black_box(window), true)))
+    });
+    let modes = [
+        SnapKind::Endpoint,
+        SnapKind::Midpoint,
+        SnapKind::Center,
+        SnapKind::Intersection,
+    ];
+    group.bench_function("snap (default modes)", |b| {
+        b.iter(|| {
+            black_box(
+                cad.snap(black_box(cursor), 1.0, &modes, None)
+                    .expect("snap"),
+            )
+        })
     });
     // What saving and autosave hold the document lock for (D3.10).
     group.bench_function("snapshot", |b| b.iter(|| black_box(cad.snapshot())));

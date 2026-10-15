@@ -18,6 +18,7 @@
 //! | Data a save would lose (stops it unless accepted) | [`Document::losses_in`] → [`Loss`], [`Document::save_accepting`] |
 //! | Damaged files: recovered or refused | [`Document::recovery`] → [`Recovery`], [`DocumentError::Damaged`] |
 //! | Read entities | [`Document::entity`], [`Document::entities`] → [`Entity`] |
+//! | Pick, window/crossing selection, object snaps | [`Document::pick`], [`Document::select_window`], [`Document::snap`] |
 //! | Plan geometry of LINE, CIRCLE, ARC | [`PlanGeometry`] |
 //! | Layers | [`Document::layers`] → [`Layer`], [`Document::create_layer`]… |
 //! | Record, undo and redo a change | [`Document::begin_change`] → [`Change`], [`ChangeSet`] |
@@ -36,6 +37,7 @@ mod inventory;
 mod layers;
 mod model;
 mod ocs;
+mod pick;
 mod reading;
 #[cfg(test)]
 mod test_dxf;

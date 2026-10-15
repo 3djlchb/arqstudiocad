@@ -6,9 +6,11 @@
 //! entities; the spatial index of phase 7 replaces the scan behind the same
 //! interface, measured by the `query` benchmark.
 
-use arq_geometry::{Bounds2, Tolerance};
+use arq_geometry::snap::{SnapKind, SnapPoint};
+use arq_geometry::{Bounds2, Point2, Tolerance};
 
 use crate::EntityId;
+use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
 
 impl CadDocument {
@@ -32,6 +34,47 @@ impl CadDocument {
             .filter(|(_, b)| b.intersects(area, tol))
             .map(|(id, _)| id)
             .collect()
+    }
+
+    /// The entity whose drawn geometry passes closest to `at` within
+    /// `aperture` (world units), the one drawn last on a tie; never one on
+    /// an off or frozen layer (ADR 0016 D2). A block counts as a whole.
+    pub fn pick(&self, at: Point2, aperture: f64) -> CadResult<Option<EntityId>> {
+        check_aperture(aperture)?;
+        Ok(self.document().pick(at, aperture))
+    }
+
+    /// The entities wholly inside `area` (a window) or, with `crossing`,
+    /// those whose drawn geometry touches it, exactly; none on an off or
+    /// frozen layer (ADR 0016 D2). In drawing order.
+    pub fn select_window(&self, area: Bounds2, crossing: bool) -> Vec<EntityId> {
+        self.document().select_window(area, crossing)
+    }
+
+    /// The object snap for the cursor at `cursor` among the active `modes`
+    /// within `aperture` (world units); `from` is the last point, for
+    /// Perpendicular and Tangent (ADR 0016 D5). See
+    /// [`Document::snap`](arq_document::Document::snap) for the order.
+    pub fn snap(
+        &self,
+        cursor: Point2,
+        aperture: f64,
+        modes: &[SnapKind],
+        from: Option<Point2>,
+    ) -> CadResult<Option<SnapPoint>> {
+        check_aperture(aperture)?;
+        Ok(self.document().snap(cursor, aperture, modes, from))
+    }
+}
+
+/// An aperture is a finite distance, zero or more.
+fn check_aperture(aperture: f64) -> CadResult<()> {
+    if aperture.is_finite() && aperture >= 0.0 {
+        Ok(())
+    } else {
+        Err(CadError::InvalidGeometry(format!(
+            "aperture must be a finite distance of zero or more, not {aperture}"
+        )))
     }
 }
 

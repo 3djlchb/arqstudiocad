@@ -20,8 +20,10 @@ from arqstudiocad.core import (
     CadEntityInfo,
     CadLayerInfo,
     CadLine,
+    CadSnap,
     DocumentNotFoundError,
     EntityNotFoundError,
+    InvalidGeometryError,
     LayerNotFoundError,
 )
 
@@ -182,3 +184,44 @@ def test_infos_are_immutable_copies(doc: CadDocument, tmp_path: Path) -> None:
     assert entity.kind == "LINE", "readable after the document is gone"
     with pytest.raises(DocumentNotFoundError):
         doc.get_entities()
+
+
+def test_pick_window_and_snaps() -> None:
+    """Picking, window selection and object snaps on drawn geometry (ADR 0016 D2, D5)."""
+    doc = CadApplication().create_document("vacio")
+    line = doc.add_line((0, 0), (10, 0))[0]
+    circle = doc.add_circle((20, 0), 2)[0]
+    assert doc.pick((5, 0.2), 0.5) == line
+    assert doc.pick((5, 1.0), 0.5) is None
+    assert doc.pick([20, 2.1], 0.5) == circle, "any sequence of two numbers"
+    assert doc.select_window(CadBounds2((-1, -1), (11, 1))) == [line]
+    assert doc.select_window(CadBounds2((21.5, -1), (23, 1))) == []
+    assert doc.select_window(CadBounds2((21.5, -1), (23, 1)), crossing=True) == [circle]
+
+    snap = doc.snap((9.8, 0.1), 0.5, ["END", "mid"])
+    assert snap is not None
+    assert (snap.kind, snap.point) == ("END", (10.0, 0.0))
+    match snap:
+        case CadSnap(kind, point):
+            assert (kind, point) == ("END", (10.0, 0.0))
+    assert hash(snap) == hash(doc.snap((9.8, 0.1), 0.5, ["END"]))
+    center = doc.snap((21.9, 0.6), 0.5, ["CEN"])
+    assert center is not None and center.point == (20.0, 0.0)
+    perp = doc.snap((2, 0.1), 0.5, ["PER"], last_point=(7, 3))
+    assert perp is not None and (perp.kind, perp.point) == ("PER", (7.0, 0.0))
+    assert doc.snap((2, 0.1), 0.5, ["PER"]) is None, "PER needs a last point"
+    assert doc.snap((50, 50), 0.5, ["END"]) is None
+
+
+def test_bad_apertures_and_snap_keys_are_refused() -> None:
+    doc = CadApplication().create_document("vacio")
+    doc.add_line((0, 0), (10, 0))
+    for bad in (float("nan"), float("inf"), -1.0):
+        with pytest.raises(InvalidGeometryError):
+            doc.pick((0, 0), bad)
+        with pytest.raises(InvalidGeometryError):
+            doc.snap((0, 0), bad, ["END"])
+    with pytest.raises(ValueError, match="unknown object snap"):
+        doc.snap((0, 0), 1.0, ["ENDPOINT"])
+    with pytest.raises(TypeError):
+        doc.snap((0, 0), 1.0, "END")  # a str is not a list of keys
