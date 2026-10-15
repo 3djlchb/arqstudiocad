@@ -215,11 +215,13 @@ class CommandContext:
         options: Sequence[Option] = (),
         default: float | None = None,
         drag: Drag | None = None,
+        optional: bool = False,
     ) -> Prompt:
         """A prompt for a distance from ``base`` (a radius, a scale factor);
-        yield it to get a positive float, or the key of one of ``options``."""
+        yield it to get a positive float, the key of one of ``options``, or
+        ``None`` for Enter if it is ``optional``."""
         shown = None if default is None else f"{default:.10g}"
-        return Prompt(message, "distance", tuple(options), shown, base, drag=drag)
+        return Prompt(message, "distance", tuple(options), shown, base, optional, drag)
 
     def angle(
         self,
@@ -227,11 +229,15 @@ class CommandContext:
         base: tuple[float, float],
         default: float | None = None,
         drag: Drag | None = None,
+        options: Sequence[Option] = (),
+        optional: bool = False,
     ) -> Prompt:
         """A prompt for an angle, typed in degrees or shown by a point from
-        ``base``; yield it to get radians. ``default`` is in radians."""
+        ``base``; yield it to get radians, the key of one of ``options``, or
+        ``None`` for Enter if it is ``optional``. ``default`` is in
+        radians."""
         shown = None if default is None else f"{math.degrees(default):.10g}"
-        return Prompt(message, "angle", (), shown, base, drag=drag)
+        return Prompt(message, "angle", tuple(options), shown, base, optional, drag)
 
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
         """A prompt while the user selects in the viewport (ADR 0016 D3);
@@ -249,11 +255,14 @@ type CommandFunction = Callable[[CommandContext], CommandScript]
 
 @dataclass(frozen=True, slots=True)
 class Command:
-    """A command: unique English ``name``, its ``aliases`` and its script."""
+    """A command: unique English ``name``, its ``aliases`` and its script.
+    Enter on an empty command line repeats the last command that ``repeat``s
+    (not a grip edit, which a click starts)."""
 
     name: str
     run: CommandFunction
     aliases: tuple[str, ...] = ()
+    repeat: bool = True
 
 
 class CommandRegistry:
@@ -359,7 +368,8 @@ class CommandRunner:
         if self._command is not None:
             self.cancel()
         self._command = command
-        self._last = command
+        if command.repeat:
+            self._last = command
         self.bus.publish(CommandStarted(command.name))
         try:
             self._script = command.run(self.context)

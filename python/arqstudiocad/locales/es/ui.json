@@ -204,5 +204,15 @@
   "Specify second point of mirror line": "Precise segundo punto de línea de simetría",
   "Erase source objects?": "¿Borrar objetos de origen?",
   "A point on the base point shows no direction.": "Un punto sobre el punto base no indica ninguna dirección.",
-  "The angle must be a finite number.": "El ángulo debe ser un número finito."
+  "The angle must be a finite number.": "El ángulo debe ser un número finito.",
+  "** STRETCH ** Specify stretch point": "** ESTIRAR ** Precise punto de estiramiento",
+  "** MOVE ** Specify move point": "** DESPLAZAR ** Precise punto de desplazamiento",
+  "** ROTATE ** Specify rotation angle": "** GIRAR ** Precise ángulo de rotación",
+  "** SCALE ** Specify scale factor": "** ESCALA ** Precise factor de escala",
+  "** MIRROR ** Specify second point": "** SIMETRÍA ** Precise segundo punto",
+  "Base point": "Punto base",
+  "Copy": "Copiar",
+  "Exit": "Salir",
+  "The object cannot take that shape.": "El objeto no puede tomar esa forma.",
+  "The selected objects cannot be transformed yet.": "Los objetos designados aún no se pueden transformar."
 }

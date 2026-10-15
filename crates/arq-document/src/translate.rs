@@ -39,6 +39,26 @@ pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
     }
 }
 
+/// The grip of a block or a lightweight polyline drawn in plan (ADR 0016
+/// D7): `(true, insertion point)` for a block, `(false, first vertex)` for
+/// a polyline, in world coordinates.
+pub(crate) fn whole_grip(e: &EntityType) -> Option<(bool, Point2)> {
+    let world = |normal: &Vector3, x: f64, y: f64| {
+        let (x, y, _) = plan_normal(normal.x, normal.y, normal.z)?.map_point(x, y, 0.0);
+        point(x, y)
+    };
+    match e {
+        EntityType::Insert(i) => {
+            Some((true, world(&i.normal, i.insert_point.x, i.insert_point.y)?))
+        }
+        EntityType::LwPolyline(p) => {
+            let first = p.vertices.first()?.location;
+            Some((false, world(&p.normal, first.x, first.y)?))
+        }
+        _ => None,
+    }
+}
+
 /// Applies a plan transformation to a block or a lightweight polyline as a
 /// whole, through the codec: a block's attributes follow it, a polyline's
 /// bulges flip under a mirror (the codec's mirror path does the same for

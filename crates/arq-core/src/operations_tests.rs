@@ -149,6 +149,31 @@ fn locked_layers_protect_their_entities() {
 }
 
 #[test]
+fn new_geometry_of_the_same_kind_keeps_the_entity() {
+    let mut doc = Document::new();
+    let text = doc.insert_text_for_tests("NOTA", 5.0, 5.0);
+    let mut cad = CadDocument::from_document(doc);
+    let (walls, _) = cad.create_layer("A-MUROS").unwrap();
+    cad.set_current_layer(walls).unwrap();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    let changed = cad
+        .set_entity_geometry(line, Line::new(p(0.0, 0.0), p(3.0, 4.0)).unwrap().into())
+        .unwrap();
+    assert_eq!(changed.modified(), [line]);
+    assert!(near(line_ends(&cad, line).1, p(3.0, 4.0)));
+    assert_eq!(cad.document().entity(line).unwrap().layer(), "A-MUROS");
+    assert_eq!(cad.undo_name(), Some("EDIT"));
+    let circle: Geometry2 = Circle::new(p(0.0, 0.0), 1.0).unwrap().into();
+    // A line cannot become a circle; a text has no geometry to edit yet.
+    for id in [line, text] {
+        let err = cad.set_entity_geometry(id, circle).unwrap_err();
+        assert!(matches!(err, CadError::InvalidOperation(_)), "{err:?}");
+    }
+    cad.undo().unwrap();
+    assert!(near(line_ends(&cad, line).1, p(1.0, 0.0)), "one undo step");
+}
+
+#[test]
 fn repeated_ids_are_edited_once() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();

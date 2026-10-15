@@ -7,7 +7,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use arq_core::{Color, SnapKind, SnapPoint};
+use arq_core::{Color, Grip, SnapKind, SnapPoint};
 use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Tolerance, Vector2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -527,8 +527,59 @@ impl CadSnap {
     }
 }
 
+/// A grip of a selected entity (ADR 0016 D7): its entity, its key
+/// (`"END"`, `"MID"`, `"CEN"`, `"QUA"`, `"INS"` for a block's insertion
+/// point, `"VTX"` for a polyline's first vertex) and its point.
+#[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, Copy, PartialEq)]
+pub struct CadGrip(pub Grip);
+
+#[pymethods]
+impl CadGrip {
+    #[classattr]
+    fn __match_args__() -> (&'static str, &'static str, &'static str) {
+        ("entity_id", "kind", "point")
+    }
+
+    /// The entity it edits.
+    #[getter]
+    fn entity_id(&self) -> u64 {
+        self.0.entity
+    }
+
+    /// What it stands for, as a key.
+    #[getter]
+    fn kind(&self) -> &'static str {
+        self.0.kind.name()
+    }
+
+    /// Where it is.
+    #[getter]
+    fn point(&self) -> (f64, f64) {
+        xy(self.0.point)
+    }
+
+    fn __hash__(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        self.0.entity.hash(&mut h);
+        self.0.kind.hash(&mut h);
+        hash_floats(&[self.0.point.x(), self.0.point.y()]).hash(&mut h);
+        h.finish()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadGrip(entity_id={}, kind={:?}, point={})",
+            self.0.entity,
+            self.0.kind.name(),
+            fmt_xy(self.0.point)
+        )
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadSnap>()?;
+    m.add_class::<CadGrip>()?;
     m.add_class::<CadColor>()?;
     m.add_class::<CadBounds2>()?;
     m.add_class::<CadLine>()?;
