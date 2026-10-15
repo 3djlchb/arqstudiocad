@@ -128,8 +128,14 @@ fn edit(cad: &mut CadDocument) -> Result<(), String> {
     if let Some(id) = erase {
         step(cad.delete_entities(&[id]), "erase")?;
     }
-    let (layer, _) = cad
+    // Draw on a new current layer: the drawing's current layer may be
+    // locked, and an entity cannot leave a locked layer.
+    let (drawing_layer, _) = cad
         .create_layer(&layer_name)
+        .map_err(|e| format!("create layer: {e}"))?;
+    step(cad.set_current_layer(drawing_layer), "set current layer")?;
+    let (layer, _) = cad
+        .create_layer(&format!("{layer_name}-2"))
         .map_err(|e| format!("create layer: {e}"))?;
     let (line, _) = cad
         .add_line(p(-3.0, 7.0), p(12.5, 0.125))
@@ -557,7 +563,7 @@ fn codec_regression_constraints_kept_undecoded() {
 
 /// Drawings our AcadRust fork reads that AcadRust 0.6.4 did not (milestone
 /// 03.2, LibreDWG's test data): each must open intact with what the fork
-/// fix recovers.
+/// fix recovers, and round-trip like any corpus drawing.
 #[test]
 #[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
 fn codec_regression_fork_fixes() {
@@ -598,11 +604,16 @@ fn codec_regression_fork_fixes() {
         );
     }
     assert!(open("example_2013.dwg").undecoded_objects().is_empty());
-
-    // Their full round trip is not run yet: it found engine bugs of its
-    // own (a RAY rewritten in R14/2000 DWG, ACIS bodies and RAY/TOLERANCE
-    // ids in DXF output), which the safe save refuses rather than lose;
-    // they are milestone 03.2's next fixes.
+    // And the full round trip of every corpus drawing. It once failed on a
+    // RAY rewritten in R14/2000 DWG (a direction rounded in the last place),
+    // ACIS bodies saved as DXF (no wireframe cache to box them) and a
+    // TOLERANCE in DXF (its text and height); all fixed in 03.2.
+    let others = drawings_in(&root)
+        .into_iter()
+        .filter(|(_, path)| path.file_name().is_some_and(|n| n != "Constraints.dwg"))
+        .collect::<Vec<_>>();
+    assert_eq!(others.len(), 7, "the seven drawings");
+    run_all(others, check_file);
 }
 
 #[test]

@@ -14,8 +14,7 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **Working format:** DWG, as BricsCAD does, with an own internal model; the
   native format `.ascad` is designed and reserved (ADR 0018).
 - **Data protections (03.3):** done (ADR 0017 D5).
-- **Next, in this order:** 03.2 opencadcodec's improvements (constraints
-  step done) → back to 02.5 editing (step 2.5.2).
+- **Next:** back to 02.5 editing (step 2.5.2); 03.2 is done.
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -57,7 +56,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 | Milestone | Content | Status |
 |---|---|---|
 | 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ |
-| 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; kept in our AcadRust fork | ◐ every measured difference checked: the fork's constraint reading was garbage (objects now kept verbatim); its R2004 lofted surface was right (brought in); its R11 "recovery" was empty, and AcadRust's R11 linetype bug is fixed instead. Next: the engine bugs those drawings exposed (RAY in R14/2000 DWG, ACIS and RAY/TOLERANCE in DXF output) |
+| 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; kept in our AcadRust fork | ✅ every measured difference checked and the right ones brought in (R2004 lofted surfaces); the fork's wrong readings replaced by keeping objects verbatim; R11 linetypes, TOLERANCE in DXF and our own RAY and ACIS checks fixed; LibreDWG's seven regression drawings round-trip |
 | 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ✅ damaged files refused or recovered and marked; saves read back and checked; losses asked before saving; regression drawings made by the tests |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ first matrix from the comparison |
 | 03.5 External validation | Outputs opened in independent CAD applications; Xref and BIM drawings in the corpus | ○ |

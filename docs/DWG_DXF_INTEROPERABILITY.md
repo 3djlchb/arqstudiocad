@@ -36,7 +36,7 @@ when its parameters change).
 | Leaders, multileaders | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Tables | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Images, underlays, wipeouts | ✅ | 100 % / 100 % | ◐ frame or box | ○ | — | |
-| 3D solids, regions, surfaces (ACIS) | ✅ geometry kept (761 kB measured); R2004 lofted surfaces fixed in our fork | 100 % / ◐ DXF output loses some ACIS bodies (save refused, 03.2) | ◐ bounding box in plan | ○ | ○ | 3D model in 02.8 |
+| 3D solids, regions, surfaces (ACIS) | ✅ geometry kept (761 kB measured); R2004 lofted surfaces fixed in our fork | 100 % / 100 % (DXF keeps the body as SAT, without the DWG wireframe cache: boxed from its vertices) | ◐ bounding box in plan | ○ | ○ | 3D model in 02.8 |
 | Meshes, 3D faces | ✅ | 100 % / 100 % | ◐ edges in plan | ○ | — | |
 | Ellipses, splines, 2D solids | ✅ | ✅ (not measured separately) | ◐ broken into lines and arcs | ○ | — | |
 | Dynamic blocks | ✅ definitions, parameters, actions, grips | 100 % / 100 % | ✅ current state (the evaluated block) | ○ | ○ visibility, stretch… | ADR 0016 D7, our parametric engine (ADR 0017 D6) |
