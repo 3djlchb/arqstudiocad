@@ -20,6 +20,7 @@ from arqstudiocad.events import (
     DocumentClosed,
     DocumentOpened,
     DocumentSaved,
+    DraftingChanged,
     Event,
     EventBus,
     LanguageChanged,
@@ -44,6 +45,7 @@ class QtEventBridge(QObject):
     command_finished = Signal(object)
     command_cancelled = Signal(object)
     command_prompt = Signal(object)
+    drafting_changed = Signal(object)
     command_message = Signal(object)
     language_changed = Signal(object)
     work_started = Signal(object)
@@ -63,6 +65,7 @@ class QtEventBridge(QObject):
             CommandFinished: self.command_finished,
             CommandCancelled: self.command_cancelled,
             CommandPrompt: self.command_prompt,
+            DraftingChanged: self.drafting_changed,
             CommandMessage: self.command_message,
             LanguageChanged: self.language_changed,
             WorkStarted: self.work_started,
