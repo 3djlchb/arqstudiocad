@@ -5,6 +5,9 @@ before changing code. It is binding. Decisions are in [docs/architecture/adr/](d
 the project's goals in [docs/PROJECT_CHARTER.md](docs/PROJECT_CHARTER.md) and the
 order of work in [docs/MODULES_AND_ROADMAP.md](docs/MODULES_AND_ROADMAP.md), under the
 [master plan](docs/MASTER_PLAN.md) ([index of governing documents](docs/README.md)).
+Before any implementation, follow [the AI agent workflow](docs/AI_AGENT_WORKFLOW.md):
+rescan the current repository and continue from its actual state, regardless of
+which agent worked before or how much time has passed.
 New designs must leave room
 for the platform's modules (IFC/BIM, associative documentation, rendering)
 without building them early (ADR 0014).

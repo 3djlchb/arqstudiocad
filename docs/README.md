@@ -11,6 +11,7 @@ its reasons.
 | [System architecture](SYSTEM_ARCHITECTURE.md) | Layers and responsibilities; today's tree and the target layout |
 | [Technical contract](architecture/technical-contract.md) | The binding Rust–Python–PySide6 contracts |
 | [Modules and roadmap](MODULES_AND_ROADMAP.md) | Phases 00–11, milestones and where the project stands |
+| [AI agent workflow](AI_AGENT_WORKFLOW.md) | Shared scan, implementation and handoff process for any coding agent |
 | [Data and formats](DATA_AND_FORMATS.md) | Document model, working format, exchange formats, conversion rule |
 | [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md) | The engine decision, protections, capability matrix |
 | [Testing and performance](TESTING_AND_PERFORMANCE.md) | Test pyramid, measurements, benchmark rules |

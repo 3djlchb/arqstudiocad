@@ -263,6 +263,16 @@ critical dependencies are built, installed and tested on it.
 
 ## 13. Workflow
 
+Any coding agent may contribute (including Claude Code, Codex and other agents),
+and work may continue across sessions or days. The repository state and this
+master plan are the shared source of truth; an agent's identity or prior chat
+does not establish a separate implementation direction. Before planning code
+or changing logic, every agent must freshly scan the repository, current branch,
+uncommitted diff, relevant implementation and tests, then read the governing
+documents and applicable ADRs. Continue from the checked-out state, preserve
+existing work, and record durable decisions and progress in project documents.
+The complete procedure is in [AI agent workflow](AI_AGENT_WORKFLOW.md).
+
 1. Pick a concrete task from the plan.
 2. Read the relevant architecture documents and ADRs.
 3. Define the contract and the acceptance criteria before implementing.

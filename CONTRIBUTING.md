@@ -67,6 +67,17 @@ these are the ones a first contribution usually meets:
   line: read it, run it, test it. [AGENTS.md](AGENTS.md) holds the rules for
   coding agents.
 
+### Working with coding agents
+
+Any coding agent may work on the repository, and a task may continue on a
+different day or with a different agent. Before planning or changing logic, the
+agent must scan the current repository and continue from its actual state,
+using the master plan and governing documents as the shared source of truth.
+This prevents separate agents from inventing conflicting approaches. Follow
+the full [AI agent workflow](docs/AI_AGENT_WORKFLOW.md); do not rely on prior
+chat context as a substitute for inspecting the branch, diff, code, tests and
+applicable ADRs.
+
 ## Branches, commits and pull requests
 
 - One branch per feature or fix, named `feature/<topic>` or `fix/<topic>`
