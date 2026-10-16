@@ -1,6 +1,6 @@
 {
   "code": "en",
-  "name": "English",
+  "maintained": true,
   "maintainer": "ArqStudioCAD contributors",
-  "maintained": true
+  "name": "English"
 }

@@ -75,8 +75,12 @@ The maintainer chose the references (2026-10-13):
 - **Panels after OpenCADStudio's**: a title with only the pin and close
   (double-clicking it floats the panel), and Properties as a property grid —
   a caption naming what is shown, then foldable sections of name and value
-  rows. Milestone 2.4 shows the drawing, read-only; editors per value come
-  with selection in 2.5.
+  rows. Properties follows its reference palette: muted labels, bordered value
+  fields and full-width foldable section bands, with the active theme's accent
+  for the highlighted editor. Panel tables use shared compact headers, subtle
+  row separators and alternating surfaces. Both styles follow the active theme.
+  Milestone 2.4 shows the drawing, read-only; editors per value come with
+  selection in 2.5.
 - **Dark theme by default**, light on choice (Tools › Theme, remembered),
   both on Qt's Fusion style so they look alike on every platform. The
   drawing area stays dark in both.

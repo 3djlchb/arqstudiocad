@@ -29,6 +29,9 @@ without building them early (ADR 0014).
 - `README.md` / `README.es.md` and `CONTRIBUTING.md` / `CONTRIBUTING.es.md`
   (English / Spanish) are kept in sync: a change to one is made to the other in
   the same commit. Everything else is English.
+- Keys in every JSON object under `python/arqstudiocad/locales/` stay in
+  alphabetical order. When adding or changing catalog entries, preserve this
+  order; the i18n tests enforce it.
 - Code or ideas copied from other projects are recorded in `THIRD_PARTY.md`
   and must be GPL-3.0-or-later compatible. Code is GPL-3.0-or-later;
   documentation is CC BY-SA 4.0 (`docs/LICENSE`).

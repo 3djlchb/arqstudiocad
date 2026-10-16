@@ -51,6 +51,16 @@ def _fields(text: str) -> set[str]:
     return {name for _, name, _, _ in string.Formatter().parse(text) if name}
 
 
+def _json_objects_are_sorted(value: object) -> bool:
+    if isinstance(value, dict):
+        return list(value) == sorted(value) and all(
+            _json_objects_are_sorted(child) for child in value.values()
+        )
+    if isinstance(value, list):
+        return all(_json_objects_are_sorted(child) for child in value)
+    return True
+
+
 def test_source_and_spanish_packs_are_installed() -> None:
     assert {SOURCE_LANGUAGE, "es"} <= PACKS.keys()
     assert PACKS[SOURCE_LANGUAGE].ui == {}, "English is the source; its catalog stays empty"
@@ -59,6 +69,16 @@ def test_source_and_spanish_packs_are_installed() -> None:
 def test_scanner_finds_strings() -> None:
     # A check that inspects nothing is a failure, not a pass.
     assert len(_tr_literals()) >= 10
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted(package_dir().joinpath("locales").rglob("*.json")),
+    ids=lambda path: path.relative_to(package_dir()).as_posix(),
+)
+def test_locale_json_object_keys_are_alphabetical(path: Path) -> None:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert _json_objects_are_sorted(data), f"{path}: JSON object keys must be alphabetical"
 
 
 @pytest.mark.parametrize("code", [c for c, p in PACKS.items() if p.maintained and c != "en"])

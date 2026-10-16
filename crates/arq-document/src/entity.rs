@@ -93,6 +93,9 @@ pub struct Entity {
     pub(crate) kind: &'static str,
     pub(crate) layer: String,
     pub(crate) color: Color,
+    pub(crate) linetype: String,
+    pub(crate) lineweight: String,
+    pub(crate) details: Vec<(String, String)>,
     pub(crate) bounds: Option<Bounds2>,
     pub(crate) plan: Option<PlanGeometry>,
     pub(crate) transformable: bool,
@@ -117,6 +120,21 @@ impl Entity {
     /// Its own color (often [`Color::ByLayer`]).
     pub fn color(&self) -> Color {
         self.color
+    }
+
+    /// Entity linetype, with an empty codec value represented as `ByLayer`.
+    pub fn linetype(&self) -> &str {
+        &self.linetype
+    }
+
+    /// Human-readable entity lineweight (millimeters or a special value).
+    pub fn lineweight(&self) -> &str {
+        &self.lineweight
+    }
+
+    /// Read-only, type-specific details such as block or polyline data.
+    pub fn details(&self) -> &[(String, String)] {
+        &self.details
     }
 
     /// Plan-view bounding box, when the entity has a known extent.

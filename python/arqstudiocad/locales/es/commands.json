@@ -1,9 +1,46 @@
 {
+  "ARC": [
+    "ARCO"
+  ],
+  "CIRCLE": [
+    "CIRCULO"
+  ],
+  "CLOSE": [
+    "CERRAR"
+  ],
+  "COPY": [
+    "COPIA"
+  ],
+  "ERASE": [
+    "BORRA"
+  ],
+  "ID": [],
+  "LAYER": [
+    "CAPA",
+    "CA"
+  ],
+  "LINE": [
+    "LINEA"
+  ],
+  "MIRROR": [
+    "SIMETRIA",
+    "SI"
+  ],
+  "MOVE": [
+    "DESPLAZA"
+  ],
   "NEW": [
     "NUEVO"
   ],
   "OPEN": [
     "ABRIR"
+  ],
+  "REDO": [
+    "REHACER"
+  ],
+  "ROTATE": [
+    "GIRA",
+    "GI"
   ],
   "SAVE": [
     "GUARDAR"
@@ -11,49 +48,12 @@
   "SAVEAS": [
     "GUARDARCOMO"
   ],
-  "CLOSE": [
-    "CERRAR"
-  ],
-  "UNDO": [
-    "DESHACER"
-  ],
-  "REDO": [
-    "REHACER"
-  ],
-  "ZOOM": [],
-  "LAYER": [
-    "CAPA",
-    "CA"
-  ],
-  "ID": [],
-  "LINE": [
-    "LINEA"
-  ],
-  "CIRCLE": [
-    "CIRCULO"
-  ],
-  "ARC": [
-    "ARCO"
-  ],
-  "ERASE": [
-    "BORRA"
-  ],
-  "MOVE": [
-    "DESPLAZA"
-  ],
-  "COPY": [
-    "COPIA"
-  ],
-  "ROTATE": [
-    "GIRA",
-    "GI"
-  ],
   "SCALE": [
     "ESCALA",
     "ES"
   ],
-  "MIRROR": [
-    "SIMETRIA",
-    "SI"
-  ]
+  "UNDO": [
+    "DESHACER"
+  ],
+  "ZOOM": []
 }

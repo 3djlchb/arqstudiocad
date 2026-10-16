@@ -124,15 +124,15 @@ impl Document {
     pub(crate) fn owned_view(&self, id: EntityId) -> Option<Entity> {
         let owned = self.model.entities.get(&id)?;
         let layer = self.model.layers.get(&owned.layer)?;
-        Some(Entity {
-            id,
-            kind: owned.plan.geometry().kind().name(),
-            layer: layer.name().to_owned(),
-            color: owned.color,
-            bounds: Some(owned.plan.geometry().bounds()),
-            plan: Some(owned.plan),
-            transformable: true,
-        })
+        let codec = self.cad().get_entity(handle(id))?;
+        let mut entity = crate::translate::read_entity(codec);
+        entity.kind = owned.plan.geometry().kind().name();
+        entity.layer = layer.name().to_owned();
+        entity.color = owned.color;
+        entity.bounds = Some(owned.plan.geometry().bounds());
+        entity.plan = Some(owned.plan);
+        entity.transformable = true;
+        Some(entity)
     }
 
     /// The layer named `name` (ignoring case), from the model.

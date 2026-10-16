@@ -40,6 +40,24 @@ impl CadEntityInfo {
         CadColor(self.0.color())
     }
 
+    /// Its entity linetype (`ByLayer` when inherited).
+    #[getter]
+    fn linetype(&self) -> &str {
+        self.0.linetype()
+    }
+
+    /// Its lineweight in millimeters or a special value such as `ByLayer`.
+    #[getter]
+    fn lineweight(&self) -> &str {
+        self.0.lineweight()
+    }
+
+    /// Read-only, type-specific details for blocks and polylines.
+    #[getter]
+    fn details(&self) -> Vec<(String, String)> {
+        self.0.details().to_vec()
+    }
+
     /// Plan-view bounding box, when the entity has a known extent.
     #[getter]
     fn bounds(&self) -> Option<CadBounds2> {
