@@ -67,12 +67,20 @@ def test_pins_and_sections_are_redrawn_in_the_new_colors(qtbot: QtBot) -> None:
     title_bar = window.auto_hide.title_bars[window.layers_panel]
     section = window.properties_panel.grid.tree.topLevelItem(0)
     assert section is not None
+    layers = window.layers_panel.table
+    grid = window.properties_panel.grid.tree
     try:
         window.change_theme("light")
         light_pin = title_bar.pin.icon().pixmap(16, 16).toImage()
         light_section = section.background(0).color()
+        assert window.layers_panel.table.showGrid() is False
+        assert layers.alternatingRowColors()
+        assert app.palette().base().color().name() in layers.styleSheet()
+        assert app.palette().base().color().name() in grid.styleSheet()
         window.change_theme("dark")
         assert title_bar.pin.icon().pixmap(16, 16).toImage() != light_pin
         assert section.background(0).color() != light_section
+        assert app.palette().base().color().name() in layers.styleSheet()
+        assert app.palette().base().color().name() in grid.styleSheet()
     finally:
         app.setPalette(original)

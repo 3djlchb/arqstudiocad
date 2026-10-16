@@ -306,6 +306,7 @@ class MainWindow(QMainWindow):
         # Colors drawn by hand follow the theme: the pins and the grid's sections.
         self.auto_hide.restyle()
         self.properties_panel.grid.restyle()
+        self.layers_panel.restyle()
         self.theme = theme
         self.theme_actions[theme].setChecked(True)
         if self._settings is not None:

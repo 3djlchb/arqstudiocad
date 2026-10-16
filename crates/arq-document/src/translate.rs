@@ -13,14 +13,78 @@ use crate::ocs::{PlanNormal, plan_normal};
 pub(crate) fn read_entity(e: &EntityType) -> Entity {
     let plan = plan_of(e);
     let bounds = bounds_with(e, plan);
+    let common = e.common();
     Entity {
         id: e.as_entity().handle().value(),
         kind: e.as_entity().entity_type(),
         layer: e.as_entity().layer().to_owned(),
         color: color_from_codec(e.as_entity().color()),
+        linetype: if common.linetype.is_empty() {
+            "ByLayer".to_owned()
+        } else {
+            common.linetype.clone()
+        },
+        lineweight: lineweight_text(common.line_weight),
+        details: details(e),
         bounds,
         plan,
         transformable: plan.is_some() || is_whole_transformable(e),
+    }
+}
+
+fn lineweight_text(weight: acadrust::types::LineWeight) -> String {
+    match weight {
+        acadrust::types::LineWeight::ByLayer => "ByLayer".to_owned(),
+        acadrust::types::LineWeight::ByBlock => "ByBlock".to_owned(),
+        acadrust::types::LineWeight::Default => "Default".to_owned(),
+        acadrust::types::LineWeight::Value(value) => {
+            format!("{:.2} mm", f64::from(value) / 100.0)
+        }
+    }
+}
+
+fn details(e: &EntityType) -> Vec<(String, String)> {
+    match e {
+        EntityType::Insert(insert) => vec![
+            ("Block name".to_owned(), insert.block_name.clone()),
+            (
+                "Insertion point".to_owned(),
+                format!(
+                    "{:.6}, {:.6}, {:.6}",
+                    insert.insert_point.x, insert.insert_point.y, insert.insert_point.z
+                ),
+            ),
+            (
+                "Scale".to_owned(),
+                format!(
+                    "{:.6}, {:.6}, {:.6}",
+                    insert.x_scale(),
+                    insert.y_scale(),
+                    insert.z_scale()
+                ),
+            ),
+            (
+                "Rotation".to_owned(),
+                format!("{:.6}", insert.rotation.to_degrees()),
+            ),
+            ("Attributes".to_owned(), insert.attributes.len().to_string()),
+            ("Columns".to_owned(), insert.column_count.to_string()),
+            ("Rows".to_owned(), insert.row_count.to_string()),
+        ],
+        EntityType::LwPolyline(polyline) => vec![
+            ("Vertices".to_owned(), polyline.vertices.len().to_string()),
+            (
+                "Closed".to_owned(),
+                if polyline.is_closed { "true" } else { "false" }.to_owned(),
+            ),
+            ("Elevation".to_owned(), format!("{:.6}", polyline.elevation)),
+            (
+                "Constant width".to_owned(),
+                format!("{:.6}", polyline.constant_width),
+            ),
+            ("Thickness".to_owned(), format!("{:.6}", polyline.thickness)),
+        ],
+        _ => Vec::new(),
     }
 }
 
@@ -232,5 +296,53 @@ pub(crate) fn color_to_codec(c: Color) -> acadrust::Color {
         Color::Index(i) => acadrust::Color::Index(i),
         Color::Rgb { r, g, b } => acadrust::Color::Rgb { r, g, b },
         Color::None => acadrust::Color::None,
+    }
+}
+
+#[cfg(test)]
+mod details_tests {
+    use acadrust::EntityType;
+    use acadrust::entities::{Insert, LwPolyline};
+    use acadrust::types::{LineWeight, Vector3};
+
+    use super::{details, lineweight_text};
+
+    #[test]
+    fn block_reference_details_are_read_only_values() {
+        let insert = Insert::new("DOOR", Vector3::new(1.0, 2.0, 0.0))
+            .with_scale(2.0, 3.0, 1.0)
+            .with_rotation(std::f64::consts::FRAC_PI_2);
+        let details = details(&EntityType::Insert(insert));
+
+        assert!(details.contains(&("Block name".to_owned(), "DOOR".to_owned())));
+        assert!(details.contains(&(
+            "Insertion point".to_owned(),
+            "1.000000, 2.000000, 0.000000".to_owned()
+        )));
+        assert!(details.contains(&(
+            "Scale".to_owned(),
+            "2.000000, 3.000000, 1.000000".to_owned()
+        )));
+        assert!(details.contains(&("Rotation".to_owned(), "90.000000".to_owned())));
+    }
+
+    #[test]
+    fn lightweight_polyline_details_include_shape_data() {
+        let mut polyline = LwPolyline::new();
+        polyline.close();
+        polyline.elevation = 2.5;
+        polyline.constant_width = 0.25;
+        let details = details(&EntityType::LwPolyline(polyline));
+
+        assert!(details.contains(&("Vertices".to_owned(), "0".to_owned())));
+        assert!(details.contains(&("Closed".to_owned(), "true".to_owned())));
+        assert!(details.contains(&("Elevation".to_owned(), "2.500000".to_owned())));
+        assert!(details.contains(&("Constant width".to_owned(), "0.250000".to_owned())));
+    }
+
+    #[test]
+    fn lineweight_values_are_displayed_in_millimeters() {
+        assert_eq!(lineweight_text(LineWeight::ByLayer), "ByLayer");
+        assert_eq!(lineweight_text(LineWeight::Value(25)), "0.25 mm");
     }
 }

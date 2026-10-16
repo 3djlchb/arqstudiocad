@@ -27,6 +27,7 @@ from arqstudiocad.events import CommandMessage, DocumentChanged, Event
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 
 CURRENT, NAME, ON, FROZEN, LOCKED, COLOR, LINETYPE, PLOT = range(8)
 LAYER_ID = Qt.ItemDataRole.UserRole
@@ -74,7 +75,10 @@ class LayersPanel(QDockWidget):
         self.delete_button.clicked.connect(self.delete_selected)
         self.current_button.clicked.connect(self.set_selected_current)
         buttons = QHBoxLayout()
+        buttons.setContentsMargins(2, 2, 2, 3)
+        buttons.setSpacing(4)
         for button in (self.new_button, self.delete_button, self.current_button):
+            apply_panel_action_style(button)
             buttons.addWidget(button)
         buttons.addStretch(1)
 
@@ -82,13 +86,15 @@ class LayersPanel(QDockWidget):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().hide()
+        apply_data_view_style(self.table, row_height=25)
         self.table.itemChanged.connect(self._on_item_changed)
         self.table.cellDoubleClicked.connect(self._on_double_click)
         self.table.cellClicked.connect(self._on_click)
 
         body = self._body = QWidget()
         layout = QVBoxLayout(body)
-        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(2)
         layout.addLayout(buttons)
         layout.addWidget(self.table, 1)
         self.setWidget(body)
@@ -96,6 +102,12 @@ class LayersPanel(QDockWidget):
         events.active_document_changed.connect(self.refresh)
         events.document_changed.connect(self._on_document_changed)
         self.retranslate()
+
+    def restyle(self) -> None:
+        """Rebuilds palette-based styles when the application theme changes."""
+        apply_data_view_style(self.table, row_height=25)
+        for button in (self.new_button, self.delete_button, self.current_button):
+            apply_panel_action_style(button)
 
     # Reading the drawing
 

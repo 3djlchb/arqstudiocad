@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QTableWidgetItem
+from PySide6.QtWidgets import QComboBox, QTableWidgetItem, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
-from arqstudiocad.core import CadChangeSet, CadColor, CadDocument
+from arqstudiocad.core import CadArc, CadChangeSet, CadCircle, CadColor, CadDocument, CadLine
 from arqstudiocad.events import WorkFinished, WorkStarted
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui import layers_panel
@@ -239,14 +239,129 @@ def test_properties_describe_the_drawing(window: MainWindow, tmp_path: Path) -> 
     assert rows["Unsaved changes"] == "Yes"
 
 
+def property_item(window: MainWindow, name: str) -> QTreeWidgetItem:
+    tree = window.properties_panel.grid.tree
+    for section_index in range(tree.topLevelItemCount()):
+        section = tree.topLevelItem(section_index)
+        if section is None:
+            continue
+        for row_index in range(section.childCount()):
+            row = section.child(row_index)
+            if row is not None and row.text(0) == name:
+                return row
+    raise AssertionError(f"property not found: {name}")
+
+
+def test_selected_line_properties_edit_geometry_as_one_undo_step(window: MainWindow) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    line_id, changes = document.add_line((1, 2), (3, 4))
+    window.session.report(document, changes)
+    window.session.select(document, [line_id])
+
+    panel = window.properties_panel
+    assert panel.grid.caption.text() == "Line"
+    rows = dict(panel.rows())
+    assert rows["Start X"] == "1"
+    assert rows["End Y"] == "4"
+    assert rows["Length"] == "2.82842712475"
+    assert rows["Linetype"] == "ByLayer"
+    assert rows["Lineweight"] == "ByLayer"
+
+    property_item(window, "Start X").setText(1, "5")
+    geometry = document.get_entity(line_id).geometry
+    assert isinstance(geometry, CadLine) and geometry.start == (5.0, 2.0)
+    assert document.undo_history[-1] == "PROPERTIES"
+    assert dict(panel.rows())["Start X"] == "5"
+
+    window.runner.execute("UNDO")
+    geometry = document.get_entity(line_id).geometry
+    assert isinstance(geometry, CadLine) and geometry.start == (1.0, 2.0)
+
+
+def test_selection_properties_edit_layer_and_color_for_mixed_entities(
+    window: MainWindow,
+) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    line_id, _ = document.add_line((0, 0), (10, 0))
+    circle_id, _ = document.add_circle((5, 5), 2)
+    layer_id, changes = document.create_layer("STRUCTURE")
+    window.session.report(document, changes)
+    window.session.select(document, [line_id, circle_id])
+
+    panel = window.properties_panel
+    assert panel.grid.caption.text() == "*Varies* (2)"
+    layer_combo = panel.grid.tree.itemWidget(property_item(window, "Layer"), 1)
+    color_combo = panel.grid.tree.itemWidget(property_item(window, "Color"), 1)
+    assert isinstance(layer_combo, QComboBox) and isinstance(color_combo, QComboBox)
+    assert color_combo.objectName() == "propertyAccentEditor"
+    assert "QComboBox#propertyAccentEditor" in panel.grid.tree.styleSheet()
+
+    layer_combo.setCurrentIndex(layer_combo.findData(layer_id))
+    color = CadColor.from_index(1)
+    color_index = next(
+        index for index in range(color_combo.count()) if color_combo.itemData(index) == color
+    )
+    color_combo.setCurrentIndex(color_index)
+
+    assert all(
+        entity.layer == "STRUCTURE" for entity in document.get_entities([line_id, circle_id])
+    )
+    assert all(entity.color == color for entity in document.get_entities([line_id, circle_id]))
+    assert document.undo_history[-2:] == ["CHPROP", "CHPROP"]
+
+
+def test_selected_circle_shows_derived_values_and_rejects_invalid_radius(
+    window: MainWindow,
+) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    circle_id, changes = document.add_circle((2, 3), 2)
+    window.session.report(document, changes)
+    window.session.select(document, [circle_id])
+
+    rows = dict(window.properties_panel.rows())
+    assert rows["Center X"] == "2"
+    assert rows["Circumference"] == "12.5663706144"
+    assert rows["Area"] == "12.5663706144"
+    property_item(window, "Radius").setText(1, "-1")
+    geometry = document.get_entity(circle_id).geometry
+    assert isinstance(geometry, CadCircle) and geometry.radius == 2.0
+    assert document.undo_history[-1] != "PROPERTIES"
+    assert last_line(window).startswith("Error: ")
+
+
+def test_selected_arc_angles_are_displayed_and_edited_in_degrees(
+    window: MainWindow,
+) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    arc_id, changes = document.add_arc((0, 0), 3, 0, 1.0)
+    window.session.report(document, changes)
+    window.session.select(document, [arc_id])
+
+    rows = dict(window.properties_panel.rows())
+    assert rows["Start angle"] == "0"
+    assert rows["End angle"] == "57.2957795131"
+    property_item(window, "End angle").setText(1, "90")
+    geometry = document.get_entity(arc_id).geometry
+    assert isinstance(geometry, CadArc)
+    assert abs(geometry.end_angle - 1.5707963267948966) < 1e-12
+
+
 def test_property_sections_fold_and_stay_folded(window: MainWindow) -> None:
     window.runner.execute("NEW")
     grid = window.properties_panel.grid
     contents = grid.tree.topLevelItem(1)
     assert contents is not None and contents.isExpanded()
-    assert contents.text(0) == "▾ Contents"
+    assert contents.text(0) == "Contents"
     grid.tree.itemClicked.emit(contents, 0)
-    assert not contents.isExpanded() and contents.text(0) == "▸ Contents"
+    assert not contents.isExpanded() and contents.text(0) == "Contents"
     window.runner.execute("NEW")  # refreshed for another drawing
     again = grid.tree.topLevelItem(1)
     assert again is not None and not again.isExpanded()
