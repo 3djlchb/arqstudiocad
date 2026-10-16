@@ -49,7 +49,7 @@ Objectives:
 | Working format | **DWG**, as BricsCAD does, with an **own internal model** from the start; native `.ascad` designed and reserved, decided by a multidisciplinary test ([ADR 0018](architecture/adr/0018-native-format.md)) |
 | DWG/DXF interoperability | **AcadRust as the base, with validated improvements from opencadcodec** ([ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md)) |
 | BIM | IFC through a decoupled IfcOpenShell integration |
-| Geometry | Own core; external libraries evaluated through adapters |
+| Geometry | Build and own the Rust geometry kernel progressively; temporary external backends may be used behind reviewed adapters and replaced capability by capability after declared parity tests ([ADR 0020](architecture/adr/0020-progressive-own-geometry-kernel.md)) |
 | Initial rendering | Blender + Cycles |
 | Animation and video | FFmpeg |
 | Tests | Rust tests, pytest and interoperability tests |
