@@ -11,7 +11,6 @@ from collections.abc import Callable
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
-    QColorDialog,
     QDockWidget,
     QHBoxLayout,
     QMenu,
@@ -26,6 +25,12 @@ from arqstudiocad.core import CadChangeSet, CadColor, CadDocument, CadError, Cad
 from arqstudiocad.events import CommandMessage, DocumentChanged, Event
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
+from arqstudiocad.ui.color_picker import (
+    ColorPickerDialog,
+    recent_colors,
+    remember_color,
+)
+from arqstudiocad.ui.color_picker import color_name as color_name
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 
@@ -33,22 +38,11 @@ CURRENT, NAME, ON, FROZEN, LOCKED, COLOR, LINETYPE, PLOT = range(8)
 LAYER_ID = Qt.ItemDataRole.UserRole
 
 
-def color_name(color: CadColor) -> str:
-    """How a color is named in the panel: AutoCAD's names for ACI 1 to 7."""
-    names = {
-        1: tr("Red"),
-        2: tr("Yellow"),
-        3: tr("Green"),
-        4: tr("Cyan"),
-        5: tr("Blue"),
-        6: tr("Magenta"),
-        7: tr("White"),
-    }
-    if color.index is not None:
-        return names.get(color.index, str(color.index))
-    if color.rgb is not None:
-        return "{},{},{}".format(*color.rgb)
-    return ""
+def _quick_color_choices() -> tuple[CadColor, ...]:
+    """Standard colors followed by distinct colors used recently this session."""
+    standard = tuple(CadColor.from_index(index) for index in range(1, 10))
+    recent = tuple(color for color in recent_colors() if color not in standard)
+    return (*standard, *recent)
 
 
 def swatch(color: CadColor) -> QIcon:
@@ -227,7 +221,8 @@ class LayersPanel(QDockWidget):
             self._edit(lambda d: d.set_current_layer(layer_id))
 
     def set_color(self, layer_id: int, color: CadColor) -> None:
-        self._edit(lambda d: d.set_layer_color(layer_id, color))
+        if self._edit(lambda d: d.set_layer_color(layer_id, color)):
+            remember_color(color)
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if self._filling:
@@ -258,22 +253,27 @@ class LayersPanel(QDockWidget):
         if column != COLOR or layer_id is None:
             return
         menu = QMenu(self)
-        for index in range(1, 8):
-            choice = CadColor.from_index(index)
+        choices = _quick_color_choices()
+        for choice_index, choice in enumerate(choices):
+            if choice_index == 9:
+                menu.addSeparator()
             action = menu.addAction(swatch(choice), color_name(choice))
             action.triggered.connect(lambda _checked=False, c=choice: self.set_color(layer_id, c))
-        menu.addSeparator()
+        if len(choices) == 9:
+            menu.addSeparator()
         other = menu.addAction(tr("More colors…"))
-        other.triggered.connect(lambda: self._pick_rgb(layer_id))
+        other.triggered.connect(lambda: self._pick_color(layer_id))
         item = self.table.item(row, column)
         if item is not None:
             rect = self.table.visualItemRect(item)
             menu.popup(self.table.viewport().mapToGlobal(rect.bottomLeft()))
 
-    def _pick_rgb(self, layer_id: int) -> None:
-        picked = QColorDialog.getColor(parent=self, title=tr("Layer color"))
-        if picked.isValid():
-            self.set_color(layer_id, CadColor.from_rgb(picked.red(), picked.green(), picked.blue()))
+    def _pick_color(self, layer_id: int) -> None:
+        document = self._session.active
+        current = None if document is None else document.get_layer(layer_id).color
+        picker = ColorPickerDialog(current, allow_special=False, parent=self)
+        if picker.exec() == ColorPickerDialog.DialogCode.Accepted:
+            self.set_color(layer_id, picker.selected_color())
 
     def _edit(self, operation: Callable[[CadDocument], CadChangeSet]) -> bool:
         """One change through the session; a refused one is reported on the

@@ -25,7 +25,7 @@ copied.
 | Project | License | What we take from it |
 |---|---|---|
 | [IngeCAD](https://github.com/ingelibre/ingecad) | GPL-3.0-or-later | i18n model: English command line, language packs, prompt-key convention ([ADR 0006](docs/architecture/adr/0006-i18n.md)); packaging approach (PyInstaller onedir, AppImage, Flatpak); command-line conventions ([analysis](docs/references/ingecad.md)) |
-| [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio) | GPL-3.0 | Undo as per-handle deltas, spatial indexing, GPU fallback ([analysis](docs/references/opencadstudio.md)); look of the panels: title with pin and close, property grid with foldable sections ([ADR 0015](docs/architecture/adr/0015-workspaces.md)); ribbon workspace |
+| [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio) | GPL-3.0 | Undo as per-handle deltas, spatial indexing, GPU fallback ([analysis](docs/references/opencadstudio.md)); look of the panels: title with pin and close, property grid with foldable sections ([ADR 0015](docs/architecture/adr/0015-workspaces.md)); ribbon workspace; CAD color selection by indexed palette, true color and recent colors, reimplemented without copied code |
 | [Truck](https://github.com/ricosjp/truck) | Apache-2.0 | Geometry-kernel architecture and capability decomposition (ADR 0020); design reference only, not currently a dependency |
 | [Open CASCADE Technology](https://github.com/Open-Cascade-SAS/OCCT) | LGPL-2.1 with the Open CASCADE exception | Candidate temporary 3D reference/backend by capability (ADR 0020); no integration or source reuse is approved by this entry |
 | [opencadkernel](https://github.com/HakanSeven12/opencadkernel) | MPL-2.0 | Local-frame precision invariant, provenance for round-trips |

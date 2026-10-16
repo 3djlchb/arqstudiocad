@@ -14,6 +14,7 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPalette, QPen, QPixma
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QCompleter,
     QHeaderView,
     QLabel,
     QStyledItemDelegate,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from arqstudiocad.i18n import tr
 from arqstudiocad.ui.panel_style import apply_property_grid_style
 
 #: Where a section title keeps its key and its title without the arrow.
@@ -52,6 +54,7 @@ class Property:
     choices: Sequence[Choice] = ()
     choice_value: object = None
     accent: bool = False
+    searchable: bool = False
 
 
 @dataclass(frozen=True)
@@ -218,6 +221,9 @@ class PropertyGrid(QWidget):
                         row.setData(1, EDIT_KEY, prop.key)
                         if prop.choices:
                             editor = QComboBox(self.tree)
+                            editor.setEditable(prop.searchable)
+                            if prop.searchable:
+                                editor.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
                             if prop.accent:
                                 editor.setObjectName("propertyAccentEditor")
                             for choice in prop.choices:
@@ -236,6 +242,15 @@ class PropertyGrid(QWidget):
                                 -1,
                             )
                             editor.setCurrentIndex(selected)
+                            if prop.searchable:
+                                completer = editor.completer()
+                                if completer is not None:
+                                    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                                    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                                    completer.setCompletionMode(
+                                        QCompleter.CompletionMode.PopupCompletion
+                                    )
+                                editor.setToolTip(tr("Search colors by name, index, or RGB value."))
                             editor.currentIndexChanged.connect(
                                 lambda index, combo=editor, key=prop.key: self._choice_changed(
                                     key, combo, index
