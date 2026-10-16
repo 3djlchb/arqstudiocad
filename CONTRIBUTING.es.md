@@ -70,6 +70,17 @@ Las reglas vinculantes están en el [contrato técnico](docs/architecture/techni
   cada línea: léela, ejecútala y pruébala. [AGENTS.md](AGENTS.md) contiene las
   reglas para los agentes de programación.
 
+### Trabajar con agentes de programación
+
+Cualquier agente de programación puede trabajar en el repositorio, y una tarea
+puede continuar otro día o con otro agente. Antes de planificar o cambiar la
+lógica, el agente debe escanear el estado actual del repositorio y continuar a
+partir de lo que realmente encuentre, usando el plan maestro y los documentos
+rectores como fuente común. Así se evita que cada agente invente un enfoque
+incompatible. Sigue el [flujo de trabajo para agentes de IA](docs/AI_AGENT_WORKFLOW.md);
+el contexto de chats anteriores no sustituye revisar la rama, los cambios, el
+código, las pruebas y los ADR aplicables.
+
 ## Ramas, commits y pull requests
 
 - Una rama por funcionalidad o corrección, llamada `feature/<tema>` o
