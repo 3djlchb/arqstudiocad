@@ -19,6 +19,8 @@
 //! |---|---|
 //! | Positions and displacements | [`Point2`], [`Vector2`], [`angle`] |
 //! | Bounding boxes | [`Bounds2`] |
+//! | 3D positions and displacements | [`Point3`], [`Vector3`] |
+//! | 3D bounding boxes and affine transforms | [`Bounds3`], [`Transform3`] |
 //! | Curves | [`Line`], [`Circle`], [`Arc`], and [`Geometry2`] for any of them |
 //! | Move, rotate, scale, mirror | [`Transform2`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
@@ -59,25 +61,33 @@
 pub mod angle;
 mod arc;
 mod bounds;
+mod bounds3;
 mod circle;
 mod error;
 mod geometry;
 mod intersect;
 mod line;
 mod point;
+mod point3;
 pub mod snap;
 mod tolerance;
 mod transform;
+mod transform3;
 mod vector;
+mod vector3;
 
 pub use arc::Arc;
 pub use bounds::Bounds2;
+pub use bounds3::Bounds3;
 pub use circle::Circle;
 pub use error::{GeometryError, GeometryResult};
 pub use geometry::{Geometry2, GeometryKind};
 pub use intersect::{Intersections, intersect};
 pub use line::Line;
 pub use point::Point2;
+pub use point3::Point3;
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
+pub use transform3::Transform3;
 pub use vector::Vector2;
+pub use vector3::Vector3;

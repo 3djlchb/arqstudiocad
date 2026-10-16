@@ -23,6 +23,8 @@ that changes gets a new ADR that supersedes the old one.
 | [0016](0016-editing-workflow.md) | Editing workflow: AutoCAD selection (window/crossing), picking and snaps in Rust, running object snaps + ORTHO, AutoCAD point syntax, multifunction grips, first draw/edit commands, blocks and polylines transformed as a whole, property editors, Spanish command names | Accepted |
 | [0017](0017-dwg-dxf-engine-strategy.md) | DWG/DXF engine: AcadRust (crates.io) as the base, opencadcodec improvements recovered one by one with regression drawings, LibreDWG out of the product, codec behind our read/write/capabilities/round-trip contract, four mandatory data protections | Accepted, interoperability validation pending |
 | [0018](0018-native-format.md) | Working format: DWG with an own internal model (BricsCAD approach); IFC for BIM exchange; a multidisciplinary test decides whether a native format is needed; native `.ascad` (versioned ZIP, own model, preserved DWG) designed and reserved | Accepted |
+| [0019](0019-geometry-3d-foundations.md) | Dependency-free 3D value types in `arq-geometry`, right-handed Z-up coordinates, local-frame affine transforms; document ownership and solid kernel remain open | Accepted |
+| [0020](0020-progressive-own-geometry-kernel.md) | Build an owned Rust geometry kernel incrementally; use OCCT as an optional, reviewed temporary backend and migrate by capability after parity tests | Accepted |
 
 Template:
 

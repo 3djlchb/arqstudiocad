@@ -45,7 +45,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ◐ steps 2.5.1–2.5.7 done (transforms as a whole; pick, window and crossing selection, object snaps in Rust and Python; selection in the viewport, with its overlay and hover highlight; point input in AutoCAD syntax, snap markers, ORTHO, F3/F8 in the status bar; LINE, CIRCLE and ARC, and Spanish command names; ERASE, MOVE, COPY, ROTATE, SCALE and MIRROR with a drag preview; multifunction grips) |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0011 D3.8); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ○ |
-| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; 3D primitives and the 3D document model (an ADR first) | ○ |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D geometry foundation underway; remaining work open |
 
 ## Phase 03 — DWG/DXF ◐
 
@@ -119,6 +119,28 @@ updates, installation docs, tests on Windows (x86-64, ARM64), Linux (x86-64,
 ARM64; native packages, AppImage, Flatpak) and macOS (Apple Silicon, Intel);
 public releases only when the release criteria of the master plan (§14) are
 met.
+
+### Milestone 02.8 sequence
+
+Milestone 02.8 proceeds in independently reviewable steps:
+
+1. **3D mathematical foundation (ADR 0019):** `Point3`, `Vector3`, `Bounds3`
+   and `Transform3` in `arq-geometry`, with unit/property tests and precision
+   cases near 1e6 model units. This does not add 3D document entities.
+2. **Wider 2D entities:** polyline vertex editing, block contents and explode,
+   and text support under the existing document and editing contracts.
+3. **3D document model (ADR 0014 question 4):** decide which 3D entities the
+   core owns and how DWG ACIS and IFC geometry are represented before adding
+   persistent 3D entities or format conversion.
+4. **Owned kernel, progressively:** implement and test each geometry capability
+   in Rust. OCCT may serve as a temporary, adapter-backed reference or execution
+   path after its version, bridge, packaging and license review. Compare
+   capability by capability; route a capability to the owned kernel only after
+   its declared correctness, precision, degeneracy and performance evidence is
+   reviewed (ADR 0020).
+5. **Curves, surfaces and solids:** add separate, bounded capabilities with
+   their own contracts and tests. B-rep topology and boolean operations are
+   later steps, not part of the 3D value-type foundation.
 
 ## Modules and phases
 

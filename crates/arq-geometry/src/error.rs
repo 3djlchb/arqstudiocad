@@ -37,6 +37,8 @@ pub enum GeometryError {
     },
     /// A scale factor must be finite and strictly positive.
     InvalidScale,
+    /// An affine transformation has no inverse because its linear part is singular.
+    SingularTransform,
 }
 
 impl fmt::Display for GeometryError {
@@ -60,6 +62,9 @@ impl fmt::Display for GeometryError {
                     f,
                     "the scale factor must be a finite number greater than zero"
                 )
+            }
+            Self::SingularTransform => {
+                write!(f, "the transformation is singular and has no inverse")
             }
         }
     }
