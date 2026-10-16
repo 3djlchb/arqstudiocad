@@ -4,7 +4,7 @@ import math
 from collections.abc import Sequence
 
 from PySide6.QtCore import QLocale
-from PySide6.QtWidgets import QColorDialog, QDockWidget, QWidget
+from PySide6.QtWidgets import QDockWidget, QWidget
 
 from arqstudiocad.core import (
     CadArc,
@@ -18,8 +18,13 @@ from arqstudiocad.core import (
 from arqstudiocad.events import CommandMessage, DocumentChanged, Event, SelectionChanged
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
+from arqstudiocad.ui.color_picker import (
+    ColorPickerDialog,
+    color_name,
+    recent_colors,
+    remember_color,
+)
 from arqstudiocad.ui.event_bridge import QtEventBridge
-from arqstudiocad.ui.layers_panel import color_name
 from arqstudiocad.ui.property_grid import Choice, Property, PropertyGrid, Section
 
 _VARIES = "__varies__"
@@ -94,12 +99,16 @@ def selection_properties(
     layer_names = [entity.layer for entity in entities]
     layer_value = _common(layer_names)
     selected_layer = next((layer.id for layer in layers if layer.name == layer_value), _VARIES)
+    selected_layer_info = next((layer for layer in layers if layer.id == selected_layer), None)
     layer_choices = [Choice(tr("*Varies*"), _VARIES)] if selected_layer == _VARIES else []
     layer_choices.extend(Choice(layer.name, layer.id) for layer in layers)
 
     colors = [entity.color for entity in entities]
     selected_color = _common(colors)
-    color_choices = _color_choices(selected_color)
+    color_choices = _color_choices(
+        selected_color,
+        None if selected_layer_info is None else selected_layer_info.color,
+    )
     color_label = (
         _color_label(selected_color) if isinstance(selected_color, CadColor) else tr("*Varies*")
     )
@@ -121,6 +130,7 @@ def selection_properties(
             choices=color_choices,
             choice_value=selected_color,
             accent=True,
+            searchable=True,
         ),
     ]
     detail_maps = [dict(entity.details) for entity in entities]
@@ -270,16 +280,31 @@ def _extent_section(entities: Sequence[CadEntityInfo]) -> Section:
     return Section("geometry", tr("Geometry"), rows)
 
 
-def _color_choices(selected: CadColor | str) -> list[Choice]:
+def _color_choices(
+    selected: CadColor | str, by_layer_color: CadColor | None = None
+) -> list[Choice]:
     choices: list[Choice] = []
     if selected == _VARIES:
         choices.append(Choice(tr("*Varies*"), _VARIES))
     current = selected if isinstance(selected, CadColor) else None
-    values = [CadColor.by_layer(), CadColor.by_block()]
-    values.extend(CadColor.from_index(index) for index in range(1, 256))
-    if current is not None and current not in values:
-        choices.append(Choice(color_name(current), current, current.display_rgb()))
-    choices.extend(Choice(_color_label(color), color, color.display_rgb()) for color in values)
+    by_layer = CadColor.by_layer()
+    by_block = CadColor.by_block()
+    choices.append(
+        Choice(
+            _color_label(by_layer),
+            by_layer,
+            (by_layer_color or by_layer).display_rgb(),
+        )
+    )
+    choices.append(Choice(_color_label(by_block), by_block, by_block.display_rgb()))
+
+    recent = list(recent_colors())
+    recent_values = [color for color in recent if color.index not in range(1, 10)]
+    if current is not None and current.kind in {"index", "rgb"} and current not in recent_values:
+        recent_values.insert(0, current)
+    shown = [CadColor.from_index(index) for index in range(1, 10)]
+    shown.extend(color for color in recent_values if color not in shown)
+    choices.extend(Choice(_color_label(color), color, color.display_rgb()) for color in shown)
     choices.append(Choice(tr("More colors…"), _PICK_COLOR))
     return choices
 
@@ -416,14 +441,17 @@ class PropertiesPanel(QDockWidget):
                     self._session.edit(document, lambda doc: doc.set_entity_layer(ids, layer_id))
             elif key == "color":
                 if value == _PICK_COLOR:
-                    picked = QColorDialog.getColor(parent=self, title=tr("Entity color"))
-                    if not picked.isValid():
+                    entities = document.get_entities(ids)
+                    current = entities[0].color if entities else None
+                    picker = ColorPickerDialog(current, parent=self)
+                    if picker.exec() != ColorPickerDialog.DialogCode.Accepted:
                         self.refresh()
                         return
-                    value = CadColor.from_rgb(picked.red(), picked.green(), picked.blue())
+                    value = picker.selected_color()
                 if isinstance(value, CadColor):
                     color = value
                     self._session.edit(document, lambda doc: doc.set_entity_color(ids, color))
+                    remember_color(color)
             elif key.startswith("geometry."):
                 self._edit_geometry(document, ids, key, str(value))
         except (CadError, ValueError, OverflowError) as error:

@@ -63,6 +63,13 @@ published on crates.io as of this analysis).
    graphics API we pick needs an equivalent safe mode / software fallback.
 6. **Precision via local frames** (from opencadkernel, see below).
 
+7. **CAD color selection.** OpenCADStudio's shared picker separates indexed
+   ACI colors from true colors, groups ACI 10–249 by color family and shade,
+   keeps ACI 1–9 and grayscale 250–255 distinct, shows the selected index and
+   RGB value, and offers recent colors. We reimplement this workflow in the
+   PySide6 presentation layer; no source code is copied. The upstream design
+   reference is [PR #718](https://github.com/HakanSeven12/OpenCADStudio/pull/718).
+
 ## What we do differently, and why
 
 | Open CAD Studio | ArqStudioCAD | Reason |

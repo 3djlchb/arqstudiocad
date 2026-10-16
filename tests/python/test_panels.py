@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QComboBox, QTableWidgetItem, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
@@ -312,6 +313,29 @@ def test_selection_properties_edit_layer_and_color_for_mixed_entities(
     )
     assert all(entity.color == color for entity in document.get_entities([line_id, circle_id]))
     assert document.undo_history[-2:] == ["CHPROP", "CHPROP"]
+
+
+def test_bylayer_property_swatch_uses_selected_layer_color(window: MainWindow) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    line_id, _ = document.add_line((0, 0), (10, 0))
+    layer_id, changes = document.create_layer("RED")
+    window.session.report(document, changes)
+    layer_color = CadColor.from_index(1)
+    changes = document.set_layer_color(layer_id, layer_color)
+    window.session.report(document, changes)
+    changes = document.set_entity_layer([line_id], layer_id)
+    window.session.report(document, changes)
+    window.session.select(document, [line_id])
+
+    combo = window.properties_panel.grid.tree.itemWidget(property_item(window, "Color"), 1)
+    assert isinstance(combo, QComboBox)
+    by_layer_index = next(
+        index for index in range(combo.count()) if combo.itemData(index) == CadColor.by_layer()
+    )
+    image = combo.itemIcon(by_layer_index).pixmap(14, 14).toImage()
+    assert image.pixelColor(7, 7) == QColor(*layer_color.display_rgb())
 
 
 def test_selected_circle_shows_derived_values_and_rejects_invalid_radius(
