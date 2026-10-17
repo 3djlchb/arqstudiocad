@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHeaderView,
+    QListView,
     QPushButton,
     QTableView,
     QTreeView,
@@ -25,7 +26,6 @@ def apply_data_view_style(view: QAbstractItemView, *, row_height: int = 26) -> N
     button_text = colors.buttonText().color().name()
     mid = colors.mid().color().name()
     highlight = colors.highlight().color().name()
-    highlighted_text = colors.highlightedText().color().name()
 
     view.setFrameShape(QFrame.Shape.NoFrame)
     view.setAlternatingRowColors(True)
@@ -41,26 +41,34 @@ def apply_data_view_style(view: QAbstractItemView, *, row_height: int = 26) -> N
         vertical.setDefaultSectionSize(row_height)
         vertical.setMinimumSectionSize(row_height)
         vertical.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+    elif isinstance(view, QListView):
+        header = None
     else:
         return
 
-    header.setMinimumHeight(row_height)
-    header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-    header.setHighlightSections(False)
+    if header is not None:
+        header.setMinimumHeight(row_height)
+        header.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        header.setHighlightSections(False)
     view.setStyleSheet(
         f"""
-        QTreeView, QTableView {{
+        QTreeView, QTableView, QListView {{
             background-color: {base};
             alternate-background-color: {alternate};
             color: {text};
             border: none;
-            selection-background-color: {highlight};
-            selection-color: {highlighted_text};
+            selection-background-color: rgba(117, 143, 164, 48);
+            selection-color: {text};
             outline: none;
         }}
-        QTreeView::item, QTableView::item {{
+        QTreeView::item, QTableView::item, QListView::item {{
             padding: 3px 6px;
             border-bottom: 1px solid {mid};
+        }}
+        QTreeView::item:selected, QTableView::item:selected, QListView::item:selected {{
+            background-color: rgba(117, 143, 164, 48);
+            border-top: 1px solid rgba(0, 140, 255, 230);
+            border-bottom: 1px solid rgba(0, 140, 255, 230);
         }}
         QHeaderView {{ border: none; background-color: {button}; }}
         QHeaderView::section {{
@@ -101,10 +109,16 @@ def apply_property_grid_style(view: QTreeView) -> None:
         QTreeView {{
             background-color: {colors.window().color().name()};
             color: {text};
+            selection-color: {text};
             border: none;
             outline: none;
         }}
         QTreeView::item {{ padding: 2px 5px; border: none; }}
+        QTreeView::item:selected {{
+            background-color: rgba(117, 143, 164, 48);
+            border-top: 1px solid rgba(0, 140, 255, 230);
+            border-bottom: 1px solid rgba(0, 140, 255, 230);
+        }}
         QLineEdit {{
             background-color: {base};
             color: {text};
@@ -130,9 +144,14 @@ def apply_property_grid_style(view: QTreeView) -> None:
         QComboBox QAbstractItemView {{
             background-color: {base};
             color: {text};
-            selection-background-color: {highlight};
-            selection-color: {highlighted_text};
+            selection-background-color: rgba(117, 143, 164, 48);
+            selection-color: {text};
             border: 1px solid {border};
+        }}
+        QComboBox QAbstractItemView::item:selected {{
+            background-color: rgba(117, 143, 164, 48);
+            border-top: 1px solid rgba(0, 140, 255, 230);
+            border-bottom: 1px solid rgba(0, 140, 255, 230);
         }}
         """
     )

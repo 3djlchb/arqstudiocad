@@ -7,10 +7,12 @@ change (freezing the current layer…) is reported on the command line.
 """
 
 from collections.abc import Callable
+from functools import cache
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPalette, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QHBoxLayout,
     QMenu,
@@ -24,6 +26,7 @@ from PySide6.QtWidgets import (
 from arqstudiocad.core import CadChangeSet, CadColor, CadDocument, CadError, CadLayerInfo
 from arqstudiocad.events import CommandMessage, DocumentChanged, Event
 from arqstudiocad.i18n import tr
+from arqstudiocad.paths import icons_dir
 from arqstudiocad.session import Session
 from arqstudiocad.ui.color_picker import (
     ColorPickerDialog,
@@ -34,8 +37,23 @@ from arqstudiocad.ui.color_picker import color_name as color_name
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 
-CURRENT, NAME, ON, FROZEN, LOCKED, COLOR, LINETYPE, PLOT = range(8)
+CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE = range(8)
 LAYER_ID = Qt.ItemDataRole.UserRole
+
+
+@cache
+def _layer_state_icon(name: str) -> QIcon:
+    return QIcon(str(icons_dir() / "icons_layers" / name))
+
+
+def _lock_state_icon(locked: bool) -> QIcon:
+    dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    folder = "dark-themes" if dark else "clear-themes"
+    if dark:
+        filename = "lock-on-dark.svg" if locked else "lock-off-dark.svg"
+    else:
+        filename = "lock-on.svg" if locked else "lock-off.svg"
+    return _layer_state_icon(f"{folder}/{filename}")
 
 
 def _quick_color_choices() -> tuple[CadColor, ...]:
@@ -102,6 +120,7 @@ class LayersPanel(QDockWidget):
         apply_data_view_style(self.table, row_height=25)
         for button in (self.new_button, self.delete_button, self.current_button):
             apply_panel_action_style(button)
+        self.refresh()
 
     # Reading the drawing
 
@@ -117,9 +136,9 @@ class LayersPanel(QDockWidget):
                 tr("On"),
                 tr("Frozen"),
                 tr("Locked"),
+                tr("Plot"),
                 tr("Color"),
                 tr("Linetype"),
-                tr("Plot"),
             ]
         )
         self.refresh()
@@ -149,22 +168,32 @@ class LayersPanel(QDockWidget):
             item.setFlags(flags)
             return item
 
-        def check(state: bool) -> QTableWidgetItem:
-            item = cell()
-            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-            item.setCheckState(Qt.CheckState.Checked if state else Qt.CheckState.Unchecked)
-            return item
-
         color = cell(color_name(layer.color))
         color.setIcon(swatch(layer.color))
-        self.table.setItem(row, CURRENT, cell("✓" if current else ""))
+        current_item = cell()
+        current_item.setIcon(
+            _layer_state_icon("layer-state-on.svg" if current else "layer-state-off.svg")
+        )
+        self.table.setItem(row, CURRENT, current_item)
         self.table.setItem(row, NAME, cell(layer.name, editable=True))
-        self.table.setItem(row, ON, check(layer.is_visible))
-        self.table.setItem(row, FROZEN, check(layer.is_frozen))
-        self.table.setItem(row, LOCKED, check(layer.is_locked))
+        visibility_item = cell()
+        visibility_item.setIcon(
+            _layer_state_icon("bulb-on.svg" if layer.is_visible else "bulb-off.svg")
+        )
+        self.table.setItem(row, ON, visibility_item)
+        frozen_item = cell()
+        frozen_item.setIcon(_layer_state_icon("sun-on.svg" if layer.is_frozen else "sun-off.svg"))
+        self.table.setItem(row, FROZEN, frozen_item)
+        locked_item = cell()
+        locked_item.setIcon(_lock_state_icon(layer.is_locked))
+        self.table.setItem(row, LOCKED, locked_item)
+        plot_item = cell()
+        plot_item.setIcon(
+            _layer_state_icon("printer-on.svg" if layer.is_plottable else "printer-off.svg")
+        )
+        self.table.setItem(row, PLOT, plot_item)
         self.table.setItem(row, COLOR, color)
         self.table.setItem(row, LINETYPE, cell(layer.linetype))
-        self.table.setItem(row, PLOT, check(layer.is_plottable))
 
     def _on_document_changed(self, event: DocumentChanged) -> None:
         changes = event.changes
@@ -225,22 +254,11 @@ class LayersPanel(QDockWidget):
             remember_color(color)
 
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
-        if self._filling:
+        if self._filling or item.column() != NAME:
             return
         layer_id = int(item.data(LAYER_ID))
-        checked = item.checkState() == Qt.CheckState.Checked
-        column = item.column()
-        if column == NAME:
-            name = item.text().strip()
-            self._edit(lambda d: d.rename_layer(layer_id, name))
-        elif column == ON:
-            self._edit(lambda d: d.set_layer_visible(layer_id, checked))
-        elif column == FROZEN:
-            self._edit(lambda d: d.set_layer_frozen(layer_id, checked))
-        elif column == LOCKED:
-            self._edit(lambda d: d.set_layer_locked(layer_id, checked))
-        elif column == PLOT:
-            self._edit(lambda d: d.set_layer_plottable(layer_id, checked))
+        name = item.text().strip()
+        self._edit(lambda d: d.rename_layer(layer_id, name))
 
     def _on_double_click(self, row: int, column: int) -> None:
         if column == CURRENT:
@@ -250,9 +268,44 @@ class LayersPanel(QDockWidget):
 
     def _on_click(self, row: int, column: int) -> None:
         layer_id = self.layer_id_at(row)
-        if column != COLOR or layer_id is None:
+        if layer_id is None:
+            return
+        if column == CURRENT:
+            self._edit(lambda d: d.set_current_layer(layer_id))
+            return
+        if column == ON:
+            document = self._session.active
+            if document is not None:
+                visible = document.get_layer(layer_id).is_visible
+                self._edit(lambda d: d.set_layer_visible(layer_id, not visible))
+            return
+        if column == FROZEN:
+            document = self._session.active
+            if document is not None:
+                frozen = document.get_layer(layer_id).is_frozen
+                self._edit(lambda d: d.set_layer_frozen(layer_id, not frozen))
+            return
+        if column == LOCKED:
+            document = self._session.active
+            if document is not None:
+                locked = document.get_layer(layer_id).is_locked
+                self._edit(lambda d: d.set_layer_locked(layer_id, not locked))
+            return
+        if column == PLOT:
+            document = self._session.active
+            if document is not None:
+                plottable = document.get_layer(layer_id).is_plottable
+                self._edit(lambda d: d.set_layer_plottable(layer_id, not plottable))
+            return
+        if column != COLOR:
             return
         menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu::item:selected { background-color: rgba(117, 143, 164, 48); "
+            "border-top: 1px solid rgba(0, 140, 255, 230); "
+            "border-bottom: 1px solid rgba(0, 140, 255, 230); "
+            "color: palette(text); }"
+        )
         choices = _quick_color_choices()
         for choice_index, choice in enumerate(choices):
             if choice_index == 9:

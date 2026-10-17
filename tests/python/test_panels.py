@@ -14,7 +14,16 @@ from arqstudiocad.core import CadArc, CadChangeSet, CadCircle, CadColor, CadDocu
 from arqstudiocad.events import WorkFinished, WorkStarted
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui import layers_panel
-from arqstudiocad.ui.layers_panel import COLOR, CURRENT, FROZEN, NAME, ON, LayersPanel
+from arqstudiocad.ui.layers_panel import (
+    COLOR,
+    CURRENT,
+    FROZEN,
+    LOCKED,
+    NAME,
+    ON,
+    PLOT,
+    LayersPanel,
+)
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.properties_panel import version_text
 
@@ -54,10 +63,24 @@ def row_of(panel: LayersPanel, name: str) -> int:
 
 
 def checked(panel: LayersPanel, row: int, column: int) -> bool:
+    if column in (ON, FROZEN, LOCKED, PLOT):
+        document = panel._session.active
+        layer_id = panel.layer_id_at(row)
+        assert document is not None and layer_id is not None
+        layer = document.get_layer(layer_id)
+        return {
+            ON: layer.is_visible,
+            FROZEN: layer.is_frozen,
+            LOCKED: layer.is_locked,
+            PLOT: layer.is_plottable,
+        }[column]
     return cell(panel, row, column).checkState() == Qt.CheckState.Checked
 
 
 def click_check(panel: LayersPanel, row: int, column: int) -> None:
+    if column in (ON, FROZEN, LOCKED, PLOT):
+        panel._on_click(row, column)
+        return
     item = cell(panel, row, column)
     state = item.checkState()
     flipped = Qt.CheckState.Unchecked if state == Qt.CheckState.Checked else Qt.CheckState.Checked
@@ -72,7 +95,8 @@ def test_the_layers_panel_follows_the_active_drawing(window: MainWindow) -> None
     assert panel.table.rowCount() == 0 and not panel.widget().isEnabled()
     window.runner.execute("NEW")
     assert names(panel) == ["0"] and panel.widget().isEnabled()
-    assert cell(panel, 0, CURRENT).text() == "✓"
+    assert not cell(panel, 0, CURRENT).icon().isNull()
+    assert not cell(panel, 0, ON).icon().isNull()
     first = window.session.active
     assert first is not None
     panel.new_layer()
@@ -102,14 +126,35 @@ def test_toggles_change_the_layer(window: MainWindow) -> None:
     layer_id = panel.new_layer()
     assert layer_id is not None
     row = row_of(panel, "Layer1")
+    active_icon = cell(panel, row, ON).icon().cacheKey()
     click_check(panel, row, ON)
     document = window.session.active
     assert document is not None
     assert not document.get_layer(layer_id).is_visible
     assert not checked(panel, row_of(panel, "Layer1"), ON)
+    inactive_item = cell(panel, row_of(panel, "Layer1"), ON)
+    assert inactive_item.icon().cacheKey() != active_icon
+    assert not inactive_item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+    frozen_row = row_of(panel, "Layer1")
+    unfrozen_icon = cell(panel, frozen_row, FROZEN).icon().cacheKey()
     click_check(panel, row_of(panel, "Layer1"), FROZEN)
     assert document.get_layer(layer_id).is_frozen
-    assert document.undo_history == ["LAYER", "LAYER", "LAYER"]
+    frozen_item = cell(panel, frozen_row, FROZEN)
+    assert frozen_item.icon().cacheKey() != unfrozen_icon
+    assert not frozen_item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+    unlocked_icon = cell(panel, frozen_row, LOCKED).icon().cacheKey()
+    click_check(panel, frozen_row, LOCKED)
+    locked_item = cell(panel, frozen_row, LOCKED)
+    assert document.get_layer(layer_id).is_locked and checked(panel, frozen_row, LOCKED)
+    assert locked_item.icon().cacheKey() != unlocked_icon
+    assert not locked_item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+    plottable_icon = cell(panel, frozen_row, PLOT).icon().cacheKey()
+    click_check(panel, frozen_row, PLOT)
+    plot_item = cell(panel, frozen_row, PLOT)
+    assert not document.get_layer(layer_id).is_plottable and not checked(panel, frozen_row, PLOT)
+    assert plot_item.icon().cacheKey() != plottable_icon
+    assert not plot_item.flags() & Qt.ItemFlag.ItemIsUserCheckable
+    assert document.undo_history == ["LAYER", "LAYER", "LAYER", "LAYER", "LAYER"]
 
 
 def test_a_refused_change_is_reported_and_undone_in_the_table(window: MainWindow) -> None:
@@ -145,8 +190,8 @@ def test_setting_current_deleting_and_coloring(window: MainWindow) -> None:
     panel.set_selected_current()
     document = window.session.active
     assert document is not None and document.current_layer.id == layer_id
-    assert cell(panel, row_of(panel, "Layer1"), CURRENT).text() == "✓"
-    assert cell(panel, row_of(panel, "0"), CURRENT).text() == ""
+    assert not cell(panel, row_of(panel, "Layer1"), CURRENT).icon().isNull()
+    assert not cell(panel, row_of(panel, "0"), CURRENT).icon().isNull()
     panel.set_color(layer_id, CadColor.from_index(1))
     assert document.get_layer(layer_id).color == CadColor.from_index(1)
     assert cell(panel, row_of(panel, "Layer1"), COLOR).text() == "Red"

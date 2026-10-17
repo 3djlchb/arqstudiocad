@@ -23,6 +23,13 @@ def locales_dir() -> Path:
     return package_dir() / "locales"
 
 
+def icons_dir() -> Path:
+    """Folder holding the application's bundled SVG icons."""
+    if is_frozen():
+        return Path(sys._MEIPASS) / "resources" / "icons"  # type: ignore[attr-defined]
+    return package_dir().parents[1] / "resources" / "icons"
+
+
 PORTABLE_MARKER = "portable.txt"
 
 
