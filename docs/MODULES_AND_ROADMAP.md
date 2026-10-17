@@ -1,6 +1,6 @@
 # ArqStudioCAD — Modules and roadmap
 
-The order of work of the [master plan](MASTER_PLAN.md) (version 2.0,
+The order of work of the [master plan](MASTER_PLAN.md) (version 2.1,
 2026-10-13), and where the project stands. Phases are a sequence, not
 dates: a phase ends when its exit criterion is met and tested, not when its
 code exists. Phases may overlap once their contracts are stable.

@@ -8,7 +8,7 @@ building-services design, with coordinated information models and CAD
 drawings of professional quality.
 
 This charter states what the project is and where it goes. The governing
-document is the [master plan](MASTER_PLAN.md) (version 2.0); how the
+document is the [master plan](MASTER_PLAN.md) (version 2.1); how the
 project is built is in the [system architecture](SYSTEM_ARCHITECTURE.md),
 the [technical contract](architecture/technical-contract.md) and the
 [ADRs](architecture/adr/); the order of work is in
