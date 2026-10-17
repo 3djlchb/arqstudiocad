@@ -89,6 +89,21 @@ fn queries_ignore_layer_state() {
     cad.set_layer_visible(hidden, false).unwrap();
     cad.set_layer_frozen(hidden, true).unwrap();
     assert_eq!(cad.query_entities(area(0.0, 0.0, 1.0, 1.0)), [id]);
+    assert_eq!(cad.pick(p(0.5, 0.5), 0.5).unwrap(), None);
+    assert!(
+        cad.select_window(area(-1.0, -1.0, 2.0, 2.0), true)
+            .is_empty()
+    );
+    assert!(
+        cad.snap(
+            p(0.0, 0.0),
+            0.5,
+            &[arq_geometry::snap::SnapKind::Endpoint],
+            None
+        )
+        .unwrap()
+        .is_none()
+    );
     assert!(cad.bounds().is_some());
 }
 
@@ -123,6 +138,77 @@ fn pick_window_and_snap_answer_on_drawn_geometry() {
     assert_eq!(
         snap.map(|s| (s.kind, s.point)),
         Some((SnapKind::Endpoint, p(10.0, 0.0)))
+    );
+}
+
+#[test]
+fn indexed_interactions_match_the_exact_full_drawing_queries() {
+    use arq_geometry::snap::SnapKind;
+
+    let mut cad = CadDocument::new();
+    for i in 0..400 {
+        let x = 1000.0 + i as f64 * 10.0;
+        cad.add_line(p(x, x), p(x + 4.0, x + 2.0)).unwrap();
+    }
+    cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    cad.add_line(p(5.0, -5.0), p(5.0, 5.0)).unwrap();
+    cad.add_circle(p(20.0, 0.0), 2.0).unwrap();
+    cad.add_arc(p(30.0, 0.0), 3.0, 0.0, PI).unwrap();
+
+    let cursors = [p(5.0, 0.2), p(18.2, 0.0), p(30.0, 2.9), p(1001.0, 1001.0)];
+    let modes = [
+        &[
+            SnapKind::Endpoint,
+            SnapKind::Midpoint,
+            SnapKind::Intersection,
+        ][..],
+        &[SnapKind::Center, SnapKind::Perpendicular, SnapKind::Tangent][..],
+        &[SnapKind::Nearest][..],
+    ];
+    for cursor in cursors {
+        for aperture in [0.0, 0.25, 1.0] {
+            assert_eq!(
+                cad.pick(cursor, aperture).unwrap(),
+                cad.document().pick(cursor, aperture),
+                "pick at {cursor:?} with aperture {aperture}"
+            );
+            for active_modes in modes {
+                assert_eq!(
+                    cad.snap(cursor, aperture, active_modes, Some(p(40.0, 1.0)))
+                        .unwrap(),
+                    cad.document()
+                        .snap(cursor, aperture, active_modes, Some(p(40.0, 1.0))),
+                    "snap at {cursor:?} with aperture {aperture} and {active_modes:?}"
+                );
+            }
+        }
+    }
+
+    for area in [
+        area(-1.0, -1.0, 11.0, 1.0),
+        area(4.0, -1.0, 6.0, 1.0),
+        area(18.0, -1.0, 23.0, 1.0),
+        area(29.0, -1.0, 31.0, 4.0),
+    ] {
+        for crossing in [false, true] {
+            assert_eq!(
+                cad.select_window(area, crossing),
+                cad.document().select_window(area, crossing),
+                "selection in {area:?}, crossing={crossing}"
+            );
+        }
+    }
+
+    let far_cursor = p(f64::MAX, 0.0);
+    assert_eq!(
+        cad.pick(far_cursor, f64::MAX).unwrap(),
+        cad.document().pick(far_cursor, f64::MAX)
+    );
+    assert_eq!(
+        cad.snap(far_cursor, f64::MAX, &[SnapKind::Nearest], None)
+            .unwrap(),
+        cad.document()
+            .snap(far_cursor, f64::MAX, &[SnapKind::Nearest], None)
     );
 }
 

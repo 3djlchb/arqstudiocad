@@ -106,6 +106,20 @@ impl Document {
             })
             .collect()
     }
+
+    /// What to draw for model-space entities selected by a caller's broad
+    /// phase, preserving the order of `ids`.
+    pub(crate) fn drawing_entities(&self, ids: &[EntityId]) -> Vec<(EntityId, Vec<DrawItem>)> {
+        let painter = Painter::new(self);
+        ids.iter()
+            .filter_map(|&id| {
+                let entity = self.cad().get_entity(handle(id))?;
+                let mut out = Vec::new();
+                painter.emit(entity, &Context::top(), false, &mut out);
+                Some((id, out))
+            })
+            .collect()
+    }
 }
 
 impl Context {

@@ -46,3 +46,11 @@ by this first slice.
 - This decision covers the first spatial-index slice of milestone 02.7. The
   wgpu renderer, runtime backend probing and broader viewport acceleration
   remain open under ADRs 0007 and 0013.
+
+## Implementation follow-up (2026-10-17)
+
+The next 02.7 slice uses R*-tree candidates for `pick`, window/crossing
+selection and object snaps. `arq-document` still applies the existing exact
+drawn-geometry checks and visibility rules to those candidates; the index
+does not change query results or drawing order. GPU rendering and backend
+probing remain open.

@@ -24,9 +24,9 @@ removed.
 
 | Measure | Result | Source |
 |---|---|---|
-| Spatial query, 100,000 entities (scan) | ≈ 17 ms per query | `cargo bench -p arq-core`, ADR 0011 D3.8 |
-| Pick, window/crossing selection, object snap; 100,000 entities (scan of what is drawn) | ≈ 54–56 ms each; 1–2 ms on the maintainer's drawings (a few thousand entities), within the one-frame budget; the spatial index (02.7) is what speeds the large case | `cargo bench -p arq-core`, ADR 0016 D2, D5 |
-| One recorded change plus its undo | ≈ 1.5 µs | same |
+| Spatial query, 100,000 entities | Indexed: 1% window ≈ 35.7 µs; all entities ≈ 6.95 ms. Previous bounding-box scan: ≈ 18 ms | `cargo bench --locked -p arq-core --bench query`, Windows NT 10.0.26300 AMD64, Intel family 6 model 158, release, Criterion 20 samples (2026-10-17) |
+| Pick, window/crossing selection, object snap; 100,000 entities | Indexed: pick ≈ 1.18 µs (hit), window ≈ 520 µs, crossing ≈ 535 µs, snap ≈ 1.55 µs (hit). Previous full-drawing scan: ≈ 54–56 ms each | Same benchmark and environment; cursor placed on drawn geometry (2026-10-17) |
+| One recorded change plus its undo; 100,000 entities | ≈ 5.38 µs (index update and undo); previous baseline ≈ 1.5 µs | Same benchmark and environment (2026-10-17) |
 | Scene build / render, 100,000 entities at 1080p (CPU) | 59 ms / 69 ms, 1 % redraw 10 ms | `cargo bench -p arq-render`, ADR 0013 |
 | Read DWG/DXF, 201 drawings, median / p95 | 12.6 ms / 38.5 ms; peak memory median 11 MiB | `tools/dwg-bench` |
 | Read a 100,000-entity DXF | 0.37 s, 84 MiB | `tools/dwg-bench` |
