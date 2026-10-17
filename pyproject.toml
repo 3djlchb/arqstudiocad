@@ -47,6 +47,8 @@ python-source = "python"
 features = ["pyo3/extension-module"]
 
 [tool.uv]
+# The project and uv cache may be on different Windows volumes, where hardlinks fail.
+link-mode = "copy"
 # Rebuild the Rust extension whenever Rust sources change.
 cache-keys = [
     { file = "pyproject.toml" },
