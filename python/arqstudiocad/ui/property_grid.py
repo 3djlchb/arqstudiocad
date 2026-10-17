@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QCompleter,
     QHeaderView,
     QLabel,
+    QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTreeWidget,
@@ -108,12 +109,18 @@ class PropertyGridDelegate(QStyledItemDelegate):
         self, painter: QPainter, option: QStyleOptionViewItem, item: QTreeWidgetItem
     ) -> None:
         rect = option.rect
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
         painter.save()
         painter.fillRect(
             rect,
             QColor(str(self.tree.property("propertySectionColor") or "#3a3a3e")),
         )
+        if selected:
+            painter.fillRect(rect, QColor(117, 143, 164, 48))
         painter.setPen(QPen(QColor(str(self.tree.property("propertyBorderColor") or "#46464c"))))
+        if selected:
+            painter.setPen(QPen(QColor(0, 140, 255, 230)))
+            painter.drawLine(rect.left(), rect.top(), rect.right(), rect.top())
         painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
         painter.setFont(item.font(0))
         painter.setPen(QColor(str(self.tree.property("propertySectionTextColor") or "#e0e0e0")))
@@ -148,10 +155,21 @@ class PropertyGridDelegate(QStyledItemDelegate):
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
         rect = option.rect.adjusted(1, 2, -2, -2)
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
         painter.save()
         painter.fillRect(rect, QColor(str(self.tree.property("propertyBaseColor") or "#1e1e20")))
+        if selected:
+            painter.fillRect(rect, QColor(117, 143, 164, 48))
         painter.setPen(QPen(QColor(str(self.tree.property("propertyBorderColor") or "#46464c"))))
         painter.drawRect(rect)
+        if selected:
+            painter.setPen(QPen(QColor(0, 140, 255, 230)))
+            painter.drawLine(
+                option.rect.left(), option.rect.top(), option.rect.right(), option.rect.top()
+            )
+            painter.drawLine(
+                option.rect.left(), option.rect.bottom(), option.rect.right(), option.rect.bottom()
+            )
         text_rect = rect.adjusted(6, 0, -4, 0)
         text = str(index.data() or "")
         painter.setFont(option.font)
@@ -180,7 +198,7 @@ class PropertyGrid(QWidget):
         self.tree.setRootIsDecorated(False)
         self.tree.setIndentation(10)
         self.tree.setAlternatingRowColors(False)
-        self.tree.setSelectionMode(QTreeWidget.SelectionMode.NoSelection)
+        self.tree.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
         self.tree.setItemDelegate(PropertyGridDelegate(self.tree))
         apply_property_grid_style(self.tree)
         header = self.tree.header()

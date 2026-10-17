@@ -14,6 +14,7 @@ from arqstudiocad.events import CommandMessage, Event
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.panel_style import apply_data_view_style
 
 
 class HistoryPanel(QDockWidget):
@@ -27,11 +28,16 @@ class HistoryPanel(QDockWidget):
         self._session = session
         self._filling = False
         self.list = QListWidget()
+        apply_data_view_style(self.list)
         self.list.currentRowChanged.connect(self._on_row_chosen)
         self.setWidget(self.list)
         for signal in (events.active_document_changed, events.document_changed):
             signal.connect(self.refresh)
         self.retranslate()
+
+    def restyle(self) -> None:
+        """Refresh palette-based list colors after a theme change."""
+        apply_data_view_style(self.list)
 
     def retranslate(self) -> None:
         self.setWindowTitle(tr("History"))

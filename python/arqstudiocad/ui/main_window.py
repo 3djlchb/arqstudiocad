@@ -307,6 +307,7 @@ class MainWindow(QMainWindow):
         self.auto_hide.restyle()
         self.properties_panel.grid.restyle()
         self.layers_panel.restyle()
+        self.history_panel.restyle()
         self.theme = theme
         self.theme_actions[theme].setChecked(True)
         if self._settings is not None:

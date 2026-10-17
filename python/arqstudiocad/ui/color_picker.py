@@ -141,6 +141,13 @@ class ColorPickerDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Select color"))
+        self.setStyleSheet(
+            "QAbstractItemView { selection-background-color: rgba(117, 143, 164, 48); "
+            "selection-color: palette(text); }"
+            "QAbstractItemView::item:selected { background-color: rgba(117, 143, 164, 48); "
+            "border-top: 1px solid rgba(0, 140, 255, 230); "
+            "border-bottom: 1px solid rgba(0, 140, 255, 230); }"
+        )
         self._allow_special = allow_special
         self._selected = current or CadColor.from_index(7)
         self._index_buttons: dict[int, QToolButton] = {}
