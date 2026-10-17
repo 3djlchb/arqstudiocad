@@ -310,7 +310,7 @@ Prove the architecture end to end before widening the scope.
 - [x] A first DXF test with its round trip validated.
 - [x] Automated tests and a first continuous integration.
 
-Status as of 2026-10-13: 7 of 8 (see the [roadmap](MODULES_AND_ROADMAP.md)).
+Status as of 2026-10-17: 8 of 8 (see the [roadmap](MODULES_AND_ROADMAP.md)).
 
 ## 16. Rule for new technologies
 
