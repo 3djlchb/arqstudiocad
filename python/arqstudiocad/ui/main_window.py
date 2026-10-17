@@ -220,6 +220,7 @@ class MainWindow(QMainWindow):
         self.theme: Theme = THEMES[0]
         if settings is not None:
             self.theme = as_theme(settings.value(THEME_SETTING)) or THEMES[0]
+        self.command_actions.set_theme(self.theme)
         self._theme_menu = self._tools_menu.addMenu("")
         self._theme_group = QActionGroup(self)
         self.theme_actions: dict[Theme, QAction] = {}
@@ -309,6 +310,7 @@ class MainWindow(QMainWindow):
         self.layers_panel.restyle()
         self.history_panel.restyle()
         self.theme = theme
+        self.command_actions.set_theme(theme)
         self.theme_actions[theme].setChecked(True)
         if self._settings is not None:
             self._settings.setValue(THEME_SETTING, theme)
