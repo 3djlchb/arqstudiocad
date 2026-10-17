@@ -1,7 +1,8 @@
 //! Queries, snapshots and transactions on a 100,000-entity drawing (contract §12, ADR 0011 D3.8).
 //!
-//! The baseline for the phase 7 spatial index: `cargo bench -p arq-core`.
-//! A reproducible measurement target, not a promise.
+//! Measures spatial queries and indexed interaction candidates on a
+//! 100,000-entity drawing: `cargo bench -p arq-core`. A reproducible target,
+//! not a promise.
 
 use std::hint::black_box;
 
@@ -61,7 +62,9 @@ fn queries(c: &mut Criterion) {
     });
     // Hover and selection (ADR 0016 D2, D5): the budget is one frame on
     // the reference machine for a few thousand entities; this records 100k.
-    let cursor = p(0.5 * extent + 0.1, 0.5 * extent + 0.1);
+    // The cursor lies on the first line so pick and snap measure a hit, not
+    // only the cost of an empty broad-phase query.
+    let cursor = p(4.0, 2.0);
     group.bench_function("pick", |b| {
         b.iter(|| black_box(cad.pick(black_box(cursor), 1.0).expect("pick")))
     });
@@ -80,7 +83,7 @@ fn queries(c: &mut Criterion) {
     group.bench_function("snap (default modes)", |b| {
         b.iter(|| {
             black_box(
-                cad.snap(black_box(cursor), 1.0, &modes, None)
+                cad.snap(black_box(cursor), 2.0, &modes, None)
                     .expect("snap"),
             )
         })

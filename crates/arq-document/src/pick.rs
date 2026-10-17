@@ -2,9 +2,9 @@
 //! is drawn: the shapes of `drawing.rs`, so blocks count as a whole and
 //! entities on off or frozen layers, which draw nothing, are never found.
 //!
-//! Everything scans the drawing (ADR 0011 D3.8); the spatial index comes
-//! with milestone 02.7. Distances and apertures are in world units: the
-//! interface turns its pixels into them.
+//! Exact geometry checks operate on drawn primitives. The core may supply
+//! broad-phase candidates from its private spatial index. Distances and
+//! apertures are in world units, converted from pixels by the interface.
 
 use arq_geometry::snap::{
     SnapKind, SnapPoint, intersection_points, key_points, nearest_point, perpendicular_points,
@@ -28,8 +28,30 @@ impl Document {
         if !(aperture.is_finite() && aperture >= 0.0) {
             return None;
         }
+        self.pick_drawings(self.drawing_all(), at, aperture)
+    }
+
+    /// Picks exactly among broad-phase candidates supplied in drawing order.
+    pub fn pick_candidates(
+        &self,
+        at: Point2,
+        aperture: f64,
+        candidates: &[EntityId],
+    ) -> Option<EntityId> {
+        if !(aperture.is_finite() && aperture >= 0.0) {
+            return None;
+        }
+        self.pick_drawings(self.drawing_entities(candidates), at, aperture)
+    }
+
+    fn pick_drawings(
+        &self,
+        drawings: Vec<(EntityId, Vec<crate::drawing::DrawItem>)>,
+        at: Point2,
+        aperture: f64,
+    ) -> Option<EntityId> {
         let mut best: Option<(EntityId, f64)> = None;
-        for (id, items) in self.drawing_all() {
+        for (id, items) in drawings {
             let Some(d) = items
                 .iter()
                 .map(|item| distance(item.shape, at))
@@ -49,7 +71,26 @@ impl Document {
     /// those whose drawn geometry touches it; exact, not by bounding box.
     /// In drawing order.
     pub fn select_window(&self, area: Bounds2, crossing: bool) -> Vec<EntityId> {
-        self.drawing_all()
+        self.select_drawings(self.drawing_all(), area, crossing)
+    }
+
+    /// Selects exactly among broad-phase candidates supplied in drawing order.
+    pub fn select_window_candidates(
+        &self,
+        area: Bounds2,
+        crossing: bool,
+        candidates: &[EntityId],
+    ) -> Vec<EntityId> {
+        self.select_drawings(self.drawing_entities(candidates), area, crossing)
+    }
+
+    fn select_drawings(
+        &self,
+        drawings: Vec<(EntityId, Vec<crate::drawing::DrawItem>)>,
+        area: Bounds2,
+        crossing: bool,
+    ) -> Vec<EntityId> {
+        drawings
             .into_iter()
             .filter(|(_, items)| !items.is_empty())
             .filter(|(_, items)| {
@@ -85,10 +126,41 @@ impl Document {
         if !(aperture.is_finite() && aperture >= 0.0) || modes.is_empty() {
             return None;
         }
+        self.snap_drawings(self.drawing_all(), cursor, aperture, modes, from)
+    }
+
+    /// Snaps exactly among broad-phase candidates supplied in drawing order.
+    pub fn snap_candidates(
+        &self,
+        cursor: Point2,
+        aperture: f64,
+        modes: &[SnapKind],
+        from: Option<Point2>,
+        candidates: &[EntityId],
+    ) -> Option<SnapPoint> {
+        if !(aperture.is_finite() && aperture >= 0.0) || modes.is_empty() {
+            return None;
+        }
+        self.snap_drawings(
+            self.drawing_entities(candidates),
+            cursor,
+            aperture,
+            modes,
+            from,
+        )
+    }
+
+    fn snap_drawings(
+        &self,
+        drawings: Vec<(EntityId, Vec<crate::drawing::DrawItem>)>,
+        cursor: Point2,
+        aperture: f64,
+        modes: &[SnapKind],
+        from: Option<Point2>,
+    ) -> Option<SnapPoint> {
         let on = |kind: SnapKind| modes.contains(&kind);
         // The curves the cursor rests on, closest first.
-        let mut near: Vec<(Geometry2, f64)> = self
-            .drawing_all()
+        let mut near: Vec<(Geometry2, f64)> = drawings
             .into_iter()
             .flat_map(|(_, items)| items)
             .filter_map(|item| curve(item.shape))

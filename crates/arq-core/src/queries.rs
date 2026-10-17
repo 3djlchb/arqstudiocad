@@ -35,14 +35,20 @@ impl CadDocument {
     /// an off or frozen layer (ADR 0016 D2). A block counts as a whole.
     pub fn pick(&self, at: Point2, aperture: f64) -> CadResult<Option<EntityId>> {
         check_aperture(aperture)?;
-        Ok(self.document().pick(at, aperture))
+        let Some(area) = aperture_area(at, aperture) else {
+            return Ok(self.document().pick(at, aperture));
+        };
+        let candidates = self.query_entities(area);
+        Ok(self.document().pick_candidates(at, aperture, &candidates))
     }
 
     /// The entities wholly inside `area` (a window) or, with `crossing`,
     /// those whose drawn geometry touches it, exactly; none on an off or
     /// frozen layer (ADR 0016 D2). In drawing order.
     pub fn select_window(&self, area: Bounds2, crossing: bool) -> Vec<EntityId> {
-        self.document().select_window(area, crossing)
+        let candidates = self.query_entities(area);
+        self.document()
+            .select_window_candidates(area, crossing, &candidates)
     }
 
     /// The grips of `ids` (ADR 0016 D7), entity by entity in the order
@@ -63,8 +69,22 @@ impl CadDocument {
         from: Option<Point2>,
     ) -> CadResult<Option<SnapPoint>> {
         check_aperture(aperture)?;
-        Ok(self.document().snap(cursor, aperture, modes, from))
+        let Some(area) = aperture_area(cursor, aperture) else {
+            return Ok(self.document().snap(cursor, aperture, modes, from));
+        };
+        let candidates = self.query_entities(area);
+        Ok(self
+            .document()
+            .snap_candidates(cursor, aperture, modes, from, &candidates))
     }
+}
+
+/// The square broad-phase window for a circular pick/snap aperture. If its
+/// coordinates overflow, callers use the exact full-scan path instead.
+fn aperture_area(center: Point2, aperture: f64) -> Option<Bounds2> {
+    let min = Point2::new(center.x() - aperture, center.y() - aperture).ok()?;
+    let max = Point2::new(center.x() + aperture, center.y() + aperture).ok()?;
+    Some(Bounds2::new(min, max))
 }
 
 /// An aperture is a finite distance, zero or more.
