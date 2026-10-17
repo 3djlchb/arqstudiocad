@@ -25,6 +25,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0018](0018-native-format.md) | Working format: DWG with an own internal model (BricsCAD approach); IFC for BIM exchange; a multidisciplinary test decides whether a native format is needed; native `.ascad` (versioned ZIP, own model, preserved DWG) designed and reserved | Accepted |
 | [0019](0019-geometry-3d-foundations.md) | Dependency-free 3D value types in `arq-geometry`, right-handed Z-up coordinates, local-frame affine transforms; document ownership and solid kernel remain open | Accepted |
 | [0020](0020-progressive-own-geometry-kernel.md) | Build an owned Rust geometry kernel incrementally; use OCCT as an optional, reviewed temporary backend and migrate by capability after parity tests | Accepted |
+| [0021](0021-spatial-index.md) | Use an internal R*-tree for bounding-box candidates behind the existing core query API; synchronize it from committed changes and undo/redo | Accepted |
 
 Template:
 

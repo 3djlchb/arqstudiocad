@@ -12,6 +12,7 @@ publish.workspace = true
 [dependencies]
 arq-geometry.workspace = true
 arq-document.workspace = true
+rstar = "=0.13.0"
 
 [dev-dependencies]
 arq-document = { workspace = true, features = ["test-support"] }

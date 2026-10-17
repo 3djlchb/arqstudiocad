@@ -70,6 +70,7 @@ mod error;
 mod history;
 mod operations;
 mod queries;
+mod spatial_index;
 
 pub use app::{CadApplication, DocumentId};
 pub use arq_document::ChangeSet as CadChangeSet;

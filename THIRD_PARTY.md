@@ -13,6 +13,12 @@ copied.
 |---|---|---|---|
 | `crates/arq-document/src/ocs.rs` | Approach of IngeCAD's `core/ocs.py` (plan view of OCS entities, normal `(0,0,-1)`), reimplemented in Rust | GPL-3.0-or-later | Idea and rules ported, no code copied |
 
+## Dependencies
+
+| Path in this repo | Origin | License | Notes |
+|---|---|---|---|
+| `crates/arq-core` | [rstar](https://github.com/georust/rstar), crates.io `=0.13.0` | MIT OR Apache-2.0 | Private R*-tree implementation for 2D model-space bounding-box queries; no types cross the core API (ADR 0021) |
+
 ## Documents
 
 | Path in this repo | Origin | License | Notes |
