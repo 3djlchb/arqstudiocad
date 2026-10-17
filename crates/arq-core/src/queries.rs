@@ -2,12 +2,11 @@
 //!
 //! Queries are purely geometric: they cover every model-space entity whatever
 //! its layer state, and callers filter (selection skips off and frozen
-//! layers; zoom extents skips frozen ones). In this phase they scan all
-//! entities; the spatial index of phase 7 replaces the scan behind the same
-//! interface, measured by the `query` benchmark.
+//! layers; zoom extents skips frozen ones). The private spatial index returns
+//! bounding-box candidates in drawing order.
 
 use arq_geometry::snap::{SnapKind, SnapPoint};
-use arq_geometry::{Bounds2, Point2, Tolerance};
+use arq_geometry::{Bounds2, Point2};
 
 use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
@@ -28,12 +27,7 @@ impl CadDocument {
     /// (a diagonal line, an arc), and callers that need an exact answer
     /// (selection) check the geometry.
     pub fn query_entities(&self, area: Bounds2) -> Vec<EntityId> {
-        let tol = Tolerance::default();
-        self.document()
-            .entity_bounds()
-            .filter(|(_, b)| b.intersects(area, tol))
-            .map(|(id, _)| id)
-            .collect()
+        self.spatial_index.query(area)
     }
 
     /// The entity whose drawn geometry passes closest to `at` within

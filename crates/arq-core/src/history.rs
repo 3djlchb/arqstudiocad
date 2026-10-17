@@ -12,6 +12,7 @@ use std::path::Path;
 use arq_document::{Change, ChangeSet, Document};
 
 use crate::error::{CadError, CadResult};
+use crate::spatial_index::SpatialIndex;
 
 /// One undo step: the changes it made, in order.
 struct Step {
@@ -32,6 +33,7 @@ struct Group {
 /// One open drawing: the document plus its history.
 pub struct CadDocument {
     doc: Document,
+    pub(crate) spatial_index: SpatialIndex,
     undo: Vec<Step>,
     redo: Vec<Step>,
     group: Option<Group>,
@@ -54,8 +56,10 @@ impl CadDocument {
 
     /// Wraps a loaded document, with an empty history.
     pub fn from_document(doc: Document) -> Self {
+        let spatial_index = SpatialIndex::from_document(&doc);
         Self {
             doc,
+            spatial_index,
             undo: Vec::new(),
             redo: Vec::new(),
             group: None,
@@ -133,6 +137,7 @@ impl CadDocument {
         let change = self.doc.commit_change()?;
         check_model(&self.doc);
         let summary = change.summary().clone();
+        self.spatial_index.apply_change(&self.doc, &summary);
         if summary.is_empty() {
             return Ok((value, summary));
         }
@@ -215,7 +220,9 @@ impl CadDocument {
         for change in group.step.changes.iter_mut().rev() {
             self.doc.undo_change(change)?;
         }
-        Ok(group.step.summary.inverted())
+        let summary = group.step.summary.inverted();
+        self.spatial_index.apply_change(&self.doc, &summary);
+        Ok(summary)
     }
 
     /// Undoes the last step; returns what that did.
@@ -230,6 +237,7 @@ impl CadDocument {
         }
         check_model(&self.doc);
         let summary = step.summary.inverted();
+        self.spatial_index.apply_change(&self.doc, &summary);
         self.redo.push(step);
         Ok(summary)
     }
@@ -246,6 +254,7 @@ impl CadDocument {
         }
         check_model(&self.doc);
         let summary = step.summary.clone();
+        self.spatial_index.apply_change(&self.doc, &summary);
         self.undo.push(step);
         Ok(summary)
     }

@@ -64,11 +64,18 @@ fn query_follows_edits_and_undo() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_circle(p(0.0, 0.0), 1.0).unwrap();
     let there = area(99.0, 99.0, 101.0, 101.0);
+    let failed = cad.delete_entities(&[id, u64::MAX]);
+    assert!(failed.is_err());
+    assert_eq!(cad.query_entities(area(-2.0, -2.0, 2.0, 2.0)), [id]);
+
     cad.move_entities(&[id], arq_geometry::Vector2::new(100.0, 100.0).unwrap())
         .unwrap();
     assert_eq!(cad.query_entities(there), [id]);
     cad.undo().unwrap();
     assert!(cad.query_entities(there).is_empty());
+    cad.redo().unwrap();
+    assert_eq!(cad.query_entities(there), [id]);
+    cad.undo().unwrap();
     cad.delete_entities(&[id]).unwrap();
     assert!(cad.query_entities(area(-2.0, -2.0, 2.0, 2.0)).is_empty());
 }
