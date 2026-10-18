@@ -13,6 +13,8 @@ publish.workspace = true
 arq-core.workspace = true
 arq-geometry.workspace = true
 tiny-skia = { version = "0.12", default-features = false, features = ["std", "simd"] }
+wgpu.workspace = true
+pollster.workspace = true
 
 [lints]
 workspace = true

@@ -24,6 +24,8 @@ arq-geometry = { path = "crates/arq-geometry" }
 arq-document = { path = "crates/arq-document" }
 arq-core = { path = "crates/arq-core" }
 arq-render = { path = "crates/arq-render" }
+wgpu = { version = "=30.0.1", default-features = false, features = ["dx12", "gles", "metal", "std", "vulkan", "wgsl"] }
+pollster = "=0.4.0"
 pyo3 = "0.29.3"
 # DWG/DXF engine (ADR 0017): AcadRust from crates.io, pinned to the exact version
 # measured. Upgrade only deliberately, after the round-trip corpus and
