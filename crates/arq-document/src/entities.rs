@@ -1,5 +1,6 @@
 //! Entity access on [`Document`].
 
+use acadrust::types::{Transform, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{Bounds2, Transform2};
 
@@ -15,6 +16,74 @@ use crate::translate::{
 };
 
 impl Document {
+    /// Replaces one block reference with its transformed contents.
+    ///
+    /// References whose attached attributes or block attribute definitions
+    /// cannot be represented by the codec's explode operation are refused.
+    pub fn explode_insert(&mut self, id: EntityId) -> DocumentResult<Vec<EntityId>> {
+        let insert = match self.cad().get_entity(handle(id)) {
+            Some(EntityType::Insert(insert)) => insert.clone(),
+            Some(entity) => {
+                return Err(DocumentError::NotEditable {
+                    id,
+                    kind: entity.as_entity().entity_type(),
+                });
+            }
+            None => return Err(DocumentError::EntityNotFound(id)),
+        };
+        if !insert.attributes.is_empty()
+            || self
+                .cad()
+                .entities_in_block(&insert.block_name)
+                .any(|entity| matches!(entity, EntityType::AttributeDefinition(_)))
+        {
+            return Err(DocumentError::UnsupportedOperation(
+                "block attributes cannot be preserved by EXPLODE".to_owned(),
+            ));
+        }
+        let record = self
+            .cad()
+            .block_records
+            .get(&insert.block_name)
+            .ok_or_else(|| {
+                DocumentError::UnsupportedOperation("the block definition is missing".to_owned())
+            })?;
+        // INSERT transforms contents around the block's base point. The codec's
+        // explode helper omits this adjustment, so normalize the cloned source
+        // entities first to match the document's drawing transform.
+        let base = record.base_point;
+        let base_offset = Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z));
+        let mut contents: Vec<_> = self
+            .cad()
+            .entities_in_block(&insert.block_name)
+            .cloned()
+            .collect();
+        for entity in &mut contents {
+            entity.apply_transform(&base_offset);
+        }
+        let mut parts = insert.explode(&contents);
+        if parts.is_empty() {
+            return Err(DocumentError::UnsupportedOperation(
+                "the block has no contents that can be exploded".to_owned(),
+            ));
+        }
+        let mut ids = Vec::with_capacity(parts.len());
+        for mut part in parts.drain(..) {
+            let common = part.common_mut();
+            common.handle = Handle::NULL;
+            common.owner_handle = Handle::NULL;
+            common.raw_record = None;
+            common.reactors.clear();
+            common.xdictionary_handle = None;
+            common.graphic_data = None;
+            let handle = self.cad_mut().add_entity(part)?;
+            ids.push(handle.value());
+            self.sync_entity(handle.value());
+        }
+        self.delete_entity(id)?;
+        Ok(ids)
+    }
+
     /// Moves one vertex of a lightweight polyline in plan, preserving its
     /// bulge, widths, elevation and entity properties.
     pub fn set_polyline_vertex(

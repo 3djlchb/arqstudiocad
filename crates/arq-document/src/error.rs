@@ -74,6 +74,8 @@ pub enum DocumentError {
         /// The requested zero-based vertex.
         index: usize,
     },
+    /// An operation cannot be completed without losing unsupported data.
+    UnsupportedOperation(String),
     /// No layer has this name.
     LayerNotFound(String),
     /// No layer has this id.
@@ -161,6 +163,7 @@ impl fmt::Display for DocumentError {
             Self::InvalidVertexIndex { id, index } => {
                 write!(f, "polyline {id} has no vertex {index}")
             }
+            Self::UnsupportedOperation(message) => write!(f, "{message}"),
             Self::LayerNotFound(name) => write!(f, "no layer named {name:?}"),
             Self::LayerIdNotFound(id) => write!(f, "no layer with id {id}"),
             Self::LayerExists(name) => write!(f, "a layer named {name:?} already exists"),

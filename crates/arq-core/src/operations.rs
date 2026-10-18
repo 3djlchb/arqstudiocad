@@ -150,6 +150,20 @@ impl CadDocument {
         })
     }
 
+    /// Explodes selected block references into their transformed contents.
+    pub fn explode_entities(&mut self, ids: &[EntityId]) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let ids = distinct(ids);
+        self.transact("EXPLODE", |doc| {
+            let mut created = Vec::new();
+            for id in ids {
+                let entity = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &entity)?;
+                created.extend(doc.explode_insert(id)?);
+            }
+            Ok(created)
+        })
+    }
+
     /// Moves entities to another layer (CHPROP).
     pub fn set_entity_layer(&mut self, ids: &[EntityId], layer: LayerId) -> CadResult<ChangeSet> {
         self.edit_entities("CHPROP", ids, |doc, e| {

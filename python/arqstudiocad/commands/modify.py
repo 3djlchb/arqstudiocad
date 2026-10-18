@@ -1,5 +1,5 @@
-"""The editing commands of milestone 2.5 (ADR 0016 D3, D8): ERASE, MOVE,
-COPY, ROTATE, SCALE and MIRROR.
+"""The editing commands of milestone 02.5 and 02.8 (ADR 0016 D3, D8):
+ERASE, MOVE, COPY, ROTATE, SCALE, MIRROR and EXPLODE.
 
 Each works on what is selected when it starts (noun-verb) or asks "Select
 objects" (verb-noun), where the viewport selects as usual and ``ALL``,
@@ -23,7 +23,7 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.core import CadDocument, InvalidGeometryError
+from arqstudiocad.core import CadDocument, InvalidGeometryError, InvalidOperationError
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point
@@ -68,6 +68,25 @@ def erase(ctx: CommandContext) -> CommandScript:
     if ids:
         ctx.session.report(document, document.delete_entities(ids))
         _done(ctx, document, ids)
+
+
+def explode(ctx: CommandContext) -> CommandScript:
+    """Replaces selected block references with their transformed contents."""
+    document = ctx.document()
+    ids = yield from select_objects(ctx, document)
+    if not ids:
+        return
+    selected = document.get_entities(ids)
+    if any(entity.kind != "INSERT" for entity in selected):
+        raise CommandCancelledError(tr("Only block references can be exploded."))
+    try:
+        _, changes = document.explode_entities(ids)
+    except InvalidOperationError as error:
+        raise CommandCancelledError(
+            tr("This block cannot be exploded without losing data.")
+        ) from error
+    ctx.session.report(document, changes)
+    _done(ctx, document, ids)
 
 
 def move(ctx: CommandContext) -> CommandScript:
@@ -223,6 +242,7 @@ def _offset(base: Point, second: Point) -> Point:
 #: The editing commands, with AutoCAD's aliases.
 MODIFY_COMMANDS = (
     Command("ERASE", erase, ("E",)),
+    Command("EXPLODE", explode, ("X",)),
     Command("MOVE", move, ("M",)),
     Command("COPY", copy, ("CO", "CP")),
     Command("ROTATE", rotate, ("RO",)),

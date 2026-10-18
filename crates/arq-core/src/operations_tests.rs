@@ -484,6 +484,37 @@ fn stretching_one_polyline_vertex_is_transactional_and_undoable() {
 }
 
 #[test]
+fn exploding_a_block_replaces_it_atomically_and_is_undoable() {
+    let (mut cad, door, wall) = blocks_and_polylines();
+    let failed = cad.explode_entities(&[door, wall]);
+    assert!(matches!(failed, Err(CadError::InvalidOperation(_))));
+    assert_eq!(
+        cad.document().entities().len(),
+        2,
+        "a failed mixed explode rolls back"
+    );
+
+    let (created, changes) = cad.explode_entities(&[door]).unwrap();
+    assert_eq!(created.len(), 1);
+    assert_eq!(changes.created(), created);
+    assert_eq!(changes.deleted(), [door]);
+    assert_eq!(
+        drawn_ends(&cad, created[0]),
+        ends(&[(10.0, 5.0), (11.0, 5.0)])
+    );
+    assert_eq!(cad.undo_name(), Some("EXPLODE"));
+
+    cad.undo().unwrap();
+    assert_eq!(drawn_ends(&cad, door), ends(&[(10.0, 5.0), (11.0, 5.0)]));
+    assert_eq!(cad.document().entities().len(), 2);
+    cad.redo().unwrap();
+    assert_eq!(
+        drawn_ends(&cad, created[0]),
+        ends(&[(10.0, 5.0), (11.0, 5.0)])
+    );
+}
+
+#[test]
 fn copying_makes_one_undo_step() {
     let (mut cad, door, wall) = blocks_and_polylines();
     let (line, _) = cad.add_line(p(0.0, 10.0), p(1.0, 10.0)).unwrap();
