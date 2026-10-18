@@ -52,5 +52,7 @@ by this first slice.
 The next 02.7 slice uses R*-tree candidates for `pick`, window/crossing
 selection and object snaps. `arq-document` still applies the existing exact
 drawn-geometry checks and visibility rules to those candidates; the index
-does not change query results or drawing order. GPU rendering and backend
-probing remain open.
+does not change query results or drawing order. GPU viewport rendering remains
+open. An isolated wgpu adapter/pipeline/offscreen readback probe is now
+implemented under ADR 0007; it has passed locally on Windows with DX12, while
+Linux reference-machine validation remains open.

@@ -16,8 +16,10 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **Data protections (03.3):** done (ADR 0017 D5).
 - **Current:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
-  object snaps; exact geometry checks remain in place. GPU rendering and
-  backend probing remain open. Milestone 02.5 is complete and manually
+  object snaps; exact geometry checks remain in place. A crash-isolated wgpu
+  probe checks adapter, pipeline, offscreen draw and readback; it passed locally
+  on Windows with Intel UHD 630 / DX12. GPU viewport rendering and reference
+  Linux validation remain open. Milestone 02.5 is complete and manually
   validated by the maintainer, including property editors, shared panel/table
   styling, and CAD color selection; 03.2 is done and 03.4 compatibility work
   is in progress.
@@ -50,7 +52,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.4 Application shell | Drawing primitives, CPU rasterizer, viewport, events, commands and command window, tabs, background open/save, panels, Ribbon and Classic workspaces, themes (ADR 0013, 0015) | ✅ PR #8 |
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ✅ steps 2.5.1–2.5.8 complete and manually validated by the maintainer |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
-| 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; GPU rendering is open |
+| 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
 | 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); wider entities and document model remain open |
 
 ## Phase 03 — DWG/DXF ◐

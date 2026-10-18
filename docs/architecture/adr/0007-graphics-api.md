@@ -104,3 +104,13 @@ AMD and macOS are covered by manual CI runs and volunteer testers.
   display the image (slower, works with any backend).
 - GPU drivers on the development laptop (NVIDIA 2022, Intel 2021) should be
   updated before phase 7.
+
+## Implementation progress (2026-10-17)
+
+- `wgpu` 30.0.1 is pinned in `arq-render`. Its isolated probe creates an
+  adapter and device, compiles a WGSL pipeline, uploads data, draws to an
+  offscreen texture and verifies a pixel readback. The Python parent runs one
+  short-lived child per backend and skips a timed-out or failed backend.
+- The probe passed locally on Windows with Intel UHD 630 / DX12. This does not
+  yet switch the viewport from the CPU rasterizer; the renderer and Qt
+  presentation path, plus the reference Linux-machine validation, remain open.

@@ -12,6 +12,8 @@ from typing import ClassVar, Literal, Protocol, SupportsFloat, SupportsIndex, fi
 
 __version__: str
 
+def probe_gpu_backend(backend: str) -> tuple[str, str, str]: ...
+
 __all__ = [
     "CadApplication",
     "CadArc",
@@ -40,6 +42,7 @@ __all__ = [
     "SaveNotVerifiedError",
     "UnsupportedFormatError",
     "__version__",
+    "probe_gpu_backend",
 ]
 
 # Public versions of these two live in arqstudiocad.core.
