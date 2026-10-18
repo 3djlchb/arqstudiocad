@@ -14,12 +14,14 @@
 
 mod aci;
 mod camera;
+mod gpu_probe;
 mod outline;
 mod raster;
 mod scene;
 
 pub use aci::{aci_rgb, aci_rgb_on, luminance};
 pub use camera::Camera;
+pub use gpu_probe::{GpuBackend, GpuProbeResult, probe_gpu_backend};
 pub use outline::{Polyline, outline};
 pub use raster::{Image, Style, render};
 pub use scene::Scene;

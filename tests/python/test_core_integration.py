@@ -166,6 +166,9 @@ def test_the_public_module_exports_every_native_class() -> None:
     assert native_names, "the native module defines classes"
     missing = native_names - set(core.__all__)
     assert not missing, f"add to arqstudiocad.core: {sorted(missing)}"
-    assert set(native.__all__) - {"__version__"} == native_names, "native __all__ lists every class"
+    native_exports = set(native.__all__) - {"__version__"}
+    assert native_names <= native_exports, "native __all__ lists every class"
+    assert native_exports - native_names == {"probe_gpu_backend"}
+    assert callable(native.probe_gpu_backend)
     for name in core.__all__:
         assert hasattr(core, name), name

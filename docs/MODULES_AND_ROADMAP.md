@@ -16,8 +16,10 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **Data protections (03.3):** done (ADR 0017 D5).
 - **Current:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
-  object snaps; exact geometry checks remain in place. GPU rendering and
-  backend probing remain open. Milestone 02.5 is complete and manually
+  object snaps; exact geometry checks remain in place. A crash-isolated wgpu
+  probe checks adapter, pipeline, offscreen draw and readback; it passed locally
+  on Windows with Intel UHD 630 / DX12. GPU viewport rendering and reference
+  Linux validation remain open. Milestone 02.5 is complete and manually
   validated by the maintainer, including property editors, shared panel/table
   styling, and CAD color selection; 03.2 is done and 03.4 compatibility work
   is in progress.

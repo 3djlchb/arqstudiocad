@@ -22,6 +22,7 @@ use pyo3::prelude::*;
 mod changes;
 mod documents;
 mod errors;
+mod gpu;
 mod info;
 mod values;
 mod view;
@@ -30,6 +31,7 @@ mod view;
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", arq_core::version())?;
     errors::register(m)?;
+    gpu::register(m)?;
     documents::register(m)?;
     info::register(m)?;
     changes::register(m)?;
