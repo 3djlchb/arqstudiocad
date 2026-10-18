@@ -26,6 +26,8 @@ TARGET_ARCH = os.environ.get("ARQ_TARGET_ARCH")  # e.g. universal2 on macOS
 datas = [
     (str(PACKAGE / "locales"), "arqstudiocad/locales"),
     (str(ROOT / "resources" / "icons" / "icons_layers"), "resources/icons/icons_layers"),
+    (str(ROOT / "resources" / "icons" / "icons_actions"), "resources/icons/icons_actions"),
+    (str(ROOT / "resources" / "icons" / "icons_draw"), "resources/icons/icons_draw"),
     (str(ROOT / "AUTHORS"), "."),
     (str(ROOT / "LICENSE"), "."),
 ]

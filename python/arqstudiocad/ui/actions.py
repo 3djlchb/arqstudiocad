@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QWidget
 
 from arqstudiocad.commands import CommandRunner
 from arqstudiocad.i18n import tr
+from arqstudiocad.ui.command_icons import command_icon
+from arqstudiocad.ui.theme import Theme
 
 #: Commands with an action, and their standard shortcuts.
 SHORTCUTS: dict[str, QKeySequence.StandardKey | None] = {
@@ -82,6 +84,11 @@ class CommandActions:
         command = self._runner.registry.find(name)
         if command is not None:
             self._runner.start(command)
+
+    def set_theme(self, theme: Theme) -> None:
+        """Refresh command icons for the active theme."""
+        for name, action in self.by_command.items():
+            action.setIcon(command_icon(name, theme))
 
     def retranslate(self) -> None:
         for name, text in labels().items():

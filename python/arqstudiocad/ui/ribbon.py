@@ -1,16 +1,16 @@
 """The ribbon (ADR 0015): tabs holding groups of tool buttons.
 
 Qt has no ribbon, so this is a tab widget whose pages are rows of groups,
-each group its buttons with its title underneath. Buttons show the
-commands' actions, as text until there are icons, stacked in columns of up
-to :data:`ROWS`, as AutoCAD stacks a panel's small buttons, so a tab stays
+each group its buttons with its title underneath. Buttons show command icons
+when available and their names underneath, stacked in columns of up to
+:data:`ROWS`, as AutoCAD stacks a panel's small buttons, so a tab stays
 narrow enough for small screens. Double-clicking a tab
 folds the ribbon to its tab bar, and again unfolds it.
 """
 
 from collections.abc import Mapping
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QFrame,
@@ -43,7 +43,11 @@ class RibbonGroupWidget(QFrame):
         for index, name in enumerate(group.commands):
             button = QToolButton()
             button.setDefaultAction(actions[name])
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            if not actions[name].icon().isNull():
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+                button.setIconSize(QSize(24, 24))
+            else:
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setAutoRaise(True)
             grid.addWidget(button, index % ROWS, index // ROWS)
             self.buttons.append(button)
