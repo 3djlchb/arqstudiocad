@@ -67,6 +67,13 @@ pub enum DocumentError {
         /// Its DXF type name.
         kind: &'static str,
     },
+    /// A vertex index is outside a lightweight polyline's vertices.
+    InvalidVertexIndex {
+        /// The polyline entity.
+        id: u64,
+        /// The requested zero-based vertex.
+        index: usize,
+    },
     /// No layer has this name.
     LayerNotFound(String),
     /// No layer has this id.
@@ -150,6 +157,9 @@ impl fmt::Display for DocumentError {
                     f,
                     "entity {id} is a {kind}; its geometry cannot change kind"
                 )
+            }
+            Self::InvalidVertexIndex { id, index } => {
+                write!(f, "polyline {id} has no vertex {index}")
             }
             Self::LayerNotFound(name) => write!(f, "no layer named {name:?}"),
             Self::LayerIdNotFound(id) => write!(f, "no layer with id {id}"),

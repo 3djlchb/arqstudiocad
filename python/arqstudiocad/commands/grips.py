@@ -7,9 +7,10 @@ or Space cycles Stretch → Move → Rotate → Scale → Mirror around the hot
 grip. Base point picks another base, Copy makes each pick a copy (Enter
 then ends), Undo takes back the last copy, eXit ends. Stretch moves a
 line's end, changes a circle's radius by a quadrant, reshapes an arc by an
-end (through its midpoint and other end), and moves the entity by its
-midpoint, center, insertion point or vertex. Move, Rotate, Scale and Mirror
-apply to every selected entity that can be transformed. A grip edit is one
+end (through its midpoint and other end), moves an entity by its midpoint,
+center or insertion point, and moves one polyline vertex at a time. Move,
+Rotate, Scale and Mirror apply to every selected entity that can be transformed.
+A grip edit is one
 undo step and keeps the selection.
 """
 
@@ -111,7 +112,9 @@ def _ask(
         Option("X", tr("Exit")),
     ]
     if mode == "STRETCH":
-        drag = Drag("move", (grip.entity_id,)) if grip.kind in MOVING else None
+        # The generic drag overlay translates whole entities. A vertex grip
+        # edits one point, so do not show a misleading whole-polyline preview.
+        drag = Drag("move", (grip.entity_id,)) if grip.kind in MOVING - {"VTX"} else None
         message = tr("** STRETCH ** Specify stretch point")
         return ctx.point(message, base=base, options=options, optional=True, drag=drag)
     if mode == "MOVE":
@@ -184,7 +187,10 @@ def _stretch(
     if copy:
         (entity_id,), changes = document.copy_entities([entity_id], (0.0, 0.0))
         ctx.session.report(document, changes)
-    if shape is None:
+    if grip.kind == "VTX":
+        assert grip.vertex_index is not None
+        changes = document.set_polyline_vertex(entity_id, grip.vertex_index, target)
+    elif shape is None:
         offset = (target[0] - grip.point[0], target[1] - grip.point[1])
         changes = document.move_entities([entity_id], offset)
     else:

@@ -174,7 +174,23 @@ def test_blocks_and_polylines_move_and_copy_as_a_whole(tmp_path: Path) -> None:
     door, wall = doc.get_entities()
     assert (door.kind, door.is_transformable, door.is_editable) == ("INSERT", True, False)
     assert (wall.kind, wall.is_transformable, wall.is_editable) == ("LWPOLYLINE", True, False)
-    assert wall.geometry is None, "its vertices are not editable yet"
+    assert wall.geometry is None, "a polyline is edited through its vertex grips"
+
+    grips = doc.grips([wall.id])
+    assert [(grip.kind, grip.vertex_index, grip.point) for grip in grips] == [
+        ("VTX", 0, (0.0, 0.0)),
+        ("VTX", 1, (4.0, 0.0)),
+        ("VTX", 2, (4.0, 2.0)),
+    ]
+    changed = doc.set_polyline_vertex(wall.id, 1, (6.0, 3.0))
+    assert changed.modified == (wall.id,)
+    assert doc.undo_name == "GRIP"
+    doc.undo()
+    assert [(grip.point) for grip in doc.grips([wall.id])] == [
+        (0.0, 0.0),
+        (4.0, 0.0),
+        (4.0, 2.0),
+    ]
 
     moved = doc.move_entities([door.id, wall.id], (1, 2))
     assert moved.modified == (door.id, wall.id)

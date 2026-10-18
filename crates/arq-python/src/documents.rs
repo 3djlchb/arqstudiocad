@@ -425,6 +425,16 @@ impl CadDocument {
         self.change(|cad| cad.set_entity_geometry(entity_id, g))
     }
 
+    /// Moves one lightweight-polyline vertex to a plan point.
+    fn set_polyline_vertex(
+        &self,
+        entity_id: EntityId,
+        vertex_index: usize,
+        point: PyPoint,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_polyline_vertex(entity_id, vertex_index, point.0))
+    }
+
     /// Erases entities of any type (ERASE).
     fn delete_entities(&self, entity_ids: Vec<EntityId>) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.delete_entities(&entity_ids))

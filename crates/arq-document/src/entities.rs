@@ -8,12 +8,50 @@ use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
+use crate::ocs::plan_normal;
 use crate::translate::{
     bounds_of, color_to_codec, handle, is_whole_transformable, new_entity, read_entity,
     transform_whole, write_plan,
 };
 
 impl Document {
+    /// Moves one vertex of a lightweight polyline in plan, preserving its
+    /// bulge, widths, elevation and entity properties.
+    pub fn set_polyline_vertex(
+        &mut self,
+        id: EntityId,
+        vertex_index: usize,
+        point: arq_geometry::Point2,
+    ) -> DocumentResult<()> {
+        let raw = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        let EntityType::LwPolyline(polyline) = raw else {
+            return Err(DocumentError::NotEditable {
+                id,
+                kind: raw.as_entity().entity_type(),
+            });
+        };
+        let normal = plan_normal(polyline.normal.x, polyline.normal.y, polyline.normal.z).ok_or(
+            DocumentError::NotEditable {
+                id,
+                kind: "LWPOLYLINE",
+            },
+        )?;
+        let vertex =
+            polyline
+                .vertices
+                .get_mut(vertex_index)
+                .ok_or(DocumentError::InvalidVertexIndex {
+                    id,
+                    index: vertex_index,
+                })?;
+        let (x, y, _) = normal.map_point(point.x(), point.y(), polyline.elevation);
+        vertex.location = acadrust::types::Vector2::new(x, y);
+        Ok(())
+    }
+
     /// A snapshot of the entity with this id, in any space: from the own
     /// model when it owns the entity, else from the engine.
     pub fn entity(&self, id: EntityId) -> Option<Entity> {

@@ -459,6 +459,31 @@ fn blocks_and_polylines_transform_as_a_whole_and_undo() {
 }
 
 #[test]
+fn stretching_one_polyline_vertex_is_transactional_and_undoable() {
+    let (mut cad, _, wall) = blocks_and_polylines();
+    let changes = cad.set_polyline_vertex(wall, 1, p(6.0, 3.0)).unwrap();
+    assert_eq!(changes.modified(), [wall]);
+    assert_eq!(
+        drawn_ends(&cad, wall),
+        ends(&[(0.0, 0.0), (6.0, 3.0), (4.0, 2.0)])
+    );
+    assert_eq!(cad.undo_name(), Some("GRIP"));
+    let failed = cad.set_polyline_vertex(wall, 9, p(1.0, 1.0));
+    assert!(matches!(failed, Err(CadError::InvalidOperation(_))));
+    assert_eq!(cad.undo_name(), Some("GRIP"), "failure adds no undo step");
+    cad.undo().unwrap();
+    assert_eq!(
+        drawn_ends(&cad, wall),
+        ends(&[(0.0, 0.0), (4.0, 0.0), (4.0, 2.0)])
+    );
+    cad.redo().unwrap();
+    assert_eq!(
+        drawn_ends(&cad, wall),
+        ends(&[(0.0, 0.0), (6.0, 3.0), (4.0, 2.0)])
+    );
+}
+
+#[test]
 fn copying_makes_one_undo_step() {
     let (mut cad, door, wall) = blocks_and_polylines();
     let (line, _) = cad.add_line(p(0.0, 10.0), p(1.0, 10.0)).unwrap();

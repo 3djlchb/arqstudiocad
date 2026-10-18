@@ -11,8 +11,9 @@
 //! - Every change returns a [`CadChangeSet`]: entities and layers created,
 //!   modified and deleted, and whether a document setting changed.
 //! - Ids are DWG handles: stable across save and open, never reused.
-//! - LINE, CIRCLE and ARC drawn in plan are editable; every other entity is
-//!   kept as read, can be erased, and makes an edit of it fail.
+//! - LINE, CIRCLE and ARC drawn in plan are geometry-editable; lightweight
+//!   polylines support transactional per-vertex edits; other entity kinds are
+//!   kept as read and can be erased.
 //! - Entities on a locked layer cannot be modified or erased.
 //!
 //! # Map

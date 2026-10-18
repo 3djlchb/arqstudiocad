@@ -138,6 +138,18 @@ impl CadDocument {
         })
     }
 
+    /// Moves one lightweight-polyline vertex to a plan point (grip stretch).
+    pub fn set_polyline_vertex(
+        &mut self,
+        id: EntityId,
+        vertex_index: usize,
+        point: Point2,
+    ) -> CadResult<ChangeSet> {
+        self.edit_entities("GRIP", &[id], |doc, _| {
+            Ok(doc.set_polyline_vertex(id, vertex_index, point)?)
+        })
+    }
+
     /// Moves entities to another layer (CHPROP).
     pub fn set_entity_layer(&mut self, ids: &[EntityId], layer: LayerId) -> CadResult<ChangeSet> {
         self.edit_entities("CHPROP", ids, |doc, e| {
