@@ -206,6 +206,23 @@ def test_blocks_and_polylines_move_and_copy_as_a_whole(tmp_path: Path) -> None:
     assert [e.id for e in doc.get_entities()] == [door.id, wall.id]
 
 
+def test_explode_replaces_a_block_reference_and_undoes(tmp_path: Path) -> None:
+    doc = blocks_and_polylines(tmp_path)
+    door, wall = doc.get_entities()
+    created, changes = doc.explode_entities([door.id])
+
+    assert len(created) == 1
+    assert changes.created == tuple(created)
+    assert changes.deleted == (door.id,)
+    assert {(entity.kind, entity.id) for entity in doc.get_entities()} == {
+        ("LWPOLYLINE", wall.id),
+        ("LINE", created[0]),
+    }
+    assert doc.undo_name == "EXPLODE"
+    doc.undo()
+    assert [entity.id for entity in doc.get_entities()] == [door.id, wall.id]
+
+
 def test_copying_what_cannot_be_copied_changes_nothing(doc: CadDocument) -> None:
     line, _ = doc.add_line((0, 0), (1, 0))
     with pytest.raises(EntityNotFoundError):

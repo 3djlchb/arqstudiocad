@@ -435,6 +435,15 @@ impl CadDocument {
         self.change(|cad| cad.set_polyline_vertex(entity_id, vertex_index, point.0))
     }
 
+    /// Explodes block references into transformed block contents.
+    fn explode_entities(
+        &self,
+        entity_ids: Vec<EntityId>,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.explode_entities(&entity_ids))
+            .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
     /// Erases entities of any type (ERASE).
     fn delete_entities(&self, entity_ids: Vec<EntityId>) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.delete_entities(&entity_ids))
