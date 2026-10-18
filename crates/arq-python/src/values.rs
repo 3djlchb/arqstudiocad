@@ -529,7 +529,7 @@ impl CadSnap {
 
 /// A grip of a selected entity (ADR 0016 D7): its entity, its key
 /// (`"END"`, `"MID"`, `"CEN"`, `"QUA"`, `"INS"` for a block's insertion
-/// point, `"VTX"` for a polyline's first vertex) and its point.
+/// point, `"VTX"` for a polyline vertex), its point and vertex index.
 #[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
 #[derive(Clone, Copy, PartialEq)]
 pub struct CadGrip(pub Grip);
@@ -559,20 +559,28 @@ impl CadGrip {
         xy(self.0.point)
     }
 
+    /// Zero-based polyline vertex index, or `None` for other grips.
+    #[getter]
+    fn vertex_index(&self) -> Option<usize> {
+        self.0.vertex_index
+    }
+
     fn __hash__(&self) -> u64 {
         let mut h = DefaultHasher::new();
         self.0.entity.hash(&mut h);
         self.0.kind.hash(&mut h);
+        self.0.vertex_index.hash(&mut h);
         hash_floats(&[self.0.point.x(), self.0.point.y()]).hash(&mut h);
         h.finish()
     }
 
     fn __repr__(&self) -> String {
         format!(
-            "CadGrip(entity_id={}, kind={:?}, point={})",
+            "CadGrip(entity_id={}, kind={:?}, point={}, vertex_index={:?})",
             self.0.entity,
             self.0.kind.name(),
-            fmt_xy(self.0.point)
+            fmt_xy(self.0.point),
+            self.0.vertex_index
         )
     }
 }

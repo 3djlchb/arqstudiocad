@@ -104,7 +104,16 @@ fn every_kind_shows_its_grips() {
         [(Insertion, (-10.0, 0.0))],
         "a mirrored OCS puts it where it is drawn"
     );
-    assert_eq!(of(&grips, ids[5]), [(Vertex, (1.0, 2.0))]);
+    assert_eq!(
+        of(&grips, ids[5]),
+        [(Vertex, (1.0, 2.0)), (Vertex, (4.0, 2.0))]
+    );
+    let vertices: Vec<_> = grips
+        .iter()
+        .filter(|g| g.entity == ids[5])
+        .map(|g| g.vertex_index)
+        .collect();
+    assert_eq!(vertices, [Some(0), Some(1)]);
     assert_eq!(of(&grips, ids[6]), [], "a text has no grips yet");
 }
 
