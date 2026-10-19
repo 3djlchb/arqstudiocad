@@ -33,6 +33,7 @@ SHORTCUTS: dict[str, QKeySequence.StandardKey | None] = {
     "ROTATE": None,
     "SCALE": None,
     "MIRROR": None,
+    "EXPLODE": None,
 }
 
 
@@ -58,6 +59,7 @@ def labels() -> dict[str, str]:
         "ROTATE": tr("&Rotate"),
         "SCALE": tr("&Scale"),
         "MIRROR": tr("M&irror"),
+        "EXPLODE": tr("E&xplode"),
     }
 
 

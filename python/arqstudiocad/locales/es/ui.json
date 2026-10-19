@@ -94,6 +94,7 @@
   "Drawings (*.dwg *.dxf);;DWG drawings (*.dwg);;DXF drawings (*.dxf)": "Dibujos (*.dwg *.dxf);;Dibujos DWG (*.dwg);;Dibujos DXF (*.dxf)",
   "Drawing{number}": "Dibujo{number}",
   "E&xit": "&Salir",
+  "E&xplode": "Desco&mponer",
   "Elevation": "Elevación",
   "End": "Final",
   "End X": "Final X",
