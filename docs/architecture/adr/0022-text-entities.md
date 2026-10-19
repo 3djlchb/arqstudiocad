@@ -33,8 +33,16 @@ For TEXT and MTEXT drawn in plan (normal `(0, 0, ±1)`):
   AutoCAD's single-line text. New texts use the current text style
   (TEXTSTYLE) and layer, left-justified on the baseline.
 
-Texts are still drawn as their outline box. Glyphs and fonts (SHX,
-TrueType), MTEXT formatting and an in-place text editor are phase 04.
+Texts are drawn with their letters in one built-in single-stroke font
+(amended 2026-10-18, *(maintainer)*): LibreCAD's ISO 3098 `standard.lff`
+(GPL-2.0-or-later, 10 KB, Latin-1 letters and the usual CAD symbols),
+laid out in Rust from each text's height, rotation, justification, width
+factor, oblique angle and OCS; MTEXT shows its paragraphs as plain lines;
+block attributes are drawn too. The text's box (picking, selection, zoom
+and the spatial index) is the box of its letters. The drawing's own fonts
+(SHX, TrueType), MTEXT formatting and word wrapping, and an in-place text
+editor are phase 04; until then a text may look wider or narrower than in
+the CAD that wrote it.
 
 ### D2 — Mirrored texts stay readable
 
@@ -70,8 +78,11 @@ they are all-or-nothing like every core operation.
 
 ## Consequences
 
-- The maintainer's texts can be moved and edited with the rest of the
-  drawing; phase 04 keeps fonts, glyph drawing and rich MTEXT editing.
+- The maintainer's texts can be read, moved and edited with the rest of
+  the drawing; phase 04 keeps the drawing's own fonts and rich MTEXT.
+- A font file enters the core as data: it adds no library, follows the
+  rule for new technologies (master plan §16: replaceable, compatible
+  license, no API change) and is recorded in `THIRD_PARTY.md`.
 - MIRROR changes a text's justification when it must reverse it; the
   mirrored drawing looks as AutoCAD's with `MIRRTEXT = 0`.
 - MTEXT with formatting stays read-only in content until phase 04.

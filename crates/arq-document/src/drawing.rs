@@ -19,7 +19,7 @@ use arq_geometry::{Arc, Bounds2, Circle, Line, Point2};
 use crate::document::Document;
 use crate::entity::{Color, EntityId};
 use crate::ocs::plan_normal;
-use crate::translate::{codec_bounds, color_from_codec, handle, plan_of};
+use crate::translate::{codec_bounds, color_from_codec, handle, plan_of, text_layout};
 
 /// How deep blocks may nest before expansion stops (AutoCAD drawings rarely
 /// pass 5; this only guards against pathological files).
@@ -40,7 +40,9 @@ pub enum Shape {
     Arc(Arc),
     /// A point.
     Point(Point2),
-    /// A text, as its outline box until fonts are drawn.
+    /// A text's box, which picks and selects it: its letters come as
+    /// [`Shape::Line`]s drawn in the built-in font (`text_layout.rs`), so
+    /// the box itself is not drawn.
     Text(Bounds2),
     /// An entity not drawn yet, as its bounding box.
     Placeholder(Bounds2),
@@ -232,11 +234,23 @@ impl<'a> Painter<'a> {
             EntityType::Text(_)
             | EntityType::MText(_)
             | EntityType::AttributeEntity(_)
-            | EntityType::AttributeDefinition(_) => {
-                if let Some(b) = codec_bounds(e) {
-                    push(Shape::Text(b));
+            | EntityType::AttributeDefinition(_) => match text_layout(e) {
+                Some(laid) => {
+                    push(Shape::Text(laid.bounds));
+                    for (a, b) in laid.strokes {
+                        push(match Line::new(a, b) {
+                            Ok(line) => Shape::Line(line),
+                            Err(_) => Shape::Point(a),
+                        });
+                    }
                 }
-            }
+                // On a tilted plane, or with no usable height: its box.
+                None => {
+                    if let Some(b) = codec_bounds(e) {
+                        push(Shape::Text(b));
+                    }
+                }
+            },
             EntityType::Insert(ins) => self.expand_insert(ins, &layer, color, ctx, out),
             EntityType::Dimension(dim) => {
                 // AutoCAD stores what it drew in an anonymous block, in

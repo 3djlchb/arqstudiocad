@@ -26,7 +26,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0019](0019-geometry-3d-foundations.md) | Dependency-free 3D value types in `arq-geometry`, right-handed Z-up coordinates, local-frame affine transforms; document ownership and solid kernel remain open | Accepted |
 | [0020](0020-progressive-own-geometry-kernel.md) | Build an owned Rust geometry kernel incrementally; use OCCT as an optional, reviewed temporary backend and migrate by capability after parity tests | Accepted |
 | [0021](0021-spatial-index.md) | Use an internal R*-tree for bounding-box candidates behind the existing core query API; synchronize it from committed changes and undo/redo | Accepted |
-| [0022](0022-text-entities.md) | TEXT and MTEXT in 02.8: transform as a whole, one grip, content/height/rotation in Properties, TEXT command; mirrored texts stay readable; fonts and glyphs in phase 04 | Accepted |
+| [0022](0022-text-entities.md) | TEXT and MTEXT in 02.8: transform as a whole, one grip, content/height/rotation in Properties, TEXT command; mirrored texts stay readable; letters drawn in a built-in stroke font, the drawing's own fonts in phase 04 | Accepted |
 
 Template:
 

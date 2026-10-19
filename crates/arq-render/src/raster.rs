@@ -137,7 +137,9 @@ impl Batch {
                 self.segment((x - POINT_PX, y), (x + POINT_PX, y));
                 self.segment((x, y - POINT_PX), (x, y + POINT_PX));
             }
-            Shape::Text(b) | Shape::Placeholder(b) => {
+            // A text's letters come as lines; its box only picks it.
+            Shape::Text(_) => {}
+            Shape::Placeholder(b) => {
                 let [p0, p1, p2, p3] = b.corners().map(screen);
                 self.segment(p0, p1);
                 self.segment(p1, p2);

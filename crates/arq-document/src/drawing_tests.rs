@@ -374,11 +374,19 @@ fn texts_points_and_unknown_ids() {
             ],
         ],
     );
-    let items = shapes(&doc);
-    match items[0].shape {
+    let all = shapes(&doc);
+    match all[0].shape {
+        // Its box picks it; "NOTA" at height 2.5 has no descenders.
         Shape::Text(b) => assert!(near(b.min(), p(20.0, 5.0)) && b.height() > 1.0, "{b:?}"),
         other => panic!("not a text box: {other:?}"),
     }
+    // Then its letters, in the built-in font (text_layout.rs).
+    let strokes = all[1..]
+        .iter()
+        .take_while(|i| matches!(i.shape, Shape::Line(_)))
+        .count();
+    assert!(strokes > 10, "{strokes} strokes");
+    let items = &all[strokes..];
     assert_eq!(items[1].shape, Shape::Point(p(3.0, 4.0)));
     assert_eq!(items[1].color, Color::Index(1), "MUROS");
     assert!(matches!(items[2].shape, Shape::Circle(c) if (c.radius() - 2.0).abs() < 1e-12));
@@ -386,8 +394,8 @@ fn texts_points_and_unknown_ids() {
         Shape::Arc(a) => assert!((a.end_angle() - PI / 2.0).abs() < 1e-12),
         other => panic!("not an arc: {other:?}"),
     }
-    assert_eq!(items[0].color, Color::Index(7));
+    assert_eq!(all[0].color, Color::Index(7));
     let id = doc.entities()[0].id();
-    assert_eq!(doc.drawing(id).unwrap(), vec![items[0]]);
+    assert_eq!(doc.drawing(id).unwrap(), all[..=strokes].to_vec());
     assert!(doc.drawing(999_999).is_none());
 }

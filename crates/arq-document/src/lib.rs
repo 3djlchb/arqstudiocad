@@ -42,6 +42,7 @@ mod pick;
 mod reading;
 #[cfg(test)]
 mod test_dxf;
+mod text_layout;
 mod translate;
 mod verify;
 

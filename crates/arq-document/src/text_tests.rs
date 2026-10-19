@@ -249,6 +249,18 @@ fn texts_are_written_and_edited_with_checked_values() {
 }
 
 #[test]
+fn a_texts_box_is_the_box_of_its_letters() {
+    let mut doc = Document::new();
+    let id = doc.add_text("Hola mundo", p(0.0, 0.0), 2.5, 0.0).unwrap();
+    let drawn = doc.drawing(id).unwrap();
+    let crate::drawing::Shape::Text(letters) = drawn[0].shape else {
+        panic!("not a text box: {:?}", drawn[0].shape)
+    };
+    assert_eq!(doc.entity(id).unwrap().bounds(), Some(letters));
+    assert!(drawn.len() > 20, "and its letters");
+}
+
+#[test]
 fn a_text_shows_one_grip_at_its_anchor_and_copies() {
     let mut doc = Document::new();
     let mut centered = text("A", 0.0, 0.0);

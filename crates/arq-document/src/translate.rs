@@ -8,6 +8,7 @@ use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Transform2};
 use crate::entity::{Color, Entity, EntityId, PlanGeometry, TextData};
 use crate::error::{DocumentError, DocumentResult};
 use crate::ocs::{PlanNormal, plan_normal};
+use crate::text_layout::{HAlign, Layout, TextFrame, VAlign, layout, plain_mtext};
 
 /// Our view of a codec entity.
 pub(crate) fn read_entity(e: &EntityType) -> Entity {
@@ -411,8 +412,161 @@ pub(crate) fn bounds_of(e: &EntityType) -> Option<Bounds2> {
 fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
     match plan {
         Some(p) => Some(p.geometry().bounds()),
-        None => codec_bounds(e),
+        // A text's box is where its letters are drawn (text_layout.rs).
+        None => text_layout(e).map(|l| l.bounds).or_else(|| codec_bounds(e)),
     }
+}
+
+/// A TEXT, MTEXT or attribute drawn in plan, laid out in strokes.
+pub(crate) fn text_layout(e: &EntityType) -> Option<Layout> {
+    layout(&text_frame(e)?)
+}
+
+/// What laying a text out needs, read from the codec: TEXT, MTEXT,
+/// attributes and attribute definitions (which show their tag), in plan.
+fn text_frame(e: &EntityType) -> Option<TextFrame> {
+    use acadrust::entities::{TextHorizontalAlignment as TH, TextVerticalAlignment as TV};
+    let h_of = |h: TH| match h {
+        TH::Left => HAlign::Left,
+        TH::Center => HAlign::Center,
+        TH::Right => HAlign::Right,
+        TH::Aligned => HAlign::Aligned,
+        TH::Middle => HAlign::Middle,
+        TH::Fit => HAlign::Fit,
+    };
+    let v_of = |v: TV| match v {
+        TV::Baseline => VAlign::Baseline,
+        TV::Bottom => VAlign::Bottom,
+        TV::Middle => VAlign::Middle,
+        TV::Top => VAlign::Top,
+    };
+    let xy = |p: Vector3| (p.x, p.y);
+    match e {
+        EntityType::Text(t) => Some(TextFrame {
+            lines: vec![t.value.clone()],
+            first: xy(t.insertion_point),
+            second: t.alignment_point.map(xy),
+            height: t.height,
+            rotation: t.rotation,
+            width_factor: t.width_factor,
+            oblique: t.oblique_angle,
+            h: h_of(t.horizontal_alignment),
+            v: v_of(t.vertical_alignment),
+            backward: t.generation_flags & 2 != 0,
+            upside_down: t.generation_flags & 4 != 0,
+            normal: plan_normal(t.normal.x, t.normal.y, t.normal.z)?,
+        }),
+        EntityType::MText(t) => {
+            use acadrust::entities::AttachmentPoint as A;
+            let normal = plan_normal(t.normal.x, t.normal.y, t.normal.z)?;
+            let (h, v) = match t.attachment_point {
+                A::TopLeft => (HAlign::Left, VAlign::Top),
+                A::TopCenter => (HAlign::Center, VAlign::Top),
+                A::TopRight => (HAlign::Right, VAlign::Top),
+                A::MiddleLeft => (HAlign::Left, VAlign::Middle),
+                A::MiddleCenter => (HAlign::Center, VAlign::Middle),
+                A::MiddleRight => (HAlign::Right, VAlign::Middle),
+                A::BottomLeft => (HAlign::Left, VAlign::Bottom),
+                A::BottomCenter => (HAlign::Center, VAlign::Bottom),
+                A::BottomRight => (HAlign::Right, VAlign::Bottom),
+            };
+            // MTEXT keeps world coordinates and a world angle; back to the
+            // OCS for the layout, which maps its result to the world.
+            let (x, y, _) = normal.map_point(t.insertion_point.x, t.insertion_point.y, 0.0);
+            Some(TextFrame {
+                lines: plain_mtext(&t.value),
+                first: (x, y),
+                second: None,
+                height: t.height,
+                rotation: normal.map_angle(t.rotation),
+                width_factor: 1.0,
+                oblique: 0.0,
+                h,
+                v,
+                backward: false,
+                upside_down: false,
+                normal,
+            })
+        }
+        EntityType::AttributeEntity(a) => {
+            if a.flags.invisible {
+                return None;
+            }
+            attribute_frame(
+                &a.value,
+                a.insertion_point,
+                a.alignment_point,
+                a.height,
+                a.rotation,
+                a.width_factor,
+                a.oblique_angle,
+                a.text_generation_flags,
+                a.horizontal_alignment as i16,
+                a.vertical_alignment as i16,
+                a.normal,
+            )
+        }
+        EntityType::AttributeDefinition(a) => attribute_frame(
+            &a.tag,
+            a.insertion_point,
+            a.alignment_point,
+            a.height,
+            a.rotation,
+            a.width_factor,
+            a.oblique_angle,
+            a.text_generation_flags,
+            a.horizontal_alignment as i16,
+            a.vertical_alignment as i16,
+            a.normal,
+        ),
+        _ => None,
+    }
+}
+
+/// An attribute's frame: its DXF justification codes (72 and 74).
+#[allow(clippy::too_many_arguments)]
+fn attribute_frame(
+    content: &str,
+    first: Vector3,
+    second: Vector3,
+    height: f64,
+    rotation: f64,
+    width_factor: f64,
+    oblique: f64,
+    flags: i16,
+    horizontal: i16,
+    vertical: i16,
+    normal: Vector3,
+) -> Option<TextFrame> {
+    let h = match horizontal {
+        1 => HAlign::Center,
+        2 => HAlign::Right,
+        3 => HAlign::Aligned,
+        4 => HAlign::Middle,
+        5 => HAlign::Fit,
+        _ => HAlign::Left,
+    };
+    let v = match vertical {
+        1 => VAlign::Bottom,
+        2 => VAlign::Middle,
+        3 => VAlign::Top,
+        _ => VAlign::Baseline,
+    };
+    let left = h == HAlign::Left && v == VAlign::Baseline;
+    Some(TextFrame {
+        lines: vec![content.to_owned()],
+        first: (first.x, first.y),
+        second: (!left).then_some((second.x, second.y)),
+        height,
+        rotation,
+        width_factor,
+        oblique,
+        h,
+        v,
+        backward: flags & 2 != 0,
+        upside_down: flags & 4 != 0,
+        normal: plan_normal(normal.x, normal.y, normal.z)?,
+    })
 }
 
 /// Editable plan geometry of LINE, CIRCLE and ARC drawn in plan.
