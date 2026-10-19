@@ -312,16 +312,10 @@ fn which_entities_transform_as_a_whole() {
 #[test]
 fn other_entities_are_refused() {
     let (mut doc, ids) = drawing_with(&[&minsert()]);
-    let text = doc
-        .cad_mut()
-        .add_entity(EntityType::Text(acadrust::Text::with_value(
-            "PLANTA",
-            acadrust::types::Vector3::new(1.0, 2.0, 0.0),
-        )))
-        .unwrap()
-        .value();
+    // A POINT is still refused; texts transform since ADR 0022.
+    let point = doc.insert_point_for_tests(1.0, 2.0);
     let t = Transform2::translation(v(1.0, 0.0));
-    for (id, kind) in [(ids[0], "MINSERT"), (text, "TEXT")] {
+    for (id, kind) in [(ids[0], "MINSERT"), (point, "POINT")] {
         assert_eq!(
             doc.transform_entity(id, t),
             Err(DocumentError::NotEditable { id, kind })

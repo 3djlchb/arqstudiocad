@@ -139,17 +139,18 @@ def test_read_only_entities_can_be_erased_not_edited(tmp_path: Path) -> None:
         "31",
         "0",
     ]
-    codes += ["0", "TEXT", "8", "0", "10", "5", "20", "5", "30", "0", "40", "1", "1", "NOTA"]
+    # A POINT is still read-only (texts transform since ADR 0022).
+    codes += ["0", "POINT", "8", "0", "10", "5", "20", "5", "30", "0"]
     codes += ["0", "ENDSEC", "0", "EOF", ""]
-    path = tmp_path / "texto.dxf"
+    path = tmp_path / "punto.dxf"
     path.write_text("\n".join(codes), encoding="ascii")
     doc = CadApplication().open_document(path)
-    line, text = (e.id for e in doc.get_entities())
+    line, point = (e.id for e in doc.get_entities())
 
     with pytest.raises(InvalidOperationError, match="cannot be transformed"):
-        doc.move_entities([line, text], (1, 0))
+        doc.move_entities([line, point], (1, 0))
     assert line_of(doc, line) == CadLine((0, 0), (1, 0))
-    assert doc.delete_entities([text]).deleted == (text,)
+    assert doc.delete_entities([point]).deleted == (point,)
     assert [e.kind for e in doc.get_entities()] == ["LINE"]
 
 

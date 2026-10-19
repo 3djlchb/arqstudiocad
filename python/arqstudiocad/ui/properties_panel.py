@@ -14,6 +14,7 @@ from arqstudiocad.core import (
     CadEntityInfo,
     CadError,
     CadLine,
+    CadText,
 )
 from arqstudiocad.events import CommandMessage, DocumentChanged, Event, SelectionChanged
 from arqstudiocad.i18n import tr
@@ -153,6 +154,9 @@ def selection_properties(
         general.append((detail_labels.get(name, name), _metadata_text(value)))
 
     sections = [Section("general", tr("General"), general)]
+    texts = [entity.text for entity in entities]
+    if all(text is not None for text in texts):
+        sections.append(_text_section([text for text in texts if text is not None]))
     geometries = [entity.geometry for entity in entities]
     geometry_type = type(geometries[0])
     if (
@@ -251,6 +255,66 @@ def _geometry_section(entities: Sequence[CadEntityInfo], geometries: Sequence[ob
     return Section("geometry", tr("Geometry"), rows)
 
 
+def _text_section(texts: Sequence[CadText]) -> Section:
+    """Content, height and rotation, editable where the core allows it
+    (ADR 0022); the rest is shown."""
+    sizes = all(text.sizes_editable for text in texts)
+    content = _common([text.content for text in texts])
+    rows: list[tuple[str, str] | Property] = [
+        Property(
+            "text.content",
+            tr("Contents"),
+            content if isinstance(content, str) and content != _VARIES else tr("*Varies*"),
+            editable=all(text.content_editable for text in texts),
+        ),
+        Property(
+            "text.height",
+            tr("Height"),
+            _number_text(_common([text.height for text in texts])),
+            editable=sizes,
+        ),
+        Property(
+            "text.rotation",
+            tr("Rotation"),
+            _number_text(_common([math.degrees(text.rotation) for text in texts])),
+            editable=sizes,
+        ),
+        (tr("Style"), _metadata_text(_common([text.style for text in texts]))),
+        (
+            tr("Justification"),
+            _metadata_text(_common([justification_name(text.justification) for text in texts])),
+        ),
+        (tr("Width factor"), _number_text(_common([text.width_factor for text in texts]))),
+        (
+            tr("Oblique angle"),
+            _number_text(_common([math.degrees(text.oblique) for text in texts])),
+        ),
+    ]
+    return Section("text", tr("Text"), rows)
+
+
+def justification_name(name: str) -> str:
+    """A text justification as AutoCAD names it, translated."""
+    names = {
+        "Left": tr("Left"),
+        "Center": tr("Center"),
+        "Right": tr("Right"),
+        "Aligned": tr("Aligned"),
+        "Middle": tr("Middle"),
+        "Fit": tr("Fit"),
+        "TopLeft": tr("Top left"),
+        "TopCenter": tr("Top center"),
+        "TopRight": tr("Top right"),
+        "MiddleLeft": tr("Middle left"),
+        "MiddleCenter": tr("Middle center"),
+        "MiddleRight": tr("Middle right"),
+        "BottomLeft": tr("Bottom left"),
+        "BottomCenter": tr("Bottom center"),
+        "BottomRight": tr("Bottom right"),
+    }
+    return names.get(name, name)
+
+
 def _extent_section(entities: Sequence[CadEntityInfo]) -> Section:
     bounds = [entity.bounds for entity in entities]
     if any(bound is None for bound in bounds):
@@ -320,7 +384,14 @@ def _color_label(color: CadColor) -> str:
 
 
 def _kind_name(kind: str) -> str:
-    return {"LINE": tr("Line"), "CIRCLE": tr("Circle"), "ARC": tr("Arc")}.get(kind, kind)
+    names = {
+        "LINE": tr("Line"),
+        "CIRCLE": tr("Circle"),
+        "ARC": tr("Arc"),
+        "TEXT": tr("Text"),
+        "MTEXT": tr("Multiline text"),
+    }
+    return names.get(kind, kind)
 
 
 def _metadata_text(value: str) -> str:
@@ -454,6 +525,8 @@ class PropertiesPanel(QDockWidget):
                     remember_color(color)
             elif key.startswith("geometry."):
                 self._edit_geometry(document, ids, key, str(value))
+            elif key.startswith("text."):
+                self._edit_text(document, ids, key, str(value))
         except (CadError, ValueError, OverflowError) as error:
             message = (
                 str(error)
@@ -475,6 +548,20 @@ class PropertiesPanel(QDockWidget):
                 document.set_entity_geometry(entity.id, geometry)
         if group.changes is not None:
             self._session.report(document, group.changes)
+
+    def _edit_text(self, document: CadDocument, ids: Sequence[int], key: str, text: str) -> None:
+        """One text property for every selected text, one undo step."""
+        if key == "text.content":
+            self._session.edit(document, lambda doc: doc.set_text(ids, content=text))
+            return
+        value, valid = QLocale().toDouble(text)
+        if not valid or not math.isfinite(value):
+            raise ValueError(text)
+        if key == "text.height":
+            self._session.edit(document, lambda doc: doc.set_text(ids, height=value))
+        else:
+            angle = math.radians(value)
+            self._session.edit(document, lambda doc: doc.set_text(ids, rotation=angle))
 
     def rows(self) -> list[tuple[str, str]]:
         """Every (name, value) the panel shows, for tests."""

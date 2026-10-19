@@ -114,7 +114,11 @@ fn every_kind_shows_its_grips() {
         .map(|g| g.vertex_index)
         .collect();
     assert_eq!(vertices, [Some(0), Some(1)]);
-    assert_eq!(of(&grips, ids[6]), [], "a text has no grips yet");
+    assert_eq!(
+        of(&grips, ids[6]),
+        [(Insertion, (40.0, 0.0))],
+        "a text has one grip at its anchor (ADR 0022)"
+    );
 }
 
 #[test]

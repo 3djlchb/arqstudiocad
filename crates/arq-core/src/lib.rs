@@ -77,7 +77,7 @@ pub use app::{CadApplication, DocumentId};
 pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
     Color, Document, DrawItem, Entity, EntityId, FileFormat, Grip, GripKind, Layer, LayerId,
-    PlanGeometry, Shape,
+    PlanGeometry, Shape, TextData,
 };
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};

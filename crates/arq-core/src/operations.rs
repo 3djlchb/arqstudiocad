@@ -138,6 +138,33 @@ impl CadDocument {
         })
     }
 
+    /// Writes a single-line text on the current layer (TEXT, ADR 0022).
+    pub fn add_text(
+        &mut self,
+        content: &str,
+        anchor: Point2,
+        height: f64,
+        rotation: f64,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("TEXT", |doc| {
+            Ok(doc.add_text(content, anchor, height, rotation)?)
+        })
+    }
+
+    /// Sets what is given of texts' content, height and rotation (radians),
+    /// all or none (ADR 0022).
+    pub fn set_text(
+        &mut self,
+        ids: &[EntityId],
+        content: Option<&str>,
+        height: Option<f64>,
+        rotation: Option<f64>,
+    ) -> CadResult<ChangeSet> {
+        self.edit_entities("PROPERTIES", ids, |doc, e| {
+            Ok(doc.set_text(e.id(), content, height, rotation)?)
+        })
+    }
+
     /// Moves one lightweight-polyline vertex to a plan point (grip stretch).
     pub fn set_polyline_vertex(
         &mut self,

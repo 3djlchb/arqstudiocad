@@ -1,7 +1,8 @@
 //! Grips (ADR 0016 D7): the points of selected entities the user drags to
 //! edit them. Lines show their ends and midpoint; circles their center and
 //! quadrants; arcs their ends, midpoint and center; a block its insertion
-//! point and a lightweight polyline each vertex (milestone 02.8).
+//! point and a lightweight polyline each vertex (milestone 02.8); a TEXT or
+//! MTEXT its anchor (ADR 0022).
 
 use arq_geometry::{Geometry2, Point2};
 

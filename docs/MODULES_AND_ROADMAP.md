@@ -17,7 +17,8 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **On hold:** milestone 02.7's GPU viewport waits for the reference
   machine (GT 730 on LMDE 7), its release gate (ADR 0007); the work
   resumes when the maintainer has it at hand (maintainer, 2026-10-18).
-- **Current:** milestone 02.8, texts (ADR 0022).
+- **Current:** milestone 02.8; texts are done (ADR 0022), block content
+  editing is next.
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu
@@ -29,8 +30,8 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   is in progress.
 - **Milestone 02.8** is in progress alongside 02.7: the 3D mathematical
   foundation, polyline vertex editing and block-reference EXPLODE are done;
-  texts are in progress (ADR 0022); block content editing and the 3D
-  document decision remain.
+  texts are done (ADR 0022); block content editing and the 3D document
+  decision remain.
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -61,7 +62,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ✅ steps 2.5.1–2.5.8 complete and manually validated by the maintainer |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
-| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; references with attributes are refused until their data can be preserved); texts in progress (ADR 0022: transform, grip, Properties, TEXT command; fonts in phase 04); block content editing and the 3D document decision remain open |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; references with attributes are refused until their data can be preserved); texts complete (ADR 0022: transformed as a whole, one grip, content, height and rotation in Properties, TEXT command; fonts in phase 04); block content editing and the 3D document decision remain open |
 
 ## Phase 03 — DWG/DXF ◐
 
@@ -148,9 +149,9 @@ Milestone 02.8 proceeds in independently reviewable steps:
    polyline vertex grips and transactional vertex editing (PR #35) and the
    transactional EXPLODE of block references (PR #36) are complete; block
    references with attributes are refused until their data can be preserved
-   by the operation. Texts follow (ADR 0022: transformed as a whole, one
-   grip, content, height and rotation in Properties, the TEXT command;
-   glyphs and fonts stay in phase 04), then block content editing with
+   by the operation. Texts are complete (ADR 0022: transformed as a whole,
+   one grip, content, height and rotation in Properties, the TEXT command;
+   glyphs and fonts stay in phase 04). Block content editing follows, with
    stage 2 of the own model (ADR 0018 D2).
 3. **3D document model (ADR 0014 question 4):** decide which 3D entities the
    core owns and how DWG ACIS and IFC geometry are represented before adding

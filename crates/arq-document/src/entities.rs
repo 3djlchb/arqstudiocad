@@ -2,7 +2,7 @@
 
 use acadrust::types::{Transform, Vector3};
 use acadrust::{EntityType, Handle};
-use arq_geometry::{Bounds2, Transform2};
+use arq_geometry::{Bounds2, Point2, Transform2};
 
 use crate::document::Document;
 use crate::entity::Color;
@@ -11,8 +11,8 @@ use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
 use crate::ocs::plan_normal;
 use crate::translate::{
-    bounds_of, color_to_codec, handle, is_whole_transformable, new_entity, read_entity,
-    transform_whole, write_plan,
+    bounds_of, color_to_codec, edit_text, handle, is_whole_transformable, new_entity, new_text,
+    read_entity, transform_whole, write_plan,
 };
 
 impl Document {
@@ -257,6 +257,80 @@ impl Document {
         Ok(())
     }
 
+    /// The drawing's default text height (TEXTSIZE), 2.5 if it holds none.
+    pub fn text_size(&self) -> f64 {
+        let size = self.cad().header.text_height;
+        if size.is_finite() && size > 0.0 {
+            size
+        } else {
+            2.5
+        }
+    }
+
+    /// Writes a single-line TEXT, left-justified on the baseline at
+    /// `anchor`, `rotation` radians from East, on the current layer with
+    /// the current text style (ADR 0022 D1); returns its id.
+    pub fn add_text(
+        &mut self,
+        content: &str,
+        anchor: Point2,
+        height: f64,
+        rotation: f64,
+    ) -> DocumentResult<EntityId> {
+        check_single_line(content)?;
+        check_text_sizes(Some(height), Some(rotation))?;
+        let layer = self.current_layer().name().to_owned();
+        let wanted = self.cad().header.current_text_style_name.clone();
+        let style = if self.cad().text_styles.get(&wanted).is_some() {
+            wanted
+        } else {
+            "Standard".to_owned()
+        };
+        let text = new_text(content, anchor, height, rotation, &layer, &style);
+        let h = self.cad_mut().add_entity(text)?;
+        self.sync_entity(h.value());
+        Ok(h.value())
+    }
+
+    /// Sets what is given of a text's content, height and rotation (world
+    /// radians). A single-line text takes one non-empty line; an MTEXT with
+    /// formatting codes keeps its content, and Aligned and Fit texts their
+    /// height and rotation (ADR 0022 D3, D4).
+    pub fn set_text(
+        &mut self,
+        id: EntityId,
+        content: Option<&str>,
+        height: Option<f64>,
+        rotation: Option<f64>,
+    ) -> DocumentResult<()> {
+        let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        let text = e
+            .text()
+            .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
+        if let Some(content) = content {
+            if !text.content_editable() {
+                return Err(DocumentError::UnsupportedOperation(
+                    "this MTEXT holds formatting codes; its content is not edited yet".to_owned(),
+                ));
+            }
+            if !text.is_multiline() {
+                check_single_line(content)?;
+            }
+        }
+        if (height.is_some() || rotation.is_some()) && !text.sizes_editable() {
+            return Err(DocumentError::UnsupportedOperation(
+                "an aligned or fit text takes its height and rotation from its points".to_owned(),
+            ));
+        }
+        check_text_sizes(height, rotation)?;
+        let raw = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        edit_text(raw, content, height, rotation);
+        Ok(())
+    }
+
     /// Moves an entity of any type to another layer.
     pub fn set_entity_layer(&mut self, id: EntityId, layer: LayerId) -> DocumentResult<()> {
         let name = self
@@ -290,11 +364,49 @@ impl Document {
     }
 }
 
+fn check_single_line(content: &str) -> DocumentResult<()> {
+    if content.is_empty() {
+        return Err(DocumentError::InvalidText(
+            "a text needs at least one character",
+        ));
+    }
+    if content.contains(['\n', '\r']) {
+        return Err(DocumentError::InvalidText(
+            "a single-line text holds one line",
+        ));
+    }
+    Ok(())
+}
+
+fn check_text_sizes(height: Option<f64>, rotation: Option<f64>) -> DocumentResult<()> {
+    if height.is_some_and(|h| !(h.is_finite() && h > 0.0)) {
+        return Err(DocumentError::InvalidText(
+            "a text height must be a finite number greater than zero",
+        ));
+    }
+    if rotation.is_some_and(|r| !r.is_finite()) {
+        return Err(DocumentError::InvalidText(
+            "a text rotation must be a finite number",
+        ));
+    }
+    Ok(())
+}
+
 /// Test helpers for other crates (feature `test-support`).
 #[cfg(feature = "test-support")]
 impl Document {
-    /// Inserts a TEXT entity on layer "0", as a drawing from another CAD
-    /// would contain; TEXT is read-only in this version.
+    /// Inserts a POINT on layer "0": an entity that is read-only in this
+    /// version (it cannot be transformed or copied).
+    pub fn insert_point_for_tests(&mut self, x: f64, y: f64) -> EntityId {
+        let point = acadrust::Point::from_coords(x, y, 0.0);
+        self.cad_mut()
+            .add_entity(acadrust::EntityType::Point(point))
+            .expect("adding a point")
+            .value()
+    }
+
+    /// Inserts a single-line TEXT on layer "0", as a drawing from another
+    /// CAD would contain.
     pub fn insert_text_for_tests(&mut self, value: &str, x: f64, y: f64) -> EntityId {
         let text = acadrust::Text::with_value(value, acadrust::types::Vector3::new(x, y, 0.0));
         self.cad_mut()
@@ -648,3 +760,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "text_tests.rs"]
+mod text_tests;

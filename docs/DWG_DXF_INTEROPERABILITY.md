@@ -28,11 +28,11 @@ when its parameters change).
 | Content | Read | Keep (DWG / DXF) | Show | Edit | Recompute | Notes |
 |---|---|---|---|---|---|---|
 | Lines, circles, arcs | ✅ | 100 % / 100 % | ✅ | ✅ geometry, layer, color | — | |
-| Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ◐ as a whole (vertices in 02.8) | — | |
-| Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ as a whole, attributes follow | — | MINSERT arrays not transformed |
+| Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ✅ as a whole and by vertex | — | |
+| Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ as a whole, attributes follow; EXPLODE without attributes | — | MINSERT arrays not transformed |
 | Dimensions | ✅ | 100 % / 100 % | ✅ as AutoCAD drew them (their block) | ○ | ○ | phase 04 |
 | Hatches | ✅ | 100 % / 100 % | ◐ boundaries, no fill pattern | ○ | ○ | phase 04 |
-| Texts, MTEXT, attributes | ✅ | 100 % / 100 % | ◐ outline box | ○ | — | fonts in phase 04 |
+| Texts, MTEXT, attributes | ✅ | 100 % / 100 % | ◐ outline box | ◐ TEXT and MTEXT as a whole; content, height, rotation (ADR 0022) | — | fonts, glyphs and formatted MTEXT in phase 04; attributes with their block |
 | Leaders, multileaders | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Tables | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Images, underlays, wipeouts | ✅ | 100 % / 100 % | ◐ frame or box | ○ | — | |

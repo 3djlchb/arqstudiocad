@@ -1,6 +1,6 @@
 //! `Entity`: our read-only view of one drawing entity.
 
-use arq_geometry::{Bounds2, Geometry2};
+use arq_geometry::{Bounds2, Geometry2, Point2};
 
 use crate::error::{DocumentError, DocumentResult};
 
@@ -83,6 +83,83 @@ impl PlanGeometry {
     }
 }
 
+/// A TEXT or MTEXT drawn in plan, as the editor sees it (ADR 0022).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextData {
+    pub(crate) content: String,
+    pub(crate) anchor: Point2,
+    pub(crate) height: f64,
+    pub(crate) rotation: f64,
+    pub(crate) style: String,
+    pub(crate) justification: &'static str,
+    pub(crate) width_factor: f64,
+    pub(crate) oblique: f64,
+    pub(crate) multiline: bool,
+    pub(crate) sizes_editable: bool,
+    pub(crate) content_editable: bool,
+}
+
+impl TextData {
+    /// What it says, as stored (MTEXT keeps its formatting codes).
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// The point it hangs from in world coordinates (ADR 0022 D3).
+    pub fn anchor(&self) -> Point2 {
+        self.anchor
+    }
+
+    /// Character height.
+    pub fn height(&self) -> f64 {
+        self.height
+    }
+
+    /// Reading direction, radians counterclockwise from world East.
+    pub fn rotation(&self) -> f64 {
+        self.rotation
+    }
+
+    /// Text style name.
+    pub fn style(&self) -> &str {
+        &self.style
+    }
+
+    /// Justification, as AutoCAD names it: `"Left"`, `"Center"`, `"Right"`,
+    /// `"Aligned"`, `"Middle"`, `"Fit"`, `"TopLeft"`… (MTEXT: its
+    /// attachment point).
+    pub fn justification(&self) -> &'static str {
+        self.justification
+    }
+
+    /// Width factor (1 for MTEXT).
+    pub fn width_factor(&self) -> f64 {
+        self.width_factor
+    }
+
+    /// Oblique angle, radians (0 for MTEXT).
+    pub fn oblique(&self) -> f64 {
+        self.oblique
+    }
+
+    /// Whether it is an MTEXT.
+    pub fn is_multiline(&self) -> bool {
+        self.multiline
+    }
+
+    /// Whether its height and rotation can be set (not for Aligned and Fit
+    /// texts, whose two points decide them).
+    pub fn sizes_editable(&self) -> bool {
+        self.sizes_editable
+    }
+
+    /// Whether its content can be set (not for an MTEXT with formatting
+    /// codes, ADR 0022 D4).
+    pub fn content_editable(&self) -> bool {
+        self.content_editable
+    }
+}
+
 /// A snapshot of one entity, as the core and Python see it.
 ///
 /// Every entity type is listed (ADR 0011, D3.4); only LINE, CIRCLE and ARC
@@ -98,6 +175,7 @@ pub struct Entity {
     pub(crate) details: Vec<(String, String)>,
     pub(crate) bounds: Option<Bounds2>,
     pub(crate) plan: Option<PlanGeometry>,
+    pub(crate) text: Option<TextData>,
     pub(crate) transformable: bool,
 }
 
@@ -145,6 +223,11 @@ impl Entity {
     /// Editable plan geometry; `None` for read-only entities.
     pub fn plan(&self) -> Option<PlanGeometry> {
         self.plan
+    }
+
+    /// A TEXT or MTEXT drawn in plan; `None` for anything else.
+    pub fn text(&self) -> Option<&TextData> {
+        self.text.as_ref()
     }
 
     /// Whether its geometry can be edited in this version.

@@ -76,6 +76,9 @@ pub enum DocumentError {
     },
     /// An operation cannot be completed without losing unsupported data.
     UnsupportedOperation(String),
+    /// A text value that cannot be written (ADR 0022): an empty or
+    /// multiline single-line text, or a height that is not positive.
+    InvalidText(&'static str),
     /// No layer has this name.
     LayerNotFound(String),
     /// No layer has this id.
@@ -164,6 +167,7 @@ impl fmt::Display for DocumentError {
                 write!(f, "polyline {id} has no vertex {index}")
             }
             Self::UnsupportedOperation(message) => write!(f, "{message}"),
+            Self::InvalidText(why) => write!(f, "{why}"),
             Self::LayerNotFound(name) => write!(f, "no layer named {name:?}"),
             Self::LayerIdNotFound(id) => write!(f, "no layer with id {id}"),
             Self::LayerExists(name) => write!(f, "a layer named {name:?} already exists"),
