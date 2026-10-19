@@ -121,7 +121,7 @@ Grips show on selected entities (up to a limit, as AutoCAD's
 `GRIPOBJLIMIT`, 100 by default): line ends and midpoint; circle center and
 quadrants; arc ends, midpoint and center; one grip for a block (its
 insertion point) and one for a polyline (its first vertex), which only move
-them until vertex editing (2.7).
+them until vertex editing (02.8).
 
 Clicking a grip makes it **hot** (red). Its first mode is **Stretch**
 (a line's end moves, a circle's quadrant changes the radius, a midpoint or
@@ -137,6 +137,11 @@ core computes them (`grips`) and edits a line, circle or arc in place
 its midpoint. Move, Rotate, Scale and Mirror apply to every selected entity
 that can be transformed. With Copy, Enter ends the grip edit instead of
 cycling. The selection stays after the edit, as in AutoCAD.
+
+Update (2026-10-17, milestone 02.8, PR #35): a lightweight polyline now shows
+a grip at every vertex, and stretching one moves only that vertex
+(`set_polyline_vertex`, one undo step); Move, Rotate, Scale and Mirror still
+transform the whole polyline.
 
 ### D8 — First commands
 

@@ -73,7 +73,7 @@ is not moved for the sake of the layout (maintainer, 2026-10-13).
 | `crates/arq-geometry` | `crates/arq-geometry` | — |
 | `crates/arq-document` | `crates/arq-document` (model + DWG/DXF adapter) | the own internal model (02.6) separates model and adapter |
 | `crates/arq-entities` | inside `arq-document` | when the own entity model outgrows it (02.6, 02.8) |
-| `crates/arq-spatial` | scan in `arq-core::queries` | milestone 02.7 (spatial index) |
+| `crates/arq-spatial` | R*-tree in `arq-core::spatial_index` (ADR 0021) | if a crate other than `arq-core` needs the index |
 | `crates/arq-transactions` | `arq-core` history | if other models (IFC) need the same transactions |
 | `crates/arq-render` | `crates/arq-render` | — |
 | `crates/arq-interop` | — | when a second exchange format (IFC, 3DM) arrives |
