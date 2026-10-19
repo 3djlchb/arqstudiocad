@@ -7,7 +7,7 @@ code exists. Phases may overlap once their contracts are stable.
 
 Legend: ✅ done · ◐ in progress · ○ to do.
 
-## Where we are (2026-10-17)
+## Where we are (2026-10-18)
 
 - **Technical MVP: 8 of 8** (master plan §15): milestone 02.6 saves and
   recovers the working document (DWG) from the own internal model.
@@ -23,6 +23,9 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   validated by the maintainer, including property editors, shared panel/table
   styling, and CAD color selection; 03.2 is done and 03.4 compatibility work
   is in progress.
+- **Milestone 02.8** is in progress alongside 02.7: the 3D mathematical
+  foundation, polyline vertex editing and block-reference EXPLODE are done;
+  block content editing, texts and the 3D document decision remain.
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -53,7 +56,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ✅ steps 2.5.1–2.5.8 complete and manually validated by the maintainer |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
-| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE is in progress on `feature/explode-block-reference`; block content editing, text editing and the 3D document decision remain open |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; references with attributes are refused until their data can be preserved); block content editing, text editing and the 3D document decision remain open |
 
 ## Phase 03 — DWG/DXF ◐
 
@@ -137,10 +140,10 @@ Milestone 02.8 proceeds in independently reviewable steps:
    cases near 1e6 model units. This does not add 3D document entities.
 2. **Wider 2D entities:** polyline vertex editing, block contents and explode,
    and text support under the existing document and editing contracts. The
-   polyline vertex grips and transactional vertex editing are complete (PR
-   #35). The current step adds transactional EXPLODE for block references;
-   block contents with attributes are refused until their data can be
-   preserved by the operation.
+   polyline vertex grips and transactional vertex editing (PR #35) and the
+   transactional EXPLODE of block references (PR #36) are complete; block
+   references with attributes are refused until their data can be preserved
+   by the operation. Block content editing and texts remain.
 3. **3D document model (ADR 0014 question 4):** decide which 3D entities the
    core owns and how DWG ACIS and IFC geometry are represented before adding
    persistent 3D entities or format conversion.

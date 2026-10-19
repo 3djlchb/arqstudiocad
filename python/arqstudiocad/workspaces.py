@@ -116,7 +116,7 @@ CAD = Discipline(
                 RibbonGroup(
                     "modify",
                     lambda: tr("Modify"),
-                    ("MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "ERASE"),
+                    ("MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "ERASE", "EXPLODE"),
                 ),
                 RibbonGroup("history", lambda: tr("History"), ("UNDO", "REDO")),
                 RibbonGroup("layers", lambda: tr("Layers"), ("LAYER",)),
@@ -138,7 +138,7 @@ CAD = Discipline(
         Toolbar(
             "modify",
             lambda: tr("Modify"),
-            ("ERASE", "COPY", "MIRROR", None, "MOVE", "ROTATE", "SCALE"),
+            ("ERASE", "COPY", "MIRROR", None, "MOVE", "ROTATE", "SCALE", None, "EXPLODE"),
         ),
         Toolbar("layers", lambda: tr("Layers"), ("LAYER",)),
     ),

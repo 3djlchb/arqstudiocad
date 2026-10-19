@@ -14,7 +14,14 @@ from ui_fakes import QuietUi
 from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.builtin import builtin_registry
 from arqstudiocad.core import CadDocument, CadLine
-from arqstudiocad.events import CommandMessage, CommandPrompt, Drag, Event, EventBus
+from arqstudiocad.events import (
+    CommandMessage,
+    CommandPrompt,
+    DocumentChanged,
+    Drag,
+    Event,
+    EventBus,
+)
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 
@@ -142,6 +149,62 @@ def test_objects_that_cannot_be_transformed_yet_stop_the_command(tmp_path: Path)
     assert document.get_entities() == [], "erasing works on every kind"
 
 
+def blocks(tmp_path: Path, attribute: bool = False) -> Path:
+    """Block PUERTA, base (1,1), one LINE to (2,1) (and, with
+    ``attribute``, an attribute definition); an INSERT of it at (10,5) and
+    a LINE (0,0)-(1,0)."""
+    codes = ["0", "SECTION", "2", "BLOCKS"]
+    codes += ["0", "BLOCK", "8", "0", "2", "PUERTA", "70", "0", "10", "1", "20", "1", "30", "0"]
+    codes += ["3", "PUERTA", "0", "LINE", "8", "0", "10", "1", "20", "1", "30", "0"]
+    codes += ["11", "2", "21", "1", "31", "0"]
+    if attribute:
+        codes += ["0", "ATTDEF", "8", "0", "10", "1", "20", "1", "30", "0", "40", "0.2"]
+        codes += ["1", "", "2", "NUM", "3", "Number", "70", "0"]
+    codes += ["0", "ENDBLK", "8", "0", "0", "ENDSEC"]
+    codes += ["0", "SECTION", "2", "ENTITIES"]
+    codes += ["0", "INSERT", "8", "0", "2", "PUERTA", "10", "10", "20", "5", "30", "0"]
+    codes += ["0", "LINE", "8", "0", "10", "0", "20", "0", "30", "0", "11", "1", "21", "0"]
+    codes += ["31", "0", "0", "ENDSEC", "0", "EOF", ""]
+    path = tmp_path / "bloques.dxf"
+    path.write_text("\n".join(codes), encoding="ascii")
+    return path
+
+
+def test_explode_replaces_a_block_reference_with_its_contents(tmp_path: Path) -> None:
+    h = Harness()
+    document = h.session.open_document(blocks(tmp_path))
+    door, line = document.get_entities()
+    h.session.select(document, [door.id])
+    h.run("X")
+    entities = document.get_entities()
+    assert [e.kind for e in entities] == ["LINE", "LINE"]
+    assert door.id not in [e.id for e in entities] and line.id in [e.id for e in entities]
+    exploded = next(e for e in entities if e.id != line.id).geometry
+    assert exploded == CadLine((10.0, 5.0), (11.0, 5.0)), "placed as the block was drawn"
+    published = [e.changes for e in h.events if isinstance(e, DocumentChanged)]
+    assert any(door.id in c.deleted and c.created for c in published), "the viewport learns"
+    assert h.runner.active is None and h.session.selection(document) == ()
+    assert document.undo_name == "EXPLODE"
+    h.run("UNDO")
+    assert [e.id for e in document.get_entities()] == [door.id, line.id]
+
+
+def test_explode_refuses_what_it_cannot_explode(tmp_path: Path) -> None:
+    h = Harness()
+    document = h.session.open_document(blocks(tmp_path))
+    door, line = document.get_entities()
+    h.session.select(document, [door.id, line.id])
+    h.run("EXPLODE")
+    assert h.messages()[-1] == "Only block references can be exploded."
+    assert [e.id for e in document.get_entities()] == [door.id, line.id]
+    with_attribute = h.session.open_document(blocks(tmp_path, attribute=True))
+    door = with_attribute.get_entities()[0]
+    h.session.select(with_attribute, [door.id])
+    h.run("EXPLODE")
+    assert h.messages()[-1] == "This block cannot be exploded without losing data."
+    assert door.id in [e.id for e in with_attribute.get_entities()], "nothing lost"
+
+
 # The commands
 
 
@@ -233,7 +296,18 @@ def test_spanish_names_of_the_editing_commands() -> None:
     set_language("es")
     found = {
         typed: h.runner.registry.find(typed)
-        for typed in ("BORRA", "DESPLAZA", "COPIA", "GIRA", "GI", "ESCALA", "ES", "SIMETRÍA", "SI")
+        for typed in (
+            "BORRA",
+            "DESPLAZA",
+            "COPIA",
+            "GIRA",
+            "GI",
+            "ESCALA",
+            "ES",
+            "SIMETRÍA",
+            "SI",
+            "DESCOMPONER",
+        )
     }
     assert {typed: c.name if c else None for typed, c in found.items()} == {
         "BORRA": "ERASE",
@@ -245,6 +319,7 @@ def test_spanish_names_of_the_editing_commands() -> None:
         "ES": "SCALE",
         "SIMETRÍA": "MIRROR",
         "SI": "MIRROR",
+        "DESCOMPONER": "EXPLODE",
     }
     h.run("BORRA")
     assert h.prompt().text == "Designe objetos [Todo(ALL)/Último(L)/Previo(P)]:"
@@ -372,3 +447,17 @@ def test_esc_in_the_drawing_ends_an_editing_command(window: MainWindow, tmp_path
     assert window.session.selection(document) == ()
     geometry = document.get_entity(line_id).geometry
     assert geometry == CadLine((0.0, 0.0), (100.0, 0.0)), "nothing moved"
+
+
+def test_explode_is_in_the_modify_menu_ribbon_and_toolbar(window: MainWindow) -> None:
+    from PySide6.QtWidgets import QMenu, QToolBar
+
+    from arqstudiocad.ui.ribbon import RibbonGroupWidget
+
+    action = window.command_actions["EXPLODE"]
+    assert action.text() == "E&xplode"
+    assert any(action in menu.actions() for menu in window.menuBar().findChildren(QMenu))
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    assert action in [b.defaultAction() for b in groups["modify"].buttons]
+    toolbars = [bar for bar in window.findChildren(QToolBar) if action in bar.actions()]
+    assert toolbars, "the Classic Modify toolbar"
