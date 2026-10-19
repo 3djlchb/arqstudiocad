@@ -156,8 +156,25 @@ fn drawing_with(entities: &[&[&str]]) -> (Document, Vec<EntityId>) {
 /// east point.
 fn drawn_points(doc: &Document, id: EntityId) -> Vec<Point2> {
     let mut points = Vec::new();
-    for item in doc.drawing(id).unwrap() {
+    let drawn = doc.drawing(id).unwrap();
+    // An attribute's letters stay readable when its block is mirrored (ADR
+    // 0022 D2): they are not the mirror image of themselves, so they are
+    // left out; the block's geometry is what is compared.
+    let text_boxes: Vec<_> = drawn
+        .iter()
+        .filter_map(|item| match item.shape {
+            Shape::Text(b) => Some(b),
+            _ => None,
+        })
+        .collect();
+    let in_text = |l: Line| {
+        text_boxes
+            .iter()
+            .any(|b| b.contains_point(l.start(), TOL) && b.contains_point(l.end(), TOL))
+    };
+    for item in drawn {
         let g: Geometry2 = match item.shape {
+            Shape::Line(l) if in_text(l) => continue,
             Shape::Line(l) => l.into(),
             Shape::Arc(a) => a.into(),
             Shape::Circle(c) => {
@@ -312,16 +329,16 @@ fn which_entities_transform_as_a_whole() {
 #[test]
 fn other_entities_are_refused() {
     let (mut doc, ids) = drawing_with(&[&minsert()]);
-    let text = doc
+    // A POINT is still refused; texts transform since ADR 0022.
+    let point = doc
         .cad_mut()
-        .add_entity(EntityType::Text(acadrust::Text::with_value(
-            "PLANTA",
-            acadrust::types::Vector3::new(1.0, 2.0, 0.0),
+        .add_entity(EntityType::Point(acadrust::Point::from_coords(
+            1.0, 2.0, 0.0,
         )))
         .unwrap()
         .value();
     let t = Transform2::translation(v(1.0, 0.0));
-    for (id, kind) in [(ids[0], "MINSERT"), (text, "TEXT")] {
+    for (id, kind) in [(ids[0], "MINSERT"), (point, "POINT")] {
         assert_eq!(
             doc.transform_entity(id, t),
             Err(DocumentError::NotEditable { id, kind })

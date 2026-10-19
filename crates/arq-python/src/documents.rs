@@ -374,6 +374,12 @@ impl CadDocument {
             .map(CadLayerInfo))
     }
 
+    /// The drawing's default text height (TEXTSIZE).
+    #[getter]
+    fn text_size(&self) -> PyResult<f64> {
+        self.read(|cad| cad.document().text_size())
+    }
+
     /// The layer new entities go to.
     #[getter]
     fn current_layer(&self) -> PyResult<CadLayerInfo> {
@@ -389,6 +395,32 @@ impl CadDocument {
     /// Draws a line on the current layer; returns its id and what changed.
     fn add_line(&self, start: PyPoint, end: PyPoint) -> PyResult<(EntityId, CadChangeSet)> {
         self.create(|cad| cad.add_line(start.0, end.0))
+    }
+
+    /// Writes a single-line text, left-justified on the baseline at
+    /// `anchor`, on the current layer with the current text style (TEXT,
+    /// ADR 0022); `rotation` in radians.
+    fn add_text(
+        &self,
+        content: &str,
+        anchor: PyPoint,
+        height: f64,
+        rotation: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_text(content, anchor.0, height, rotation))
+    }
+
+    /// Sets what is given of texts' content, height and rotation (radians),
+    /// all or none (ADR 0022).
+    #[pyo3(signature = (entity_ids, content = None, height = None, rotation = None))]
+    fn set_text(
+        &self,
+        entity_ids: Vec<EntityId>,
+        content: Option<String>,
+        height: Option<f64>,
+        rotation: Option<f64>,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_text(&entity_ids, content.as_deref(), height, rotation))
     }
 
     /// Draws a circle on the current layer.

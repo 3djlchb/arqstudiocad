@@ -12,6 +12,7 @@ copied.
 | Path in this repo | Origin | License | Notes |
 |---|---|---|---|
 | `crates/arq-document/src/ocs.rs` | Approach of IngeCAD's `core/ocs.py` (plan view of OCS entities, normal `(0,0,-1)`), reimplemented in Rust | GPL-3.0-or-later | Idea and rules ported, no code copied |
+| `crates/arq-document/fonts/standard.lff` | [LibreCAD](https://github.com/LibreCAD/LibreCAD) `librecad/support/fonts/standard.lff` ("ISO 3098-2", by Rallaz, based on a public-domain Wikimedia drawing of ISO 3098) | GPL-2.0-or-later | Copied unchanged (master, 2026-10-18); the built-in stroke font texts are drawn in until phase 04 (ADR 0022). The LFF reader in `text_layout.rs` is our own |
 
 ## Dependencies
 

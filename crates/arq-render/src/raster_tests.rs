@@ -187,7 +187,7 @@ fn the_scene_follows_changes() {
 }
 
 #[test]
-fn texts_and_placeholders_are_outlined() {
+fn texts_are_drawn_as_their_letters() {
     let mut doc = Document::new();
     doc.insert_text_for_tests("NOTA", 0.0, 0.0);
     let cad = CadDocument::from_document(doc);
@@ -199,8 +199,9 @@ fn texts_and_placeholders_are_outlined() {
     let drawn = (0..100 * 100)
         .filter(|&i| !is_background(&img, i % 100, i / 100, DARK))
         .count();
-    assert!(drawn > 50, "its outline is drawn ({drawn} pixels)");
-    assert!(is_background(&img, 50, 50, DARK), "only the outline");
+    assert!(drawn > 50, "its letters are drawn ({drawn} pixels)");
+    // "NOTA" in the built-in font: dozens of strokes, plus its picking box.
+    assert!(scene.shape_count() > 20, "{} shapes", scene.shape_count());
 }
 
 #[test]

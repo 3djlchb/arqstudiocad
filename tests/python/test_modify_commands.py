@@ -134,16 +134,16 @@ def test_objects_on_locked_layers_are_left_out() -> None:
 
 
 def test_objects_that_cannot_be_transformed_yet_stop_the_command(tmp_path: Path) -> None:
-    path = tmp_path / "text.dxf"
-    codes = ["0", "SECTION", "2", "ENTITIES", "0", "TEXT", "8", "0", "10", "1", "20", "1"]
-    codes += ["30", "0", "40", "2.5", "1", "Hello", "0", "ENDSEC", "0", "EOF", ""]
+    path = tmp_path / "point.dxf"
+    codes = ["0", "SECTION", "2", "ENTITIES", "0", "POINT", "8", "0", "10", "1", "20", "1"]
+    codes += ["30", "0", "0", "ENDSEC", "0", "EOF", ""]
     path.write_text("\n".join(codes), encoding="ascii")
     h = Harness()
     document = h.session.open_document(path)
-    text_id = document.get_entities()[0].id
-    h.session.select(document, [text_id])
+    point_id = document.get_entities()[0].id
+    h.session.select(document, [point_id])
     h.run("MOVE")
-    assert h.messages()[-1] == "These objects cannot be transformed yet: TEXT."
+    assert h.messages()[-1] == "These objects cannot be transformed yet: POINT."
     assert h.runner.active is None
     h.run("ERASE")
     assert document.get_entities() == [], "erasing works on every kind"

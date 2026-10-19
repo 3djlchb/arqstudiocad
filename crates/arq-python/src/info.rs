@@ -2,7 +2,7 @@
 //! and a layer (contract §4, ADR 0012 D4.2). They are copies taken when the
 //! query ran; later edits never change them.
 
-use arq_core::{Entity, Layer};
+use arq_core::{Entity, Layer, TextData};
 use arq_geometry::Geometry2;
 use pyo3::prelude::*;
 use pyo3::types::PyString;
@@ -74,6 +74,13 @@ impl CadEntityInfo {
             .transpose()
     }
 
+    /// Its text, for a TEXT or MTEXT drawn in plan (ADR 0022); `None` for
+    /// every other entity.
+    #[getter]
+    fn text(&self) -> Option<CadText> {
+        self.0.text().cloned().map(CadText)
+    }
+
     /// Height (Z) of its plan geometry; `None` when it has none.
     #[getter]
     fn elevation(&self) -> Option<f64> {
@@ -110,6 +117,89 @@ fn geometry_to_py(py: Python<'_>, g: Geometry2) -> PyResult<Bound<'_, PyAny>> {
         Geometry2::Circle(c) => Bound::new(py, CadCircle(c))?.into_any(),
         Geometry2::Arc(a) => Bound::new(py, CadArc(a))?.into_any(),
     })
+}
+
+/// A TEXT or MTEXT as it was when read (ADR 0022).
+#[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, PartialEq)]
+pub struct CadText(pub TextData);
+
+#[pymethods]
+impl CadText {
+    /// What it says, as stored (MTEXT keeps its formatting codes).
+    #[getter]
+    fn content(&self) -> &str {
+        self.0.content()
+    }
+
+    /// The point it hangs from: the insertion point of a left, baseline
+    /// text, else its alignment point; an MTEXT's insertion point.
+    #[getter]
+    fn anchor(&self) -> (f64, f64) {
+        (self.0.anchor().x(), self.0.anchor().y())
+    }
+
+    /// Character height.
+    #[getter]
+    fn height(&self) -> f64 {
+        self.0.height()
+    }
+
+    /// Reading direction, radians counterclockwise from East.
+    #[getter]
+    fn rotation(&self) -> f64 {
+        self.0.rotation()
+    }
+
+    /// Text style name.
+    #[getter]
+    fn style(&self) -> &str {
+        self.0.style()
+    }
+
+    /// Justification as AutoCAD names it (`"Left"`, `"MiddleCenter"`…).
+    #[getter]
+    fn justification(&self) -> &'static str {
+        self.0.justification()
+    }
+
+    /// Width factor.
+    #[getter]
+    fn width_factor(&self) -> f64 {
+        self.0.width_factor()
+    }
+
+    /// Oblique angle, radians.
+    #[getter]
+    fn oblique(&self) -> f64 {
+        self.0.oblique()
+    }
+
+    /// Whether it is an MTEXT.
+    #[getter]
+    fn is_multiline(&self) -> bool {
+        self.0.is_multiline()
+    }
+
+    /// Whether its height and rotation can be set (not for Aligned or Fit).
+    #[getter]
+    fn sizes_editable(&self) -> bool {
+        self.0.sizes_editable()
+    }
+
+    /// Whether its content can be set (not for an MTEXT with formatting).
+    #[getter]
+    fn content_editable(&self) -> bool {
+        self.0.content_editable()
+    }
+
+    fn __repr__(&self, py: Python<'_>) -> PyResult<String> {
+        let content = PyString::new(py, self.0.content()).repr()?;
+        Ok(format!(
+            "CadText(content={content}, justification='{}')",
+            self.0.justification()
+        ))
+    }
 }
 
 /// One layer as it was when read.
@@ -177,5 +267,6 @@ impl CadLayerInfo {
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadEntityInfo>()?;
     m.add_class::<CadLayerInfo>()?;
+    m.add_class::<CadText>()?;
     Ok(())
 }

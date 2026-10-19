@@ -1,4 +1,5 @@
-"""The drawing commands of milestone 2.5 (ADR 0016 D8): LINE, CIRCLE and ARC.
+"""The drawing commands of milestone 2.5 (ADR 0016 D8): LINE, CIRCLE and ARC;
+TEXT, AutoCAD's single-line text, in milestone 02.8 (ADR 0022).
 
 They ask for points as AutoCAD does (typed or picked, with snaps and
 ORTHO) and build the curve with the core's constructors: Python never
@@ -6,6 +7,7 @@ computes geometry itself (contract §5). Everything one run of a command
 draws is one undo step; what was drawn before Esc stays, as in AutoCAD.
 """
 
+import math
 from collections.abc import Callable
 
 from arqstudiocad.commands import (
@@ -21,6 +23,11 @@ from arqstudiocad.points import Point
 
 #: The last circle radius, remembered as AutoCAD's CIRCLERAD.
 CIRCLE_RADIUS = "CIRCLERAD"
+#: The last text height and rotation, remembered as AutoCAD remembers them.
+TEXT_HEIGHT = "TEXTSIZE"
+TEXT_ROTATION = "TEXT_ROTATION"
+#: Line spacing of single-line texts, in text heights (AutoCAD's).
+LINE_SPACING = 5 / 3
 
 
 def line(ctx: CommandContext) -> CommandScript:
@@ -157,9 +164,41 @@ def _add(ctx: CommandContext, document: CadDocument, geometry: CadCircle | CadAr
     ctx.session.report(document, changes)
 
 
+def text(ctx: CommandContext) -> CommandScript:
+    """Single-line texts from a start point, one per line typed, each below
+    the last, until an empty line (ADR 0022 D1). One undo step."""
+    document = ctx.document()
+    start = yield ctx.point(tr("Specify start point of text"))
+    height = yield ctx.distance(
+        tr("Specify height"),
+        base=start,
+        default=ctx.remembered.get(TEXT_HEIGHT, document.text_size),
+    )
+    rotation = yield ctx.angle(
+        tr("Specify rotation angle of text"),
+        base=start,
+        default=ctx.remembered.get(TEXT_ROTATION, 0.0),
+    )
+    ctx.remembered[TEXT_HEIGHT] = height
+    ctx.remembered[TEXT_ROTATION] = rotation
+    # The next line starts this far below, across the reading direction.
+    step = LINE_SPACING * height
+    down = (math.sin(rotation) * step, -math.cos(rotation) * step)
+    at = start
+    document.begin_group("TEXT")
+    try:
+        while line := (yield ctx.ask(tr("Enter text"), optional=True)):
+            _, changes = document.add_text(line, at, height, rotation)
+            ctx.session.report(document, changes)
+            at = (at[0] + down[0], at[1] + down[1])
+    finally:
+        document.end_group()
+
+
 #: The drawing commands, with AutoCAD's aliases.
 DRAW_COMMANDS = (
     Command("LINE", line, ("L",)),
     Command("CIRCLE", circle, ("C",)),
     Command("ARC", arc, ("A",)),
+    Command("TEXT", text, ("DT",)),
 )

@@ -111,7 +111,7 @@ fn mirroring_an_arc_keeps_it_counterclockwise() {
 #[test]
 fn editing_a_read_only_entity_fails_the_whole_operation() {
     let mut doc = Document::new();
-    let text = doc.insert_text_for_tests("NOTA", 5.0, 5.0);
+    let text = doc.insert_point_for_tests(5.0, 5.0); // read-only (ADR 0022 made texts transformable)
     let mut cad = CadDocument::from_document(doc);
     let (line, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
     cad.undo().unwrap();
@@ -171,6 +171,33 @@ fn new_geometry_of_the_same_kind_keeps_the_entity() {
     }
     cad.undo().unwrap();
     assert!(near(line_ends(&cad, line).1, p(1.0, 0.0)), "one undo step");
+}
+
+#[test]
+fn texts_are_written_and_edited_all_or_nothing() {
+    let mut cad = CadDocument::new();
+    let (a, made) = cad.add_text("A", p(0.0, 0.0), 2.0, 0.0).unwrap();
+    assert_eq!(made.created(), [a]);
+    assert_eq!(cad.undo_name(), Some("TEXT"));
+    let (b, _) = cad.add_text("B", p(0.0, 5.0), 2.0, 0.0).unwrap();
+    let changed = cad.set_text(&[a, b], None, Some(4.0), None).unwrap();
+    assert_eq!(changed.modified(), [a, b]);
+    assert_eq!(cad.undo_name(), Some("PROPERTIES"));
+    let height =
+        |cad: &CadDocument, id| cad.document().entity(id).unwrap().text().unwrap().height();
+    assert!((height(&cad, b) - 4.0).abs() < 1e-12);
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    assert!(cad.set_text(&[a, line], None, Some(9.0), None).is_err());
+    assert!(
+        (height(&cad, a) - 4.0).abs() < 1e-12,
+        "the text edited first went back"
+    );
+    let moved = cad.move_entities(&[a], v(1.0, 1.0)).unwrap();
+    assert_eq!(moved.modified(), [a], "texts transform as a whole");
+    for _ in 0..3 {
+        cad.undo().unwrap(); // MOVE, LINE, PROPERTIES
+    }
+    assert!((height(&cad, a) - 2.0).abs() < 1e-12);
 }
 
 #[test]
@@ -549,7 +576,7 @@ fn copying_makes_one_undo_step() {
 #[test]
 fn copying_fails_whole_on_what_cannot_be_copied() {
     let mut doc = Document::new();
-    let text = doc.insert_text_for_tests("NOTA", 5.0, 5.0);
+    let text = doc.insert_point_for_tests(5.0, 5.0); // read-only (ADR 0022 made texts transformable)
     let mut cad = CadDocument::from_document(doc);
     let (line, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
     let refused = cad.copy_entities(&[line, text], v(1.0, 0.0)).unwrap_err();

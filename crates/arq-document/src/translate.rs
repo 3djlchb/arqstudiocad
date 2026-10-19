@@ -5,9 +5,10 @@ use acadrust::types::{Matrix4, Transform, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{Arc, Bounds2, Circle, Geometry2, Line, Point2, Transform2};
 
-use crate::entity::{Color, Entity, EntityId, PlanGeometry};
+use crate::entity::{Color, Entity, EntityId, PlanGeometry, TextData};
 use crate::error::{DocumentError, DocumentResult};
 use crate::ocs::{PlanNormal, plan_normal};
+use crate::text_layout::{HAlign, Layout, TextFrame, VAlign, layout, plain_mtext};
 
 /// Our view of a codec entity.
 pub(crate) fn read_entity(e: &EntityType) -> Entity {
@@ -28,6 +29,7 @@ pub(crate) fn read_entity(e: &EntityType) -> Entity {
         details: details(e),
         bounds,
         plan,
+        text: text_data(e),
         transformable: plan.is_some() || is_whole_transformable(e),
     }
 }
@@ -99,7 +101,254 @@ pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
                 && i.row_count <= 1
         }
         EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
+        EntityType::Text(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
+        EntityType::MText(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
         _ => false,
+    }
+}
+
+/// A TEXT or MTEXT drawn in plan, as the editor sees it (ADR 0022).
+pub(crate) fn text_data(e: &EntityType) -> Option<TextData> {
+    use acadrust::entities::TextHorizontalAlignment as H;
+    match e {
+        EntityType::Text(t) => {
+            let normal = plan_normal(t.normal.x, t.normal.y, t.normal.z)?;
+            let (x, y) = text_anchor_ocs(t);
+            let (x, y, _) = normal.map_point(x, y, 0.0);
+            Some(TextData {
+                content: t.value.clone(),
+                anchor: point(x, y)?,
+                height: t.height,
+                rotation: normal.map_angle(t.rotation),
+                style: t.style.clone(),
+                justification: text_justification(t),
+                width_factor: t.width_factor,
+                oblique: t.oblique_angle,
+                multiline: false,
+                sizes_editable: !matches!(t.horizontal_alignment, H::Aligned | H::Fit),
+                content_editable: true,
+            })
+        }
+        EntityType::MText(t) => {
+            plan_normal(t.normal.x, t.normal.y, t.normal.z)?;
+            Some(TextData {
+                content: t.value.clone(),
+                anchor: point(t.insertion_point.x, t.insertion_point.y)?,
+                height: t.height,
+                rotation: t.rotation,
+                style: t.style.clone(),
+                justification: attachment_name(t.attachment_point),
+                width_factor: 1.0,
+                oblique: 0.0,
+                multiline: true,
+                sizes_editable: true,
+                content_editable: !has_formatting(&t.value),
+            })
+        }
+        _ => None,
+    }
+}
+
+/// A TEXT anchors at its insertion point when left-justified on the
+/// baseline, else at its alignment point (ADR 0022 D3); in its OCS.
+fn text_anchor_ocs(t: &acadrust::Text) -> (f64, f64) {
+    use acadrust::entities::{TextHorizontalAlignment as H, TextVerticalAlignment as V};
+    let first = (t.insertion_point.x, t.insertion_point.y);
+    if matches!(t.horizontal_alignment, H::Left | H::Aligned | H::Fit)
+        && matches!(t.vertical_alignment, V::Baseline)
+    {
+        return first;
+    }
+    t.alignment_point.map_or(first, |a| (a.x, a.y))
+}
+
+fn text_justification(t: &acadrust::Text) -> &'static str {
+    use acadrust::entities::{TextHorizontalAlignment as H, TextVerticalAlignment as V};
+    match (t.horizontal_alignment, t.vertical_alignment) {
+        (H::Aligned, _) => "Aligned",
+        (H::Fit, _) => "Fit",
+        (H::Middle, _) => "Middle",
+        (H::Left, V::Baseline) => "Left",
+        (H::Center, V::Baseline) => "Center",
+        (H::Right, V::Baseline) => "Right",
+        (H::Left, V::Bottom) => "BottomLeft",
+        (H::Center, V::Bottom) => "BottomCenter",
+        (H::Right, V::Bottom) => "BottomRight",
+        (H::Left, V::Middle) => "MiddleLeft",
+        (H::Center, V::Middle) => "MiddleCenter",
+        (H::Right, V::Middle) => "MiddleRight",
+        (H::Left, V::Top) => "TopLeft",
+        (H::Center, V::Top) => "TopCenter",
+        (H::Right, V::Top) => "TopRight",
+    }
+}
+
+fn attachment_name(a: acadrust::entities::AttachmentPoint) -> &'static str {
+    use acadrust::entities::AttachmentPoint as A;
+    match a {
+        A::TopLeft => "TopLeft",
+        A::TopCenter => "TopCenter",
+        A::TopRight => "TopRight",
+        A::MiddleLeft => "MiddleLeft",
+        A::MiddleCenter => "MiddleCenter",
+        A::MiddleRight => "MiddleRight",
+        A::BottomLeft => "BottomLeft",
+        A::BottomCenter => "BottomCenter",
+        A::BottomRight => "BottomRight",
+    }
+}
+
+/// Whether MTEXT content holds formatting codes: a backslash code or a
+/// brace group (ADR 0022 D4).
+fn has_formatting(value: &str) -> bool {
+    value.contains('\\') || value.contains('{') || value.contains('}')
+}
+
+/// After a transformation that reflects, a text stays readable (ADR 0022
+/// D2, AutoCAD's `MIRRTEXT = 0`): of the two upright frames that fit the
+/// mirrored text, the one whose up direction is closer to the original's is
+/// kept; when it reverses the reading direction, the horizontal
+/// justification is mirrored too. `before` is the reading direction
+/// (world radians) before `t`.
+fn keep_text_readable(e: &mut EntityType, t: Transform2, before: f64) {
+    let [[a, b, _], [c, d, _]] = t.affine();
+    let (dx, dy) = (
+        a * before.cos() + b * before.sin(),
+        c * before.cos() + d * before.sin(),
+    );
+    let (ux, uy) = (-before.sin(), before.cos());
+    let mirrored_up = (a * ux + b * uy, c * ux + d * uy);
+    let mut world = dy.atan2(dx);
+    // A text drawn along the mirrored direction has up = −(mirrored up);
+    // turning it half round gives up = +(mirrored up), reading backwards.
+    let turn = mirrored_up.0 * ux + mirrored_up.1 * uy > 0.0;
+    if turn {
+        world += std::f64::consts::PI;
+    }
+    match e {
+        EntityType::Text(text) => {
+            let Some(normal) = plan_normal(text.normal.x, text.normal.y, text.normal.z) else {
+                return;
+            };
+            text.rotation = normal.map_angle(world);
+            if turn {
+                mirror_text_justification(text);
+            }
+        }
+        EntityType::MText(text) => {
+            text.rotation = world;
+            text.dwg_x_direction = None;
+            if turn {
+                text.attachment_point = mirrored_attachment(text.attachment_point);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Left ↔ right for a TEXT whose reading direction was reversed: its
+/// anchor stays where the mirror put it. Aligned and Fit texts swap their
+/// two points instead.
+fn mirror_text_justification(t: &mut acadrust::Text) {
+    use acadrust::entities::{TextHorizontalAlignment as H, TextVerticalAlignment as V};
+    let anchor = t.alignment_point.unwrap_or(t.insertion_point);
+    match t.horizontal_alignment {
+        H::Aligned | H::Fit => {
+            if let Some(second) = t.alignment_point {
+                t.alignment_point = Some(t.insertion_point);
+                t.insertion_point = second;
+            }
+        }
+        H::Left => {
+            let on_baseline = matches!(t.vertical_alignment, V::Baseline);
+            let at = if on_baseline {
+                t.insertion_point
+            } else {
+                anchor
+            };
+            t.horizontal_alignment = H::Right;
+            t.alignment_point = Some(at);
+            t.insertion_point = at;
+        }
+        H::Right => {
+            t.horizontal_alignment = H::Left;
+            if matches!(t.vertical_alignment, V::Baseline) {
+                t.insertion_point = anchor;
+                t.alignment_point = None;
+            }
+        }
+        H::Center | H::Middle => {}
+    }
+}
+
+fn mirrored_attachment(
+    a: acadrust::entities::AttachmentPoint,
+) -> acadrust::entities::AttachmentPoint {
+    use acadrust::entities::AttachmentPoint as A;
+    match a {
+        A::TopLeft => A::TopRight,
+        A::TopRight => A::TopLeft,
+        A::MiddleLeft => A::MiddleRight,
+        A::MiddleRight => A::MiddleLeft,
+        A::BottomLeft => A::BottomRight,
+        A::BottomRight => A::BottomLeft,
+        other => other,
+    }
+}
+
+/// A new single-line TEXT, left-justified on the baseline at `anchor`
+/// (world), on `layer` with `style` (ADR 0022 D1).
+pub(crate) fn new_text(
+    content: &str,
+    anchor: Point2,
+    height: f64,
+    rotation: f64,
+    layer: &str,
+    style: &str,
+) -> EntityType {
+    let mut t = acadrust::Text::with_value(content, Vector3::new(anchor.x(), anchor.y(), 0.0));
+    t.height = height;
+    t.rotation = rotation;
+    t.style = style.to_owned();
+    t.common.layer = layer.to_owned();
+    EntityType::Text(t)
+}
+
+/// Sets what is given of a text's content, height and rotation (world
+/// radians); the caller has checked the values and that they apply.
+pub(crate) fn edit_text(
+    e: &mut EntityType,
+    content: Option<&str>,
+    height: Option<f64>,
+    rotation: Option<f64>,
+) {
+    match e {
+        EntityType::Text(t) => {
+            if let Some(content) = content {
+                t.value = content.to_owned();
+            }
+            if let Some(height) = height {
+                t.height = height;
+            }
+            if let (Some(rotation), Some(normal)) =
+                (rotation, plan_normal(t.normal.x, t.normal.y, t.normal.z))
+            {
+                t.rotation = normal.map_angle(rotation);
+            }
+        }
+        EntityType::MText(t) => {
+            if let Some(content) = content {
+                t.value = content.to_owned();
+            }
+            if let Some(height) = height {
+                t.height = height;
+            }
+            if let Some(rotation) = rotation {
+                t.rotation = rotation;
+                t.dwg_x_direction = None;
+            }
+        }
+        _ => {}
     }
 }
 
@@ -119,6 +368,7 @@ pub(crate) fn whole_grip(e: &EntityType) -> Option<(bool, Point2)> {
             let first = p.vertices.first()?.location;
             Some((false, world(&p.normal, first.x, first.y)?))
         }
+        EntityType::Text(_) | EntityType::MText(_) => Some((true, text_data(e)?.anchor())),
         _ => None,
     }
 }
@@ -128,6 +378,7 @@ pub(crate) fn whole_grip(e: &EntityType) -> Option<(bool, Point2)> {
 /// bulges flip under a mirror (the codec's mirror path does the same for
 /// these two kinds). Elevations are kept.
 pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
+    let reading = text_data(e).map(|text| text.rotation());
     let [[a, b, tx], [c, d, ty]] = t.affine();
     let codec = Transform::from_matrix(Matrix4 {
         m: [
@@ -138,6 +389,18 @@ pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
         ],
     });
     e.apply_transform(&codec);
+    if let Some(before) = reading {
+        // The codec turns a TEXT's stored angle as a world angle, wrong in a
+        // mirrored OCS, and reflects texts: we set the reading direction.
+        if t.is_reflection() {
+            keep_text_readable(e, t, before);
+        } else {
+            let [[a, b, _], [c, d, _]] = t.affine();
+            let world =
+                (c * before.cos() + d * before.sin()).atan2(a * before.cos() + b * before.sin());
+            edit_text(e, None, None, Some(world));
+        }
+    }
 }
 
 /// Plan bounds of an entity: from our geometry when it has plan geometry,
@@ -149,8 +412,161 @@ pub(crate) fn bounds_of(e: &EntityType) -> Option<Bounds2> {
 fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
     match plan {
         Some(p) => Some(p.geometry().bounds()),
-        None => codec_bounds(e),
+        // A text's box is where its letters are drawn (text_layout.rs).
+        None => text_layout(e).map(|l| l.bounds).or_else(|| codec_bounds(e)),
     }
+}
+
+/// A TEXT, MTEXT or attribute drawn in plan, laid out in strokes.
+pub(crate) fn text_layout(e: &EntityType) -> Option<Layout> {
+    layout(&text_frame(e)?)
+}
+
+/// What laying a text out needs, read from the codec: TEXT, MTEXT,
+/// attributes and attribute definitions (which show their tag), in plan.
+fn text_frame(e: &EntityType) -> Option<TextFrame> {
+    use acadrust::entities::{TextHorizontalAlignment as TH, TextVerticalAlignment as TV};
+    let h_of = |h: TH| match h {
+        TH::Left => HAlign::Left,
+        TH::Center => HAlign::Center,
+        TH::Right => HAlign::Right,
+        TH::Aligned => HAlign::Aligned,
+        TH::Middle => HAlign::Middle,
+        TH::Fit => HAlign::Fit,
+    };
+    let v_of = |v: TV| match v {
+        TV::Baseline => VAlign::Baseline,
+        TV::Bottom => VAlign::Bottom,
+        TV::Middle => VAlign::Middle,
+        TV::Top => VAlign::Top,
+    };
+    let xy = |p: Vector3| (p.x, p.y);
+    match e {
+        EntityType::Text(t) => Some(TextFrame {
+            lines: vec![t.value.clone()],
+            first: xy(t.insertion_point),
+            second: t.alignment_point.map(xy),
+            height: t.height,
+            rotation: t.rotation,
+            width_factor: t.width_factor,
+            oblique: t.oblique_angle,
+            h: h_of(t.horizontal_alignment),
+            v: v_of(t.vertical_alignment),
+            backward: t.generation_flags & 2 != 0,
+            upside_down: t.generation_flags & 4 != 0,
+            normal: plan_normal(t.normal.x, t.normal.y, t.normal.z)?,
+        }),
+        EntityType::MText(t) => {
+            use acadrust::entities::AttachmentPoint as A;
+            let normal = plan_normal(t.normal.x, t.normal.y, t.normal.z)?;
+            let (h, v) = match t.attachment_point {
+                A::TopLeft => (HAlign::Left, VAlign::Top),
+                A::TopCenter => (HAlign::Center, VAlign::Top),
+                A::TopRight => (HAlign::Right, VAlign::Top),
+                A::MiddleLeft => (HAlign::Left, VAlign::Middle),
+                A::MiddleCenter => (HAlign::Center, VAlign::Middle),
+                A::MiddleRight => (HAlign::Right, VAlign::Middle),
+                A::BottomLeft => (HAlign::Left, VAlign::Bottom),
+                A::BottomCenter => (HAlign::Center, VAlign::Bottom),
+                A::BottomRight => (HAlign::Right, VAlign::Bottom),
+            };
+            // MTEXT keeps world coordinates and a world angle; back to the
+            // OCS for the layout, which maps its result to the world.
+            let (x, y, _) = normal.map_point(t.insertion_point.x, t.insertion_point.y, 0.0);
+            Some(TextFrame {
+                lines: plain_mtext(&t.value),
+                first: (x, y),
+                second: None,
+                height: t.height,
+                rotation: normal.map_angle(t.rotation),
+                width_factor: 1.0,
+                oblique: 0.0,
+                h,
+                v,
+                backward: false,
+                upside_down: false,
+                normal,
+            })
+        }
+        EntityType::AttributeEntity(a) => {
+            if a.flags.invisible {
+                return None;
+            }
+            attribute_frame(
+                &a.value,
+                a.insertion_point,
+                a.alignment_point,
+                a.height,
+                a.rotation,
+                a.width_factor,
+                a.oblique_angle,
+                a.text_generation_flags,
+                a.horizontal_alignment as i16,
+                a.vertical_alignment as i16,
+                a.normal,
+            )
+        }
+        EntityType::AttributeDefinition(a) => attribute_frame(
+            &a.tag,
+            a.insertion_point,
+            a.alignment_point,
+            a.height,
+            a.rotation,
+            a.width_factor,
+            a.oblique_angle,
+            a.text_generation_flags,
+            a.horizontal_alignment as i16,
+            a.vertical_alignment as i16,
+            a.normal,
+        ),
+        _ => None,
+    }
+}
+
+/// An attribute's frame: its DXF justification codes (72 and 74).
+#[allow(clippy::too_many_arguments)]
+fn attribute_frame(
+    content: &str,
+    first: Vector3,
+    second: Vector3,
+    height: f64,
+    rotation: f64,
+    width_factor: f64,
+    oblique: f64,
+    flags: i16,
+    horizontal: i16,
+    vertical: i16,
+    normal: Vector3,
+) -> Option<TextFrame> {
+    let h = match horizontal {
+        1 => HAlign::Center,
+        2 => HAlign::Right,
+        3 => HAlign::Aligned,
+        4 => HAlign::Middle,
+        5 => HAlign::Fit,
+        _ => HAlign::Left,
+    };
+    let v = match vertical {
+        1 => VAlign::Bottom,
+        2 => VAlign::Middle,
+        3 => VAlign::Top,
+        _ => VAlign::Baseline,
+    };
+    let left = h == HAlign::Left && v == VAlign::Baseline;
+    Some(TextFrame {
+        lines: vec![content.to_owned()],
+        first: (first.x, first.y),
+        second: (!left).then_some((second.x, second.y)),
+        height,
+        rotation,
+        width_factor,
+        oblique,
+        h,
+        v,
+        backward: flags & 2 != 0,
+        upside_down: flags & 4 != 0,
+        normal: plan_normal(normal.x, normal.y, normal.z)?,
+    })
 }
 
 /// Editable plan geometry of LINE, CIRCLE and ARC drawn in plan.

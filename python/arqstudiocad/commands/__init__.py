@@ -189,9 +189,10 @@ class CommandContext:
         """A prompt for one of ``options``; yield it to get the chosen key."""
         return Prompt(message, "option", tuple(options), default)
 
-    def ask(self, message: str, default: str | None = None) -> Prompt:
-        """A prompt for any text; yield it to get the text."""
-        return Prompt(message, "text", (), default)
+    def ask(self, message: str, default: str | None = None, optional: bool = False) -> Prompt:
+        """A prompt for any text; yield it to get the text (``""`` for Enter
+        if it is ``optional``)."""
+        return Prompt(message, "text", (), default, optional=optional)
 
     def point(
         self,
@@ -409,6 +410,8 @@ class CommandRunner:
             self._answer_select(prompt, text)
             return
         answer: str | None = text or prompt.default
+        if answer is None and prompt.optional:
+            answer = ""  # Enter on an optional text prompt
         if prompt.kind == "option" and answer is not None:
             answer = _option_key(prompt.options, answer)
             if answer is None:

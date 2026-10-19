@@ -112,7 +112,7 @@ CAD = Discipline(
             lambda: tr("Home"),
             (
                 RibbonGroup("file", lambda: tr("File"), ("NEW", "OPEN", "SAVE", "SAVEAS", "CLOSE")),
-                RibbonGroup("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC")),
+                RibbonGroup("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC", "TEXT")),
                 RibbonGroup(
                     "modify",
                     lambda: tr("Modify"),
@@ -134,7 +134,7 @@ CAD = Discipline(
             lambda: tr("Standard"),
             ("NEW", "OPEN", "SAVE", None, "UNDO", "REDO", None, "ZOOM"),
         ),
-        Toolbar("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC")),
+        Toolbar("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC", None, "TEXT")),
         Toolbar(
             "modify",
             lambda: tr("Modify"),

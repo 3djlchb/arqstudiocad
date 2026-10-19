@@ -42,13 +42,14 @@ mod pick;
 mod reading;
 #[cfg(test)]
 mod test_dxf;
+mod text_layout;
 mod translate;
 mod verify;
 
 pub use change::{Change, ChangeSet};
 pub use document::Document;
 pub use drawing::{DrawItem, Shape};
-pub use entity::{Color, Entity, EntityId, PlanGeometry};
+pub use entity::{Color, Entity, EntityId, PlanGeometry, TextData};
 pub use error::{DocumentError, DocumentResult};
 pub use format::FileFormat;
 pub use grips::{Grip, GripKind};
