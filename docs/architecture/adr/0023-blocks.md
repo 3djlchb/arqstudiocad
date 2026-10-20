@@ -1,0 +1,78 @@
+# 0023. Blocks in milestone 02.8: create, insert, edit, explode
+
+Date: 2026-10-19 · Status: Accepted · Builds on [0016](0016-editing-workflow.md),
+[0018](0018-native-format.md), [0022](0022-text-entities.md)
+
+## Context
+
+Block references (INSERT) are drawn, selected and transformed as a whole
+(ADR 0016 D1), and EXPLODE replaces one with its contents (PR #36), but
+refuses blocks with attributes, which it would lose. Blocks cannot be
+created, inserted or edited. The maintainer's drawings hold many blocks.
+The roadmap puts "block contents and explode" in milestone 02.8.
+
+## Decision
+
+Each choice marked *(maintainer)* was made by the maintainer on 2026-10-19.
+
+### D1 — EXPLODE keeps attribute values as texts *(maintainer)*
+
+Exploding a block reference with attributes turns each visible attribute
+into a single-line TEXT with its current value, where and as it was drawn
+(position, justification, height, rotation, width factor, oblique angle,
+style, layer and color), as AutoCAD Express Tools' BURST. Invisible
+attributes are dropped, as BURST drops them; constant attributes of the
+definition become texts with their value. Attribute definitions are not
+copied into the drawing. The whole explode is one undo step.
+
+### D2 — BLOCK and INSERT *(maintainer)*
+
+- **BLOCK** (alias `B` is AutoCAD's English one and stays English;
+  Spanish `BLOQUE`): a name, a base point and objects selected (first or at
+  "Select objects"); the objects are replaced by a reference to the new
+  block at the base point, as AutoCAD's default ("Convert to block"). A
+  name that exists, is empty or holds characters DWG forbids is refused.
+- **INSERT** (alias `I`; Spanish `INSERTAR`): a block name, then the
+  insertion point with a drag preview, a uniform scale (1) and a rotation
+  (0), with the options Scale and Rotate before the point, as AutoCAD.
+  Anonymous (`*`) and layout blocks are not offered.
+- New attributes (ATTDEF) and Xrefs are phase 04 or later.
+
+### D3 — The block editor *(maintainer)*
+
+As AutoCAD's BEDIT, not REFEDIT: **BEDIT** (Spanish `EDITARBLOQUE`) opens
+a block's definition alone in a tab of its own, at its base point, where
+every drawing and editing tool works. Closing the tab asks whether to save
+the changes; saving replaces the definition's contents, so every reference
+shows them, as one undo step of the drawing. The editor never writes a
+file. Attribute definitions in the block are kept as they are.
+
+### D3a — Dynamic blocks wait for the parametric engine
+
+Dynamic blocks are kept and shown in their current state (ADR 0017 D6);
+changing their parameters needs ArqStudioCAD's parametric engine, which
+has no milestone yet and is placed in the roadmap when blocks are done.
+Until then BEDIT refuses a dynamic block, so
+its parameters are never broken, while INSERT and EXPLODE work on the
+state the file holds.
+
+### D4 — An Insert ribbon tab *(maintainer)*
+
+The ribbon gains an **Insert** tab (Spanish *Insertar*) whose **Block**
+group holds Insert, Create and Edit, as AutoCAD's Insert tab; EXPLODE stays
+in Home › Modify.
+
+### D5 — Order of work and ownership
+
+Three steps, each its own pull request: D1 with this ADR, then D2, then D3.
+Blocks stay in the engine's database, edited through the adapter as now;
+moving block definitions and polylines into the own model (ADR 0018 D2,
+stage 2) is decided when the block editor shows what it needs from it.
+
+## Consequences
+
+- Blocks with attributes explode without losing what they show.
+- Blocks can be made, placed and changed in ArqStudioCAD, the most common
+  workflow in the maintainer's drawings.
+- Editing in a separate tab reuses every tool without a second editing
+  mode in the drawing.

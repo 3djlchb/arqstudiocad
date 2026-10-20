@@ -82,9 +82,7 @@ def explode(ctx: CommandContext) -> CommandScript:
     try:
         _, changes = document.explode_entities(ids)
     except InvalidOperationError as error:
-        raise CommandCancelledError(
-            tr("This block cannot be exploded without losing data.")
-        ) from error
+        raise CommandCancelledError(tr("This block has nothing to explode.")) from error
     ctx.session.report(document, changes)
     _done(ctx, document, ids)
 

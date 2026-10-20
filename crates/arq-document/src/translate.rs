@@ -626,6 +626,107 @@ fn text_frame(e: &EntityType) -> Option<TextFrame> {
     }
 }
 
+/// A visible attribute as the single-line TEXT it shows, where and as it is
+/// drawn, with its layer and color (EXPLODE, ADR 0023 D1); `None` for an
+/// invisible one.
+pub(crate) fn attribute_as_text(e: &EntityType) -> Option<EntityType> {
+    use acadrust::entities::attribute_definition::{
+        HorizontalAlignment as AH, VerticalAlignment as AV,
+    };
+    use acadrust::entities::{TextHorizontalAlignment as TH, TextVerticalAlignment as TV};
+    let h = |a: AH| match a {
+        AH::Left => TH::Left,
+        AH::Center => TH::Center,
+        AH::Right => TH::Right,
+        AH::Aligned => TH::Aligned,
+        AH::Middle => TH::Middle,
+        AH::Fit => TH::Fit,
+    };
+    let v = |a: AV| match a {
+        AV::Baseline => TV::Baseline,
+        AV::Bottom => TV::Bottom,
+        AV::Middle => TV::Middle,
+        AV::Top => TV::Top,
+    };
+    #[allow(clippy::type_complexity)]
+    let (
+        common,
+        value,
+        first,
+        second,
+        height,
+        rotation,
+        width,
+        oblique,
+        style,
+        flags,
+        ha,
+        va,
+        normal,
+    ): (
+        &acadrust::entities::EntityCommon,
+        &str,
+        Vector3,
+        Vector3,
+        f64,
+        f64,
+        f64,
+        f64,
+        &str,
+        i16,
+        AH,
+        AV,
+        Vector3,
+    ) = match e {
+        EntityType::AttributeEntity(a) if !a.flags.invisible => (
+            &a.common,
+            &a.value,
+            a.insertion_point,
+            a.alignment_point,
+            a.height,
+            a.rotation,
+            a.width_factor,
+            a.oblique_angle,
+            &a.text_style,
+            a.text_generation_flags,
+            a.horizontal_alignment,
+            a.vertical_alignment,
+            a.normal,
+        ),
+        // A constant attribute shows its definition's value.
+        EntityType::AttributeDefinition(d) if d.flags.constant && !d.flags.invisible => (
+            &d.common,
+            &d.default_value,
+            d.insertion_point,
+            d.alignment_point,
+            d.height,
+            d.rotation,
+            d.width_factor,
+            d.oblique_angle,
+            &d.text_style,
+            d.text_generation_flags,
+            d.horizontal_alignment,
+            d.vertical_alignment,
+            d.normal,
+        ),
+        _ => return None,
+    };
+    let mut text = acadrust::Text::with_value(value, first);
+    text.common = common.clone();
+    text.height = height;
+    text.rotation = rotation;
+    text.width_factor = width;
+    text.oblique_angle = oblique;
+    text.style = style.to_owned();
+    text.generation_flags = flags;
+    text.horizontal_alignment = h(ha);
+    text.vertical_alignment = v(va);
+    text.normal = normal;
+    let left = matches!(ha, AH::Left) && matches!(va, AV::Baseline);
+    text.alignment_point = (!left).then_some(second);
+    Some(EntityType::Text(text))
+}
+
 /// An attribute's frame: its DXF justification codes (72 and 74).
 #[allow(clippy::too_many_arguments)]
 fn attribute_frame(

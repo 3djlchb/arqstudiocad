@@ -474,3 +474,160 @@ fn a_copied_block_has_attributes_of_its_own_and_survives_saving() {
         assert_eq!(handles.len(), 4, "{name}: every handle distinct");
     }
 }
+
+/// Block ROTULO, base (0,0): a LINE (0,0)-(4,0), a constant attribute
+/// "CONST" and an ordinary one (tag NUM); a reference at (10,5) whose NUM is
+/// "P7", on layer A-PUERTAS, with a centered attribute ALT "C" hanging from
+/// (12,8).
+fn label_drawing() -> (Document, EntityId) {
+    let block: Vec<&str> = vec![
+        "0", "BLOCK", "8", "0", "2", "ROTULO", "70", "2", "10", "0", "20", "0", "30", "0", "3",
+        "ROTULO", //
+        "0", "LINE", "8", "0", "10", "0", "20", "0", "30", "0", "11", "4", "21", "0", "31",
+        "0", //
+        "0", "ATTDEF", "8", "0", "10", "0", "20", "1", "30", "0", "40", "0.5", "1", "CONST", "3",
+        "Fixed", "2", "FIJO", "70", "2", //
+        "0", "ATTDEF", "8", "0", "10", "0", "20", "2", "30", "0", "40", "0.5", "1", "", "3",
+        "Number", "2", "NUM", "70", "0", //
+        "0", "ENDBLK", "8", "0",
+    ];
+    let insert: Vec<&str> = vec![
+        "0",
+        "INSERT",
+        "8",
+        "A-PUERTAS",
+        "66",
+        "1",
+        "2",
+        "ROTULO",
+        "10",
+        "10",
+        "20",
+        "5",
+        "30",
+        "0", //
+        "0",
+        "ATTRIB",
+        "8",
+        "A-PUERTAS",
+        "10",
+        "10",
+        "20",
+        "7",
+        "30",
+        "0",
+        "40",
+        "0.5",
+        "1",
+        "P7",
+        "2",
+        "NUM",
+        "70",
+        "0", //
+        "0",
+        "ATTRIB",
+        "8",
+        "A-PUERTAS",
+        "10",
+        "11",
+        "20",
+        "8",
+        "30",
+        "0",
+        "40",
+        "0.5",
+        "1",
+        "C",
+        "2",
+        "ALT",
+        "70",
+        "0",
+        "72",
+        "1",
+        "11",
+        "12",
+        "21",
+        "8",
+        "31",
+        "0", //
+        "0",
+        "SEQEND",
+        "8",
+        "A-PUERTAS",
+    ];
+    let doc = dxf(LAYERS, &[&block], &[&insert]);
+    let id = doc.entities()[0].id();
+    (doc, id)
+}
+
+fn texts(doc: &Document) -> Vec<(String, String, (f64, f64))> {
+    doc.entities()
+        .iter()
+        .filter_map(|e| {
+            let t = e.text()?;
+            let a = t.anchor();
+            let round = |v: f64| (v * 1e9).round() / 1e9;
+            Some((
+                t.content().to_owned(),
+                e.layer().to_owned(),
+                (round(a.x()), round(a.y())),
+            ))
+        })
+        .collect()
+}
+
+#[test]
+fn explode_keeps_attribute_values_as_texts() {
+    let (mut doc, id) = label_drawing();
+    let created = doc.explode_insert(id).unwrap();
+    let kinds: Vec<_> = doc.entities().iter().map(|e| e.kind()).collect();
+    assert!(
+        !kinds.contains(&"ATTDEF") && !kinds.contains(&"ATTRIB"),
+        "{kinds:?}"
+    );
+    assert!(!kinds.contains(&"INSERT"));
+    let mut found = texts(&doc);
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    // The constant attribute sits on layer 0 in the block, as its line:
+    // both land where EXPLODE puts the block's layer-0 contents.
+    let line_layer = doc
+        .entities()
+        .iter()
+        .find(|e| e.kind() == "LINE")
+        .map(|e| e.layer().to_owned())
+        .unwrap();
+    assert_eq!(
+        found,
+        [
+            ("C".to_owned(), "A-PUERTAS".to_owned(), (12.0, 8.0)),
+            ("CONST".to_owned(), line_layer, (10.0, 6.0)),
+            ("P7".to_owned(), "A-PUERTAS".to_owned(), (10.0, 7.0)),
+        ],
+        "the value shown, where it was drawn; the definition's NUM is not copied"
+    );
+    assert_eq!(created.len(), 4, "the line and three texts");
+    let centered = doc
+        .entities()
+        .into_iter()
+        .find(|e| e.text().is_some_and(|t| t.content() == "C"))
+        .unwrap();
+    assert_eq!(
+        centered.text().unwrap().justification(),
+        "Center",
+        "justified as it was"
+    );
+}
+
+#[test]
+fn explode_drops_invisible_attributes() {
+    let (mut doc, id) = label_drawing();
+    if let Some(EntityType::Insert(insert)) =
+        doc.cad_mut().get_entity_mut(acadrust::Handle::new(id))
+    {
+        insert.attributes[0].flags.invisible = true;
+    }
+    doc.explode_insert(id).unwrap();
+    let mut found: Vec<_> = texts(&doc).into_iter().map(|t| t.0).collect();
+    found.sort();
+    assert_eq!(found, ["C", "CONST"], "P7, invisible, is gone");
+}

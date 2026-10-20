@@ -150,9 +150,9 @@ def test_objects_that_cannot_be_transformed_yet_stop_the_command(tmp_path: Path)
 
 
 def blocks(tmp_path: Path, attribute: bool = False) -> Path:
-    """Block PUERTA, base (1,1), one LINE to (2,1) (and, with
-    ``attribute``, an attribute definition); an INSERT of it at (10,5) and
-    a LINE (0,0)-(1,0)."""
+    """Block PUERTA, base (1,1), one LINE to (2,1); an INSERT of it at
+    (10,5) and a LINE (0,0)-(1,0). With ``attribute``, the block defines
+    NUM and the reference's NUM is "P-01" at (10,6)."""
     codes = ["0", "SECTION", "2", "BLOCKS"]
     codes += ["0", "BLOCK", "8", "0", "2", "PUERTA", "70", "0", "10", "1", "20", "1", "30", "0"]
     codes += ["3", "PUERTA", "0", "LINE", "8", "0", "10", "1", "20", "1", "30", "0"]
@@ -162,7 +162,12 @@ def blocks(tmp_path: Path, attribute: bool = False) -> Path:
         codes += ["1", "", "2", "NUM", "3", "Number", "70", "0"]
     codes += ["0", "ENDBLK", "8", "0", "0", "ENDSEC"]
     codes += ["0", "SECTION", "2", "ENTITIES"]
-    codes += ["0", "INSERT", "8", "0", "2", "PUERTA", "10", "10", "20", "5", "30", "0"]
+    if attribute:
+        codes += ["0", "INSERT", "8", "0", "66", "1", "2", "PUERTA", "10", "10", "20", "5"]
+        codes += ["30", "0", "0", "ATTRIB", "8", "0", "10", "10", "20", "6", "30", "0"]
+        codes += ["40", "0.2", "1", "P-01", "2", "NUM", "70", "0", "0", "SEQEND", "8", "0"]
+    else:
+        codes += ["0", "INSERT", "8", "0", "2", "PUERTA", "10", "10", "20", "5", "30", "0"]
     codes += ["0", "LINE", "8", "0", "10", "0", "20", "0", "30", "0", "11", "1", "21", "0"]
     codes += ["31", "0", "0", "ENDSEC", "0", "EOF", ""]
     path = tmp_path / "bloques.dxf"
@@ -189,7 +194,7 @@ def test_explode_replaces_a_block_reference_with_its_contents(tmp_path: Path) ->
     assert [e.id for e in document.get_entities()] == [door.id, line.id]
 
 
-def test_explode_refuses_what_it_cannot_explode(tmp_path: Path) -> None:
+def test_explode_refuses_what_is_not_a_block_and_keeps_attribute_values(tmp_path: Path) -> None:
     h = Harness()
     document = h.session.open_document(blocks(tmp_path))
     door, line = document.get_entities()
@@ -201,8 +206,10 @@ def test_explode_refuses_what_it_cannot_explode(tmp_path: Path) -> None:
     door = with_attribute.get_entities()[0]
     h.session.select(with_attribute, [door.id])
     h.run("EXPLODE")
-    assert h.messages()[-1] == "This block cannot be exploded without losing data."
-    assert door.id in [e.id for e in with_attribute.get_entities()], "nothing lost"
+    # Its attribute's value stays, as a text where it was drawn (ADR 0023).
+    texts = [e.text for e in with_attribute.get_entities() if e.text is not None]
+    assert [(t.content, t.anchor) for t in texts] == [("P-01", (10.0, 6.0))]
+    assert "ATTDEF" not in [e.kind for e in with_attribute.get_entities()]
 
 
 # The commands
