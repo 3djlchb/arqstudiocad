@@ -4,6 +4,7 @@ properties and history panels, language switch and About."""
 import platform
 from functools import partial
 from html import escape
+from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
@@ -20,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from arqstudiocad import _core
 from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
-from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry
+from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry, open_command
 from arqstudiocad.commands.grips import grip_edit, shown_grips
 from arqstudiocad.core import (
     CadDocument,
@@ -32,6 +33,7 @@ from arqstudiocad.core import (
 from arqstudiocad.credits import load_credits
 from arqstudiocad.events import (
     ActiveDocumentChanged,
+    CommandMessage,
     CommandPrompt,
     DocumentChanged,
     DocumentClosed,
@@ -44,6 +46,7 @@ from arqstudiocad.events import (
 )
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
 from arqstudiocad.product import APP_NAME
+from arqstudiocad.recent_files import same_file
 from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
@@ -57,6 +60,7 @@ from arqstudiocad.ui.layers_panel import LayersPanel
 from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
+from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
 from arqstudiocad.ui.viewport import Viewport
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
@@ -187,8 +191,15 @@ class MainWindow(QMainWindow):
 
         menu_bar = self.menuBar()
         self._file_menu = menu_bar.addMenu("")
+        # File > Open Recent, after Open: the last drawings opened or saved.
+        self.recent_menu = RecentFilesMenu(settings, self)
+        self.recent_menu.open_requested.connect(self._open_recent)
+        self.events.document_opened.connect(self._remember_opened)
+        self.events.document_saved.connect(lambda event: self.recent_menu.add(event.path))
         for name in ("NEW", "OPEN", "SAVE", "SAVEAS", "CLOSE"):
             self._file_menu.addAction(self.command_actions[name])
+            if name == "OPEN":
+                self._file_menu.addMenu(self.recent_menu)
         self._file_menu.addSeparator()
         self._exit_action = self._file_menu.addAction("")
         self._exit_action.setShortcut(QKeySequence.StandardKey.Quit)
@@ -266,6 +277,7 @@ class MainWindow(QMainWindow):
         """Set every user-visible text from the active language."""
         self._update_title()
         self._file_menu.setTitle(tr("&File"))
+        self.recent_menu.retranslate()
         self._exit_action.setText(tr("E&xit"))
         self._edit_menu.setTitle(tr("&Edit"))
         self._view_menu.setTitle(tr("&View"))
@@ -347,6 +359,30 @@ class MainWindow(QMainWindow):
 
     def _document(self, document_id: int) -> CadDocument | None:
         return next((d for d in self.session.documents if d.id == document_id), None)
+
+    def _remember_opened(self, event: DocumentOpened) -> None:
+        if event.path is not None:  # a new drawing has no file yet
+            self.recent_menu.add(event.path)
+
+    def _open_recent(self, path: Path) -> None:
+        """A recent drawing chosen: shown if open, else opened; one that no
+        longer exists leaves the list with a message."""
+        for document in self.session.documents:
+            if document.path is not None and same_file(document.path, path):
+                self.session.activate(document)
+                return
+        if not path.is_file():
+            self.session.bus.publish(
+                CommandMessage(
+                    tr(
+                        "{name} was not found; it leaves the recent files.",
+                        name=path.name,
+                    )
+                )
+            )
+            self.recent_menu.remove(path)
+            return
+        self.runner.start(open_command(path))
 
     def _on_document_opened(self, event: DocumentOpened) -> None:
         document = self._document(event.document_id)
