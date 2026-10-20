@@ -54,6 +54,17 @@ def open_(ctx: CommandContext) -> CommandScript:
             raise CommandCancelledError()
     else:
         path = Path((yield ctx.ask(tr("File to open"))))
+    yield from open_file(ctx, path)
+
+
+def open_command(path: Path) -> Command:
+    """OPEN for one file chosen beforehand (File > Open Recent): it asks
+    nothing, and Enter on an empty command line does not repeat it."""
+    return Command("OPEN", lambda ctx: open_file(ctx, path), repeat=False)
+
+
+def open_file(ctx: CommandContext, path: Path) -> CommandScript:
+    """Opens ``path`` in the background and reports what it holds."""
     app = ctx.session.app
     document = yield ctx.background(
         lambda: app.open_document(path), tr("Opening {name}…", name=path.name)
