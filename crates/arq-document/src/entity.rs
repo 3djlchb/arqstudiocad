@@ -94,13 +94,15 @@ pub struct TextData {
     pub(crate) justification: &'static str,
     pub(crate) width_factor: f64,
     pub(crate) oblique: f64,
+    pub(crate) width: f64,
     pub(crate) multiline: bool,
     pub(crate) sizes_editable: bool,
     pub(crate) content_editable: bool,
 }
 
 impl TextData {
-    /// What it says, as stored (MTEXT keeps its formatting codes).
+    /// What it says: a TEXT's line; an MTEXT's paragraphs as lines, or its
+    /// content as stored when it holds formatting codes.
     pub fn content(&self) -> &str {
         &self.content
     }
@@ -140,6 +142,12 @@ impl TextData {
     /// Oblique angle, radians (0 for MTEXT).
     pub fn oblique(&self) -> f64 {
         self.oblique
+    }
+
+    /// An MTEXT's width, the one its paragraphs wrap to (0: they do not
+    /// wrap); 0 for a TEXT.
+    pub fn width(&self) -> f64 {
+        self.width
     }
 
     /// Whether it is an MTEXT.

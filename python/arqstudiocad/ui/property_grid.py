@@ -33,6 +33,10 @@ from arqstudiocad.ui.panel_style import apply_property_grid_style
 KEY = Qt.ItemDataRole.UserRole
 TITLE = Qt.ItemDataRole.UserRole + 1
 EDIT_KEY = Qt.ItemDataRole.UserRole + 2
+DIALOG = Qt.ItemDataRole.UserRole + 3
+
+#: The value a double click on a property edited in a window sends.
+EDIT_IN_DIALOG = "__edit_in_dialog__"
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,8 @@ class Property:
     choice_value: object = None
     accent: bool = False
     searchable: bool = False
+    #: Edited in a window, opened by a double click (several lines of text).
+    dialog: bool = False
 
 
 @dataclass(frozen=True)
@@ -205,6 +211,7 @@ class PropertyGrid(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         header.setStretchLastSection(True)
         self.tree.itemClicked.connect(self._on_clicked)
+        self.tree.itemDoubleClicked.connect(self._on_double_clicked)
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemExpanded.connect(self._remember)
         self.tree.itemCollapsed.connect(self._remember)
@@ -275,9 +282,13 @@ class PropertyGrid(QWidget):
                                 )
                             )
                             self.tree.setItemWidget(row, 1, editor)
+                        elif prop.dialog:
+                            row.setData(1, DIALOG, True)
                         elif prop.editable:
                             row.setFlags(row.flags() | Qt.ItemFlag.ItemIsEditable)
-                        row.setToolTip(1, prop.value)
+                        row.setToolTip(
+                            1, tr("Double-click to edit.") if prop.dialog else prop.value
+                        )
                     else:
                         name, value = prop
                         row = QTreeWidgetItem([name, value])
@@ -338,6 +349,11 @@ class PropertyGrid(QWidget):
         if self._filling or index < 0:
             return
         self.property_edited.emit(key, editor.itemData(index))
+
+    def _on_double_clicked(self, item: QTreeWidgetItem) -> None:
+        """A double click on a property edited in a window asks for it."""
+        if item.data(1, DIALOG):
+            self.property_edited.emit(item.data(1, EDIT_KEY), EDIT_IN_DIALOG)
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int) -> None:
         if self._filling or column != 1:

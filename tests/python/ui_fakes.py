@@ -37,6 +37,8 @@ class QuietUi:
     save_changes: Literal["yes", "no", "cancel"] = "no"
     overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
     accept_losses: bool = False
+    #: What the multiline text window returns (None: cancelled).
+    text_answer: str | None = None
     zooms: Zooms = field(default_factory=Zooms)
     view_for: Callable[[CadDocument], ViewControl | None] | None = None
     panel_for: Callable[[str], bool] | None = None
@@ -68,6 +70,10 @@ class QuietUi:
         # Asking again and again for the same save is a bug: fail, do not hang.
         assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
         return self.accept_losses
+
+    def edit_text(self, title: str, text: str = "") -> str | None:
+        self.asked.append(f"text {title}: {text}")
+        return self.text_answer
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.zooms if self.view_for is None else self.view_for(document)

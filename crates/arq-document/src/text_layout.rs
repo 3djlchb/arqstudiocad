@@ -63,6 +63,8 @@ pub(crate) struct TextFrame {
     pub(crate) backward: bool,
     pub(crate) upside_down: bool,
     pub(crate) normal: PlanNormal,
+    /// MTEXT: the width its paragraphs wrap to, in drawing units.
+    pub(crate) wrap: Option<f64>,
 }
 
 /// A text laid out: its strokes and their box, in world coordinates.
@@ -263,9 +265,17 @@ pub(crate) fn layout(frame: &TextFrame) -> Option<Layout> {
     if !(frame.height > 0.0 && finite.iter().all(|v| v.is_finite())) {
         return None;
     }
-    let lines: Vec<_> = frame.lines.iter().map(|l| line_strokes(l)).collect();
     let height = frame.height;
     let mut scale_x = height / CAP * frame.width_factor.abs().max(1e-6);
+    let wrapped: Vec<String> = match frame.wrap {
+        Some(width) if width > 0.0 && width.is_finite() => frame
+            .lines
+            .iter()
+            .flat_map(|line| wrap_line(line, width / scale_x))
+            .collect(),
+        _ => frame.lines.clone(),
+    };
+    let lines: Vec<_> = wrapped.iter().map(|l| line_strokes(l)).collect();
     let mut scale_y = height / CAP;
     let mut rotation = frame.rotation;
     let mut anchor = frame.first;
@@ -345,6 +355,27 @@ pub(crate) fn layout(frame: &TextFrame) -> Option<Layout> {
         Point2::new(max.0, max.1).ok()?,
     );
     Some(Layout { strokes, bounds })
+}
+
+/// A paragraph broken at spaces into lines no wider than `width` font
+/// units; a word wider than that stays whole on a line of its own.
+fn wrap_line(text: &str, width: f64) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        let candidate = if current.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{current} {word}")
+        };
+        if current.is_empty() || line_strokes(&candidate).1 <= width {
+            current = candidate;
+        } else {
+            lines.push(std::mem::replace(&mut current, word.to_owned()));
+        }
+    }
+    lines.push(current);
+    lines
 }
 
 /// The plain lines of MTEXT content: paragraphs (`\P`) become lines; font,

@@ -19,6 +19,7 @@ from arqstudiocad.core import (
 from arqstudiocad.events import CommandMessage, DocumentChanged, Event, SelectionChanged
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
+from arqstudiocad.ui import text_dialog
 from arqstudiocad.ui.color_picker import (
     ColorPickerDialog,
     color_name,
@@ -26,7 +27,7 @@ from arqstudiocad.ui.color_picker import (
     remember_color,
 )
 from arqstudiocad.ui.event_bridge import QtEventBridge
-from arqstudiocad.ui.property_grid import Choice, Property, PropertyGrid, Section
+from arqstudiocad.ui.property_grid import EDIT_IN_DIALOG, Choice, Property, PropertyGrid, Section
 
 _VARIES = "__varies__"
 _PICK_COLOR = "__pick_color__"
@@ -260,12 +261,17 @@ def _text_section(texts: Sequence[CadText]) -> Section:
     (ADR 0022); the rest is shown."""
     sizes = all(text.sizes_editable for text in texts)
     content = _common([text.content for text in texts])
+    editable = all(text.content_editable for text in texts)
+    multiline = any(text.is_multiline for text in texts)
+    shown = content if isinstance(content, str) and content != _VARIES else tr("*Varies*")
     rows: list[tuple[str, str] | Property] = [
         Property(
             "text.content",
             tr("Contents"),
-            content if isinstance(content, str) and content != _VARIES else tr("*Varies*"),
-            editable=all(text.content_editable for text in texts),
+            # Paragraphs on one row; a double click edits them in a window.
+            shown.replace("\n", " ¶ "),
+            editable=editable and not multiline,
+            dialog=editable and multiline,
         ),
         Property(
             "text.height",
@@ -285,6 +291,11 @@ def _text_section(texts: Sequence[CadText]) -> Section:
             _metadata_text(_common([justification_name(text.justification) for text in texts])),
         ),
         (tr("Width factor"), _number_text(_common([text.width_factor for text in texts]))),
+        *(
+            [(tr("Width"), _number_text(_common([text.width for text in texts])))]
+            if multiline
+            else []
+        ),
         (
             tr("Oblique angle"),
             _number_text(_common([math.degrees(text.oblique) for text in texts])),
@@ -552,7 +563,17 @@ class PropertiesPanel(QDockWidget):
     def _edit_text(self, document: CadDocument, ids: Sequence[int], key: str, text: str) -> None:
         """One text property for every selected text, one undo step."""
         if key == "text.content":
-            self._session.edit(document, lambda doc: doc.set_text(ids, content=text))
+            if text == EDIT_IN_DIALOG:
+                entities = document.get_entities(ids)
+                first = entities[0].text if entities else None
+                typed = text_dialog.ask_text(
+                    self, tr("Multiline text"), "" if first is None else first.content
+                )
+                if typed is None:
+                    return
+                text = typed
+            content = text
+            self._session.edit(document, lambda doc: doc.set_text(ids, content=content))
             return
         value, valid = QLocale().toDouble(text)
         if not valid or not math.isfinite(value):

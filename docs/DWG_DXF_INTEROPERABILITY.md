@@ -32,7 +32,7 @@ when its parameters change).
 | Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ as a whole, attributes follow; EXPLODE without attributes | — | MINSERT arrays not transformed |
 | Dimensions | ✅ | 100 % / 100 % | ✅ as AutoCAD drew them (their block) | ○ | ○ | phase 04 |
 | Hatches | ✅ | 100 % / 100 % | ◐ boundaries, no fill pattern | ○ | ○ | phase 04 |
-| Texts, MTEXT, attributes | ✅ | 100 % / 100 % | ◐ letters in a built-in stroke font; MTEXT as plain lines | ◐ TEXT and MTEXT as a whole; content, height, rotation (ADR 0022) | — | the drawing's fonts (SHX, TrueType) and formatted MTEXT in phase 04; attributes with their block |
+| Texts, MTEXT, attributes | ✅ | 100 % / 100 % | ◐ letters in a built-in stroke font; MTEXT as plain lines, wrapped to its width | ◐ TEXT and MTEXT created and transformed as a whole; content, height, rotation (ADR 0022) | — | the drawing's fonts (SHX, TrueType) and formatted MTEXT in phase 04; attributes with their block |
 | Leaders, multileaders | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Tables | ✅ | 100 % / 100 % | ◐ broken into lines | ○ | ○ | |
 | Images, underlays, wipeouts | ✅ | 100 % / 100 % | ◐ frame or box | ○ | — | |

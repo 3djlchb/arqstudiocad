@@ -11,8 +11,8 @@ use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
 use crate::ocs::plan_normal;
 use crate::translate::{
-    bounds_of, color_to_codec, edit_text, handle, is_whole_transformable, new_entity, new_text,
-    read_entity, transform_whole, write_plan,
+    attachment_named, bounds_of, color_to_codec, edit_text, handle, is_whole_transformable,
+    new_entity, new_mtext, new_text, read_entity, transform_whole, write_plan,
 };
 
 impl Document {
@@ -280,16 +280,59 @@ impl Document {
         check_single_line(content)?;
         check_text_sizes(Some(height), Some(rotation))?;
         let layer = self.current_layer().name().to_owned();
-        let wanted = self.cad().header.current_text_style_name.clone();
-        let style = if self.cad().text_styles.get(&wanted).is_some() {
-            wanted
-        } else {
-            "Standard".to_owned()
-        };
+        let style = self.current_text_style();
         let text = new_text(content, anchor, height, rotation, &layer, &style);
         let h = self.cad_mut().add_entity(text)?;
         self.sync_entity(h.value());
         Ok(h.value())
+    }
+
+    /// Writes an MTEXT on the current layer with the current text style
+    /// (ADR 0022 D6): `content` is plain text whose line breaks are
+    /// paragraphs, wrapped to `width` (0: no wrapping), hanging from
+    /// `anchor` as `justification` says (`"TopLeft"`…); returns its id.
+    pub fn add_mtext(
+        &mut self,
+        content: &str,
+        anchor: Point2,
+        height: f64,
+        rotation: f64,
+        width: f64,
+        justification: &str,
+    ) -> DocumentResult<EntityId> {
+        if content.trim().is_empty() {
+            return Err(DocumentError::InvalidText(
+                "a text needs at least one character",
+            ));
+        }
+        check_text_sizes(Some(height), Some(rotation))?;
+        if !(width.is_finite() && width >= 0.0) {
+            return Err(DocumentError::InvalidText(
+                "a text width must be a finite number, zero or greater",
+            ));
+        }
+        let attachment = attachment_named(justification).ok_or(DocumentError::InvalidText(
+            "unknown multiline text justification",
+        ))?;
+        let layer = self.current_layer().name().to_owned();
+        let style = self.current_text_style();
+        let text = new_mtext(
+            content, anchor, height, rotation, width, attachment, &layer, &style,
+        );
+        let h = self.cad_mut().add_entity(text)?;
+        self.sync_entity(h.value());
+        Ok(h.value())
+    }
+
+    /// The current text style (TEXTSTYLE), or "Standard" when the drawing
+    /// lacks it.
+    fn current_text_style(&self) -> String {
+        let wanted = &self.cad().header.current_text_style_name;
+        if self.cad().text_styles.get(wanted).is_some() {
+            wanted.clone()
+        } else {
+            "Standard".to_owned()
+        }
     }
 
     /// Sets what is given of a text's content, height and rotation (world
@@ -313,7 +356,13 @@ impl Document {
                     "this MTEXT holds formatting codes; its content is not edited yet".to_owned(),
                 ));
             }
-            if !text.is_multiline() {
+            if text.is_multiline() {
+                if content.trim().is_empty() {
+                    return Err(DocumentError::InvalidText(
+                        "a text needs at least one character",
+                    ));
+                }
+            } else {
                 check_single_line(content)?;
             }
         }

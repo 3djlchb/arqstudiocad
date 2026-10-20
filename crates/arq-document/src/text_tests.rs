@@ -249,6 +249,79 @@ fn texts_are_written_and_edited_with_checked_values() {
 }
 
 #[test]
+fn multiline_texts_are_written_and_edited_as_plain_paragraphs() {
+    let mut doc = Document::new();
+    let id = doc
+        .add_mtext(
+            "Uno dos\nTres {4} \\ cinco",
+            p(1.0, 2.0),
+            2.0,
+            0.0,
+            30.0,
+            "MiddleCenter",
+        )
+        .unwrap();
+    let raw = match doc.cad().get_entity(crate::translate::handle(id)) {
+        Some(EntityType::MText(m)) => m.value.clone(),
+        other => panic!("not an MTEXT: {other:?}"),
+    };
+    assert_eq!(
+        raw, r"Uno dos\PTres \{4\} \\ cinco",
+        "stored as MTEXT codes"
+    );
+    let t = data(&doc, id);
+    assert_eq!(
+        t.content(),
+        "Uno dos\nTres {4} \\ cinco",
+        "read back as plain lines"
+    );
+    assert!(t.is_multiline() && t.content_editable());
+    assert_eq!((t.justification(), t.width()), ("MiddleCenter", 30.0));
+    assert!(near(t.anchor(), 1.0, 2.0));
+    assert_eq!(doc.entity(id).unwrap().kind(), "MTEXT");
+
+    doc.set_text(id, Some("a\nb"), None, None).unwrap();
+    assert_eq!(
+        data(&doc, id).content(),
+        "a\nb",
+        "an MTEXT takes several lines"
+    );
+    for (content, height, width, justification) in [
+        ("  ", 2.0, 0.0, "TopLeft"),
+        ("x", 0.0, 0.0, "TopLeft"),
+        ("x", 2.0, -1.0, "TopLeft"),
+        ("x", 2.0, 0.0, "Sideways"),
+    ] {
+        assert!(matches!(
+            doc.add_mtext(content, p(0.0, 0.0), height, 0.0, width, justification),
+            Err(DocumentError::InvalidText(_))
+        ));
+    }
+    assert!(matches!(
+        doc.set_text(id, Some(" "), None, None),
+        Err(DocumentError::InvalidText(_))
+    ));
+}
+
+#[test]
+fn an_mtext_wraps_to_its_width() {
+    let mut doc = Document::new();
+    let words = "uno dos tres cuatro cinco seis";
+    let wide = doc
+        .add_mtext(words, p(0.0, 0.0), 2.0, 0.0, 0.0, "TopLeft")
+        .unwrap();
+    let narrow = doc
+        .add_mtext(words, p(0.0, 0.0), 2.0, 0.0, 15.0, "TopLeft")
+        .unwrap();
+    let (wide, narrow) = (
+        doc.entity(wide).unwrap().bounds().unwrap(),
+        doc.entity(narrow).unwrap().bounds().unwrap(),
+    );
+    assert!(narrow.width() <= 15.0 + 1e-9 && wide.width() > 15.0);
+    assert!(narrow.height() > wide.height(), "more lines");
+}
+
+#[test]
 fn a_texts_box_is_the_box_of_its_letters() {
     let mut doc = Document::new();
     let id = doc.add_text("Hola mundo", p(0.0, 0.0), 2.5, 0.0).unwrap();
