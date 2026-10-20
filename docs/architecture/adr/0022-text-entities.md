@@ -64,9 +64,31 @@ are shown, not edited.
 
 ### D4 — MTEXT content
 
-An MTEXT's content is editable in Properties only when it holds no
-formatting codes (`\P`, `{\f…}`…); otherwise it is shown as stored and not
-edited, so no formatting is lost before the MTEXT editor of phase 04.
+An MTEXT's content is editable only when it holds no formatting codes
+(`{\f…}`, `\H…`, `\C…`…); otherwise it is shown as stored and not edited,
+so no formatting is lost before the MTEXT editor of phase 04. Paragraph
+breaks (`\P`) and the escaped characters `\\`, `\{` and `\}` are not
+formatting (amended 2026-10-19, D6): such content is read and written as
+plain lines of text.
+
+### D6 — Basic multiline text in 02.8 *(maintainer, 2026-10-19)*
+
+As other CADs, both single-line (TEXT) and multiline (MTEXT) texts are
+created in 02.8; the formatted MTEXT stays in phase 04.
+
+- **MTEXT command** (aliases `T` and `MT`, Spanish `TEXTOM`): first corner,
+  then the opposite corner, with the options Height, Justify (the nine
+  attachment points, `TL` to `BR`) and Rotation; then the text, in a window
+  of several lines (or line by line on the command line without an
+  interface, until an empty line). The rectangle's width is the MTEXT's
+  width; its anchor is the rectangle's point that the justification names.
+  It uses the current text style and layer and is one undo step.
+- **Word wrapping**: paragraphs wrap at word boundaries to the MTEXT's width
+  (a word longer than the width stays whole on its line).
+- **Editing**: Properties shows an MTEXT's paragraphs and edits them in the
+  same window (double click on Contents); its width is shown.
+- **Phase 04** keeps bold, italic, fonts, colors and sizes within the text,
+  columns, the in-place editor and the drawing's own fonts.
 
 ### D5 — Ownership
 
@@ -85,4 +107,6 @@ they are all-or-nothing like every core operation.
   license, no API change) and is recorded in `THIRD_PARTY.md`.
 - MIRROR changes a text's justification when it must reverse it; the
   mirrored drawing looks as AutoCAD's with `MIRRTEXT = 0`.
-- MTEXT with formatting stays read-only in content until phase 04.
+- MTEXT with formatting stays read-only in content until phase 04;
+  multiline text made in ArqStudioCAD, which holds only paragraphs, is
+  edited freely.

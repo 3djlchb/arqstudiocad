@@ -17,8 +17,8 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **On hold:** milestone 02.7's GPU viewport waits for the reference
   machine (GT 730 on LMDE 7), its release gate (ADR 0007); the work
   resumes when the maintainer has it at hand (maintainer, 2026-10-18).
-- **Current:** milestone 02.8; texts are done (ADR 0022), block content
-  editing is next.
+- **Current:** milestone 02.8: basic multiline text (MTEXT command, word
+  wrapping; ADR 0022 D6), then block content editing.
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu
