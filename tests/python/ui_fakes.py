@@ -39,6 +39,8 @@ class QuietUi:
     accept_losses: bool = False
     #: What the multiline text window returns (None: cancelled).
     text_answer: str | None = None
+    #: The block INSERT's window chooses (None: cancelled).
+    block_answer: str | None = None
     zooms: Zooms = field(default_factory=Zooms)
     view_for: Callable[[CadDocument], ViewControl | None] | None = None
     panel_for: Callable[[str], bool] | None = None
@@ -70,6 +72,10 @@ class QuietUi:
         # Asking again and again for the same save is a bug: fail, do not hang.
         assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
         return self.accept_losses
+
+    def choose_block(self, names: Sequence[str]) -> str | None:
+        self.asked.append(f"block {', '.join(names)}")
+        return self.block_answer
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         self.asked.append(f"text {title}: {text}")

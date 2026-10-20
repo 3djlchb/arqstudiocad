@@ -151,6 +151,37 @@ impl CadDocument {
         })
     }
 
+    /// Makes block `name` from `ids`, base point `base`, and puts a
+    /// reference to it in their place (BLOCK, ADR 0023 D2).
+    pub fn create_block(
+        &mut self,
+        name: &str,
+        base: Point2,
+        ids: &[EntityId],
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        let ids = distinct(ids);
+        self.transact("BLOCK", |doc| {
+            for &id in &ids {
+                let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &e)?;
+            }
+            Ok(doc.create_block(name, base, &ids)?)
+        })
+    }
+
+    /// Places block `name` (INSERT, ADR 0023 D2).
+    pub fn insert_block(
+        &mut self,
+        name: &str,
+        point: Point2,
+        scale: f64,
+        rotation: f64,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("INSERT", |doc| {
+            Ok(doc.insert_block(name, point, scale, rotation)?)
+        })
+    }
+
     /// Writes a multiline text on the current layer (MTEXT, ADR 0022 D6).
     #[allow(clippy::too_many_arguments)]
     pub fn add_mtext(

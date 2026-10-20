@@ -254,8 +254,10 @@ class MainWindow(QMainWindow):
         self._view_menu.addMenu(self.workspaces.menu)
         self.statusBar().addPermanentWidget(self.workspaces.button)
 
+        self._insert_menu = menu_bar.addMenu("")
+        self._insert_menu.addAction(self.command_actions["INSERT"])
         self._draw_menu = menu_bar.addMenu("")
-        for name in ("LINE", "CIRCLE", "ARC", "MTEXT", "TEXT"):
+        for name in ("LINE", "CIRCLE", "ARC", "MTEXT", "TEXT", "BLOCK"):
             self._draw_menu.addAction(self.command_actions[name])
         self._modify_menu = menu_bar.addMenu("")
         for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "EXPLODE"):
@@ -294,6 +296,7 @@ class MainWindow(QMainWindow):
         self._theme_menu.setTitle(tr("T&heme"))
         for theme, theme_action in self.theme_actions.items():
             theme_action.setText(theme_title(theme))
+        self._insert_menu.setTitle(tr("&Insert"))
         self._draw_menu.setTitle(tr("&Draw"))
         self._modify_menu.setTitle(tr("&Modify"))
         self._help_menu.setTitle(tr("&Help"))

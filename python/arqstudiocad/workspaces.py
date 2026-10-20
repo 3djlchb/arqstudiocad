@@ -122,6 +122,13 @@ CAD = Discipline(
                 RibbonGroup("layers", lambda: tr("Layers"), ("LAYER",)),
             ),
         ),
+        # Blocks, as AutoCAD's Insert tab (ADR 0023 D4); the block editor
+        # joins them.
+        RibbonTab(
+            "insert",
+            lambda: tr("Insert"),
+            (RibbonGroup("block", lambda: tr("Block"), ("INSERT", "BLOCK")),),
+        ),
         # Annotation tools, as AutoCAD's Annotate tab: texts first; dimensions,
         # leaders and tables join them in phase 04.
         RibbonTab(
@@ -141,7 +148,11 @@ CAD = Discipline(
             lambda: tr("Standard"),
             ("NEW", "OPEN", "SAVE", None, "UNDO", "REDO", None, "ZOOM"),
         ),
-        Toolbar("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC", None, "MTEXT", "TEXT")),
+        Toolbar(
+            "draw",
+            lambda: tr("Draw"),
+            ("LINE", "CIRCLE", "ARC", None, "INSERT", "BLOCK", None, "MTEXT", "TEXT"),
+        ),
         Toolbar(
             "modify",
             lambda: tr("Modify"),

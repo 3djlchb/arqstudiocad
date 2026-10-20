@@ -125,8 +125,11 @@ impl Document {
     /// A snapshot of the entity with this id, in any space: from the own
     /// model when it owns the entity, else from the engine.
     pub fn entity(&self, id: EntityId) -> Option<Entity> {
-        self.owned_view(id)
-            .or_else(|| self.cad().get_entity(handle(id)).map(read_entity))
+        self.owned_view(id).or_else(|| {
+            self.cad()
+                .get_entity(handle(id))
+                .map(|e| self.read_with_extent(e))
+        })
     }
 
     /// Snapshots of every entity in model space, in drawing order.
@@ -135,17 +138,38 @@ impl Document {
             .model_space_entities()
             .map(|e| {
                 let id = e.as_entity().handle().value();
-                self.owned_view(id).unwrap_or_else(|| read_entity(e))
+                self.owned_view(id)
+                    .unwrap_or_else(|| self.read_with_extent(e))
             })
             .collect()
+    }
+
+    /// An engine entity as the core sees it; a block reference or a
+    /// dimension boxed by what it draws, which the engine does not know.
+    fn read_with_extent(&self, e: &EntityType) -> Entity {
+        let mut entity = read_entity(e);
+        if let Some(extent) = self.block_extent(e) {
+            entity.bounds = Some(extent);
+        }
+        entity
+    }
+
+    /// The drawn box of a block reference or a dimension; `None` for other
+    /// kinds, whose own box is right.
+    fn block_extent(&self, e: &EntityType) -> Option<Bounds2> {
+        match e {
+            EntityType::Insert(_) | EntityType::Dimension(_) => self.drawn_extent(e),
+            _ => None,
+        }
     }
 
     /// The plan bounds of every model-space entity that has them, in drawing
     /// order: a cheap pass for spatial queries (no layer names copied).
     pub fn entity_bounds(&self) -> impl Iterator<Item = (EntityId, Bounds2)> + '_ {
-        self.cad()
-            .model_space_entities()
-            .filter_map(|e| Some((e.as_entity().handle().value(), bounds_of(e)?)))
+        self.cad().model_space_entities().filter_map(|e| {
+            let bounds = self.block_extent(e).or_else(|| bounds_of(e))?;
+            Some((e.as_entity().handle().value(), bounds))
+        })
     }
 
     /// Adds plan geometry to model space on `layer`; returns its id.
@@ -217,33 +241,7 @@ impl Document {
             let kind = original.as_entity().entity_type();
             return Err(DocumentError::NotEditable { id, kind });
         }
-        let mut copy = original.clone();
-        let common = copy.common_mut();
-        common.handle = Handle::NULL;
-        common.owner_handle = Handle::NULL;
-        common.raw_record = None;
-        common.reactors.clear();
-        common.xdictionary_handle = None;
-        common.graphic_data = None;
-        if let EntityType::Insert(insert) = &mut copy {
-            for attribute in &mut insert.attributes {
-                let h = self.cad_mut().allocate_handle();
-                let common = &mut attribute.common;
-                common.handle = h;
-                common.raw_record = None;
-                common.reactors.clear();
-                common.xdictionary_handle = None;
-            }
-            insert.seqend_handle = None;
-        }
-        let h = self.cad_mut().add_entity(copy)?;
-        if let Some(EntityType::Insert(insert)) = self.cad_mut().get_entity_mut(h) {
-            for attribute in &mut insert.attributes {
-                attribute.common.owner_handle = h;
-            }
-        }
-        self.sync_entity(h.value());
-        Ok(h.value())
+        self.clone_entity(id, Handle::NULL)
     }
 
     /// Deletes an entity of any type (erasing needs no geometry, D3.4).

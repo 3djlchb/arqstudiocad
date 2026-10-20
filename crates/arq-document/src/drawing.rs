@@ -48,6 +48,19 @@ pub enum Shape {
     Placeholder(Bounds2),
 }
 
+impl Shape {
+    /// The box around the shape.
+    pub fn bounds(self) -> Bounds2 {
+        match self {
+            Shape::Line(l) => l.bounds(),
+            Shape::Circle(c) => c.bounds(),
+            Shape::Arc(a) => a.bounds(),
+            Shape::Point(p) => Bounds2::from_point(p),
+            Shape::Text(b) | Shape::Placeholder(b) => b,
+        }
+    }
+}
+
 /// A shape and the color to draw it in: an ACI index or RGB, never
 /// ByLayer or ByBlock.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -70,6 +83,8 @@ struct LayerStyle {
 struct Painter<'a> {
     doc: &'a Document,
     layers: HashMap<String, LayerStyle>,
+    /// Draw what off and frozen layers hide too (an extent, not a picture).
+    every_layer: bool,
 }
 
 /// Where an entity sits: inside which inserts.
@@ -94,6 +109,21 @@ impl Document {
         let mut out = Vec::new();
         painter.emit(entity, &Context::top(), false, &mut out);
         Some(out)
+    }
+
+    /// The box around everything a block reference or a dimension draws,
+    /// as if every layer were on and thawed: the codec only knows its
+    /// insertion point. `None` when it draws nothing.
+    pub(crate) fn drawn_extent(&self, entity: &EntityType) -> Option<Bounds2> {
+        let painter = Painter {
+            every_layer: true,
+            ..Painter::new(self)
+        };
+        let mut out = Vec::new();
+        painter.emit(entity, &Context::top(), false, &mut out);
+        out.into_iter()
+            .map(|item| item.shape.bounds())
+            .reduce(|a, b| a.union(b))
     }
 
     /// What to draw for every entity in model space, in drawing order.
@@ -148,18 +178,32 @@ impl<'a> Painter<'a> {
                 (l.name().to_uppercase(), style)
             })
             .collect();
-        Self { doc, layers }
+        Self {
+            doc,
+            layers,
+            every_layer: false,
+        }
     }
 
     fn style(&self, layer: &str) -> LayerStyle {
-        self.layers
+        let style = self
+            .layers
             .get(&layer.to_uppercase())
             .copied()
             .unwrap_or(LayerStyle {
                 shown: true,
                 frozen: false,
                 color: DEFAULT_COLOR,
-            })
+            });
+        if self.every_layer {
+            LayerStyle {
+                shown: true,
+                frozen: false,
+                ..style
+            }
+        } else {
+            style
+        }
     }
 
     /// The layer an entity is drawn on: inside a block, layer "0" means the

@@ -19,7 +19,7 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   resumes when the maintainer has it at hand (maintainer, 2026-10-18).
 - **Current:** milestone 02.8: texts are done, single-line and basic
   multiline (ADR 0022); blocks are in progress (ADR 0023: EXPLODE with
-  attributes, then BLOCK and INSERT, then the block editor).
+  attributes and BLOCK and INSERT are done; the block editor is next).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu

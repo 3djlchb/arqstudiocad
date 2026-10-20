@@ -200,15 +200,31 @@ impl Document {
         self.cad_mut().end_entity_change_recording();
         let mut images = Vec::new();
         let mut summary = ChangeSet::default();
+        // Every entity made, a block's contents too, keeps its handle on undo;
+        // only model-space entities are reported (a block's contents are
+        // drawn through the references to it).
+        let mut created = Vec::new();
+        let model = self.cad().header.model_space_block_handle;
+        let in_model = |e: &EntityType| {
+            let owner = e.common().owner_handle;
+            owner.is_null() || owner == model
+        };
         for (handle, before) in rec.recorder.take_before_images() {
             let after = self.cad().get_entity_arc(handle);
             let id = handle.value();
+            let shown = before.as_deref().or(after.as_deref()).is_some_and(in_model);
             match (&before, &after) {
                 (None, None) => continue, // created and deleted in the same change
-                (None, Some(_)) => summary.created.push(id),
-                (Some(_), None) => summary.deleted.push(id),
+                (None, Some(_)) => {
+                    created.push(handle);
+                    if shown {
+                        summary.created.push(id);
+                    }
+                }
+                (Some(_), None) if shown => summary.deleted.push(id),
                 (Some(b), Some(a)) if Shared::ptr_eq(b, a) => continue, // untouched
-                (Some(_), Some(_)) => summary.modified.push(id),
+                (Some(_), Some(_)) if shown => summary.modified.push(id),
+                _ => {}
             }
             images.push(Image {
                 handle,
@@ -217,9 +233,8 @@ impl Document {
             });
         }
         let structure = rec.structure_before.map(|mut before| {
-            let added: Vec<Handle> = summary.created.iter().map(|&id| Handle::new(id)).collect();
             // Undo must not roll back the handle counter: ids are never reused.
-            CadDocument::align_added_entity_structure(&mut before, self.cad(), &added);
+            CadDocument::align_added_entity_structure(&mut before, self.cad(), &created);
             before
         });
         summary.layers_created = rec.layers_created.into_iter().collect();

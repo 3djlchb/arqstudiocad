@@ -153,6 +153,11 @@ class UiServices(Protocol):
         """Whether to save ``name`` although it would lose ``losses``."""
         ...
 
+    def choose_block(self, names: Sequence[str]) -> str | None:
+        """One of the drawing's blocks, chosen in a window (INSERT, ADR 0023
+        D2); None if it was cancelled."""
+        ...
+
     def edit_text(self, title: str, text: str = "") -> str | None:
         """Several lines of plain text typed in a window (MTEXT, ADR 0022
         D6); None if it was cancelled."""

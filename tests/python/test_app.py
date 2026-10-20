@@ -46,6 +46,7 @@ def test_window_switches_language(qtbot: QtBot) -> None:
         "&Edición",
         "&Ver",
         "&Herramientas",
+        "&Insertar",
         "&Dibujo",
         "&Modificar",
         "Ay&uda",
