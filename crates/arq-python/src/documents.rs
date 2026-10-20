@@ -410,6 +410,23 @@ impl CadDocument {
         self.create(|cad| cad.add_text(content, anchor.0, height, rotation))
     }
 
+    /// Writes a multiline text on the current layer with the current text
+    /// style (MTEXT, ADR 0022 D6): `content` is plain text whose line breaks
+    /// are paragraphs, wrapped to `width` (0: no wrapping), hanging from
+    /// `anchor` as `justification` says; `rotation` in radians.
+    #[pyo3(signature = (content, anchor, height, rotation, width, justification = "TopLeft"))]
+    fn add_mtext(
+        &self,
+        content: &str,
+        anchor: PyPoint,
+        height: f64,
+        rotation: f64,
+        width: f64,
+        justification: &str,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_mtext(content, anchor.0, height, rotation, width, justification))
+    }
+
     /// Sets what is given of texts' content, height and rotation (radians),
     /// all or none (ADR 0022).
     #[pyo3(signature = (entity_ids, content = None, height = None, rotation = None))]

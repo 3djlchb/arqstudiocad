@@ -124,6 +124,7 @@ pub(crate) fn text_data(e: &EntityType) -> Option<TextData> {
                 justification: text_justification(t),
                 width_factor: t.width_factor,
                 oblique: t.oblique_angle,
+                width: 0.0,
                 multiline: false,
                 sizes_editable: !matches!(t.horizontal_alignment, H::Aligned | H::Fit),
                 content_editable: true,
@@ -132,7 +133,12 @@ pub(crate) fn text_data(e: &EntityType) -> Option<TextData> {
         EntityType::MText(t) => {
             plan_normal(t.normal.x, t.normal.y, t.normal.z)?;
             Some(TextData {
-                content: t.value.clone(),
+                // Plain paragraphs read as lines; formatted content as stored.
+                content: if has_formatting(&t.value) {
+                    t.value.clone()
+                } else {
+                    plain_paragraphs(&t.value)
+                },
                 anchor: point(t.insertion_point.x, t.insertion_point.y)?,
                 height: t.height,
                 rotation: t.rotation,
@@ -140,6 +146,7 @@ pub(crate) fn text_data(e: &EntityType) -> Option<TextData> {
                 justification: attachment_name(t.attachment_point),
                 width_factor: 1.0,
                 oblique: 0.0,
+                width: t.rectangle_width,
                 multiline: true,
                 sizes_editable: true,
                 content_editable: !has_formatting(&t.value),
@@ -201,7 +208,56 @@ fn attachment_name(a: acadrust::entities::AttachmentPoint) -> &'static str {
 /// Whether MTEXT content holds formatting codes: a backslash code or a
 /// brace group (ADR 0022 D4).
 fn has_formatting(value: &str) -> bool {
-    value.contains('\\') || value.contains('{') || value.contains('}')
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            // Paragraphs and escaped characters are not formatting (D6).
+            '\\' => {
+                if !matches!(chars.next(), Some('P' | '\\' | '{' | '}')) {
+                    return true;
+                }
+            }
+            '{' | '}' => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+/// MTEXT content without formatting as plain text: paragraphs become line
+/// breaks and escaped characters themselves.
+fn plain_paragraphs(value: &str) -> String {
+    let mut plain = String::with_capacity(value.len());
+    let mut chars = value.chars();
+    while let Some(c) = chars.next() {
+        match (c, c == '\\') {
+            (_, true) => match chars.next() {
+                Some('P') => plain.push('\n'),
+                Some(other) => plain.push(other),
+                None => {}
+            },
+            (c, false) => plain.push(c),
+        }
+    }
+    plain
+}
+
+/// Plain text as MTEXT content: line breaks become paragraphs, and the
+/// characters MTEXT reads as codes are escaped.
+fn mtext_content(plain: &str) -> String {
+    let mut value = String::with_capacity(plain.len());
+    for c in plain.chars() {
+        match c {
+            '\\' | '{' | '}' => {
+                value.push('\\');
+                value.push(c);
+            }
+            '\n' => value.push_str("\\P"),
+            '\r' => {}
+            c => value.push(c),
+        }
+    }
+    value
 }
 
 /// After a transformation that reflects, a text stays readable (ADR 0022
@@ -314,6 +370,51 @@ pub(crate) fn new_text(
     EntityType::Text(t)
 }
 
+/// A new MTEXT at `anchor` (world), hanging from it as `attachment` says,
+/// its paragraphs wrapping to `width` (0: no wrapping), on `layer` with
+/// `style` (ADR 0022 D6). `content` is plain text: line breaks are
+/// paragraphs.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn new_mtext(
+    content: &str,
+    anchor: Point2,
+    height: f64,
+    rotation: f64,
+    width: f64,
+    attachment: acadrust::entities::AttachmentPoint,
+    layer: &str,
+    style: &str,
+) -> EntityType {
+    let mut t = acadrust::MText::new();
+    t.value = mtext_content(content);
+    t.insertion_point = Vector3::new(anchor.x(), anchor.y(), 0.0);
+    t.height = height;
+    t.rotation = rotation;
+    t.rectangle_width = width;
+    t.attachment_point = attachment;
+    t.style = style.to_owned();
+    t.common.layer = layer.to_owned();
+    EntityType::MText(Box::new(t))
+}
+
+/// The attachment point AutoCAD names `name` (`"TopLeft"`…).
+pub(crate) fn attachment_named(name: &str) -> Option<acadrust::entities::AttachmentPoint> {
+    use acadrust::entities::AttachmentPoint as A;
+    [
+        A::TopLeft,
+        A::TopCenter,
+        A::TopRight,
+        A::MiddleLeft,
+        A::MiddleCenter,
+        A::MiddleRight,
+        A::BottomLeft,
+        A::BottomCenter,
+        A::BottomRight,
+    ]
+    .into_iter()
+    .find(|a| attachment_name(*a) == name)
+}
+
 /// Sets what is given of a text's content, height and rotation (world
 /// radians); the caller has checked the values and that they apply.
 pub(crate) fn edit_text(
@@ -338,7 +439,7 @@ pub(crate) fn edit_text(
         }
         EntityType::MText(t) => {
             if let Some(content) = content {
-                t.value = content.to_owned();
+                t.value = mtext_content(content);
             }
             if let Some(height) = height {
                 t.height = height;
@@ -455,6 +556,7 @@ fn text_frame(e: &EntityType) -> Option<TextFrame> {
             backward: t.generation_flags & 2 != 0,
             upside_down: t.generation_flags & 4 != 0,
             normal: plan_normal(t.normal.x, t.normal.y, t.normal.z)?,
+            wrap: None,
         }),
         EntityType::MText(t) => {
             use acadrust::entities::AttachmentPoint as A;
@@ -486,6 +588,7 @@ fn text_frame(e: &EntityType) -> Option<TextFrame> {
                 backward: false,
                 upside_down: false,
                 normal,
+                wrap: (t.rectangle_width > 0.0).then_some(t.rectangle_width),
             })
         }
         EntityType::AttributeEntity(a) => {
@@ -566,6 +669,7 @@ fn attribute_frame(
         backward: flags & 2 != 0,
         upside_down: flags & 4 != 0,
         normal: plan_normal(normal.x, normal.y, normal.z)?,
+        wrap: None,
     })
 }
 

@@ -175,6 +175,12 @@ impl CadText {
         self.0.oblique()
     }
 
+    /// An MTEXT's wrapping width (0: no wrapping); 0 for a TEXT.
+    #[getter]
+    fn width(&self) -> f64 {
+        self.0.width()
+    }
+
     /// Whether it is an MTEXT.
     #[getter]
     fn is_multiline(&self) -> bool {

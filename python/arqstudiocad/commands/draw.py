@@ -1,5 +1,6 @@
 """The drawing commands of milestone 2.5 (ADR 0016 D8): LINE, CIRCLE and ARC;
-TEXT, AutoCAD's single-line text, in milestone 02.8 (ADR 0022).
+TEXT and MTEXT, AutoCAD's single-line and multiline texts, in milestone 02.8
+(ADR 0022).
 
 They ask for points as AutoCAD does (typed or picked, with snaps and
 ORTHO) and build the curve with the core's constructors: Python never
@@ -28,6 +29,21 @@ TEXT_HEIGHT = "TEXTSIZE"
 TEXT_ROTATION = "TEXT_ROTATION"
 #: Line spacing of single-line texts, in text heights (AutoCAD's).
 LINE_SPACING = 5 / 3
+#: The last multiline text justification, by its option key.
+MTEXT_JUSTIFY = "MTEXT_JUSTIFY"
+#: MTEXT justifications: option key → AutoCAD's attachment point, and where
+#: it hangs on the rectangle (0 left or bottom, 0.5 middle, 1 right or top).
+JUSTIFICATIONS = {
+    "TL": ("TopLeft", 0.0, 1.0),
+    "TC": ("TopCenter", 0.5, 1.0),
+    "TR": ("TopRight", 1.0, 1.0),
+    "ML": ("MiddleLeft", 0.0, 0.5),
+    "MC": ("MiddleCenter", 0.5, 0.5),
+    "MR": ("MiddleRight", 1.0, 0.5),
+    "BL": ("BottomLeft", 0.0, 0.0),
+    "BC": ("BottomCenter", 0.5, 0.0),
+    "BR": ("BottomRight", 1.0, 0.0),
+}
 
 
 def line(ctx: CommandContext) -> CommandScript:
@@ -195,10 +211,80 @@ def text(ctx: CommandContext) -> CommandScript:
         document.end_group()
 
 
+def mtext(ctx: CommandContext) -> CommandScript:
+    """A multiline text in the rectangle of two corners, its paragraphs
+    wrapped to the rectangle's width (ADR 0022 D6). Height, Justify and
+    Rotation are options of the second corner. One undo step."""
+    document = ctx.document()
+    height = ctx.remembered.get(TEXT_HEIGHT, document.text_size)
+    rotation = ctx.remembered.get(TEXT_ROTATION, 0.0)
+    justify = ctx.remembered.get(MTEXT_JUSTIFY, "TL")
+    first = yield ctx.point(tr("Specify first corner"))
+    options = [
+        Option("H", tr("Height")),
+        Option("J", tr("Justify")),
+        Option("R", tr("Rotation")),
+    ]
+    while True:
+        answer = yield ctx.point(tr("Specify opposite corner"), base=first, options=options)
+        if answer == "H":
+            height = yield ctx.distance(tr("Specify height"), base=first, default=height)
+        elif answer == "R":
+            rotation = yield ctx.angle(tr("Specify rotation angle"), base=first, default=rotation)
+        elif answer == "J":
+            justify = yield ctx.choose(
+                tr("Enter justification"),
+                [Option(key, justification_label(key)) for key in JUSTIFICATIONS],
+                default=justify,
+            )
+        else:
+            opposite = answer
+            break
+    # The rectangle, in the reading direction: its width and the point the
+    # justification hangs the text from.
+    cos, sin = math.cos(rotation), math.sin(rotation)
+    dx, dy = opposite[0] - first[0], opposite[1] - first[1]
+    along, across = dx * cos + dy * sin, -dx * sin + dy * cos
+    name, fx, fy = JUSTIFICATIONS[justify]
+    x = min(0.0, along) + fx * abs(along)
+    y = min(0.0, across) + fy * abs(across)
+    anchor = (first[0] + x * cos - y * sin, first[1] + x * sin + y * cos)
+    if ctx.ui is not None:
+        content = ctx.ui.edit_text(tr("Multiline text"))
+    else:
+        lines = []
+        while line := (yield ctx.ask(tr("Enter text"), optional=True)):
+            lines.append(line)
+        content = "\n".join(lines)
+    if not content or not content.strip():
+        return  # nothing typed: nothing drawn, no step
+    _, changes = document.add_mtext(content, anchor, height, rotation, abs(along), name)
+    ctx.session.report(document, changes)
+    ctx.remembered[TEXT_HEIGHT] = height
+    ctx.remembered[TEXT_ROTATION] = rotation
+    ctx.remembered[MTEXT_JUSTIFY] = justify
+
+
+def justification_label(key: str) -> str:
+    """An MTEXT justification option, translated."""
+    return {
+        "TL": tr("Top left"),
+        "TC": tr("Top center"),
+        "TR": tr("Top right"),
+        "ML": tr("Middle left"),
+        "MC": tr("Middle center"),
+        "MR": tr("Middle right"),
+        "BL": tr("Bottom left"),
+        "BC": tr("Bottom center"),
+        "BR": tr("Bottom right"),
+    }[key]
+
+
 #: The drawing commands, with AutoCAD's aliases.
 DRAW_COMMANDS = (
     Command("LINE", line, ("L",)),
     Command("CIRCLE", circle, ("C",)),
     Command("ARC", arc, ("A",)),
     Command("TEXT", text, ("DT",)),
+    Command("MTEXT", mtext, ("T", "MT")),
 )

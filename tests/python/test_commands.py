@@ -125,6 +125,9 @@ class FakeUi:
         assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
         return self.accept_losses
 
+    def edit_text(self, title: str, text: str = "") -> str | None:
+        return None
+
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.the_view
 

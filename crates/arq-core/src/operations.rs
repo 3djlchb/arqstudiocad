@@ -151,6 +151,22 @@ impl CadDocument {
         })
     }
 
+    /// Writes a multiline text on the current layer (MTEXT, ADR 0022 D6).
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_mtext(
+        &mut self,
+        content: &str,
+        anchor: Point2,
+        height: f64,
+        rotation: f64,
+        width: f64,
+        justification: &str,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("MTEXT", |doc| {
+            Ok(doc.add_mtext(content, anchor, height, rotation, width, justification)?)
+        })
+    }
+
     /// Sets what is given of texts' content, height and rotation (radians),
     /// all or none (ADR 0022).
     pub fn set_text(

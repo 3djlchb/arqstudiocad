@@ -223,14 +223,21 @@ def test_properties_keep_formatted_mtext_read_only(window: MainWindow, tmp_path:
     assert dict(window.properties_panel.rows())["Justification"] == "Top left"
 
 
-def test_text_is_in_the_draw_menu_ribbon_and_toolbar(window: MainWindow) -> None:
+def test_texts_are_in_the_annotate_tab_draw_menu_and_toolbar(window: MainWindow) -> None:
     from PySide6.QtWidgets import QMenu, QToolBar
 
-    from arqstudiocad.ui.ribbon import RibbonGroupWidget
+    from arqstudiocad.ui.ribbon import Ribbon, RibbonGroupWidget
 
-    action = window.command_actions["TEXT"]
-    assert action.text() == "&Text"
-    assert any(action in menu.actions() for menu in window.menuBar().findChildren(QMenu))
+    single, multi = window.command_actions["TEXT"], window.command_actions["MTEXT"]
+    assert (single.text(), multi.text()) == ("&Single Line Text", "&Multiline Text")
+    menus = window.menuBar().findChildren(QMenu)
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
-    assert action in [b.defaultAction() for b in groups["draw"].buttons]
-    assert any(action in bar.actions() for bar in window.findChildren(QToolBar))
+    text_group = [b.defaultAction() for b in groups["text"].buttons]
+    assert text_group == [multi, single], "the Text group of the Annotate tab"
+    assert single not in [b.defaultAction() for b in groups["draw"].buttons]
+    ribbon = window.findChildren(Ribbon)[0]
+    tabs = [ribbon.tabText(i) for i in range(ribbon.count())]
+    assert tabs == ["Home", "Annotate", "View"]
+    for action in (single, multi):
+        assert any(action in menu.actions() for menu in menus)
+        assert any(action in bar.actions() for bar in window.findChildren(QToolBar))

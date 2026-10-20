@@ -282,6 +282,15 @@ class CadDocument:
     def add_text(
         self, content: str, anchor: _PointLike, height: float, rotation: float
     ) -> tuple[int, CadChangeSet]: ...
+    def add_mtext(
+        self,
+        content: str,
+        anchor: _PointLike,
+        height: float,
+        rotation: float,
+        width: float,
+        justification: str = "TopLeft",
+    ) -> tuple[int, CadChangeSet]: ...
     def set_text(
         self,
         entity_ids: _Ids,
@@ -402,6 +411,8 @@ class CadText:
     def width_factor(self) -> float: ...
     @property
     def oblique(self) -> float: ...
+    @property
+    def width(self) -> float: ...
     @property
     def is_multiline(self) -> bool: ...
     @property

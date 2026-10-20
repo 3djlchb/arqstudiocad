@@ -19,6 +19,7 @@ fn frame(text: &str) -> TextFrame {
         backward: false,
         upside_down: false,
         normal: PlanNormal::Up,
+        wrap: None,
     }
 }
 
@@ -219,4 +220,49 @@ fn a_smaller_bulge_bends_round_a_center_off_the_chord() {
     }
     let lowest = segments.iter().map(|(a, _)| a.1).fold(f64::MAX, f64::min);
     assert!(lowest < -0.45, "it bends down to (1, -0.5): {lowest}");
+}
+
+#[test]
+fn paragraphs_wrap_at_spaces_to_the_width() {
+    let word = line_strokes("AAA").1;
+    let two = line_strokes("AAA AAA").1;
+    assert_eq!(wrap_line("AAA AAA AAA", two), ["AAA AAA", "AAA"]);
+    assert_eq!(wrap_line("AAA AAA", word), ["AAA", "AAA"]);
+    assert_eq!(
+        wrap_line("AAAAAAAAAA B", word),
+        ["AAAAAAAAAA", "B"],
+        "a long word stays whole"
+    );
+    assert_eq!(
+        wrap_line("", word),
+        [""],
+        "an empty paragraph is an empty line"
+    );
+
+    let mut f = frame("AAA AAA AAA");
+    f.v = VAlign::Top;
+    let single = bounds(&f);
+    f.wrap = Some(two);
+    let wrapped = bounds(&f);
+    assert!(
+        close(single.min().y(), -9.0) && wrapped.min().y() < -9.0,
+        "more lines"
+    );
+    assert!(wrapped.max().x() <= two + 1e-6);
+}
+
+#[test]
+fn the_wrapping_width_is_in_drawing_units_whatever_the_height() {
+    // Twice the height: the same words need twice the width per line.
+    let two = line_strokes("AAA AAA").1;
+    let mut f = frame("AAA AAA AAA");
+    f.height = 2.0 * CAP;
+    f.v = VAlign::Top;
+    f.wrap = Some(2.0 * two);
+    let wrapped = bounds(&f);
+    assert!(
+        close(wrapped.max().x(), 2.0 * two),
+        "two words on the first line"
+    );
+    assert!(wrapped.min().y() < -2.0 * CAP, "the third word below");
 }

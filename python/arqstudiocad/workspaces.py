@@ -112,7 +112,7 @@ CAD = Discipline(
             lambda: tr("Home"),
             (
                 RibbonGroup("file", lambda: tr("File"), ("NEW", "OPEN", "SAVE", "SAVEAS", "CLOSE")),
-                RibbonGroup("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC", "TEXT")),
+                RibbonGroup("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC")),
                 RibbonGroup(
                     "modify",
                     lambda: tr("Modify"),
@@ -121,6 +121,13 @@ CAD = Discipline(
                 RibbonGroup("history", lambda: tr("History"), ("UNDO", "REDO")),
                 RibbonGroup("layers", lambda: tr("Layers"), ("LAYER",)),
             ),
+        ),
+        # Annotation tools, as AutoCAD's Annotate tab: texts first; dimensions,
+        # leaders and tables join them in phase 04.
+        RibbonTab(
+            "annotate",
+            lambda: tr("Annotate"),
+            (RibbonGroup("text", lambda: tr("Text"), ("MTEXT", "TEXT")),),
         ),
         RibbonTab(
             "view",
@@ -134,7 +141,7 @@ CAD = Discipline(
             lambda: tr("Standard"),
             ("NEW", "OPEN", "SAVE", None, "UNDO", "REDO", None, "ZOOM"),
         ),
-        Toolbar("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC", None, "TEXT")),
+        Toolbar("draw", lambda: tr("Draw"), ("LINE", "CIRCLE", "ARC", None, "MTEXT", "TEXT")),
         Toolbar(
             "modify",
             lambda: tr("Modify"),

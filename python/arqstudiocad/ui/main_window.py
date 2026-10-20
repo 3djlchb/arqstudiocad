@@ -244,7 +244,7 @@ class MainWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self.workspaces.button)
 
         self._draw_menu = menu_bar.addMenu("")
-        for name in ("LINE", "CIRCLE", "ARC", "TEXT"):
+        for name in ("LINE", "CIRCLE", "ARC", "MTEXT", "TEXT"):
             self._draw_menu.addAction(self.command_actions[name])
         self._modify_menu = menu_bar.addMenu("")
         for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "EXPLODE"):

@@ -153,6 +153,11 @@ class UiServices(Protocol):
         """Whether to save ``name`` although it would lose ``losses``."""
         ...
 
+    def edit_text(self, title: str, text: str = "") -> str | None:
+        """Several lines of plain text typed in a window (MTEXT, ADR 0022
+        D6); None if it was cancelled."""
+        ...
+
     def view(self, document: CadDocument) -> ViewControl | None: ...
     def show_panel(self, name: str) -> bool:
         """Shows and raises a panel (``"layers"``…); False if there is none."""
