@@ -27,6 +27,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0020](0020-progressive-own-geometry-kernel.md) | Build an owned Rust geometry kernel incrementally; use OCCT as an optional, reviewed temporary backend and migrate by capability after parity tests | Accepted |
 | [0021](0021-spatial-index.md) | Use an internal R*-tree for bounding-box candidates behind the existing core query API; synchronize it from committed changes and undo/redo | Accepted |
 | [0022](0022-text-entities.md) | TEXT and MTEXT in 02.8: transform as a whole, one grip, content/height/rotation in Properties, TEXT command; mirrored texts stay readable; letters drawn in a built-in stroke font; basic MTEXT command with word wrapping; the drawing's own fonts and formatted MTEXT in phase 04 | Accepted |
+| [0023](0023-blocks.md) | Blocks in 02.8: EXPLODE keeps attribute values as texts; BLOCK and INSERT; a BEDIT-like block editor in its own tab; an Insert ribbon tab | Accepted |
 
 Template:
 

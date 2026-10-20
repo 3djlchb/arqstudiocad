@@ -11,15 +11,16 @@ use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
 use crate::ocs::plan_normal;
 use crate::translate::{
-    attachment_named, bounds_of, color_to_codec, edit_text, handle, is_whole_transformable,
-    new_entity, new_mtext, new_text, read_entity, transform_whole, write_plan,
+    attachment_named, attribute_as_text, bounds_of, color_to_codec, edit_text, handle,
+    is_whole_transformable, new_entity, new_mtext, new_text, read_entity, transform_whole,
+    write_plan,
 };
 
 impl Document {
-    /// Replaces one block reference with its transformed contents.
-    ///
-    /// References whose attached attributes or block attribute definitions
-    /// cannot be represented by the codec's explode operation are refused.
+    /// Replaces one block reference with its transformed contents. Its
+    /// visible attributes, and the definition's constant ones, become
+    /// single-line texts showing their values, as AutoCAD Express's BURST
+    /// (ADR 0023 D1); the other attribute definitions are not copied.
     pub fn explode_insert(&mut self, id: EntityId) -> DocumentResult<Vec<EntityId>> {
         let insert = match self.cad().get_entity(handle(id)) {
             Some(EntityType::Insert(insert)) => insert.clone(),
@@ -31,16 +32,6 @@ impl Document {
             }
             None => return Err(DocumentError::EntityNotFound(id)),
         };
-        if !insert.attributes.is_empty()
-            || self
-                .cad()
-                .entities_in_block(&insert.block_name)
-                .any(|entity| matches!(entity, EntityType::AttributeDefinition(_)))
-        {
-            return Err(DocumentError::UnsupportedOperation(
-                "block attributes cannot be preserved by EXPLODE".to_owned(),
-            ));
-        }
         let record = self
             .cad()
             .block_records
@@ -56,12 +47,22 @@ impl Document {
         let mut contents: Vec<_> = self
             .cad()
             .entities_in_block(&insert.block_name)
-            .cloned()
+            .filter_map(|entity| match entity {
+                EntityType::AttributeDefinition(_) => attribute_as_text(entity),
+                other => Some(other.clone()),
+            })
             .collect();
         for entity in &mut contents {
             entity.apply_transform(&base_offset);
         }
         let mut parts = insert.explode(&contents);
+        // The reference's own attributes already sit where they are drawn.
+        parts.extend(
+            insert
+                .attributes
+                .iter()
+                .filter_map(|a| attribute_as_text(&EntityType::AttributeEntity(a.clone()))),
+        );
         if parts.is_empty() {
             return Err(DocumentError::UnsupportedOperation(
                 "the block has no contents that can be exploded".to_owned(),

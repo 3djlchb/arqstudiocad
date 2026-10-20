@@ -276,7 +276,7 @@
   "There is no view to zoom.": "No hay ninguna vista en la que hacer zoom.",
   "These objects cannot be transformed yet: {kinds}.": "Estos objetos aún no se pueden transformar: {kinds}.",
   "Thickness": "Espesor",
-  "This block cannot be exploded without losing data.": "No se puede descomponer este bloque sin perder datos.",
+  "This block has nothing to explode.": "Este bloque no tiene nada que descomponer.",
   "This drawing was recovered from {name}, which is damaged. Replacing it loses whatever recovery could not read.": "Este dibujo se recuperó de {name}, que está dañado. Al reemplazarlo se pierde lo que la recuperación no pudo leer.",
   "Three points on one line define no arc.": "Tres puntos alineados no definen un arco.",
   "Three points on one line define no circle.": "Tres puntos alineados no definen un círculo.",
