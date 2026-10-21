@@ -64,6 +64,30 @@ explicit decision.
    bounded capabilities with their own tests and acceptance criteria. This
    ADR does not decide 3D document ownership; ADR 0014 question 4 remains open.
 
+## Amendment *(maintainer, 2026-10-21)*
+
+1. **openNURBS is a reference.** McNeel's
+   [openNURBS](https://github.com/mcneel/opennurbs) joins the references
+   of decision 2: NURBS mathematics (basis functions, knots, evaluation and
+   derivatives of curves and surfaces), B-rep data structures, and the 3DM
+   format. It computes no solids (no booleans, fillets or offsets), so it
+   is a reference, not a backend. Its repository's `LICENSE` holds only the
+   copyright, trademark and warranty notices; McNeel's site states that no
+   copyright or copyleft restrictions apply. With the permission outside the
+   license file, its source is not copied (decision 7): what we take from it
+   is reimplemented.
+2. **Any reviewed reference may be a temporary backend.** Decision 3 is
+   widened: OCCT, Truck, or another reference may compute and edit the
+   platform's solids temporarily, each behind the adapter of decision 4 and
+   after its own technology and license review. As the owned kernel passes
+   a capability's acceptance suite, the platform's solids use the owned
+   kernel for that capability (decision 5); the backends keep only what it
+   cannot do yet.
+3. **Reviewed and set aside:** the unrelated
+   [OpenNURBS/OpenNURBS](https://github.com/OpenNURBS/OpenNURBS) (GPL-2.0)
+   was inactive after 2014 and holds only point and curve declarations; it
+   is neither a reference nor a backend.
+
 ## Consequences
 
 - The owned Rust kernel remains the destination; OCCT is an optional,

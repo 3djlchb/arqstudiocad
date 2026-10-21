@@ -67,7 +67,8 @@ new goal.
    layout (Classic or Ribbon, ADR 0013 D5.1). Step 5.7 builds the mechanism
    with the CAD discipline in both layouts.
 4. **3D in the document model** (milestone 2.7). What the core edits in 3D,
-   and how 3D solids (ACIS in DWG) and IFC geometry meet.
+   and how 3D solids (ACIS in DWG) and IFC geometry meet. *Settled by ADR
+   0024 (2026-10-21).*
 5. **Associative views** (phase 3). How a view records its source and
    parameters, detects that it is stale, and regenerates while keeping manual
    annotations; graphic styles by discipline, class, scale and view type.
