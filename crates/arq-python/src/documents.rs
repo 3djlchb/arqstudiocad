@@ -410,6 +410,20 @@ impl CadDocument {
         self.create(|cad| cad.add_text(content, anchor.0, height, rotation))
     }
 
+    /// Draws a polyline on the current layer (PLINE): `vertices` as
+    /// `(point, bulge)` pairs, the bulge of the segment leaving each vertex
+    /// (0 straight, positive counterclockwise); `closed` joins the last
+    /// vertex to the first.
+    #[pyo3(signature = (vertices, closed = false))]
+    fn add_polyline(
+        &self,
+        vertices: Vec<(PyPoint, f64)>,
+        closed: bool,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        let vertices: Vec<_> = vertices.into_iter().map(|(p, b)| (p.0, b)).collect();
+        self.create(|cad| cad.add_polyline(&vertices, closed))
+    }
+
     /// Makes block `name` from `entity_ids` with its base point at `base`,
     /// and puts a reference to it in their place (BLOCK, ADR 0023); returns
     /// the reference's id.

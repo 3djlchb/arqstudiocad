@@ -274,6 +274,12 @@ impl CadLine {
         self.0.length()
     }
 
+    /// The direction from start to end, in radians from East.
+    #[getter]
+    fn direction(&self) -> f64 {
+        arq_geometry::angle::normalize(self.0.direction().angle())
+    }
+
     fn __hash__(&self) -> u64 {
         let (a, b) = (self.0.start(), self.0.end());
         hash_floats(&[a.x(), a.y(), b.x(), b.y()])
@@ -385,6 +391,13 @@ impl CadArc {
         Arc::from_start_center_end(start.0, center.0, end.0)
             .py()
             .map(Self)
+    }
+
+    /// The arc leaving `start` along `direction` (radians) to `end`, as a
+    /// polyline vertex stores it: `(bulge, end_direction)`.
+    #[staticmethod]
+    fn tangent_bulge(start: PyPoint, direction: f64, end: PyPoint) -> PyResult<(f64, f64)> {
+        Arc::tangent_bulge(start.0, direction, end.0).py()
     }
 
     #[classattr]

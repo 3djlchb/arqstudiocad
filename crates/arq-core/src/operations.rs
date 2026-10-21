@@ -151,6 +151,16 @@ impl CadDocument {
         })
     }
 
+    /// Draws a polyline on the current layer (PLINE): vertices with the
+    /// bulge of the segment leaving each, open or `closed`.
+    pub fn add_polyline(
+        &mut self,
+        vertices: &[(Point2, f64)],
+        closed: bool,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("PLINE", |doc| Ok(doc.add_polyline(vertices, closed)?))
+    }
+
     /// Makes block `name` from `ids`, base point `base`, and puts a
     /// reference to it in their place (BLOCK, ADR 0023 D2).
     pub fn create_block(

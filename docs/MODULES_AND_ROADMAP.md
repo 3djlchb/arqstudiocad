@@ -161,8 +161,11 @@ Milestone 02.8 proceeds in independently reviewable steps:
    by the operation. Texts are complete (ADR 0022: drawn with their letters
    in a built-in stroke font, transformed as a whole, one grip, content,
    height and rotation in Properties, the TEXT command; the drawing's own
-   fonts and formatted MTEXT stay in phase 04). Block content editing follows, with
-   stage 2 of the own model (ADR 0018 D2).
+   fonts and formatted MTEXT stay in phase 04). Blocks are complete (ADR
+   0023). PLINE draws new polylines: straight segments and arcs tangent to
+   the segment before, Arc and Line, Undo and Close, one undo step; widths
+   and the other arc options come later (maintainer, 2026-10-21). Stage 2
+   of the own model (ADR 0018 D2) follows.
 3. **3D document model (ADR 0014 question 4):** decided by ADR 0024: a
    solid is our own B-rep; DWG ACIS is read into it and kept byte for byte
    until the solid is edited; Truck is the first temporary backend, after

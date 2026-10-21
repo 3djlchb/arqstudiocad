@@ -28,7 +28,7 @@ when its parameters change).
 | Content | Read | Keep (DWG / DXF) | Show | Edit | Recompute | Notes |
 |---|---|---|---|---|---|---|
 | Lines, circles, arcs | ✅ | 100 % / 100 % | ✅ | ✅ geometry, layer, color | — | |
-| Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ✅ as a whole and by vertex | — | |
+| Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ✅ drawn (PLINE: segments and tangent arcs), as a whole and by vertex | — | |
 | Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ created (BLOCK), placed (INSERT), transformed as a whole with their attributes, definitions edited in the block editor (BEDIT; not dynamic ones); EXPLODE keeps attribute values as texts (ADR 0023) | — | MINSERT arrays not transformed |
 | Dimensions | ✅ | 100 % / 100 % | ✅ as AutoCAD drew them (their block) | ○ | ○ | phase 04 |
 | Hatches | ✅ | 100 % / 100 % | ◐ boundaries, no fill pattern | ○ | ○ | phase 04 |

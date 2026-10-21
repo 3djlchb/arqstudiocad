@@ -280,6 +280,55 @@ fn a_block_drawn_through_another_redraws_that_reference_too() {
 }
 
 #[test]
+fn a_polyline_is_drawn_with_its_arcs_in_one_step() {
+    let mut cad = CadDocument::new();
+    // (0,0) to (2,0) with bulge 1: a half circle around (1,0), run
+    // counterclockwise, so through (1,-1); then straight up to (2,3).
+    let (id, made) = cad
+        .add_polyline(
+            &[(p(0.0, 0.0), 1.0), (p(2.0, 0.0), 0.0), (p(2.0, 3.0), 0.0)],
+            false,
+        )
+        .unwrap();
+    assert_eq!(made.created(), [id]);
+    assert_eq!(cad.undo_name(), Some("PLINE"));
+    let e = cad.document().entity(id).unwrap();
+    assert_eq!(e.kind(), "LWPOLYLINE");
+    let b = e.bounds().unwrap();
+    assert!(
+        near(b.min(), p(0.0, -1.0)) && near(b.max(), p(2.0, 3.0)),
+        "{b:?}"
+    );
+    // Closed, the last vertex joins the first.
+    let (square, _) = cad
+        .add_polyline(
+            &[(p(0.0, 0.0), 0.0), (p(1.0, 0.0), 0.0), (p(1.0, 1.0), 0.0)],
+            true,
+        )
+        .unwrap();
+    assert_eq!(
+        cad.pick(p(0.5, 0.5), 0.05).unwrap(),
+        Some(square),
+        "the closing segment, (1,1) back to (0,0)"
+    );
+    // Refused, and nothing drawn: one vertex, a zero-length segment (the
+    // closing one too), a bulge that is not a number.
+    let before = cad.document().entities().len();
+    for (vertices, closed) in [
+        (vec![(p(0.0, 0.0), 0.0)], false),
+        (vec![(p(0.0, 0.0), 0.0), (p(0.0, 0.0), 0.0)], false),
+        (
+            vec![(p(0.0, 0.0), 0.0), (p(1.0, 0.0), 0.0), (p(0.0, 0.0), 0.0)],
+            true,
+        ),
+        (vec![(p(0.0, 0.0), f64::NAN), (p(1.0, 0.0), 0.0)], false),
+    ] {
+        assert!(cad.add_polyline(&vertices, closed).is_err(), "{vertices:?}");
+    }
+    assert_eq!(cad.document().entities().len(), before);
+}
+
+#[test]
 fn repeated_ids_are_edited_once() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();

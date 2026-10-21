@@ -114,9 +114,10 @@ impl Document {
         Some(out)
     }
 
-    /// The box around everything a block reference or a dimension draws,
-    /// as if every layer were on and thawed: the codec only knows its
-    /// insertion point. `None` when it draws nothing.
+    /// The box around everything a block reference, a dimension or a
+    /// polyline draws, as if every layer were on and thawed: the codec
+    /// knows only the insertion point or the vertices. `None` when it draws
+    /// nothing.
     pub(crate) fn drawn_extent(&self, entity: &EntityType) -> Option<Bounds2> {
         let painter = Painter {
             every_layer: true,
