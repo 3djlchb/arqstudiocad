@@ -39,10 +39,11 @@ impl Recovery {
     }
 }
 
-/// The engine's code for an object it could not decode and kept verbatim
-/// (our AcadRust patch, ADR 0017 D2): its bytes survive a same-version save,
-/// so it is a note, not damage.
-const KEPT_UNDECODED: &str = "record-kept-undecoded";
+/// The engine's codes for an object it could not decode and kept verbatim:
+/// any class object (our AcadRust patch, ADR 0017 D2) or one of the
+/// auxiliary classes AcadRust preserves itself. Its bytes survive a
+/// same-version save, so it is a note, not damage.
+const KEPT_UNDECODED: [&str; 2] = ["record-kept-undecoded", "auxiliary-object-preserved"];
 
 /// A drawing read from a file.
 pub(crate) struct Read {
@@ -93,7 +94,7 @@ fn finish(outcome: ReadOutcome, recovery: Option<Recovery>) -> Read {
         .stats
         .diagnostics
         .iter()
-        .filter(|d| d.code == KEPT_UNDECODED)
+        .filter(|d| KEPT_UNDECODED.contains(&d.code.as_str()))
         .filter_map(|d| d.record_handle)
         .map(|handle| {
             let name = match outcome.document.objects.get(&acadrust::Handle::new(handle)) {
@@ -166,7 +167,7 @@ fn damage(stats: &ReadStats, format: FileFormat) -> Vec<String> {
     let mut problems: Vec<String> = stats
         .diagnostics
         .iter()
-        .filter(|d| d.code != KEPT_UNDECODED)
+        .filter(|d| !KEPT_UNDECODED.contains(&d.code.as_str()))
         .map(|d| d.message.clone())
         .collect();
     if format == FileFormat::Dwg && !stats.has_usable_drawing_data() {
@@ -181,11 +182,15 @@ fn damage(stats: &ReadStats, format: FileFormat) -> Vec<String> {
             stats.skipped_source_records
         ));
     }
-    if stats.recovered_errors > 0 && problems.is_empty() {
-        problems.push(format!(
-            "{} errors were recovered from",
-            stats.recovered_errors
-        ));
+    // AcadRust counts the objects it preserves itself as recovered errors.
+    let kept = stats
+        .diagnostics
+        .iter()
+        .filter(|d| KEPT_UNDECODED.contains(&d.code.as_str()))
+        .count();
+    let recovered = stats.recovered_errors.saturating_sub(kept);
+    if recovered > 0 && problems.is_empty() {
+        problems.push(format!("{recovered} errors were recovered from"));
     }
     problems
 }

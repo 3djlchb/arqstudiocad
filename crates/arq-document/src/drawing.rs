@@ -4,16 +4,19 @@
 //! Every model-space entity becomes neutral shapes in world coordinates with
 //! a resolved color, so codec types never leave this crate: blocks are
 //! expanded (nested, guarded against cycles), compound entities are broken
-//! down with the codec's `explode`, and layer visibility and ByLayer/ByBlock
+//! down with the codec's `explode` or, for what AutoCAD keeps whole, its
+//! `flatten` (hatches are outlined and ellipses drawn here), and layer
+//! visibility and ByLayer/ByBlock
 //! colors are resolved against the current layer table. Z is dropped: this is
 //! the plan view. What cannot be drawn yet becomes its bounding box, marked
 //! as a placeholder.
 
 use std::collections::HashMap;
+use std::f64::consts::TAU;
 
 use acadrust::EntityType;
-use acadrust::entities::Insert;
-use acadrust::types::{Matrix4, Transform, Vector3};
+use acadrust::entities::{BoundaryEdge, Ellipse, Hatch, Insert, LwPolyline, Spline};
+use acadrust::types::{Matrix4, Transform, Vector2, Vector3};
 use arq_geometry::{Arc, Bounds2, Circle, Line, Point2};
 
 use crate::document::Document;
@@ -107,7 +110,7 @@ impl Document {
         let entity = self.cad().get_entity(handle(id))?;
         let painter = Painter::new(self);
         let mut out = Vec::new();
-        painter.emit(entity, &Context::top(), false, &mut out);
+        painter.emit(entity, &Context::top(), &mut out);
         Some(out)
     }
 
@@ -120,7 +123,7 @@ impl Document {
             ..Painter::new(self)
         };
         let mut out = Vec::new();
-        painter.emit(entity, &Context::top(), false, &mut out);
+        painter.emit(entity, &Context::top(), &mut out);
         out.into_iter()
             .map(|item| item.shape.bounds())
             .reduce(|a, b| a.union(b))
@@ -133,7 +136,7 @@ impl Document {
             .model_space_entities()
             .map(|e| {
                 let mut out = Vec::new();
-                painter.emit(e, &Context::top(), false, &mut out);
+                painter.emit(e, &Context::top(), &mut out);
                 (e.as_entity().handle().value(), out)
             })
             .collect()
@@ -147,7 +150,7 @@ impl Document {
             .filter_map(|&id| {
                 let entity = self.cad().get_entity(handle(id))?;
                 let mut out = Vec::new();
-                painter.emit(entity, &Context::top(), false, &mut out);
+                painter.emit(entity, &Context::top(), &mut out);
                 Some((id, out))
             })
             .collect()
@@ -226,10 +229,8 @@ impl<'a> Painter<'a> {
         }
     }
 
-    /// Adds what to draw for `e`. `ocs_lines`: `e` came from exploding an
-    /// OCS entity (polyline, hatch, solid), whose exploded LINEs carry OCS
-    /// coordinates although LINE coordinates are normally world ones.
-    fn emit(&self, e: &EntityType, ctx: &Context, ocs_lines: bool, out: &mut Vec<DrawItem>) {
+    /// Adds what to draw for `e`.
+    fn emit(&self, e: &EntityType, ctx: &Context, out: &mut Vec<DrawItem>) {
         if e.as_entity().is_invisible() || ctx.blocks.len() > MAX_DEPTH {
             return;
         }
@@ -248,16 +249,7 @@ impl<'a> Painter<'a> {
 
         match e {
             EntityType::Line(l) => {
-                let (a, b) = if ocs_lines {
-                    let Some(n) = plan_normal(l.normal.x, l.normal.y, l.normal.z) else {
-                        return self.placeholder(e, color, out);
-                    };
-                    let (ax, ay, _) = n.map_point(l.start.x, l.start.y, l.start.z);
-                    let (bx, by, _) = n.map_point(l.end.x, l.end.y, l.end.z);
-                    ((ax, ay), (bx, by))
-                } else {
-                    ((l.start.x, l.start.y), (l.end.x, l.end.y))
-                };
+                let (a, b) = ((l.start.x, l.start.y), (l.end.x, l.end.y));
                 if let Some(shape) = segment(a, b) {
                     push(shape);
                 }
@@ -295,6 +287,8 @@ impl<'a> Painter<'a> {
                     }
                 }
             },
+            EntityType::Ellipse(el) => outline_ellipse(el, color, out),
+            EntityType::Hatch(h) => self.outline_hatch(h, e, ctx, color, out),
             EntityType::Insert(ins) => self.expand_insert(ins, &layer, color, ctx, out),
             EntityType::Dimension(dim) => {
                 // AutoCAD stores what it drew in an anonymous block, in
@@ -317,19 +311,111 @@ impl<'a> Painter<'a> {
         }
     }
 
-    /// Draws the pieces the codec breaks `e` into, or its box if none.
-    fn emit_parts(&self, e: &EntityType, ctx: &Context, out: &mut Vec<DrawItem>, color: Color) {
-        let parts = e.explode();
+    /// A hatch's boundary, its fill pattern being later work (ADR 0013).
+    /// Each edge becomes a codec curve in world coordinates (a polyline
+    /// edge keeps the hatch's OCS), drawn like the hatch itself.
+    fn outline_hatch(
+        &self,
+        h: &Hatch,
+        e: &EntityType,
+        ctx: &Context,
+        color: Color,
+        out: &mut Vec<DrawItem>,
+    ) {
+        let Some(n) = plan_normal(h.normal.x, h.normal.y, h.normal.z) else {
+            return self.placeholder(e, color, out);
+        };
+        let world = |p: Vector2| {
+            let (x, y, z) = n.map_point(p.x, p.y, h.elevation);
+            Vector3::new(x, y, z)
+        };
+        let mut parts = Vec::new();
+        for edge in h.paths.iter().flat_map(|path| &path.edges) {
+            match edge {
+                BoundaryEdge::Line(l) => {
+                    let mut line =
+                        acadrust::entities::Line::from_points(world(l.start), world(l.end));
+                    line.common = h.common.clone();
+                    parts.push(EntityType::Line(line));
+                }
+                BoundaryEdge::CircularArc(a) => {
+                    let (start, end) = ccw_range(a.start_angle, a.end_angle, a.counter_clockwise);
+                    let (start, end) = n.map_arc(start, end);
+                    let mut arc = acadrust::entities::Arc::new();
+                    arc.common = h.common.clone();
+                    arc.center = world(a.center);
+                    arc.radius = a.radius;
+                    arc.start_angle = start;
+                    arc.end_angle = end;
+                    parts.push(EntityType::Arc(arc));
+                }
+                BoundaryEdge::EllipticArc(a) => {
+                    // Mirroring the center and the axis and keeping the
+                    // normal draws the same points (the minor axis is the
+                    // normal crossed with the major one).
+                    let (start, end) = ccw_range(a.start_angle, a.end_angle, a.counter_clockwise);
+                    let axis = world(a.major_axis_endpoint) - world(Vector2::new(0.0, 0.0));
+                    let mut ellipse = Ellipse::new();
+                    ellipse.common = h.common.clone();
+                    ellipse.center = world(a.center);
+                    ellipse.major_axis = axis;
+                    ellipse.minor_axis_ratio = a.minor_axis_ratio;
+                    ellipse.start_parameter = start;
+                    ellipse.end_parameter = end;
+                    ellipse.normal = h.normal;
+                    parts.push(EntityType::Ellipse(ellipse));
+                }
+                BoundaryEdge::Spline(s) if s.control_points.len() >= 2 => {
+                    // A boundary control point holds its weight in z.
+                    let points = s
+                        .control_points
+                        .iter()
+                        .map(|p| world(Vector2::new(p.x, p.y)))
+                        .collect();
+                    let mut spline = Spline::from_control_points(s.degree, points);
+                    spline.common = h.common.clone();
+                    spline.knots = s.knots.clone();
+                    spline.flags.periodic = s.periodic;
+                    if s.rational {
+                        spline.flags.rational = true;
+                        spline.weights = s.control_points.iter().map(|p| p.z).collect();
+                    }
+                    parts.push(EntityType::Spline(spline));
+                }
+                BoundaryEdge::Spline(_) => {}
+                BoundaryEdge::Polyline(p) => {
+                    let mut polyline = LwPolyline::new();
+                    polyline.common = h.common.clone();
+                    for v in &p.vertices {
+                        polyline.add_point_with_bulge(Vector2::new(v.x, v.y), v.z);
+                    }
+                    polyline.is_closed = p.is_closed;
+                    polyline.elevation = h.elevation;
+                    polyline.normal = h.normal;
+                    parts.push(EntityType::LwPolyline(polyline));
+                }
+            }
+        }
         if parts.is_empty() {
             return self.placeholder(e, color, out);
         }
-        let ocs = matches!(
-            e,
-            EntityType::LwPolyline(_)
-                | EntityType::Polyline2D(_)
-                | EntityType::Hatch(_)
-                | EntityType::Solid(_)
-        );
+        for part in &parts {
+            self.emit(part, ctx, out);
+        }
+    }
+
+    /// Draws the pieces the codec breaks `e` into, or its box if none.
+    fn emit_parts(&self, e: &EntityType, ctx: &Context, out: &mut Vec<DrawItem>, color: Color) {
+        // The codec explodes as AutoCAD does, keeping whole what AutoCAD
+        // keeps whole (ELLIPSE, SPLINE, 3DFACE…); its `flatten` still breaks
+        // those into primitives.
+        let mut parts = e.explode();
+        if parts.is_empty() {
+            parts = e.flatten();
+        }
+        if parts.is_empty() {
+            return self.placeholder(e, color, out);
+        }
         let deeper = Context {
             blocks: {
                 // Exploding counts toward the depth guard as well.
@@ -340,7 +426,7 @@ impl<'a> Painter<'a> {
             ..ctx.clone()
         };
         for part in &parts {
-            self.emit(part, &deeper, ocs, out);
+            self.emit(part, &deeper, out);
         }
     }
 
@@ -400,12 +486,7 @@ impl<'a> Painter<'a> {
             ..ctx.clone()
         };
         for attribute in &ins.attributes {
-            self.emit(
-                &EntityType::AttributeEntity(attribute.clone()),
-                &inner,
-                false,
-                out,
-            );
+            self.emit(&EntityType::AttributeEntity(attribute.clone()), &inner, out);
         }
     }
 
@@ -436,11 +517,11 @@ impl<'a> Painter<'a> {
                 continue; // definitions are drawn through the insert's values
             }
             if identity {
-                self.emit(child, &inner, false, out);
+                self.emit(child, &inner, out);
             } else {
                 let mut moved = child.clone();
                 moved.apply_transform(t);
-                self.emit(&moved, &inner, false, out);
+                self.emit(&moved, &inner, out);
             }
         }
     }
@@ -454,6 +535,45 @@ fn segment(a: (f64, f64), b: (f64, f64)) -> Option<Shape> {
         Ok(line) => Shape::Line(line),
         Err(_) => Shape::Point(a),
     })
+}
+
+/// An ellipse as segments between points on it, seen in plan (the codec
+/// would approximate it with a spline through points near it).
+fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
+    let major = el.major_axis;
+    let minor = el.normal.cross(&major).normalize() * (major.length() * el.minor_axis_ratio);
+    let (start, mut end) = if el.is_full() {
+        (0.0, TAU)
+    } else {
+        (el.start_parameter, el.end_parameter)
+    };
+    while end <= start {
+        end += TAU;
+    }
+    let sweep = end - start;
+    let steps = ((sweep * 16.0).ceil() as usize).clamp(8, 128);
+    let at = |i: usize| {
+        let t = start + sweep * i as f64 / steps as f64;
+        let p = el.center + major * t.cos() + minor * t.sin();
+        (p.x, p.y)
+    };
+    for i in 0..steps {
+        if let Some(shape) = segment(at(i), at(i + 1)) {
+            out.push(DrawItem { shape, color });
+        }
+    }
+}
+
+/// A hatch edge's angle (or parameter) range, counterclockwise. A
+/// clockwise edge stores its angles mirrored: it runs clockwise from
+/// `-start` to `-end`, so counterclockwise from `-end` to `-start` (as each
+/// clockwise arc of the maintainer's drawings meets its neighbors).
+fn ccw_range(start: f64, end: f64, counter_clockwise: bool) -> (f64, f64) {
+    if counter_clockwise {
+        (start, end)
+    } else {
+        (-end, -start)
+    }
 }
 
 /// The OCS of `normal` to world: AutoCAD's arbitrary axis algorithm.

@@ -111,15 +111,21 @@ fn an_empty_dxf_is_a_valid_drawing() {
     );
 }
 
-/// R13 to 2000 cut short read as an empty drawing without an error.
+/// R13 to 2000 cut short read as an empty drawing without an error. Cut
+/// at the very end (its handle map lost), the engine scans the records and
+/// recovers most lines, as a damaged drawing; cut deeper, nothing.
 #[test]
 fn truncated_old_dwg_is_damaged_not_empty() {
     for version in [DxfVersion::AC1012, DxfVersion::AC1014, DxfVersion::AC1015] {
-        for bytes in [
-            cut(&dwg(version), 50),
-            cut(&dwg(version), 99),
-            zero_tail(&dwg(version)),
-        ] {
+        let (cad, recovery) = read(cut(&dwg(version), 99), FileFormat::Dwg, Path::new("x"))
+            .unwrap_or_else(|e| panic!("{version:?}: {e}"));
+        let lines = cad.entities().count();
+        assert!(recovery.is_some(), "{version:?}: read as intact");
+        assert!(
+            lines > LINES / 2 && lines < LINES,
+            "{version:?}: {lines} lines"
+        );
+        for bytes in [cut(&dwg(version), 50), zero_tail(&dwg(version))] {
             let error = read(bytes, FileFormat::Dwg, Path::new("plano.dwg")).unwrap_err();
             let DocumentError::Damaged { path, problems } = &error else {
                 panic!("{version:?}: {error}")

@@ -350,6 +350,19 @@ fn whole_transform_problems(path: &Path) -> Vec<String> {
 /// What the drawing primitives make of a drawing (ADR 0013, D5.2): a line
 /// for the report, and a problem for every visible entity that draws nothing
 /// although it has an extent.
+/// Kinds always drawn as what they are, never as a placeholder box.
+const DRAWN_WHOLE: [&str; 9] = [
+    "LWPOLYLINE",
+    "POLYLINE",
+    "ELLIPSE",
+    "SPLINE",
+    "SOLID",
+    "3DFACE",
+    "HATCH",
+    "MESH",
+    "INSERT",
+];
+
 fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
     let mut shapes = [0usize; 6]; // line, circle, arc, point, text, placeholder
     let mut placeholder_kinds: Vec<&str> = Vec::new();
@@ -369,6 +382,12 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
                 Shape::Placeholder(_) => {
                     if !placeholder_kinds.contains(&entity.kind()) {
                         placeholder_kinds.push(entity.kind());
+                    }
+                    // Curves and faces the drawing breaks down itself, or
+                    // with the codec's flatten, are never boxes; the 0.6.5
+                    // upgrade once boxed them (ADR 0017's log).
+                    if DRAWN_WHOLE.contains(&entity.kind()) {
+                        problems.push(format!("entity {id} ({}) drawn as a box", entity.kind()));
                     }
                     5
                 }
@@ -577,33 +596,39 @@ fn codec_regression_fork_fixes() {
     let count =
         |doc: &Document, kind: &str| doc.entities().iter().filter(|e| e.kind() == kind).count();
 
-    // R11/R12: a 16-bit linetype index (it was read as one byte).
-    // Every entity, block contents included: LibreDWG's 1,817 less the 224
-    // VERTEX, SEQEND, BLOCK and ENDBLK records the engine folds into their
-    // owners. Before the fix the drawing did not open at all.
+    // R11/R12: a 16-bit linetype index (once read as one byte; AcadRust
+    // reads it so since its own R11/R12 support). Every entity, block
+    // contents included: LibreDWG's 1,817 less the 224 VERTEX, SEQEND,
+    // BLOCK and ENDBLK records the engine folds into their owners. The
+    // drawing is in paper space (TILEMODE 0, empty model extents), which
+    // the engine now honors: nothing is left in model space.
     let aceb10 = open("r11/ACEB10.dwg");
     assert_eq!(aceb10.entity_count(), 1593, "ACEB10, as LibreDWG reads it");
-    assert_eq!(count(&aceb10, "LINE"), 266, "ACEB10 model-space lines");
+    assert!(
+        aceb10.entities().is_empty(),
+        "ACEB10 is drawn in paper space"
+    );
     // R2004 lofted surface with a binary extra modeler block.
     assert_eq!(count(&open("2004/Surface.dwg"), "SURFACE"), 5);
-    // Solid history (ACSH_*) and old-layout geometry dependencies, kept.
+    // Solid history (ACSH_*), kept verbatim by our patch.
     let atmos = open("2007/ATMOS-DC22S.dwg");
-    assert_eq!(
-        atmos.undecoded_objects().len(),
-        9,
-        "{:?}",
-        atmos.undecoded_objects()
+    let undecoded = atmos.undecoded_objects();
+    assert_eq!(undecoded.len(), 9, "{undecoded:?}");
+    assert!(
+        undecoded.iter().all(|o| o.starts_with("ACSH_")),
+        "{undecoded:?}"
     );
-    for name in ["example_r14.dwg", "example_2000.dwg", "example_2007.dwg"] {
+    // Old-layout geometry dependencies, once kept undecoded too: AcadRust
+    // now decodes them (the round trip below checks nothing is lost).
+    for name in [
+        "example_r14.dwg",
+        "example_2000.dwg",
+        "example_2007.dwg",
+        "example_2013.dwg",
+    ] {
         let undecoded = open(name).undecoded_objects().to_vec();
-        assert!(
-            undecoded
-                .iter()
-                .any(|o| o.starts_with("ACDBASSOCGEOMDEPENDENCY")),
-            "{name}: {undecoded:?}"
-        );
+        assert!(undecoded.is_empty(), "{name}: {undecoded:?}");
     }
-    assert!(open("example_2013.dwg").undecoded_objects().is_empty());
     // And the full round trip of every corpus drawing. It once failed on a
     // RAY rewritten in R14/2000 DWG (a direction rounded in the last place),
     // ACIS bodies saved as DXF (no wireframe cache to box them) and a
