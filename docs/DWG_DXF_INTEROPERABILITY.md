@@ -39,7 +39,7 @@ when its parameters change).
 | 3D solids, regions, surfaces (ACIS) | ✅ geometry kept (761 kB measured); R2004 lofted surfaces fixed in our fork | 100 % / 100 % (DXF keeps the body as SAT, without the DWG wireframe cache: boxed from its vertices) | ◐ bounding box in plan | ○ | ○ | 3D model in 02.8 |
 | Meshes, 3D faces | ✅ | 100 % / 100 % | ◐ edges in plan | ○ | — | |
 | Ellipses, splines, 2D solids | ✅ | ✅ (not measured separately) | ◐ broken into lines and arcs | ○ | — | |
-| Dynamic blocks | ✅ definitions, parameters, actions, grips | 100 % / 100 % | ✅ current state (the evaluated block) | ○ | ○ visibility, stretch… | ADR 0016 D7, our parametric engine (ADR 0017 D6) |
+| Dynamic blocks | ✅ definitions, parameters, actions, grips | 100 % / 100 % | ✅ current state (the evaluated block) | ○ | ○ visibility, stretch… | ADR 0016 D7, our parametric engine (ADR 0017 D6), milestone 04.1 |
 | Geometric and dimensional constraints | ✅ 2013+; ◐ R14–2010 kept undecoded (old layout, decoding pending) | ✅ preserved; R14–2010 byte for byte in the same version; lost as DXF (asked) | — | ○ | ○ | 03.2; opencadcodec's reading proved wrong for the old layout |
 | Associative network (ASSOC*) | ✅ | 100 % / 100 % | — | ○ | ○ | |
 | XDATA, XRECORD | ✅ | 100 % (measured on 14,169 entities) | — | ○ | — | where application data goes in DWG |

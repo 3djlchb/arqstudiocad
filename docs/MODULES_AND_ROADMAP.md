@@ -7,7 +7,7 @@ code exists. Phases may overlap once their contracts are stable.
 
 Legend: ✅ done · ◐ in progress · ○ to do.
 
-## Where we are (2026-10-18)
+## Where we are (2026-10-21)
 
 - **Technical MVP: 8 of 8** (master plan §15): milestone 02.6 saves and
   recovers the working document (DWG) from the own internal model.
@@ -20,8 +20,7 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **Current:** milestone 02.8: texts are done, single-line and basic
   multiline (ADR 0022); blocks are done (ADR 0023: EXPLODE with
   attributes, BLOCK and INSERT, and the block editor); dynamic blocks wait
-  for the parametric engine, which is still to be placed in this roadmap
-  (D3a).
+  for the parametric engine, milestone 04.1 (D3a).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu
@@ -89,6 +88,13 @@ title blocks, plotting to PDF; projections, sections and elevations as
 **associative views** that know their source and regenerate keeping manual
 annotations (ADR 0014); the **project container** (models, drawings, views,
 sheets, resources; an ADR first). Module M09.
+
+It opens with the engine its associativity stands on *(maintainer,
+2026-10-21)*:
+
+| Milestone | Content | Status |
+|---|---|---|
+| 04.1 Parametric engine | ArqStudioCAD's own engine (ADR 0017 D6; an ADR first): a dependency graph that regenerates what depends on what changed; 2D geometric and dimensional constraints, solved and kept through DWG; dynamic blocks recomputed when a parameter changes (visibility, stretch, flip, lookup…), so the block editor accepts them (ADR 0023 D3a). Associative dimensions and views are built on it; BIM objects (phases 05 and 07) reuse it | ○ |
 
 ## Phase 05 — BIM and IFC ○
 
