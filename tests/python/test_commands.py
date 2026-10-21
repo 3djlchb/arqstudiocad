@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal, cast
 
 import pytest
-from damaged_files import recovered_dxf
+from damaged_files import LINES, recovered_dxf
 
 from arqstudiocad.commands import (
     Background,
@@ -300,15 +300,12 @@ def test_open_notes_objects_kept_undecoded() -> None:
     h.run("OPEN", str(regression_drawing(CONSTRAINTS_2010)))
     doc = h.session.active
     assert doc is not None and doc.recovery_problems == []
-    assert doc.undecoded_objects == [
-        "ACDBASSOC2DCONSTRAINTGROUP (3E3)",
-        "ACDBASSOCGEOMDEPENDENCY (3E4)",
-        "ACDBASSOCGEOMDEPENDENCY (3E5)",
-    ]
+    # The engine decodes its geometry dependencies; the constraint group in
+    # its old layout stays kept as it is.
+    assert doc.undecoded_objects == ["ACDBASSOC2DCONSTRAINTGROUP (3E3)"]
     assert h.messages()[-1] == (
-        "3 objects the program cannot read yet are kept as they are: "
-        "ACDBASSOC2DCONSTRAINTGROUP (3E3), ACDBASSOCGEOMDEPENDENCY (3E4), "
-        "ACDBASSOCGEOMDEPENDENCY (3E5)"
+        "1 objects the program cannot read yet are kept as they are: "
+        "ACDBASSOC2DCONSTRAINTGROUP (3E3)"
     )
 
 
@@ -318,7 +315,7 @@ def test_a_recovered_drawing_is_reported_and_not_saved_over_unasked(tmp_path: Pa
     h = harness()
     h.run("OPEN", str(path))
     doc = h.session.active
-    assert doc is not None and doc.entity_count == 5
+    assert doc is not None and doc.entity_count == LINES - 1
     assert h.messages()[-len(doc.recovery_problems) - 1] == (
         "danado.dxf is damaged: it was recovered and part of it may be missing."
     )

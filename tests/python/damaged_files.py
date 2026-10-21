@@ -19,7 +19,7 @@ def _saved(path: Path) -> Path:
 
 def recovered_dxf(path: Path) -> Path:
     """A DXF whose sixth LINE has an invalid group code: the strict read
-    fails, recovery reads the five lines before it."""
+    fails, recovery skips that record and reads the other lines."""
     lines = _saved(path).read_text(encoding="utf-8").split("\n")
     entities = lines.index("ENTITIES")
     starts = [

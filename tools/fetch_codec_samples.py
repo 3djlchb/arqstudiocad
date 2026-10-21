@@ -1,10 +1,11 @@
 """Fetch the DWG/DXF engine's sample drawings for the round-trip corpus.
 
-Downloads the AcadRust package (MPL-2.0) of the version pinned in
-Cargo.toml from crates.io, checks it against the checksum Cargo recorded in
-Cargo.lock, and extracts its test drawings into
+Downloads the AcadRust 0.6.4 package (MPL-2.0) from crates.io, checks it
+against the checksum Cargo recorded for it in Cargo.lock then (the engine
+is now 0.6.5 patched from our fork, ADR 0017; these drawings stay a valid
+corpus), and extracts its test drawings into
 ``target/corpus/acadrust/`` (ignored by git), each checked against its
-SHA-256. Run it after changing the pinned version, updating the list below.
+SHA-256. Run it after changing that version, updating the list below.
 See ADR 0011, D3.12, and ADR 0017.
 
 Also downloads regression drawings from LibreDWG's test data (GPL-3.0,
@@ -24,8 +25,7 @@ import tarfile
 import urllib.request
 from pathlib import Path
 
-#: AcadRust version pinned in Cargo.toml, and the package's SHA-256 as
-#: Cargo.lock records it.
+#: The AcadRust package the samples come from, and its SHA-256.
 VERSION = "0.6.4"
 CRATE_SHA256 = "94862189cab6e282ed0433a801a216cd1a712953813284a48fa81c67223e38f6"
 CRATE_URL = f"https://static.crates.io/crates/acadrust/acadrust-{VERSION}.crate"

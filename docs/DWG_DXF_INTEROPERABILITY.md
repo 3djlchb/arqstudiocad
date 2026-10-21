@@ -2,7 +2,7 @@
 
 Module M02, phase 03. The decision is
 [ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md): AcadRust
-(crates.io, `=0.6.4`) as the base, behind `arq-document`; opencadcodec's
+(crates.io, `=0.6.5`, patched from our fork) as the base, behind `arq-document`; opencadcodec's
 improvements brought in one by one; LibreDWG out of the product. The
 evidence is the [library comparison](references/dwg-library-comparison.md)
 (220 drawings, 6,600 operations); the tool is `tools/dwg-bench`.
@@ -20,7 +20,7 @@ evidence is the [library comparison](references/dwg-library-comparison.md)
 ## Capability matrix
 
 What ArqStudioCAD can do with each kind of DWG/DXF content, on AcadRust
-0.6.4, measured on the comparison corpus. Levels: **read** (the engine reads
+0.6.4, measured on the comparison corpus (re-measured on the 0.6.5 upgrade, ADR 0017's log). Levels: **read** (the engine reads
 it), **keep** (it survives our save and reopening), **show** (drawn in the
 viewport), **edit** (the platform changes it), **recompute** (regenerated
 when its parameters change).

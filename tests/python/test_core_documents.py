@@ -64,7 +64,7 @@ def test_a_recovered_drawing_says_so_and_guards_its_file(
     path = recovered_dxf(tmp_path / "danado.dxf")
     original = path.read_bytes()
     doc = app.open_document(path)
-    assert doc.entity_count == 5 < LINES
+    assert doc.entity_count == LINES - 1, "the damaged line skipped"
     assert any("zz" in p for p in doc.recovery_problems), doc.recovery_problems
 
     with pytest.raises(OverwritesDamagedError) as raised:

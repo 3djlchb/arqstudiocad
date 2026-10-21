@@ -24,7 +24,8 @@ empty drawing with no error (both codecs).
 ### D1 — AcadRust is the production base *(maintainer)*
 
 The DWG/DXF adapter is built on **AcadRust from crates.io**, pinned to an
-exact version (`=0.6.4`, the version measured). Upgrades are deliberate:
+exact version (`=0.6.4`, the version measured; `=0.6.5` since 2026-10-20,
+see the log). Upgrades are deliberate:
 each runs the round-trip corpus and the comparison bench
 (`tools/dwg-bench`) before it is accepted, and the version, its results
 and the date are recorded in this ADR's log below.
@@ -43,8 +44,9 @@ license recorded in `THIRD_PARTY.md`. *(Amended 2026-10-13, maintainer:)*
 - The fork's `main` **follows the original** (`hakanaktt/acadrust`), as a
   mirror with none of our changes.
 - **Our features live only in the fork**, on a branch of ours on top of
-  the AcadRust version we use (today `arqstudiocad/preserve-undecoded`, on
-  0.6.4). They are not sent upstream.
+  the AcadRust version we use (today `arqstudiocad/on-2b12197`, on the
+  original's commit `2b12197`, after 0.6.5; one branch per base, so the
+  commits older builds pinned stay reachable). They are not sent upstream.
 - We take the original's changes **only when they favour us** (a fix or
   feature we need): our branch then moves to that version, re-applying our
   changes, and its regression drawings, the round-trip corpus and the
@@ -133,3 +135,4 @@ copyright notices of the specific files.
 | 2026-10-13 | AcadRust 0.6.4 + our patch `b2358ab` ([fork](https://github.com/3djlchb/acadrust/tree/arqstudiocad/preserve-undecoded)) | round-trip corpus; LibreDWG `Constraints.dwg` R14–2018 | 03.2: the fork's constraint-group reading turned out to be garbage for R14–2010 (old layout); instead, class objects that fail to decode are kept verbatim, so those drawings open intact and keep their constraints byte for byte in a same-version save. Decoding the old layout is pending. Our changes stay in our fork, not sent upstream (D2 amended). |
 | 2026-10-13 | AcadRust 0.6.4 + our fork at `f250d80` | LibreDWG `Surface.dwg` (2004), `ACEB10.dwg` (R11), `ATMOS-DC22S.dwg`, `example_*.dwg` | 03.2, checked against independent evidence: the fork read the 2004 lofted surface correctly (AcadRust 0.6.4's issue-#129 change skipped its binary extra modeler block; our fork allows only that self-validating probe); its "recovery" of ACEB10 was an empty drawing, while AcadRust mis-sized R11 linetype indices (16-bit, as LibreDWG reads them; fixed, 1,593 entities). Their round trip found engine bugs still to fix: a RAY rewritten in R14/2000 DWG, ACIS bodies and RAY/TOLERANCE ids in DXF output; the safe save refuses those saves. |
 | 2026-10-14 | AcadRust 0.6.4 + our fork at `7cbde43` | the seven LibreDWG drawings, full round trip | Three of the four bugs the round trip found were ours, not the engine's: a RAY's far-out box compared with an absolute tolerance (now relative), and ACIS bodies boxed from a wireframe cache DXF does not keep (now boxed and compared by their ACIS vertices, equal in SAB and SAT). The engine's: a TOLERANCE's line separator written as `\P` in DXF (now `^J`) and its box collapsing on a zero stored height. All seven drawings now round-trip. |
+| 2026-10-20 | AcadRust after 0.6.5 (the original's `2b12197`) + our fork at `5f473cc` ([branch](https://github.com/3djlchb/acadrust/tree/arqstudiocad/on-2b12197)) | round-trip corpus (codec samples, the LibreDWG drawings, the maintainer's drawings); bench, 220 drawings, AcadRust only, old fork against new | Upgrade taking the original's R11/R12 DWG support, truncated R13–R2000 recovery and decoded geometry dependencies. Bench: 5 operations better (an R1.4 DXF read, two DWG saves with geometry dependencies), none worse, same time and memory. Our R11/R12 linetype-index patch dropped (the original reads them so); kept: class objects kept verbatim (the original preserves only a few auxiliary classes, now notes too), surfaces' extra modeler block, TOLERANCE in DXF; new: R11/R12 current layer, style and linetype names, and DXF hatch elliptic edge angles in degrees (the original kept them so in the model, where radians are expected). Not taken: the original's newest commit `daaa37a`, whose mesh limits, scaled from the machine's memory, make reading a maintainer's drawing ask for 40 GB. The engine's explode now follows AutoCAD (since `c08fc93`: a SOLID does not explode, a HATCH explodes into its pattern, and on that drawing exhausts memory by scaling pattern lines already scaled), so hatch boundaries are outlined in `arq-document` and hatches are never exploded; ellipses are drawn from points on them (the codec's spline approximation drew them 0.5 % small), and what explode keeps whole (SOLID, SPLINE, 3DFACE, meshes) goes through the codec's `flatten`; a clockwise hatch edge stores its angles mirrored (every clockwise arc of the maintainer's drawings meets its neighbors only so), which both explodes got wrong; R11 `ACEB10.dwg` is now read in paper space, as the file says. |

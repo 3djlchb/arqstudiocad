@@ -124,36 +124,344 @@ fn polylines_become_lines_and_arcs() {
 #[test]
 fn a_mirrored_polyline_is_drawn_where_it_is() {
     // Normal (0,0,-1): OCS x is world -x, so OCS (1,0)-(3,0) is world
-    // (-1,0)-(-3,0). The codec's explode gives OCS coordinates on LINEs.
+    // (-1,0)-(-3,0), for a light polyline and for an old-style one, then
+    // OCS (5,0)-(7,0) is world (-5,0)-(-7,0).
+    let doc = dxf(
+        LAYERS,
+        &[],
+        &[
+            &[
+                "0", "POLYLINE", "8", "0", "66", "1", "70", "0", "210", "0", "220", "0", "230",
+                "-1", "0", "VERTEX", "8", "0", "10", "5", "20", "0", "0", "VERTEX", "8", "0", "10",
+                "7", "20", "0", "0", "SEQEND", "8", "0",
+            ],
+            &[
+                "0",
+                "LWPOLYLINE",
+                "8",
+                "0",
+                "90",
+                "2",
+                "70",
+                "0",
+                "210",
+                "0",
+                "220",
+                "0",
+                "230",
+                "-1", //
+                "10",
+                "1",
+                "20",
+                "0",
+                "10",
+                "3",
+                "20",
+                "0",
+            ],
+        ],
+    );
+    assert_eq!(
+        lines(&shapes(&doc)),
+        [((-5.0, 0.0), (-7.0, 0.0)), ((-1.0, 0.0), (-3.0, 0.0))]
+    );
+}
+
+#[test]
+fn a_solid_is_drawn_by_its_outline() {
+    // Corners 1 (0,0), 2 (2,0), 3 (0,1), 4 (2,1) in a mirrored OCS: world
+    // x is -x. The outline runs 1-2-4-3: (0,0) (-2,0) (-2,1) (0,1).
     let doc = dxf(
         LAYERS,
         &[],
         &[&[
-            "0",
-            "LWPOLYLINE",
-            "8",
-            "0",
-            "90",
+            "0", "SOLID", "8", "0", "10", "0", "20", "0", "11", "2", "21", "0", "12", "0", "22",
+            "1", "13", "2", "23", "1", "210", "0", "220", "0", "230", "-1",
+        ]],
+    );
+    assert_eq!(
+        lines(&shapes(&doc)),
+        [
+            ((0.0, 0.0), (-2.0, 0.0)),
+            ((-2.0, 0.0), (-2.0, 1.0)),
+            ((-2.0, 1.0), (0.0, 1.0)),
+            ((0.0, 1.0), (0.0, 0.0)),
+        ]
+    );
+}
+
+/// A solid-filled hatch on layer MUROS with `paths` (group codes from 91 on).
+fn hatch(normal_z: &'static str, paths: &[&'static str]) -> Document {
+    let mut codes = vec![
+        "0", "HATCH", "8", "MUROS", "10", "0", "20", "0", "30", "0", "210", "0", "220", "0", "230",
+        normal_z, "2", "SOLID", "70", "1", "71", "0",
+    ];
+    codes.extend_from_slice(paths);
+    codes.extend_from_slice(&["75", "0", "76", "1", "98", "0"]);
+    dxf(LAYERS, &[], &[&codes])
+}
+
+#[test]
+fn a_hatch_is_drawn_by_its_boundary() {
+    // Two loops: a polyline square (0,0)-(2,2), its last side bulging out
+    // (bulge 1 from (0,2) back to (0,0): a half circle around (0,1), run
+    // counterclockwise, so through (-1,1)); and edges: a LINE (5,0)-(7,0), an
+    // ARC around (6,0), radius 1, from 0° to 180° counterclockwise, and one
+    // around (10,0) from 90° to 0° clockwise, stored mirrored as 270° to
+    // 360°: the quarter through 45°, (10.7071,0.7071).
+    let doc = hatch(
+        "1",
+        &[
+            "91", "2", //
+            "92", "2", "72", "1", "73", "1", "93", "4", "10", "0", "20", "0", "42", "0", "10", "2",
+            "20", "0", "42", "0", "10", "2", "20", "2", "42", "0", "10", "0", "20", "2", "42", "1",
+            "97", "0", //
+            "92", "1", "93", "3", "72", "1", "10", "5", "20", "0", "11", "7", "21", "0", "72", "2",
+            "10", "6", "20", "0", "40", "1", "50", "0", "51", "180", "73", "1", "72", "2", "10",
+            "10", "20", "0", "40", "1", "50", "270", "51", "360", "73", "0", "97", "0",
+        ],
+    );
+    let items = shapes(&doc);
+    assert_eq!(
+        lines(&items),
+        [
+            ((0.0, 0.0), (2.0, 0.0)),
+            ((2.0, 0.0), (2.0, 2.0)),
+            ((2.0, 2.0), (0.0, 2.0)),
+            ((5.0, 0.0), (7.0, 0.0)),
+        ]
+    );
+    let middles: Vec<Point2> = items
+        .iter()
+        .filter_map(|i| match i.shape {
+            Shape::Arc(a) => Some(a.midpoint()),
+            _ => None,
+        })
+        .collect();
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let expected = [p(-1.0, 1.0), p(6.0, 1.0), p(10.0 + h, h)];
+    assert_eq!(middles.len(), 3, "{items:?}");
+    for (found, wanted) in middles.iter().zip(expected) {
+        assert!(near(*found, wanted), "{found:?} is not {wanted:?}");
+    }
+    // Drawn as the hatch is: on MUROS, colored by layer (1).
+    assert!(items.iter().all(|i| i.color == Color::Index(1)));
+}
+
+/// The box of everything drawn.
+fn extent(items: &[DrawItem]) -> Bounds2 {
+    items
+        .iter()
+        .map(|i| i.shape.bounds())
+        .reduce(|a, b| a.union(b))
+        .unwrap()
+}
+
+#[test]
+fn a_hatch_with_ellipse_and_spline_edges() {
+    // A whole ellipse around (0,0), semi-axes 2 (along x) and 1: the box
+    // (-2,-1)-(2,1). A quadratic spline from (0,0) to (4,0) pulled up by
+    // (2,2) (knots 0 0 0 1 1 1): it peaks at (2,1). Its box is (0,0)-(4,1).
+    let ellipse = hatch(
+        "1",
+        &[
+            "91", "1", "92", "1", "93", "1", "72", "3", "10", "0", "20", "0", "11", "2", "21", "0",
+            "40", "0.5", "50", "0", "51", "360", "73", "1", "97", "0",
+        ],
+    );
+    // Drawn as segments between points on it: within 0.005 of its box.
+    let b = extent(&shapes(&ellipse));
+    assert!(within(b, (-2.0, -1.0), (2.0, 1.0), 0.005), "{b:?}");
+    let spline = hatch(
+        "1",
+        &[
+            "91", "1", "92", "1", "93", "2", "72", "4", "94", "2", "73", "0", "74", "0", "95", "6",
+            "96", "3", "40", "0", "40", "0", "40", "0", "40", "1", "40", "1", "40", "1", "10", "0",
+            "20", "0", "10", "2", "20", "2", "10", "4", "20", "0", "72", "1", "10", "4", "20", "0",
+            "11", "0", "21", "0", "97", "0",
+        ],
+    );
+    let b = extent(&shapes(&spline));
+    assert!(within(b, (0.0, 0.0), (4.0, 1.0), 0.01), "{b:?}");
+}
+
+/// Whether box `b` runs from `lo` to `hi`, give or take `tolerance`.
+fn within(b: Bounds2, lo: (f64, f64), hi: (f64, f64), tolerance: f64) -> bool {
+    let close = |a: Point2, (x, y): (f64, f64)| {
+        (a.x() - x).abs() < tolerance && (a.y() - y).abs() < tolerance
+    };
+    close(b.min(), lo) && close(b.max(), hi)
+}
+
+#[test]
+fn ellipses_and_3d_faces_are_drawn() {
+    // Half an ellipse around (0,0), semi-axes 2 and 1, parameters 0 to π:
+    // the upper half, box (-2,0)-(2,1); with normal (0,0,-1) the minor axis
+    // turns down, so the lower half, box (-2,-1)-(2,0). From 3π/2 on past
+    // 2π to π/2: the right half, box (0,-1)-(2,1). A 3DFACE
+    // (5,0)-(7,0)-(7,1)-(5,1): its four sides.
+    let ellipse = |normal_z: &'static str, start: &'static str, end: &'static str| {
+        dxf(
+            LAYERS,
+            &[],
+            &[&[
+                "0", "ELLIPSE", "8", "0", "10", "0", "20", "0", "30", "0", "11", "2", "21", "0",
+                "31", "0", "210", "0", "220", "0", "230", normal_z, "40", "0.5", "41", start, "42",
+                end,
+            ]],
+        )
+    };
+    let (pi, half_pi) = ("3.141592653589793", "1.5707963267948966");
+    let b = extent(&shapes(&ellipse("1", "0", pi)));
+    assert!(within(b, (-2.0, 0.0), (2.0, 1.0), 0.005), "{b:?}");
+    let b = extent(&shapes(&ellipse("-1", "0", pi)));
+    assert!(within(b, (-2.0, -1.0), (2.0, 0.0), 0.005), "{b:?}");
+    let b = extent(&shapes(&ellipse("1", "4.71238898038469", half_pi)));
+    assert!(within(b, (0.0, -1.0), (2.0, 1.0), 0.005), "{b:?}");
+    let face = dxf(
+        LAYERS,
+        &[],
+        &[&[
+            "0", "3DFACE", "8", "0", "10", "5", "20", "0", "30", "0", "11", "7", "21", "0", "31",
+            "0", "12", "7", "22", "1", "32", "0", "13", "5", "23", "1", "33", "0",
+        ]],
+    );
+    assert_eq!(
+        lines(&shapes(&face)),
+        [
+            ((5.0, 0.0), (7.0, 0.0)),
+            ((7.0, 0.0), (7.0, 1.0)),
+            ((7.0, 1.0), (5.0, 1.0)),
+            ((5.0, 1.0), (5.0, 0.0)),
+        ]
+    );
+}
+
+#[test]
+fn a_hatch_with_rational_and_mirrored_curved_edges() {
+    // A rational spline edge, control points (1,0) (1,1) (0,1) weighted
+    // 1, √2/2, 1: exactly a quarter of the unit circle around (0,0), every
+    // point drawn at distance 1 (unweighted, it would bulge to 1.06).
+    let spline = hatch(
+        "1",
+        &[
+            "91",
+            "1",
+            "92",
+            "1",
+            "93",
             "2",
-            "70",
+            "72",
+            "4",
+            "94",
+            "2",
+            "73",
+            "1",
+            "74",
             "0",
-            "210",
+            "95",
+            "6",
+            "96",
+            "3",
+            "40",
             "0",
-            "220",
+            "40",
             "0",
-            "230",
-            "-1", //
+            "40",
+            "0",
+            "40",
+            "1",
+            "40",
+            "1",
+            "40",
+            "1",
             "10",
             "1",
             "20",
             "0",
+            "42",
+            "1",
             "10",
-            "3",
+            "1",
             "20",
+            "1",
+            "42",
+            "0.7071067811865476",
+            "10",
             "0",
-        ]],
+            "20",
+            "1",
+            "42",
+            "1",
+            "72",
+            "1",
+            "10",
+            "0",
+            "20",
+            "1",
+            "11",
+            "1",
+            "21",
+            "0",
+            "97",
+            "0",
+        ],
     );
-    assert_eq!(lines(&shapes(&doc)), [((-1.0, 0.0), (-3.0, 0.0))]);
+    let curve: Vec<Point2> = lines(&shapes(&spline))
+        .into_iter()
+        .filter(|((ax, ay), (bx, by))| (ax + ay - 1.0).abs() > 1e-9 || (bx + by - 1.0).abs() > 1e-9)
+        .flat_map(|(a, b)| [p(a.0, a.1), p(b.0, b.1)])
+        .collect();
+    assert!(curve.len() > 4, "{curve:?}");
+    for q in &curve {
+        let r = (q.x() * q.x() + q.y() * q.y()).sqrt();
+        assert!((r - 1.0).abs() < 1e-3, "{q:?} at {r}");
+    }
+    // A mirrored hatch's elliptic edge: around OCS (3,0), semi-axes 2 and
+    // 1, 0° to 180° (the upper half), so in the world around (-3,0), box
+    // (-5,0)-(-1,1).
+    let mirrored = hatch(
+        "-1",
+        &[
+            "91", "1", "92", "1", "93", "2", "72", "3", "10", "3", "20", "0", "11", "2", "21", "0",
+            "40", "0.5", "50", "0", "51", "180", "73", "1", "72", "1", "10", "1", "20", "0", "11",
+            "5", "21", "0", "97", "0",
+        ],
+    );
+    let b = extent(&shapes(&mirrored));
+    assert!(within(b, (-5.0, 0.0), (-1.0, 1.0), 0.005), "{b:?}");
+}
+
+#[test]
+fn a_mirrored_hatch_is_drawn_where_it_is() {
+    // OCS LINE (1,0)-(3,0) and ARC around (6,0) from 0° to 90°, through
+    // OCS (6.7071,0.7071), and a polyline loop (1,2)-(3,2); mirrored: world
+    // (-1,0)-(-3,0), an arc around (-6,0) through (-6.7071,0.7071) and
+    // (-1,2)-(-3,2).
+    let doc = hatch(
+        "-1",
+        &[
+            "91", "2", "92", "1", "93", "2", "72", "1", "10", "1", "20", "0", "11", "3", "21", "0",
+            "72", "2", "10", "6", "20", "0", "40", "1", "50", "0", "51", "90", "73", "1", "97",
+            "0", //
+            "92", "2", "72", "0", "73", "0", "93", "2", "10", "1", "20", "2", "10", "3", "20", "2",
+            "97", "0",
+        ],
+    );
+    let items = shapes(&doc);
+    assert_eq!(
+        lines(&items),
+        [((-1.0, 0.0), (-3.0, 0.0)), ((-1.0, 2.0), (-3.0, 2.0))]
+    );
+    let Some(Shape::Arc(arc)) = items
+        .iter()
+        .map(|i| i.shape)
+        .find(|s| matches!(s, Shape::Arc(_)))
+    else {
+        panic!("{items:?}")
+    };
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    assert!(near(arc.midpoint(), p(-6.0 - h, h)), "{:?}", arc.midpoint());
 }
 
 #[test]
