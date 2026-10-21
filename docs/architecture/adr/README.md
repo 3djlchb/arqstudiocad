@@ -18,7 +18,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0011](0011-document-model-and-transactions.md) | Document over opencadcodec, 2D in plan, before/after-image undo, groups, change sets, round-trip corpus | Accepted |
 | [0012](0012-python-api.md) | Python API: tuples for points (any 2-sequence in, NumPy-readable arrays for bulk), immutable value classes, document handles, exception hierarchy, groups as context managers, GIL released for open/save | Accepted |
 | [0013](0013-application-shell.md) | Application shell: Classic and Ribbon workspaces over one action set, render representation and CPU rasterizer in Rust (arq-render), command window, events, panels, tabbed documents; guaranteed floor (reference machine) scaling up by runtime detection (amends 0007) | Accepted |
-| [0014](0014-platform-direction.md) | Platform direction: CAD/BIM multimodeler (charter, roadmap 0–10), no restart, names kept, docs CC BY-SA 4.0, external render engines, open questions | Accepted, question 3 settled by 0015 |
+| [0014](0014-platform-direction.md) | Platform direction: CAD/BIM multimodeler (charter, roadmap 0–10), no restart, names kept, docs CC BY-SA 4.0, external render engines, open questions | Accepted, question 3 settled by 0015, question 4 by 0024 |
 | [0015](0015-workspaces.md) | Workspaces: a discipline (declared as data in Python) shown in a layout (Ribbon for all, foldable and the default; Classic only for 2D drafting); chosen separately, layout state saved per workspace | Accepted |
 | [0016](0016-editing-workflow.md) | Editing workflow: AutoCAD selection (window/crossing), picking and snaps in Rust, running object snaps + ORTHO, AutoCAD point syntax, multifunction grips, first draw/edit commands, blocks and polylines transformed as a whole, property editors, Spanish command names | Accepted |
 | [0017](0017-dwg-dxf-engine-strategy.md) | DWG/DXF engine: AcadRust (crates.io) as the base, opencadcodec improvements recovered one by one with regression drawings, LibreDWG out of the product, codec behind our read/write/capabilities/round-trip contract, four mandatory data protections | Accepted, interoperability validation pending |
@@ -28,6 +28,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0021](0021-spatial-index.md) | Use an internal R*-tree for bounding-box candidates behind the existing core query API; synchronize it from committed changes and undo/redo | Accepted |
 | [0022](0022-text-entities.md) | TEXT and MTEXT in 02.8: transform as a whole, one grip, content/height/rotation in Properties, TEXT command; mirrored texts stay readable; letters drawn in a built-in stroke font; basic MTEXT command with word wrapping; the drawing's own fonts and formatted MTEXT in phase 04 | Accepted |
 | [0023](0023-blocks.md) | Blocks in 02.8: EXPLODE keeps attribute values as texts; BLOCK and INSERT; a BEDIT-like block editor in its own tab; an Insert ribbon tab | Accepted |
+| [0024](0024-3d-document-model.md) | The 3D document model: a solid is our own B-rep; DWG ACIS read into it and kept byte for byte until edited; Truck the first temporary backend after review; read, see, measure, then create and edit | Accepted |
 
 Template:
 
