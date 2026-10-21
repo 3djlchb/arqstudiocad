@@ -14,7 +14,7 @@ use acadrust::entities::solid3d::AcisData;
 use arq_geometry::{Bounds2, Point2};
 
 /// The ACIS data of a body, `None` for any other entity.
-fn acis_data(e: &EntityType) -> Option<&AcisData> {
+pub(crate) fn acis_data(e: &EntityType) -> Option<&AcisData> {
     match e {
         EntityType::Solid3D(s) => Some(&s.acis_data),
         EntityType::Surface(s) => Some(&s.acis_data),

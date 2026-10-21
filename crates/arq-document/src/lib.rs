@@ -42,6 +42,7 @@ mod model;
 mod ocs;
 mod pick;
 mod reading;
+mod solid;
 #[cfg(test)]
 mod test_dxf;
 mod text_layout;
@@ -58,3 +59,4 @@ pub use grips::{Grip, GripKind};
 pub use inventory::Loss;
 pub use layers::{Layer, LayerId};
 pub use reading::Recovery;
+pub use solid::Untranslated;

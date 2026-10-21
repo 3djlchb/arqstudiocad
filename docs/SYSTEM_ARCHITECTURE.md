@@ -19,8 +19,8 @@ details of each boundary are in the
 │   typed API, conversions, exceptions, GIL policy                     │
 ├──────────────────────────────────────────────────────────────────────┤
 │ Core — Rust              crates/arq-core, arq-document, arq-geometry, │
-│   arq-render: geometry, documents, entities, transactions, undo,     │
-│   queries, render representation                                     │
+│   arq-kernel, arq-render: geometry, B-rep solids, documents,         │
+│   entities, transactions, undo, queries, render representation       │
 ├───────────────────────────────────┬──────────────────────────────────┤
 │ Format adapters                   │ External engines                 │
 │   DWG/DXF: AcadRust in            │   Blender/Cycles, FFmpeg, FEM…   │
@@ -71,6 +71,7 @@ is not moved for the sake of the layout (maintainer, 2026-10-13).
 |---|---|---|
 | `crates/arq-core` | `crates/arq-core` (document with transactions, undo, queries, store) | — |
 | `crates/arq-geometry` | `crates/arq-geometry` | — |
+| `crates/arq-kernel` | `crates/arq-kernel` (B-rep solids, ADR 0024) | grows capability by capability (ADR 0020) |
 | `crates/arq-document` | `crates/arq-document` (model + DWG/DXF adapter) | the own internal model (02.6) separates model and adapter |
 | `crates/arq-entities` | inside `arq-document` | when the own entity model outgrows it (02.6, 02.8) |
 | `crates/arq-spatial` | R*-tree in `arq-core::spatial_index` (ADR 0021) | if a crate other than `arq-core` needs the index |

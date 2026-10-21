@@ -1,0 +1,16 @@
+[package]
+name = "arq-kernel"
+description = "ArqStudioCAD's own geometry kernel: B-rep solids (ADR 0020, ADR 0024)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+arq-geometry.workspace = true
+
+[lints]
+workspace = true

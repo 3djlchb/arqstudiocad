@@ -167,8 +167,8 @@ maps today's tree onto it).
 
 ```
 apps/desktop/                 main.py, ui/, resources/
-crates/                       arq-core, arq-geometry, arq-document, arq-entities, arq-spatial,
-                              arq-transactions, arq-render, arq-interop, arq-python
+crates/                       arq-core, arq-geometry, arq-kernel, arq-document, arq-entities,
+                              arq-spatial, arq-transactions, arq-render, arq-interop, arq-python
 python/arq_app/               commands/, services/, plugins/, integrations/
 adapters/                     dwg_dxf/, ifc/, rhino_3dm/, blender/, other_formats/
 modules/                      cad/, bim/, topography/, structures/, mep/, environmental/,
