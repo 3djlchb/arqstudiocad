@@ -168,14 +168,25 @@ Milestone 02.8 proceeds in independently reviewable steps:
    until the solid is edited; Truck is the first temporary backend, after
    its review; the capabilities go read, see, measure, create, edit.
 4. **Owned kernel, progressively:** implement and test each geometry capability
-   in Rust. OCCT may serve as a temporary, adapter-backed reference or execution
-   path after its version, bridge, packaging and license review. Compare
-   capability by capability; route a capability to the owned kernel only after
-   its declared correctness, precision, degeneracy and performance evidence is
-   reviewed (ADR 0020).
-5. **Curves, surfaces and solids:** add separate, bounded capabilities with
-   their own contracts and tests. B-rep topology and boolean operations are
-   later steps, not part of the 3D value-type foundation.
+   in Rust in `arq-kernel`. A reviewed temporary backend (Truck first; OCCT a
+   reference for differential tests) computes, behind an adapter, only what
+   the kernel cannot do yet; a capability moves to the kernel after its
+   acceptance suite passes (ADR 0020, amended; ADR 0024 D3).
+5. **Curves, surfaces and solids, in this order** (ADR 0024 D4; the
+   [geometry representations](references/geometry-representations.md)
+   reference explains the choices):
+   1. read: analytic geometry (done), then NURBS;
+   2. see: tessellation; edges in plan, shading with the GPU viewport;
+   3. measure: exact bounds, area, volume, centroid;
+   4. write ACIS from our B-rep, to save edited solids;
+   5. create: primitives, extrusion and revolution of 2D profiles;
+   6. transform solids as a whole;
+   7. booleans: Truck first, then the kernel (planar, analytic, NURBS);
+   8. fillets, chamfers, shelling, offsets, sweeps and lofts: Truck, then
+      the kernel in the long run;
+   9. the temporary backend retired when nothing uses it.
+
+   Steps 1 to 6 need no backend.
 
 ## Modules and phases
 
