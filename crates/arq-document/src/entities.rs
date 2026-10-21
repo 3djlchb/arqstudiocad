@@ -1,8 +1,9 @@
 //! Entity access on [`Document`].
 
-use acadrust::types::{Transform, Vector3};
+use acadrust::entities::LwPolyline;
+use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
-use arq_geometry::{Bounds2, Point2, Transform2};
+use arq_geometry::{Bounds2, GeometryError, Point2, Transform2};
 
 use crate::document::Document;
 use crate::entity::Color;
@@ -154,11 +155,15 @@ impl Document {
         entity
     }
 
-    /// The drawn box of a block reference or a dimension; `None` for other
-    /// kinds, whose own box is right.
+    /// The drawn box of a block reference or a dimension, and of a
+    /// polyline, whose arcs the engine's box (its vertices) leaves out;
+    /// `None` for other kinds, whose own box is right.
     fn block_extent(&self, e: &EntityType) -> Option<Bounds2> {
         match e {
-            EntityType::Insert(_) | EntityType::Dimension(_) => self.drawn_extent(e),
+            EntityType::Insert(_)
+            | EntityType::Dimension(_)
+            | EntityType::LwPolyline(_)
+            | EntityType::Polyline2D(_) => self.drawn_extent(e),
             _ => None,
         }
     }
@@ -254,6 +259,51 @@ impl Document {
             .ok_or(DocumentError::EntityNotFound(id))?;
         self.model.entities.remove(&id);
         Ok(())
+    }
+
+    /// Draws a lightweight polyline on the current layer (PLINE): each
+    /// vertex with the bulge of the segment leaving it (0 for a straight
+    /// segment, the tangent of a quarter of an arc's angle otherwise,
+    /// positive counterclockwise); `closed` joins the last vertex to the
+    /// first. Two vertices at least, no segment of zero length.
+    pub fn add_polyline(
+        &mut self,
+        vertices: &[(Point2, f64)],
+        closed: bool,
+    ) -> DocumentResult<EntityId> {
+        if vertices.len() < 2 {
+            return Err(DocumentError::Geometry(GeometryError::OutOfRange {
+                what: "polyline vertices",
+            }));
+        }
+        let segments = if closed {
+            vertices.len()
+        } else {
+            vertices.len() - 1
+        };
+        for i in 0..segments {
+            let (a, bulge) = vertices[i];
+            let b = vertices[(i + 1) % vertices.len()].0;
+            if !bulge.is_finite() {
+                return Err(DocumentError::Geometry(GeometryError::NonFinite {
+                    what: "bulge",
+                }));
+            }
+            if a == b {
+                return Err(DocumentError::Geometry(GeometryError::ZeroLength));
+            }
+        }
+        let mut polyline = LwPolyline::new();
+        for &(point, bulge) in vertices {
+            polyline.add_point_with_bulge(Vector2::new(point.x(), point.y()), bulge);
+        }
+        polyline.is_closed = closed;
+        polyline.common.layer = self.current_layer().name().to_owned();
+        let h = self
+            .cad_mut()
+            .add_entity(EntityType::LwPolyline(polyline))?;
+        self.sync_entity(h.value());
+        Ok(h.value())
     }
 
     /// The drawing's default text height (TEXTSIZE), 2.5 if it holds none.

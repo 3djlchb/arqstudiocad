@@ -275,3 +275,16 @@ fn a_block_is_found_on_what_it_draws_not_only_at_its_insertion_point() {
     let hidden = cad.document().entity(reference).unwrap().bounds().unwrap();
     assert!(hidden.approx_eq(bounds, Tolerance::default()));
 }
+
+#[test]
+fn a_polyline_is_found_on_its_arcs() {
+    // The engine boxes a polyline by its vertices; an arc bulging out of
+    // them must be found too. (0,0) to (2,0), bulge 1: a half circle
+    // through (1,-1).
+    let mut cad = CadDocument::new();
+    let (id, _) = cad
+        .add_polyline(&[(p(0.0, 0.0), 1.0), (p(2.0, 0.0), 0.0)], false)
+        .unwrap();
+    assert_eq!(cad.pick(p(1.0, -1.0), 0.05).unwrap(), Some(id));
+    assert_eq!(cad.select_window(area(0.8, -1.1, 1.2, -0.8), true), [id]);
+}

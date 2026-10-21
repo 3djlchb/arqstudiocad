@@ -1,6 +1,6 @@
 """The drawing commands of milestone 2.5 (ADR 0016 D8): LINE, CIRCLE and ARC;
-TEXT and MTEXT, AutoCAD's single-line and multiline texts, in milestone 02.8
-(ADR 0022).
+TEXT and MTEXT, AutoCAD's single-line and multiline texts, and PLINE, in
+milestone 02.8 (ADR 0022).
 
 They ask for points as AutoCAD does (typed or picked, with snaps and
 ORTHO) and build the curve with the core's constructors: Python never
@@ -18,7 +18,7 @@ from arqstudiocad.commands import (
     CommandScript,
     Option,
 )
-from arqstudiocad.core import CadArc, CadCircle, CadDocument, InvalidGeometryError
+from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadLine, InvalidGeometryError
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point
 
@@ -81,6 +81,80 @@ def line(ctx: CommandContext) -> CommandScript:
                 return
             segments.append(entity_id)
             points.append(end)
+    finally:
+        # Esc keeps what was drawn, as one undo step.
+        document.end_group()
+
+
+def pline(ctx: CommandContext) -> CommandScript:
+    """A polyline of straight segments and arcs, each arc tangent to the
+    segment before it (East for the first), as AutoCAD's PLINE: Arc and
+    Line switch between them, Undo takes back the last segment, Close
+    joins the last point to the first. The polyline grows as points are
+    picked; Esc keeps it, as one undo step."""
+    document = ctx.document()
+    document.begin_group("PLINE")
+    shown: int | None = None
+
+    def show(vertices: list[tuple[Point, float]], closed: bool) -> None:
+        nonlocal shown
+        if shown is not None:
+            ctx.session.report(document, document.delete_entities([shown]))
+            shown = None
+        if len(vertices) >= 2:
+            shown, changes = document.add_polyline(vertices, closed)
+            ctx.session.report(document, changes)
+
+    try:
+        start = yield ctx.point(tr("Specify start point"))
+        # Each vertex with the bulge of the segment leaving it.
+        vertices: list[tuple[Point, float]] = [(start, 0.0)]
+        # The direction each segment ends in, for the next tangent arc.
+        directions: list[float] = []
+        arcs = False
+        while True:
+            options = [Option("L", tr("Line")) if arcs else Option("A", tr("Arc"))]
+            options.append(Option("U", tr("Undo")))
+            if len(vertices) >= 3 or (arcs and len(vertices) >= 2):
+                options.append(Option("C", tr("Close")))
+            last = vertices[-1][0]
+            message = tr("Specify end point of arc") if arcs else tr("Specify next point")
+            answer = yield ctx.point(message, base=last, options=options, optional=True)
+            if answer is None:
+                return
+            if answer in ("A", "L"):
+                arcs = answer == "A"
+                continue
+            if answer == "U":
+                if len(vertices) == 1:
+                    ctx.message(tr("All segments already undone."))
+                    continue
+                # The next segment sets the new last vertex's bulge again.
+                vertices.pop()
+                directions.pop()
+                show(vertices, False)
+                continue
+            end = vertices[0][0] if answer == "C" else answer
+            try:
+                if arcs:
+                    heading = directions[-1] if directions else 0.0
+                    bulge, direction = CadArc.tangent_bulge(last, heading, end)
+                else:
+                    bulge, direction = 0.0, CadLine(last, end).direction
+            except InvalidGeometryError:
+                ctx.message(
+                    tr("No arc tangent to the last segment reaches that point.")
+                    if arcs and end != last
+                    else tr("The two points must differ.")
+                )
+                continue
+            vertices[-1] = (last, bulge)
+            if answer == "C":
+                show(vertices, True)
+                return
+            vertices.append((end, 0.0))
+            directions.append(direction)
+            show(vertices, False)
     finally:
         # Esc keeps what was drawn, as one undo step.
         document.end_group()
@@ -283,6 +357,7 @@ def justification_label(key: str) -> str:
 #: The drawing commands, with AutoCAD's aliases.
 DRAW_COMMANDS = (
     Command("LINE", line, ("L",)),
+    Command("PLINE", pline, ("PL",)),
     Command("CIRCLE", circle, ("C",)),
     Command("ARC", arc, ("A",)),
     Command("TEXT", text, ("DT",)),

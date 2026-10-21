@@ -95,6 +95,30 @@ impl Arc {
         )
     }
 
+    /// The arc that leaves `start` along `direction` (radians) and ends at
+    /// `end`, as a polyline vertex stores it: its bulge (the tangent of a
+    /// quarter of its sweep, positive counterclockwise, 0 when `end` lies
+    /// straight ahead), and the direction it ends in (PLINE's arcs, each
+    /// tangent to the segment before it). An `end` on `start` is refused,
+    /// and one straight behind it, which no tangent arc reaches.
+    pub fn tangent_bulge(start: Point2, direction: f64, end: Point2) -> GeometryResult<(f64, f64)> {
+        if !direction.is_finite() {
+            return Err(GeometryError::NonFinite { what: "direction" });
+        }
+        // Half the sweep: from the start tangent to the chord.
+        let half = angle::difference(
+            direction,
+            (end - start)
+                .normalized()
+                .map_err(|_| GeometryError::ZeroLength)?
+                .angle(),
+        );
+        if half.abs() >= std::f64::consts::PI {
+            return Err(GeometryError::Collinear);
+        }
+        Ok(((half / 2.0).tan(), angle::normalize(direction + 2.0 * half)))
+    }
+
     /// Center point.
     pub fn center(self) -> Point2 {
         self.center
@@ -218,6 +242,34 @@ impl Arc {
 mod tests {
     use super::*;
     use std::f64::consts::PI;
+
+    #[test]
+    fn tangent_arcs_as_polyline_bulges() {
+        let o = Point2::ORIGIN;
+        let at = |x: f64, y: f64| Point2::new(x, y).unwrap();
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-12;
+        // Leaving East: straight ahead, no arc.
+        let (bulge, end) = Arc::tangent_bulge(o, 0.0, at(2.0, 0.0)).unwrap();
+        assert!(close(bulge, 0.0) && close(end, 0.0));
+        // To (0,2): a half circle counterclockwise, ending West.
+        let (bulge, end) = Arc::tangent_bulge(o, 0.0, at(0.0, 2.0)).unwrap();
+        assert!(close(bulge, 1.0) && close(end, PI), "{bulge} {end}");
+        // To (1,1): a quarter, tan(22.5°), ending North.
+        let (bulge, end) = Arc::tangent_bulge(o, 0.0, at(1.0, 1.0)).unwrap();
+        assert!(close(bulge, (PI / 8.0).tan()) && close(end, PI / 2.0));
+        // To (1,-1): a quarter clockwise, ending South.
+        let (bulge, end) = Arc::tangent_bulge(o, 0.0, at(1.0, -1.0)).unwrap();
+        assert!(close(bulge, -(PI / 8.0).tan()) && close(end, 1.5 * PI));
+        // Straight behind, or on the start: no tangent arc.
+        assert_eq!(
+            Arc::tangent_bulge(o, 0.0, at(-2.0, 0.0)),
+            Err(GeometryError::Collinear)
+        );
+        assert_eq!(
+            Arc::tangent_bulge(o, 0.0, o),
+            Err(GeometryError::ZeroLength)
+        );
+    }
 
     const TOL: Tolerance = Tolerance::DEFAULT;
 
