@@ -35,6 +35,33 @@ fn documents_are_created_listed_and_closed() {
 }
 
 #[test]
+fn a_block_editor_is_a_document_saved_into_its_drawing() {
+    let app = CadApplication::new();
+    let plan = app.create_document("Plano1");
+    app.edit(plan, |cad| {
+        let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0))?;
+        cad.create_block("ESQUINA", p(0.0, 0.0), &[a])
+    })
+    .unwrap();
+    let editor = app
+        .open_block_editor(plan, "ESQUINA", "ESQUINA en Plano1")
+        .unwrap();
+    assert_eq!(app.document_name(editor).unwrap(), "ESQUINA en Plano1");
+    assert_eq!(app.document_path(editor).unwrap(), None);
+    app.edit(editor, |cad| cad.add_line(p(0.0, 0.0), p(0.0, 3.0)))
+        .unwrap();
+    assert!(app.read(editor, CadDocument::is_modified).unwrap());
+    let changes = app.save_block(editor, plan, "ESQUINA").unwrap();
+    assert_eq!(changes.modified().len(), 1, "the reference");
+    assert!(
+        !app.read(editor, CadDocument::is_modified).unwrap(),
+        "saved"
+    );
+    assert!(app.read(plan, CadDocument::is_modified).unwrap());
+    assert!(app.open_block_editor(plan, "NADA", "x").is_err());
+}
+
+#[test]
 fn an_unknown_document_is_an_error_everywhere() {
     let app = CadApplication::new();
     let gone = app.create_document("x");

@@ -64,7 +64,7 @@ from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
 from arqstudiocad.ui.viewport import Viewport
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
-from arqstudiocad.workspaces import WorkspaceRegistry, builtin_workspaces
+from arqstudiocad.workspaces import BLOCK_EDITOR, WorkspaceRegistry, builtin_workspaces
 
 LANGUAGE_SETTING = "language"
 #: Initial height of the command window, in pixels.
@@ -181,7 +181,11 @@ class MainWindow(QMainWindow):
         self.events.command_cancelled.connect(self._end_grip_edit)
         self.events.work_started.connect(self._on_work_started)
         self.events.work_finished.connect(self._on_work_finished)
-        for signal in (self.events.document_changed, self.events.document_saved):
+        for signal in (
+            self.events.document_changed,
+            self.events.document_saved,
+            self.events.block_saved,
+        ):
             signal.connect(self._update_tab_titles)
         self.events.document_opened.connect(self._on_document_opened)
         self.events.active_document_changed.connect(self._on_active_document_changed)
@@ -256,6 +260,9 @@ class MainWindow(QMainWindow):
 
         self._insert_menu = menu_bar.addMenu("")
         self._insert_menu.addAction(self.command_actions["INSERT"])
+        self._insert_menu.addSeparator()
+        for name in ("BEDIT", "BSAVE", "BCLOSE"):
+            self._insert_menu.addAction(self.command_actions[name])
         self._draw_menu = menu_bar.addMenu("")
         for name in ("LINE", "CIRCLE", "ARC", "MTEXT", "TEXT", "BLOCK"):
             self._draw_menu.addAction(self.command_actions[name])
@@ -406,6 +413,10 @@ class MainWindow(QMainWindow):
         self._update_tab_titles()
 
     def _on_active_document_changed(self, event: ActiveDocumentChanged) -> None:
+        # The block editor's contextual ribbon tab (ADR 0023 D3).
+        active = self.session.active
+        editing = active is not None and self.session.block_editor_of(active) is not None
+        self.workspaces.set_context(BLOCK_EDITOR if editing else None)
         viewport = None if event.document_id is None else self.viewports.get(event.document_id)
         if viewport is None:
             self._stack.setCurrentWidget(self._welcome)

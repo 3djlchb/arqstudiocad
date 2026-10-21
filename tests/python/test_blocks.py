@@ -136,7 +136,7 @@ def test_insert_chooses_the_block_in_a_window() -> None:
     assert h.messages()[-1] == "The drawing has no blocks to insert."
     h.document.create_block("MARCO", (10, 10), [h.a, h.b])
     h.run("INSERT", "0,0")
-    assert ui.asked[-1] == "block MARCO"
+    assert ui.asked[-1] == "Insert block: MARCO"
     assert [e.kind for e in h.document.get_entities()] == ["INSERT", "INSERT"]
     ui.block_answer = None
     h.run("INSERT")
@@ -166,10 +166,11 @@ def test_blocks_are_in_the_insert_tab_menus_and_toolbar(window: MainWindow) -> N
     insert, block = window.command_actions["INSERT"], window.command_actions["BLOCK"]
     assert (insert.text(), block.text()) == ("&Insert Block…", "Create &Block…")
     ribbon = window.findChildren(Ribbon)[0]
-    tabs = [ribbon.tabText(i) for i in range(ribbon.count())]
+    tabs = [ribbon.tabText(i) for i in range(ribbon.count()) if ribbon.isTabVisible(i)]
     assert tabs == ["Home", "Insert", "Annotate", "View"]
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
-    assert [b.defaultAction() for b in groups["block"].buttons] == [insert, block]
+    bedit = window.command_actions["BEDIT"]
+    assert [b.defaultAction() for b in groups["block"].buttons] == [insert, block, bedit]
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
     assert insert in menus["&Insert"].actions() and block in menus["&Draw"].actions()
     for action in (insert, block):

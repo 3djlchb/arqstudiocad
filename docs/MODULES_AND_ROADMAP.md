@@ -18,8 +18,10 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   machine (GT 730 on LMDE 7), its release gate (ADR 0007); the work
   resumes when the maintainer has it at hand (maintainer, 2026-10-18).
 - **Current:** milestone 02.8: texts are done, single-line and basic
-  multiline (ADR 0022); blocks are in progress (ADR 0023: EXPLODE with
-  attributes and BLOCK and INSERT are done; the block editor is next).
+  multiline (ADR 0022); blocks are done (ADR 0023: EXPLODE with
+  attributes, BLOCK and INSERT, and the block editor); dynamic blocks wait
+  for the parametric engine, which is still to be placed in this roadmap
+  (D3a).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu

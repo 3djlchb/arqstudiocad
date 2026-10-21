@@ -91,6 +91,7 @@ class Ribbon(QTabWidget):
             self.addTab(page, "")
         self._folded = False
         self.tabBar().tabBarDoubleClicked.connect(self._on_double_click)
+        self.set_context(None)
         self.retranslate()
 
     def retranslate(self) -> None:
@@ -98,6 +99,21 @@ class Ribbon(QTabWidget):
             self.setTabText(index, tab.title())
         for group in self.groups:
             group.retranslate()
+
+    def set_context(self, context: str | None) -> None:
+        """Shows the contextual tabs of ``context`` only, and brings the
+        first of them forward when it starts; leaving it, the first tab."""
+        current = self.discipline.ribbon[self.currentIndex()] if self.count() else None
+        entering = None
+        for index, tab in enumerate(self.discipline.ribbon):
+            shown = tab.context is None or tab.context == context
+            self.setTabVisible(index, shown)
+            if tab.context is not None and shown and entering is None:
+                entering = index
+        if entering is not None and current is not None and current.context != context:
+            self.setCurrentIndex(entering)
+        elif current is not None and current.context not in (None, context):
+            self.setCurrentIndex(0)
 
     @property
     def folded(self) -> bool:

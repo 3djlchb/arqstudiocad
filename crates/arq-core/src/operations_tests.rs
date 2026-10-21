@@ -234,6 +234,52 @@ fn block_and_insert_undo_and_redo_whole() {
 }
 
 #[test]
+fn saving_a_block_editor_is_one_step_that_redraws_the_references() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (reference, _) = cad.create_block("ESQUINA", p(0.0, 0.0), &[a]).unwrap();
+    let (loose, _) = cad.add_line(p(5.0, 5.0), p(6.0, 5.0)).unwrap();
+    let mut editor = cad.block_editor("ESQUINA").unwrap();
+    assert!(!editor.is_modified(), "a fresh editor");
+    editor.add_line(p(0.0, 0.0), p(0.0, 3.0)).unwrap();
+    let box_of = |c: &CadDocument| c.document().entity(reference).unwrap().bounds().unwrap();
+    let before = box_of(&cad);
+    let changes = cad
+        .replace_block_contents("ESQUINA", editor.document())
+        .unwrap();
+    assert_eq!(
+        changes.modified(),
+        [reference],
+        "the reference only, not {loose}"
+    );
+    assert!(changes.created().is_empty() && changes.deleted().is_empty());
+    assert_eq!(cad.undo_name(), Some("BEDIT"));
+    assert!(
+        near(box_of(&cad).max(), p(2.0, 3.0)),
+        "it draws the new line"
+    );
+    cad.undo().unwrap();
+    assert_eq!(box_of(&cad), before, "undone whole");
+    cad.redo().unwrap();
+    assert!(near(box_of(&cad).max(), p(2.0, 3.0)));
+}
+
+#[test]
+fn a_block_drawn_through_another_redraws_that_reference_too() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (inner, _) = cad.create_block("ESQUINA", p(0.0, 0.0), &[a]).unwrap();
+    let (outer, _) = cad.create_block("MARCO", p(0.0, 0.0), &[inner]).unwrap();
+    let (_, _) = cad.add_line(p(5.0, 5.0), p(6.0, 5.0)).unwrap();
+    let mut editor = cad.block_editor("ESQUINA").unwrap();
+    editor.add_line(p(0.0, 0.0), p(0.0, 3.0)).unwrap();
+    let changes = cad
+        .replace_block_contents("ESQUINA", editor.document())
+        .unwrap();
+    assert_eq!(changes.modified(), [outer], "MARCO draws ESQUINA");
+}
+
+#[test]
 fn repeated_ids_are_edited_once() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();

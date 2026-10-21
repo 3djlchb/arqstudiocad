@@ -169,6 +169,28 @@ impl CadDocument {
         })
     }
 
+    /// A new drawing holding block `name`'s contents alone, for the block
+    /// editor (BEDIT, ADR 0023 D3); this drawing is unchanged.
+    pub fn block_editor(&self, name: &str) -> CadResult<CadDocument> {
+        Ok(CadDocument::from_document(
+            self.document().block_editor(name)?,
+        ))
+    }
+
+    /// Makes `contents`' model space the contents of block `name`, as the
+    /// block editor saves it: one undo step (BEDIT, ADR 0023 D3).
+    pub fn replace_block_contents(
+        &mut self,
+        name: &str,
+        contents: &Document,
+    ) -> CadResult<ChangeSet> {
+        Ok(self
+            .transact("BEDIT", |doc| {
+                Ok(doc.replace_block_contents(name, contents)?)
+            })?
+            .1)
+    }
+
     /// Places block `name` (INSERT, ADR 0023 D2).
     pub fn insert_block(
         &mut self,

@@ -22,7 +22,7 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.commands.blocks import BLOCK_COMMANDS
+from arqstudiocad.commands.blocks import BLOCK_COMMANDS, close_block_editor, save_block
 from arqstudiocad.commands.draw import DRAW_COMMANDS
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.core import (
@@ -107,14 +107,22 @@ def open_file(ctx: CommandContext, path: Path) -> CommandScript:
 
 def save(ctx: CommandContext) -> CommandScript:
     document = ctx.document()
-    if document.path is None:
+    if ctx.session.block_editor_of(document) is not None:
+        # A block editor saves into its block, never to a file (ADR 0023 D3).
+        yield from save_block(ctx, document)
+    elif document.path is None:
         yield from _save_as(ctx, document)
     else:
         yield from _write(ctx, document, document.path)
 
 
 def save_as(ctx: CommandContext) -> CommandScript:
-    yield from _save_as(ctx, ctx.document())
+    document = ctx.document()
+    if ctx.session.block_editor_of(document) is not None:
+        raise CommandCancelledError(
+            tr("A block editor is saved into its drawing, not to a file: use Save Block.")
+        )
+    yield from _save_as(ctx, document)
 
 
 def _save_as(ctx: CommandContext, document: CadDocument) -> CommandScript:
@@ -225,6 +233,13 @@ def _suggested_name(document: CadDocument) -> str:
 
 def close(ctx: CommandContext) -> CommandScript:
     document = ctx.document()
+    if ctx.session.block_editor_of(document) is not None:
+        yield from close_block_editor(ctx, document)
+        return
+    # Its block editors first, each asked about (ADR 0023 D3).
+    for editor in ctx.session.block_editors(document):
+        yield from close_block_editor(ctx, editor)
+    ctx.session.activate(document)
     if document.is_modified:
         if ctx.ui is not None:
             answer = ctx.ui.ask_save_changes(document.name)

@@ -14,6 +14,7 @@ from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     ActiveLayerChanged,
+    BlockSaved,
     DocumentChanged,
     DocumentClosed,
     DocumentOpened,
@@ -38,6 +39,8 @@ class Session:
         self._selection: dict[int, tuple[int, ...]] = {}
         #: How points are picked: running snaps, ORTHO, the cursor.
         self.drafting = Drafting(bus)
+        # Block editors (ADR 0023 D3): each edits a block of a document.
+        self._editors: dict[int, tuple[CadDocument, str]] = {}
 
     @property
     def documents(self) -> list[CadDocument]:
@@ -73,6 +76,39 @@ class Session:
         """Takes in a document opened elsewhere (e.g. on a worker thread)."""
         return self._adopt(document)
 
+    # Block editors (ADR 0023 D3): a block's definition, alone, as a
+    # document of its own, saved back into the drawing, never to a file.
+
+    def open_block_editor(self, document: CadDocument, name: str) -> CadDocument:
+        """Opens block ``name`` of ``document`` in a block editor and makes
+        it active; the one already open for it, if any."""
+        for editor_id, (parent, block) in self._editors.items():
+            if parent == document and block.lower() == name.lower():
+                editor = next(d for d in self._documents if d.id == editor_id)
+                self.activate(editor)
+                return editor
+        title = tr("{block} in {drawing}", block=name, drawing=document.name)
+        editor = document.open_block_editor(name, title)
+        self._editors[editor.id] = (document, name)
+        return self._adopt(editor)
+
+    def block_editor_of(self, document: CadDocument) -> tuple[CadDocument, str] | None:
+        """The document and block ``document`` edits, if it is a block
+        editor."""
+        return self._editors.get(document.id)
+
+    def block_editors(self, document: CadDocument) -> list[CadDocument]:
+        """The block editors open on blocks of ``document``."""
+        return [d for d in self._documents if self._editors.get(d.id, (None,))[0] == document]
+
+    def save_block(self, editor: CadDocument) -> CadChangeSet:
+        """Puts what block editor ``editor`` holds into its block: one undo
+        step of its document, published there."""
+        document, name = self._editors[editor.id]
+        changes = self.report(document, document.save_block(name, editor))
+        self.bus.publish(BlockSaved(editor.id, document.id, name))
+        return changes
+
     def save(self, document: CadDocument, path: Path) -> None:
         """Saves as DWG or DXF, by the extension."""
         document.save(path)
@@ -84,9 +120,13 @@ class Session:
         self.bus.publish(DocumentSaved(document.id, path))
 
     def close(self, document: CadDocument) -> None:
-        """Closes it, discarding unsaved changes (ask first); the previous
-        document becomes active."""
+        """Closes it, discarding unsaved changes (ask first), with its block
+        editors; the previous document becomes active, or for a block
+        editor its drawing."""
+        for editor in self.block_editors(document):
+            self.close(editor)
         index = self._documents.index(document)
+        parent = self._editors.pop(document.id, (None,))[0]
         document.close()
         self._documents.remove(document)
         self._selection.pop(document.id, None)
@@ -94,7 +134,7 @@ class Session:
         if self._active == document:
             self._active = None
             following = self._documents[max(0, index - 1)] if self._documents else None
-            self.activate(following)
+            self.activate(parent if parent is not None else following)
             if following is None:
                 self.bus.publish(ActiveDocumentChanged(None))
 
