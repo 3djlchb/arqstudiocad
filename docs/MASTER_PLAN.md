@@ -214,7 +214,7 @@ may run in parallel once contracts are defined. Status and milestones:
 | 01 | Technological foundation | a minimal reproducible application on Windows showing a result computed in Rust |
 | 02 | CAD core | create, edit, save and recover a basic drawing |
 | 03 | DWG/DXF | a documented compatibility matrix and no known silent losses in the cases covered |
-| 04 | Associative technical documentation | dimensions, texts, annotations, views, scales, sheets, printing, documentation tied to the model |
+| 04 | Associative technical documentation | the parametric engine first (constraints, dynamic blocks, dependencies); dimensions, texts, annotations, views, scales, sheets, printing, documentation tied to the model |
 | 05 | BIM and IFC | semantic elements, properties, spatial relations, IFC import/export, exchange validation |
 | 06 | Topography and surfaces | points, triangulation, contour lines, profiles, sections, terrain calculations |
 | 07 | Architecture, structures and MEP | specialized modeling, links between disciplines, loads and analysis through engines; results independently verifiable |

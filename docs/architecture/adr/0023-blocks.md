@@ -63,7 +63,7 @@ Saving and closing *(maintainer, 2026-10-20)*:
 
 Dynamic blocks are kept and shown in their current state (ADR 0017 D6);
 changing their parameters needs ArqStudioCAD's parametric engine, which
-has no milestone yet and is placed in the roadmap when blocks are done.
+is milestone 04.1, the start of phase 04 *(maintainer, 2026-10-21)*.
 Until then BEDIT refuses a dynamic block, so
 its parameters are never broken, while INSERT and EXPLODE work on the
 state the file holds.
