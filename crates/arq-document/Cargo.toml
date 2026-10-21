@@ -11,6 +11,7 @@ publish.workspace = true
 
 [dependencies]
 arq-geometry.workspace = true
+arq-kernel.workspace = true
 acadrust.workspace = true
 
 [features]

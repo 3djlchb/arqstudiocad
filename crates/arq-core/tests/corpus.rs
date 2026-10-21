@@ -641,6 +641,47 @@ fn codec_regression_fork_fixes() {
     run_all(others, check_file);
 }
 
+/// Solids read into our own B-rep (ADR 0024, step "read"): every 3DSOLID,
+/// SURFACE, REGION and BODY of LibreDWG's drawings either translates and
+/// passes the kernel's check, or waits for spline geometry, the next step.
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_solids_read_into_our_brep() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    let expected: [(&str, usize, &[&str]); 6] = [
+        (
+            "2007/ATMOS-DC22S.dwg",
+            57,
+            &["intcurve-curve is not translated yet"],
+        ),
+        (
+            "2004/Surface.dwg",
+            4,
+            &["spline-surface is not translated yet"],
+        ),
+        ("example_r14.dwg", 3, &[]),
+        ("example_2000.dwg", 3, &[]),
+        ("example_2007.dwg", 3, &[]),
+        ("example_2013.dwg", 3, &[]),
+    ];
+    for (name, read, waiting) in expected {
+        let doc = Document::open(root.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let (mut ok, mut not) = (0, Vec::new());
+        for e in doc.entities() {
+            match doc.solid(e.id()) {
+                None => {}
+                Some(Ok(body)) => {
+                    assert!(!body.faces().is_empty(), "{name}: a body without faces");
+                    ok += 1;
+                }
+                Some(Err(why)) => not.push(why.to_string()),
+            }
+        }
+        let not: Vec<&str> = not.iter().map(String::as_str).collect();
+        assert_eq!((ok, not), (read, waiting.to_vec()), "{name}");
+    }
+}
+
 #[test]
 #[ignore = "needs ARQ_CORPUS_DIR: real drawings (a folder or one file), never committed"]
 fn local_drawings_round_trip() {

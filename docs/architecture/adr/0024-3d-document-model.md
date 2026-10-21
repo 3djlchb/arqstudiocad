@@ -77,6 +77,25 @@ and surfaces map to the same B-rep and meshes stay views. 3D wireframe
 entities with Z and user coordinate systems are a later step of 02.8, not
 part of this ADR.
 
+## Implementation notes
+
+- **Step 1, read (2026-10-21):** the crate `arq-kernel` holds the B-rep
+  (arenas of vertices, edges, coedges, loops, faces, shells and lumps named
+  by typed ids) and the analytic geometry: lines and ellipses; planes,
+  circular cones and cylinders, elliptic cylinders, spheres and tori. A body
+  exists only after its check: indices, closed loops, and every vertex on
+  its edges' curves and its faces' surfaces within ACIS's 1e-6, relative to
+  the body's reach. `Document::solid` reads an entity's ACIS through
+  AcadRust's records into it, or says why not (unreadable, not translated
+  yet, invalid); the ACIS bytes are untouched.
+- ACIS details met on the corpus: a cone or cylinder with a negative cosine
+  has its normal toward the axis; a sphere or torus of negative radius, its
+  normal inward; ACIS 1.x (R14) shells have no wire pointer; a body
+  transform applies to row vectors (`p · R · s + t`).
+- On LibreDWG's drawings 73 of 75 bodies read and check; the other two wait
+  for spline geometry (a `spline-surface`, an `intcurve-curve`), the next
+  step. The corpus test pins these counts.
+
 ## Consequences
 
 - One solid model for DWG now and IFC later; ACIS stays a file format.

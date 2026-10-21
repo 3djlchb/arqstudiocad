@@ -5,6 +5,7 @@ members = ["crates/*"]
 # This enforces the core rule: the CAD core builds and tests without Python.
 default-members = [
     "crates/arq-geometry",
+    "crates/arq-kernel",
     "crates/arq-document",
     "crates/arq-core",
     "crates/arq-render",
@@ -21,6 +22,7 @@ publish = false
 
 [workspace.dependencies]
 arq-geometry = { path = "crates/arq-geometry" }
+arq-kernel = { path = "crates/arq-kernel" }
 arq-document = { path = "crates/arq-document" }
 arq-core = { path = "crates/arq-core" }
 arq-render = { path = "crates/arq-render" }

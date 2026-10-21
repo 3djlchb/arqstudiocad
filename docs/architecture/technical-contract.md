@@ -40,6 +40,7 @@ Cargo.toml                 Rust workspace (version source of truth)
 pyproject.toml             maturin build + Python tooling
 crates/
   arq-geometry/            geometric types and algorithms (no dependencies)
+  arq-kernel/              our own geometry kernel: B-rep solids (ADR 0020, 0024)
   arq-document/            entities, layers, blocks, symbol tables
   arq-core/                facade: operations, transactions, history, queries
   arq-render/              derived render data, independent of Qt
@@ -52,7 +53,8 @@ docs/references/           analysis of reference projects
 ```
 
 Crate dependency direction is one-way:
-`arq-geometry ← arq-document ← arq-core ← arq-render`, and `arq-core ← arq-python`.
+`arq-geometry ← arq-kernel ← arq-document ← arq-core ← arq-render`, and
+`arq-core ← arq-python`.
 Modules are created when needed, not in advance.
 
 ## 3. Contract A — Rust types and data ownership
