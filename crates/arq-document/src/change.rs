@@ -202,13 +202,18 @@ impl Document {
         let mut summary = ChangeSet::default();
         // Every entity made, a block's contents too, keeps its handle on undo;
         // only model-space entities are reported (a block's contents are
-        // drawn through the references to it).
+        // drawn through the references to it). Owners are not reliable for
+        // model space (old releases), so what a block definition owns is
+        // left out rather than what model space owns kept.
         let mut created = Vec::new();
-        let model = self.cad().header.model_space_block_handle;
-        let in_model = |e: &EntityType| {
-            let owner = e.common().owner_handle;
-            owner.is_null() || owner == model
-        };
+        let definitions: BTreeSet<Handle> = self
+            .cad()
+            .block_records
+            .iter()
+            .filter(|b| !b.is_model_space() && !b.is_paper_space() && !b.is_layout())
+            .map(|b| b.handle)
+            .collect();
+        let in_model = |e: &EntityType| !definitions.contains(&e.common().owner_handle);
         for (handle, before) in rec.recorder.take_before_images() {
             let after = self.cad().get_entity_arc(handle);
             let id = handle.value();
