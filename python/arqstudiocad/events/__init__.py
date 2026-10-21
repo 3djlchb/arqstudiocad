@@ -24,6 +24,7 @@ from arqstudiocad.core import CadChangeSet
 __all__ = [
     "ActiveDocumentChanged",
     "ActiveLayerChanged",
+    "BlockSaved",
     "CommandCancelled",
     "CommandFinished",
     "CommandMessage",
@@ -67,6 +68,16 @@ class DocumentSaved(Event):
 
     document_id: int
     path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class BlockSaved(Event):
+    """Block editor ``editor_id`` was saved into block ``name`` of document
+    ``document_id`` (ADR 0023 D3); the editor is unmodified now."""
+
+    editor_id: int
+    document_id: int
+    name: str
 
 
 @dataclass(frozen=True, slots=True)

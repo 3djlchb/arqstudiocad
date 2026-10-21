@@ -40,11 +40,18 @@ class RibbonGroup:
     commands: tuple[str, ...]
 
 
+#: The context of the block editor's contextual ribbon tab.
+BLOCK_EDITOR = "block_editor"
+
+
 @dataclass(frozen=True)
 class RibbonTab:
     name: str
     title: Title
     groups: tuple[RibbonGroup, ...]
+    #: A contextual tab (AutoCAD's) shows only in this context, e.g. while a
+    #: block editor is the active document; ``None``: always shown.
+    context: str | None = None
 
 
 @dataclass(frozen=True)
@@ -122,12 +129,11 @@ CAD = Discipline(
                 RibbonGroup("layers", lambda: tr("Layers"), ("LAYER",)),
             ),
         ),
-        # Blocks, as AutoCAD's Insert tab (ADR 0023 D4); the block editor
-        # joins them.
+        # Blocks, as AutoCAD's Insert tab (ADR 0023 D4).
         RibbonTab(
             "insert",
             lambda: tr("Insert"),
-            (RibbonGroup("block", lambda: tr("Block"), ("INSERT", "BLOCK")),),
+            (RibbonGroup("block", lambda: tr("Block"), ("INSERT", "BLOCK", "BEDIT")),),
         ),
         # Annotation tools, as AutoCAD's Annotate tab: texts first; dimensions,
         # leaders and tables join them in phase 04.
@@ -141,6 +147,14 @@ CAD = Discipline(
             lambda: tr("View"),
             (RibbonGroup("navigate", lambda: tr("Navigate"), ("ZOOM",)),),
         ),
+        # AutoCAD's contextual Block Editor tab: only while a block editor
+        # is the active document (ADR 0023 D3).
+        RibbonTab(
+            "block_editor",
+            lambda: tr("Block Editor"),
+            (RibbonGroup("block_editor", lambda: tr("Block Editor"), ("BSAVE", "BCLOSE")),),
+            context=BLOCK_EDITOR,
+        ),
     ),
     toolbars=(
         Toolbar(
@@ -151,7 +165,7 @@ CAD = Discipline(
         Toolbar(
             "draw",
             lambda: tr("Draw"),
-            ("LINE", "CIRCLE", "ARC", None, "INSERT", "BLOCK", None, "MTEXT", "TEXT"),
+            ("LINE", "CIRCLE", "ARC", None, "INSERT", "BLOCK", "BEDIT", None, "MTEXT", "TEXT"),
         ),
         Toolbar(
             "modify",

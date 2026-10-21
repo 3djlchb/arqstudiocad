@@ -26,6 +26,7 @@
 //! | Errors | [`DocumentError`] |
 
 mod acis;
+mod block_editor;
 mod blocks;
 mod change;
 mod document;

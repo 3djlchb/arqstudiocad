@@ -63,16 +63,7 @@ impl Document {
             });
         }
         self.touch_structure();
-        let mut record = BlockRecord::new(name);
-        let h = self.cad_mut().allocate_handle();
-        record.set_handle(h);
-        record.block_entity_handle = self.cad_mut().allocate_handle();
-        record.block_end_handle = self.cad_mut().allocate_handle();
-        record.base_point = Vector3::new(base.x(), base.y(), 0.0);
-        self.cad_mut()
-            .block_records
-            .add(record)
-            .map_err(DocumentError::InvalidBlockName)?;
+        let h = self.add_block_record(name, Vector3::new(base.x(), base.y(), 0.0))?;
         for id in chosen {
             self.clone_entity(id, h)?;
             self.delete_entity(id)?;
@@ -155,16 +146,44 @@ impl Document {
         Ok(h.value())
     }
 
+    /// A new, empty block record `name` with its base point at `base`;
+    /// returns its handle. The caller has touched the structure.
+    pub(crate) fn add_block_record(&mut self, name: &str, base: Vector3) -> DocumentResult<Handle> {
+        let mut record = BlockRecord::new(name);
+        let h = self.cad_mut().allocate_handle();
+        record.set_handle(h);
+        record.block_entity_handle = self.cad_mut().allocate_handle();
+        record.block_end_handle = self.cad_mut().allocate_handle();
+        record.base_point = base;
+        self.cad_mut()
+            .block_records
+            .add(record)
+            .map_err(DocumentError::InvalidBlockName)?;
+        Ok(h)
+    }
+
     /// Adds a copy of entity `id` to the block record `owner` (model space
-    /// when it is null), without the links a copy cannot share (reactors,
-    /// an extension dictionary, cached proxy graphics); a block reference's
-    /// attributes get handles of their own. Returns the copy's id.
+    /// when it is null); see [`add_copy`](Self::add_copy). Returns the
+    /// copy's id.
     pub(crate) fn clone_entity(&mut self, id: EntityId, owner: Handle) -> DocumentResult<EntityId> {
-        let mut copy = self
+        let copy = self
             .cad()
             .get_entity(handle(id))
             .ok_or(DocumentError::EntityNotFound(id))?
             .clone();
+        self.add_copy(copy, owner)
+    }
+
+    /// Adds `copy`, an entity of this drawing or another, to the block
+    /// record `owner` (model space when it is null), without the links a
+    /// copy cannot share (reactors, an extension dictionary, cached proxy
+    /// graphics); a block reference's attributes get handles of their own.
+    /// Returns its id.
+    pub(crate) fn add_copy(
+        &mut self,
+        mut copy: EntityType,
+        owner: Handle,
+    ) -> DocumentResult<EntityId> {
         let common = copy.common_mut();
         common.handle = Handle::NULL;
         common.owner_handle = owner;

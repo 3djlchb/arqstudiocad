@@ -72,6 +72,8 @@ class WorkspaceSwitcher:
         self.before_reset: list[Callable[[], None]] = []
         self.discipline: Discipline | None = None
         self.layout: Layout | None = None
+        #: The context of the ribbons' contextual tabs (see ``set_context``).
+        self.context: str | None = None
 
         self.menu = QMenu(window)
         self._discipline_group = QActionGroup(window)
@@ -103,6 +105,14 @@ class WorkspaceSwitcher:
         self.button.setMenu(self.menu)
         self.button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.button.setAutoRaise(True)
+
+    def set_context(self, context: str | None) -> None:
+        """Every ribbon shows the contextual tabs of ``context`` (e.g.
+        ``"block_editor"``), none for ``None``."""
+        self.context = context
+        for built in self._built.values():
+            if built.ribbon is not None:
+                built.ribbon.set_context(context)
 
     def show_remembered(self) -> None:
         """The workspace used last time, each discipline in the layout it
@@ -213,6 +223,7 @@ class WorkspaceSwitcher:
             built.toolbars.append(toolbar)
         if discipline.ribbon:
             built.ribbon = Ribbon(discipline, self._actions)
+            built.ribbon.set_context(self.context)
             bar = QToolBar(self._window)
             bar.setObjectName(f"ribbon_bar_{discipline.name}")
             bar.setMovable(False)

@@ -9,6 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use arq_document::ChangeSet;
+
 use crate::error::{CadError, CadResult};
 use crate::history::{CadDocument, Snapshot};
 
@@ -75,6 +77,44 @@ impl CadApplication {
             damaged,
             accepted_losses: BTreeSet::new(),
         }))
+    }
+
+    /// Opens block `name` of document `id` in a block editor of its own,
+    /// called `title` (BEDIT, ADR 0023 D3). It is never saved to a file:
+    /// [`save_block`](Self::save_block) puts it back.
+    pub fn open_block_editor(
+        &self,
+        id: DocumentId,
+        name: &str,
+        title: &str,
+    ) -> CadResult<DocumentId> {
+        let cad = lock(id, &self.shared(id)?)?.cad.block_editor(name)?;
+        Ok(self.insert(OpenDocument {
+            cad,
+            name: title.to_owned(),
+            path: None,
+            damaged: None,
+            accepted_losses: BTreeSet::new(),
+        }))
+    }
+
+    /// Makes what block editor `editor` holds the contents of block `name`
+    /// of document `id`, as one undo step there; the editor is then
+    /// unmodified.
+    pub fn save_block(
+        &self,
+        editor: DocumentId,
+        id: DocumentId,
+        name: &str,
+    ) -> CadResult<ChangeSet> {
+        let snapshot = lock(editor, &self.shared(editor)?)?.cad.snapshot();
+        let changes = lock(id, &self.shared(id)?)?
+            .cad
+            .replace_block_contents(name, snapshot.document())?;
+        lock(editor, &self.shared(editor)?)?
+            .cad
+            .mark_saved(&snapshot);
+        Ok(changes)
     }
 
     /// Saves a document as DWG or DXF, by the file extension (refusing to

@@ -442,6 +442,31 @@ impl CadDocument {
         self.read(|cad| cad.document().block_names())
     }
 
+    /// Whether block `name` is dynamic, so the block editor refuses it
+    /// (ADR 0023 D3a).
+    fn is_dynamic_block(&self, name: &str) -> PyResult<bool> {
+        self.read(|cad| cad.document().is_dynamic_block(name))
+    }
+
+    /// Opens block `name` alone in a new document, the block editor, called
+    /// `title` (BEDIT, ADR 0023 D3); it is never saved to a file.
+    fn open_block_editor(&self, name: &str, title: &str) -> PyResult<CadDocument> {
+        let id = self.store.open_block_editor(self.id, name, title).py()?;
+        Ok(CadDocument {
+            store: Arc::clone(&self.store),
+            id,
+        })
+    }
+
+    /// Makes what block editor `editor` holds the contents of block `name`:
+    /// one undo step here; the editor is then unmodified.
+    fn save_block(&self, name: &str, editor: &CadDocument) -> PyResult<CadChangeSet> {
+        self.store
+            .save_block(editor.id, self.id, name)
+            .py()
+            .map(CadChangeSet)
+    }
+
     /// Writes a multiline text on the current layer with the current text
     /// style (MTEXT, ADR 0022 D6): `content` is plain text whose line breaks
     /// are paragraphs, wrapped to `width` (0: no wrapping), hanging from

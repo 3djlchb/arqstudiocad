@@ -2,8 +2,17 @@
   "ARC": [
     "ARCO"
   ],
+  "BCLOSE": [
+    "CERRARBLOQUE"
+  ],
+  "BEDIT": [
+    "EDITARBLOQUE"
+  ],
   "BLOCK": [
     "BLOQUE"
+  ],
+  "BSAVE": [
+    "GUARDARBLOQUE"
   ],
   "CIRCLE": [
     "CIRCULO"

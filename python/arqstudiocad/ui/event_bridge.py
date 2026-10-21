@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, Signal, SignalInstance
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     ActiveLayerChanged,
+    BlockSaved,
     CommandCancelled,
     CommandFinished,
     CommandMessage,
@@ -36,6 +37,7 @@ class QtEventBridge(QObject):
     event_published = Signal(object)
     document_opened = Signal(object)
     document_saved = Signal(object)
+    block_saved = Signal(object)
     document_closed = Signal(object)
     active_document_changed = Signal(object)
     document_changed = Signal(object)
@@ -56,6 +58,7 @@ class QtEventBridge(QObject):
         self._signals: dict[type[Event], SignalInstance] = {
             DocumentOpened: self.document_opened,
             DocumentSaved: self.document_saved,
+            BlockSaved: self.block_saved,
             DocumentClosed: self.document_closed,
             ActiveDocumentChanged: self.active_document_changed,
             DocumentChanged: self.document_changed,

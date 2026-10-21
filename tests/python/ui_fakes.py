@@ -73,8 +73,8 @@ class QuietUi:
         assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
         return self.accept_losses
 
-    def choose_block(self, names: Sequence[str]) -> str | None:
-        self.asked.append(f"block {', '.join(names)}")
+    def choose_block(self, names: Sequence[str], title: str) -> str | None:
+        self.asked.append(f"{title}: {', '.join(names)}")
         return self.block_answer
 
     def edit_text(self, title: str, text: str = "") -> str | None:

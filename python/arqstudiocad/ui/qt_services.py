@@ -124,9 +124,9 @@ class QtUiServices:
         box.exec()
         return box.clickedButton() == save
 
-    def choose_block(self, names: Sequence[str]) -> str | None:
+    def choose_block(self, names: Sequence[str], title: str) -> str | None:
         name, chosen = QInputDialog.getItem(
-            self._parent, tr("Insert block"), tr("Block:"), list(names), 0, False
+            self._parent, title, tr("Block:"), list(names), 0, False
         )
         return name if chosen and name else None
 

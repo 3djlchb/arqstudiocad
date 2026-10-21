@@ -47,6 +47,18 @@ the changes; saving replaces the definition's contents, so every reference
 shows them, as one undo step of the drawing. The editor never writes a
 file. Attribute definitions in the block are kept as they are.
 
+Saving and closing *(maintainer, 2026-10-20)*:
+
+- While a block editor is the active document, the ribbon shows a
+  contextual **Block Editor** tab (Spanish *Editor de bloques*) with
+  **Save Block** (`BSAVE`, `GUARDARBLOQUE`) and **Close Block Editor**
+  (`BCLOSE`, `CERRARBLOQUE`), as AutoCAD's; the Insert tab's Block group
+  gains **Edit** (`BEDIT`, alias `BE`; `EDITARBLOQUE`).
+- In a block editor, **Save** (Ctrl+S) saves the block, as BSAVE; **Save
+  As** is refused, since the editor never writes a file. **Close**, or
+  closing its tab, is BCLOSE. Closing a drawing closes its block editors
+  first, asking about each.
+
 ### D3a — Dynamic blocks wait for the parametric engine *(maintainer, 2026-10-20)*
 
 Dynamic blocks are kept and shown in their current state (ADR 0017 D6);
@@ -79,6 +91,14 @@ stage 2) is decided when the block editor shows what it needs from it.
   index stays right when layers are turned off or on (step 2, 2026-10-20).
 - Change sets list model-space entities only: a new block's contents keep
   their handles for undo but are drawn through the references to it.
+- The block editor is a document of the session, made from a copy of the
+  drawing's database whose model space holds the block's contents at their
+  own coordinates (step 3, 2026-10-20). Saving copies its model space into
+  the definition, adds the layers and blocks made in the editor (changes to
+  existing layers stay in the editor), refuses a block that would hold
+  itself, and marks every reference to the block as changed, so it is
+  drawn and indexed again. One editor per block; BEDIT inside an editor is
+  refused.
 
 ## Consequences
 
