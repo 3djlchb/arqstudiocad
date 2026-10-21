@@ -237,7 +237,7 @@ def test_texts_are_in_the_annotate_tab_draw_menu_and_toolbar(window: MainWindow)
     assert single not in [b.defaultAction() for b in groups["draw"].buttons]
     ribbon = window.findChildren(Ribbon)[0]
     tabs = [ribbon.tabText(i) for i in range(ribbon.count())]
-    assert tabs == ["Home", "Annotate", "View"]
+    assert tabs == ["Home", "Insert", "Annotate", "View"]
     for action in (single, multi):
         assert any(action in menu.actions() for menu in menus)
         assert any(action in bar.actions() for bar in window.findChildren(QToolBar))

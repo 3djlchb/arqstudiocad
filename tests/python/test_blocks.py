@@ -1,0 +1,208 @@
+"""BLOCK and INSERT (ADR 0023 D2): the core API, the commands and their
+place in the interface (the Insert ribbon tab, D4)."""
+
+import math
+from pathlib import Path
+
+import pytest
+from pytestqt.qtbot import QtBot
+from ui_fakes import QuietUi
+
+from arqstudiocad.commands import CommandContext, CommandRunner
+from arqstudiocad.commands.builtin import builtin_registry
+from arqstudiocad.core import CadApplication, CadDocument, InvalidOperationError
+from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
+from arqstudiocad.i18n import set_language
+from arqstudiocad.session import Session
+from arqstudiocad.ui.main_window import MainWindow
+
+
+def ends(document: CadDocument, entity_id: int) -> list[tuple[float, float]]:
+    """Where the outline of an entity runs, rounded, sorted."""
+    bounds = document.get_entity(entity_id).bounds
+    assert bounds is not None
+    return [
+        (round(bounds.min[0], 6), round(bounds.min[1], 6)),
+        (round(bounds.max[0], 6), round(bounds.max[1], 6)),
+    ]
+
+
+def test_blocks_are_made_and_placed_through_the_api() -> None:
+    doc = CadApplication().create_document("a")
+    a, _ = doc.add_line((10, 10), (14, 10))
+    b, _ = doc.add_line((10, 10), (10, 13))
+    reference, made = doc.create_block("MARCO", (10, 10), [a, b])
+    assert made.created == (reference,) and set(made.deleted) == {a, b}
+    assert doc.undo_name == "BLOCK" and doc.block_names == ["MARCO"]
+    assert ends(doc, reference) == [(10.0, 10.0), (14.0, 13.0)], "drawn where they were"
+    placed, _ = doc.insert_block("MARCO", (0, 0), 2.0, math.pi / 2)
+    assert ends(doc, placed) == [(-6.0, 0.0), (0.0, 8.0)], "twice as big, turned"
+    with pytest.raises(InvalidOperationError, match="exists"):
+        doc.create_block("marco", (0, 0), [placed])
+    with pytest.raises(InvalidOperationError, match="no block named"):
+        doc.insert_block("NADA", (0, 0))
+
+
+class Harness:
+    def __init__(self, ui: QuietUi | None = None) -> None:
+        self.bus = EventBus()
+        self.events: list[Event] = []
+        self.bus.subscribe(Event, self.events.append)
+        self.session = Session(self.bus)
+        context = CommandContext(self.session, ui=ui)
+        self.runner = CommandRunner(builtin_registry(), context)
+        self.document = self.session.new_document()
+        self.a, _ = self.document.add_line((10, 10), (14, 10))
+        self.b, _ = self.document.add_line((10, 10), (10, 13))
+        self.steps = len(self.document.undo_history)
+
+    def run(self, *lines: str) -> None:
+        for line in lines:
+            self.runner.execute(line)
+
+    def prompt(self) -> CommandPrompt:
+        return [e for e in self.events if isinstance(e, CommandPrompt)][-1]
+
+    def messages(self) -> list[str]:
+        return [e.text for e in self.events if isinstance(e, CommandMessage)]
+
+    def kinds(self) -> list[str]:
+        return [e.kind for e in self.document.get_entities()]
+
+    def new_steps(self) -> list[str]:
+        return self.document.undo_history[self.steps :]
+
+
+def test_block_turns_the_selection_into_a_block_reference() -> None:
+    h = Harness()
+    h.session.select(h.document, [h.a, h.b])
+    h.run("BLOCK")
+    assert h.prompt().text == "Block name:"
+    h.run("MARCO", "10,10")
+    assert h.kinds() == ["INSERT"] and h.document.block_names == ["MARCO"]
+    assert h.messages()[-1] == "Block MARCO made from 2 objects."
+    assert h.session.selection(h.document) == () and h.new_steps() == ["BLOCK"]
+
+
+def test_block_asks_for_objects_and_refuses_names_in_use_or_invalid() -> None:
+    h = Harness()
+    h.run("B", "MARCO", "10,10")
+    assert h.prompt().text.startswith("Select objects")
+    h.session.select(h.document, [h.a])
+    h.run("")
+    assert h.document.block_names == ["MARCO"]
+    h.run("BLOCK", "marco")
+    assert h.messages()[-1] == "A block named marco exists."
+    assert h.prompt().text == "Block name:", "asked again"
+    h.runner.cancel()
+    h.session.select(h.document, [h.b])
+    h.run("BLOCK", "A/B", "0,0")
+    assert h.messages()[-1] == "A/B is not a valid block name."
+    assert h.document.block_names == ["MARCO"]
+
+
+def test_insert_follows_the_cursor_and_takes_scale_and_rotation() -> None:
+    h = Harness()
+    h.document.create_block("MARCO", (10, 10), [h.a, h.b])
+    steps = len(h.document.undo_history)
+    h.run("INSERT", "MARCO")
+    prompt = h.prompt()
+    assert prompt.text == "Specify insertion point [Scale(S)/Rotate(R)]:"
+    assert prompt.drag is not None and prompt.drag.kind == "move"
+    assert prompt.drag.band is False, "no rubber band from the origin"
+    h.run("S", "2", "R", "90", "5,5")
+    references = [e for e in h.document.get_entities() if e.kind == "INSERT"]
+    assert len(references) == 2
+    assert ends(h.document, references[-1].id) == [(-1.0, 5.0), (5.0, 13.0)]
+    assert h.document.undo_history[steps:] == ["INSERT"], "one undo step"
+
+
+def test_cancelling_insert_leaves_nothing() -> None:
+    h = Harness()
+    h.document.create_block("MARCO", (10, 10), [h.a, h.b])
+    count, steps = len(h.document.get_entities()), len(h.document.undo_history)
+    h.run("INSERT", "MARCO", "S", "3")
+    h.runner.cancel()
+    assert len(h.document.get_entities()) == count
+    assert len(h.document.undo_history) == steps
+    h.run("I", "NADA")
+    assert h.messages()[-1] == "There is no such block."
+
+
+def test_insert_chooses_the_block_in_a_window() -> None:
+    ui = QuietUi(block_answer="MARCO")
+    h = Harness(ui)
+    h.run("INSERT")
+    assert h.messages()[-1] == "The drawing has no blocks to insert."
+    h.document.create_block("MARCO", (10, 10), [h.a, h.b])
+    h.run("INSERT", "0,0")
+    assert ui.asked[-1] == "block MARCO"
+    assert [e.kind for e in h.document.get_entities()] == ["INSERT", "INSERT"]
+    ui.block_answer = None
+    h.run("INSERT")
+    assert h.runner.active is None and len(h.document.get_entities()) == 2
+
+
+def test_block_commands_in_spanish() -> None:
+    h = Harness()
+    set_language("es")
+    for typed, english in (("BLOQUE", "BLOCK"), ("INSERTAR", "INSERT")):
+        found = h.runner.registry.find(typed)
+        assert found is not None and found.name == english
+
+
+@pytest.fixture
+def window(qtbot: QtBot) -> MainWindow:
+    w = MainWindow(ui=QuietUi())
+    qtbot.addWidget(w)
+    return w
+
+
+def test_blocks_are_in_the_insert_tab_menus_and_toolbar(window: MainWindow) -> None:
+    from PySide6.QtWidgets import QMenu, QToolBar
+
+    from arqstudiocad.ui.ribbon import Ribbon, RibbonGroupWidget
+
+    insert, block = window.command_actions["INSERT"], window.command_actions["BLOCK"]
+    assert (insert.text(), block.text()) == ("&Insert Block…", "Create &Block…")
+    ribbon = window.findChildren(Ribbon)[0]
+    tabs = [ribbon.tabText(i) for i in range(ribbon.count())]
+    assert tabs == ["Home", "Insert", "Annotate", "View"]
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    assert [b.defaultAction() for b in groups["block"].buttons] == [insert, block]
+    menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
+    assert insert in menus["&Insert"].actions() and block in menus["&Draw"].actions()
+    for action in (insert, block):
+        assert any(action in bar.actions() for bar in window.findChildren(QToolBar))
+
+
+def test_a_drag_without_band_draws_no_rubber_band(window: MainWindow, tmp_path: Path) -> None:
+    from PySide6.QtCore import QEvent
+    from test_point_input import mouse, plan
+
+    from arqstudiocad.events import Drag
+
+    viewport = plan(window, tmp_path)  # a line (0,0)-(100,0), a circle at (50,40)
+    window.session.drafting.set_osnap(False)
+
+    def band_pixels(drag: Drag) -> int:
+        """Pixels lit along the empty strip from (10,20) to (35,20)."""
+        viewport.ask_point((10.0, 20.0), drag)
+        mouse(viewport, QEvent.Type.MouseMove, (35.0, 20.0))
+        image = viewport.grab().toImage()
+        ratio = viewport.devicePixelRatioF()
+        (x0, y0), (x1, _) = viewport.view.to_screen(10.0, 20.0), viewport.view.to_screen(35.0, 20.0)
+        y = round(y0 / ratio)
+        lit = 0
+        for x in range(round(x0 / ratio) + 4, round(x1 / ratio) - 10):
+            clear = image.pixelColor(x, y - 6).lightness()
+            rows = (image.pixelColor(x, y + dy).lightness() for dy in (-1, 0))
+            lit += any(abs(r - clear) > 15 for r in rows)
+        viewport.end_point()
+        return lit
+
+    document = window.session.active
+    assert document is not None
+    shown = document.get_entities()[0].id
+    assert band_pixels(Drag("move", (shown,))) > 10, "a band joins the base to the cursor"
+    assert band_pixels(Drag("move", (shown,), band=False)) == 0

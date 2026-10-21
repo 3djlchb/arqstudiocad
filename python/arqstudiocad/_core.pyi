@@ -282,6 +282,14 @@ class CadDocument:
     def add_text(
         self, content: str, anchor: _PointLike, height: float, rotation: float
     ) -> tuple[int, CadChangeSet]: ...
+    def create_block(
+        self, name: str, base: _PointLike, entity_ids: _Ids
+    ) -> tuple[int, CadChangeSet]: ...
+    def insert_block(
+        self, name: str, point: _PointLike, scale: float = 1.0, rotation: float = 0.0
+    ) -> tuple[int, CadChangeSet]: ...
+    @property
+    def block_names(self) -> list[str]: ...
     def add_mtext(
         self,
         content: str,

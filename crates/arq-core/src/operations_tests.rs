@@ -201,6 +201,39 @@ fn texts_are_written_and_edited_all_or_nothing() {
 }
 
 #[test]
+fn block_and_insert_undo_and_redo_whole() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 0.0), p(0.0, 2.0)).unwrap();
+    let (reference, made) = cad.create_block("ESQUINA", p(0.0, 0.0), &[a, b]).unwrap();
+    assert_eq!(made.created(), [reference]);
+    assert_eq!(made.deleted(), [a, b]);
+    assert_eq!(cad.undo_name(), Some("BLOCK"));
+    let (placed, _) = cad.insert_block("ESQUINA", p(5.0, 5.0), 1.0, 0.0).unwrap();
+    assert_eq!(cad.undo_name(), Some("INSERT"));
+    assert_eq!(cad.document().entities().len(), 2);
+
+    cad.undo().unwrap();
+    assert!(cad.document().entity(placed).is_none());
+    cad.undo().unwrap();
+    assert!(cad.document().block_names().is_empty(), "the block is gone");
+    assert!(cad.document().entity(a).is_some() && cad.document().entity(b).is_some());
+    cad.redo().unwrap();
+    assert_eq!(cad.document().block_names(), ["ESQUINA"]);
+    assert!(cad.document().entity(a).is_none());
+
+    // Entities on a locked layer cannot go into a block.
+    let (c, _) = cad.add_line(p(9.0, 9.0), p(9.0, 8.0)).unwrap();
+    let zero = cad.document().current_layer().id();
+    cad.set_layer_locked(zero, true).unwrap();
+    assert!(matches!(
+        cad.create_block("BLOQUEADO", p(0.0, 0.0), &[c]),
+        Err(CadError::InvalidOperation(_))
+    ));
+    assert_eq!(cad.document().block_names(), ["ESQUINA"], "nothing made");
+}
+
+#[test]
 fn repeated_ids_are_edited_once() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();

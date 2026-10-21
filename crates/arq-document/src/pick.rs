@@ -236,11 +236,7 @@ fn curve(shape: Shape) -> Option<Geometry2> {
 
 /// The box of a shape.
 fn shape_bounds(shape: Shape) -> Bounds2 {
-    match shape {
-        Shape::Point(p) => Bounds2::from_point(p),
-        Shape::Text(b) | Shape::Placeholder(b) => b,
-        _ => curve(shape).map_or_else(|| unreachable!(), Geometry2::bounds),
-    }
+    shape.bounds()
 }
 
 /// How far a shape is from `at`: to the curve, the point, or a box (zero

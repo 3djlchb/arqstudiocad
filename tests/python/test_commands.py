@@ -125,6 +125,9 @@ class FakeUi:
         assert len([a for a in self.asked if a.startswith("losses ")]) <= 3, "asked in circles"
         return self.accept_losses
 
+    def choose_block(self, names: Sequence[str]) -> str | None:
+        return None
+
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None
 

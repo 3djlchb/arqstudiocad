@@ -29,7 +29,7 @@ when its parameters change).
 |---|---|---|---|---|---|---|
 | Lines, circles, arcs | ✅ | 100 % / 100 % | ✅ | ✅ geometry, layer, color | — | |
 | Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ✅ as a whole and by vertex | — | |
-| Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ as a whole, attributes follow; EXPLODE keeps attribute values as texts (ADR 0023) | — | MINSERT arrays not transformed |
+| Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ created (BLOCK), placed (INSERT), transformed as a whole with their attributes; EXPLODE keeps attribute values as texts (ADR 0023) | — | MINSERT arrays not transformed |
 | Dimensions | ✅ | 100 % / 100 % | ✅ as AutoCAD drew them (their block) | ○ | ○ | phase 04 |
 | Hatches | ✅ | 100 % / 100 % | ◐ boundaries, no fill pattern | ○ | ○ | phase 04 |
 | Texts, MTEXT, attributes | ✅ | 100 % / 100 % | ◐ letters in a built-in stroke font; MTEXT as plain lines, wrapped to its width | ◐ TEXT and MTEXT created and transformed as a whole; content, height, rotation (ADR 0022) | — | the drawing's fonts (SHX, TrueType) and formatted MTEXT in phase 04; attributes with their block |

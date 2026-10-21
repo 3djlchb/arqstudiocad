@@ -2,6 +2,9 @@
   "ARC": [
     "ARCO"
   ],
+  "BLOCK": [
+    "BLOQUE"
+  ],
   "CIRCLE": [
     "CIRCULO"
   ],
@@ -18,6 +21,9 @@
     "DESCOMPONER"
   ],
   "ID": [],
+  "INSERT": [
+    "INSERTAR"
+  ],
   "LAYER": [
     "CAPA",
     "CA"

@@ -137,6 +137,8 @@ class Drag:
 
     kind: Literal["move", "rotate", "scale", "mirror"]
     entity_ids: tuple[int, ...]
+    #: Whether a rubber band joins the base point to the cursor.
+    band: bool = True
 
 
 @dataclass(frozen=True, slots=True)

@@ -410,6 +410,38 @@ impl CadDocument {
         self.create(|cad| cad.add_text(content, anchor.0, height, rotation))
     }
 
+    /// Makes block `name` from `entity_ids` with its base point at `base`,
+    /// and puts a reference to it in their place (BLOCK, ADR 0023); returns
+    /// the reference's id.
+    fn create_block(
+        &self,
+        name: &str,
+        base: PyPoint,
+        entity_ids: Vec<EntityId>,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.create_block(name, base.0, &entity_ids))
+    }
+
+    /// Places block `name` at `point`, scaled and turned (radians), on the
+    /// current layer; its attributes take their default values (INSERT).
+    #[pyo3(signature = (name, point, scale = 1.0, rotation = 0.0))]
+    fn insert_block(
+        &self,
+        name: &str,
+        point: PyPoint,
+        scale: f64,
+        rotation: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.insert_block(name, point.0, scale, rotation))
+    }
+
+    /// The blocks INSERT can place, sorted: not anonymous, layouts or
+    /// external references.
+    #[getter]
+    fn block_names(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.document().block_names())
+    }
+
     /// Writes a multiline text on the current layer with the current text
     /// style (MTEXT, ADR 0022 D6): `content` is plain text whose line breaks
     /// are paragraphs, wrapped to `width` (0: no wrapping), hanging from

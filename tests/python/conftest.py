@@ -21,7 +21,7 @@ def _english_by_default() -> Iterator[None]:
 def _no_modal_dialogs(monkeypatch: pytest.MonkeyPatch) -> None:
     """A real modal dialog would wait forever for a click: fail instead.
     Tests give the window ui_fakes.QuietUi."""
-    from PySide6.QtWidgets import QFileDialog, QMessageBox
+    from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 
     from arqstudiocad.ui import text_dialog
 
@@ -36,6 +36,7 @@ def _no_modal_dialogs(monkeypatch: pytest.MonkeyPatch) -> None:
         (QMessageBox, "about"),
         (QFileDialog, "getOpenFileName"),
         (QFileDialog, "getSaveFileName"),
+        (QInputDialog, "getItem"),
     ):
         monkeypatch.setattr(owner, name, staticmethod(refuse))
     monkeypatch.setattr(text_dialog, "ask_text", refuse)

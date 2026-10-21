@@ -47,7 +47,7 @@ the changes; saving replaces the definition's contents, so every reference
 shows them, as one undo step of the drawing. The editor never writes a
 file. Attribute definitions in the block are kept as they are.
 
-### D3a — Dynamic blocks wait for the parametric engine
+### D3a — Dynamic blocks wait for the parametric engine *(maintainer, 2026-10-20)*
 
 Dynamic blocks are kept and shown in their current state (ADR 0017 D6);
 changing their parameters needs ArqStudioCAD's parametric engine, which
@@ -68,6 +68,17 @@ Three steps, each its own pull request: D1 with this ADR, then D2, then D3.
 Blocks stay in the engine's database, edited through the adapter as now;
 moving block definitions and polylines into the own model (ADR 0018 D2,
 stage 2) is decided when the block editor shows what it needs from it.
+
+## Implementation notes
+
+- The engine boxes a block reference (and a dimension, drawn through a
+  block) at its insertion point only. Since the spatial index (ADR 0021)
+  takes entity boxes as its broad phase, a block could be picked, crossed
+  or zoomed to only at that point. A block reference's or a dimension's box
+  is now the box of everything it draws, as if every layer were on, so the
+  index stays right when layers are turned off or on (step 2, 2026-10-20).
+- Change sets list model-space entities only: a new block's contents keep
+  their handles for undo but are drawn through the references to it.
 
 ## Consequences
 

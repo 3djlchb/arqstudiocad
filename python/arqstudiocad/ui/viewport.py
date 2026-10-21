@@ -489,7 +489,7 @@ class Viewport(QWidget):
             return QPointF(x / ratio, y / ratio)
 
         at = logical(self._target)
-        if self._base is not None:
+        if self._base is not None and (self._dragged is None or self._dragged.band):
             painter.setPen(QPen(self.palette().text().color(), 1, Qt.PenStyle.DashLine))
             painter.drawLine(logical(self._base), at)
         if self._snap is not None:

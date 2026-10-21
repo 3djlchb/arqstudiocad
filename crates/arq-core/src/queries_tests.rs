@@ -252,3 +252,26 @@ fn entities_on_locked_layers_are_picked_but_not_edited() {
             .is_err()
     );
 }
+
+#[test]
+fn a_block_is_found_on_what_it_draws_not_only_at_its_insertion_point() {
+    // The engine boxes a block reference at its insertion point; the index
+    // must box it by its contents, or picks and crossings miss it.
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(10.0, 10.0), p(20.0, 10.0)).unwrap();
+    let (b, _) = cad.add_line(p(10.0, 10.0), p(10.0, 18.0)).unwrap();
+    let (reference, _) = cad.create_block("ESQUINA", p(10.0, 10.0), &[a, b]).unwrap();
+    let bounds = cad.document().entity(reference).unwrap().bounds().unwrap();
+    assert!(bounds.approx_eq(area(10.0, 10.0, 20.0, 18.0), Tolerance::default()));
+    assert_eq!(cad.pick(p(19.0, 10.0), 0.1).unwrap(), Some(reference));
+    assert_eq!(
+        cad.select_window(area(18.0, 9.0, 19.0, 11.0), true),
+        [reference]
+    );
+    assert_eq!(cad.query_entities(area(15.0, 9.0, 16.0, 11.0)), [reference]);
+    // Its box stays when its layer is turned off, so the index stays right.
+    let zero = cad.document().current_layer().id();
+    cad.set_layer_visible(zero, false).unwrap();
+    let hidden = cad.document().entity(reference).unwrap().bounds().unwrap();
+    assert!(hidden.approx_eq(bounds, Tolerance::default()));
+}

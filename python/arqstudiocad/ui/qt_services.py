@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QWidget
+from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
 from arqstudiocad.commands import ViewControl
 from arqstudiocad.core import CadDocument
@@ -123,6 +123,12 @@ class QtUiServices:
         box.setDefaultButton(cancel)
         box.exec()
         return box.clickedButton() == save
+
+    def choose_block(self, names: Sequence[str]) -> str | None:
+        name, chosen = QInputDialog.getItem(
+            self._parent, tr("Insert block"), tr("Block:"), list(names), 0, False
+        )
+        return name if chosen and name else None
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         return text_dialog.ask_text(self._parent, title, text)
