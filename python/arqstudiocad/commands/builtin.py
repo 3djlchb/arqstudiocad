@@ -317,6 +317,15 @@ def layer(ctx: CommandContext) -> CommandScript:
     yield
 
 
+def properties(ctx: CommandContext) -> CommandScript:
+    """Opens the Properties panel, as AutoCAD's PROPERTIES (Ctrl+1), with
+    or without a drawing (ADR 0025 D2)."""
+    if ctx.ui is None or not ctx.ui.show_panel("properties"):
+        raise CommandCancelledError(tr("The properties panel is not available here."))
+    return
+    yield
+
+
 def blocks_palette(ctx: CommandContext) -> CommandScript:
     """Opens the Blocks palette (ADR 0025), with or without a drawing."""
     if ctx.ui is None or not ctx.ui.show_panel("blocks"):
@@ -337,6 +346,7 @@ BUILTIN_COMMANDS = (
     Command("ZOOM", zoom, ("Z",)),
     Command("LAYER", layer, ("LA",)),
     Command("BLOCKSPALETTE", blocks_palette),
+    Command("PROPERTIES", properties, ("PR",)),
     Command("ID", id_),
 )
 

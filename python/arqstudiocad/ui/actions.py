@@ -27,6 +27,7 @@ SHORTCUTS: dict[str, QKeySequence | QKeySequence.StandardKey | None] = {
     "ZOOM": None,
     "LAYER": None,
     "BLOCKSPALETTE": QKeySequence("Ctrl+3"),
+    "PROPERTIES": QKeySequence("Ctrl+1"),
     "LINE": None,
     "PLINE": None,
     "CIRCLE": None,
@@ -62,6 +63,7 @@ def labels() -> dict[str, str]:
         "ZOOM": tr("&Zoom"),
         "LAYER": tr("&Layers…"),
         "BLOCKSPALETTE": tr("&Blocks"),
+        "PROPERTIES": tr("&Properties"),
         "LINE": tr("&Line"),
         "PLINE": tr("&Polyline"),
         "CIRCLE": tr("&Circle"),
@@ -90,6 +92,7 @@ class CommandActions:
         self._runner = runner
         self.by_command: dict[str, QAction] = {}
         self._closers: dict[str, Callable[[], None]] = {}
+        self._open: dict[str, Callable[[], bool]] = {}
         for name, shortcut in SHORTCUTS.items():
             action = QAction(parent)
             action.setObjectName(f"action_{name.lower()}")
@@ -108,19 +111,24 @@ class CommandActions:
         if command is not None:
             self._runner.start(command)
 
-    def toggle(self, name: str, close: Callable[[], None]) -> None:
+    def toggle(self, name: str, close: Callable[[], None], is_open: Callable[[], bool]) -> None:
         """Makes ``name``'s action a toggle, as a palette's (ADR 0025 D2):
         checking it runs the command, unchecking it calls ``close``. Whoever
-        owns what it toggles keeps its checked state up to date."""
+        owns what it toggles keeps its checked state up to date; after the
+        command runs it shows ``is_open``, in case the command refused."""
         self.by_command[name].setCheckable(True)
         self._closers[name] = close
+        self._open[name] = is_open
 
     def _triggered(self, name: str, checked: bool) -> None:
         close = self._closers.get(name)
         if close is not None and not checked:
             close()
-        else:
-            self.run(name)
+            return
+        self.run(name)
+        is_open = self._open.get(name)
+        if is_open is not None:
+            self.by_command[name].setChecked(is_open())
 
     def set_theme(self, theme: Theme) -> None:
         """Refresh command icons for the active theme."""

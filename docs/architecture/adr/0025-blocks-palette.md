@@ -205,6 +205,9 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - The command line shows "Inserting block <name>.", since a button types nothing.
   - New… starts BLOCK.
   - Explode on insert stays in step 5 with drag and drop.
+- **Step 2d (2026-10-22):** PROPERTIES (alias `PR`, Spanish `PROPIEDADES`) and Ctrl+1 open the Properties panel, with or without a drawing.
+  - The View tab's Palettes group holds Blocks, Layers and Properties. Each button toggles its panel and carries the focus while the panel is open.
+  - LAYER keeps needing a drawing. Its button, which the Home tab shares, does not stay pressed when LAYER refuses.
 
 ## Consequences
 

@@ -53,9 +53,10 @@ def opened(window: MainWindow) -> BlocksPanel:
     return window.blocks_panel
 
 
-def palette_button(window: MainWindow) -> QToolButton:
+def palette_button(window: MainWindow, command: str = "BLOCKSPALETTE") -> QToolButton:
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
-    (button,) = groups["palettes"].buttons
+    action = window.command_actions[command]
+    (button,) = [b for b in groups["palettes"].buttons if b.defaultAction() is action]
     return button
 
 
@@ -314,3 +315,48 @@ def test_the_insert_options_fold_and_speak_spanish(window: MainWindow) -> None:
         assert texts == ("Opciones de inserción", "Precisar en pantalla", "Insertar")
     finally:
         set_language("en")
+
+
+# Step 2d: Properties and Layers join the Palettes group (ADR 0025 D2)
+
+
+def test_the_palettes_group_holds_blocks_layers_and_properties(window: MainWindow) -> None:
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    shown = [b.defaultAction() for b in groups["palettes"].buttons]
+    actions = window.command_actions
+    assert shown == [actions["BLOCKSPALETTE"], actions["LAYER"], actions["PROPERTIES"]]
+    assert actions["PROPERTIES"].shortcut().toString() == "Ctrl+1"
+    assert actions["PROPERTIES"].text() == "&Properties"
+    for command in ("LAYER", "PROPERTIES"):
+        assert palette_button(window, command).isChecked(), f"{command}: open at start"
+
+
+def test_the_properties_button_toggles_its_panel(window: MainWindow) -> None:
+    panel, button = window.properties_panel, palette_button(window, "PROPERTIES")
+    button.click()
+    assert panel.isHidden() and not button.isChecked()
+    button.click()
+    assert not panel.isHidden() and button.isChecked()
+    window.close_panel(panel)
+    for line in ("PROPERTIES", "PR"):
+        window.runner.execute(line)
+        assert not panel.isHidden() and button.isChecked(), f"{line}, without a drawing"
+        window.close_panel(panel)
+    set_language("es")
+    try:
+        window.runner.execute("PROPIEDADES")
+        assert not panel.isHidden() and button.isChecked()
+    finally:
+        set_language("en")
+
+
+def test_a_refused_command_leaves_its_button_up(window: MainWindow) -> None:
+    """LAYER needs a drawing: pressed without one, the button does not stay down."""
+    panel, button = window.layers_panel, palette_button(window, "LAYER")
+    button.click()
+    assert panel.isHidden() and not button.isChecked()
+    button.click()  # no drawing: LAYER refuses
+    assert panel.isHidden() and not button.isChecked()
+    window.session.new_document()
+    button.click()
+    assert not panel.isHidden() and button.isChecked()

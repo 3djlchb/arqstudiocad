@@ -139,6 +139,8 @@ class MainWindow(QMainWindow):
         # A palette's button toggles it and is pressed while it is open
         # (ADR 0025 D2), agreeing with its item in the View menu.
         self._palette_button("BLOCKSPALETTE", self.blocks_panel)
+        self._palette_button("LAYER", self.layers_panel)
+        self._palette_button("PROPERTIES", self.properties_panel)
         for signal in (
             self.events.active_document_changed,
             self.events.document_saved,
@@ -381,7 +383,9 @@ class MainWindow(QMainWindow):
             # The View item toggles before the panel shows: trust its state.
             action.setChecked(shown or not self.auto_hide.is_pinned(palette))
 
-        self.command_actions.toggle(command, partial(self.close_panel, palette))
+        self.command_actions.toggle(
+            command, partial(self.close_panel, palette), partial(self.panel_open, palette)
+        )
         palette.toggleViewAction().toggled.connect(follow)
         action.setChecked(self.panel_open(palette))
 
