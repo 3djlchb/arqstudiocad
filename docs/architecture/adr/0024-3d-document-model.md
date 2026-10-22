@@ -95,6 +95,19 @@ part of this ADR.
 - On LibreDWG's drawings 73 of 75 bodies read and check; the other two wait
   for spline geometry (a `spline-surface`, an `intcurve-curve`), the next
   step. The corpus test pins these counts.
+- **Step 1b, NURBS (2026-10-22):** `arq-kernel` adds NURBS curves and
+  surfaces (rational when weighted; de Boor evaluation, closest point by
+  sampling and Newton refinement). B-spline curves (`intcurve`, `bs3`) and
+  surfaces (`spline-surface`, `bs3-surface`) read through AcadRust's
+  decoded nets: homogeneous control points, a surface's `v` varying
+  fastest. All 75 bodies now read and check, and every body of the
+  comparison corpus's 196 LibreDWG drawings, DWG and DXF. Offset and mesh
+  surfaces wait (procedural geometry kept, not translated).
+- The order of a spline surface's net (`v` fastest) is AcadRust's reading,
+  not yet confirmed: the corpora hold only square nets with equal knot
+  vectors, where both orders give the same surface. A net read in the
+  wrong order fails the body's check, so the body stays kept and drawn as
+  before, never wrong.
 
 ## Consequences
 

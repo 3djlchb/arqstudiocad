@@ -1,16 +1,19 @@
-//! The curves a B-rep edge runs along (ADR 0024 D1): straight lines and
-//! ellipses (circles included) for now; NURBS curves come with the next
-//! step of reading.
+//! The curves a B-rep edge runs along (ADR 0024 D1): straight lines,
+//! ellipses (circles included) and NURBS curves.
 
 use arq_geometry::{GeometryError, GeometryResult, Point3, Transform3, Vector3};
 
+use crate::nurbs::NurbsCurve;
+
 /// An edge's curve, unbounded: the edge's vertices bound it.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Curve {
     /// A straight line.
     Line(LineCurve),
     /// An ellipse, or a circle when its ratio is 1.
     Ellipse(EllipseCurve),
+    /// A NURBS curve.
+    Nurbs(NurbsCurve),
 }
 
 impl Curve {
@@ -19,6 +22,7 @@ impl Curve {
         match self {
             Self::Line(l) => l.distance(p),
             Self::Ellipse(e) => e.distance(p),
+            Self::Nurbs(n) => n.distance(p),
         }
     }
 
@@ -30,6 +34,7 @@ impl Curve {
                 t.apply_vector(l.direction),
             )?),
             Self::Ellipse(e) => Self::Ellipse(e.transformed(t)?),
+            Self::Nurbs(n) => Self::Nurbs(n.transformed(t)),
         })
     }
 }

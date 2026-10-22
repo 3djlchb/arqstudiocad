@@ -22,7 +22,8 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   command are done; dynamic blocks wait for the parametric engine,
   milestone 04.1 (D3a). The 3D document model is decided (ADR 0024) and the
   owned kernel `arq-kernel` reads DWG solids into its B-rep (step 1,
-  analytic geometry: 73 of LibreDWG's 75 bodies); reading NURBS is next.
+  analytic and NURBS geometry: all 75 of LibreDWG's bodies); step 2, see,
+  is next.
 - **Engine:** AcadRust after 0.6.5, patched from our fork (ADR 0017's log,
   2026-10-20).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
@@ -35,9 +36,9 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   styling, and CAD color selection; 03.2 is done and 03.4 compatibility work
   is in progress.
 - **Milestone 02.8** is in progress alongside 02.7: the 3D mathematical
-  foundation, polyline vertex editing and PLINE, texts, blocks and the 3D
-  document decision are done; the owned kernel's steps (NURBS reading,
-  then see, measure, write ACIS, create, transform), stage 2 of the own
+  foundation, polyline vertex editing and PLINE, texts, blocks, the 3D
+  document decision and reading solids (analytic and NURBS) are done; the
+  owned kernel's next steps (see, measure, write ACIS, create, transform), stage 2 of the own
   model (ADR 0018 D2) and 3D wireframe with user coordinate systems
   remain.
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
@@ -70,7 +71,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ✅ steps 2.5.1–2.5.8 complete and manually validated by the maintainer |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
-| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; attribute values kept as texts since ADR 0023 D1, PR #41); PLINE (PR #48); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep and analytic geometry, and 73 of LibreDWG's 75 bodies read into it and check (the other two wait for spline geometry); spline reading and step 2, see, next |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; attribute values kept as texts since ADR 0023 D1, PR #41); PLINE (PR #48); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep with analytic and NURBS geometry, and all 75 of LibreDWG's bodies read into it and check; step 2, see, next |
 
 ## Phase 03 — DWG/DXF ◐
 
@@ -183,7 +184,7 @@ Milestone 02.8 proceeds in independently reviewable steps:
 5. **Curves, surfaces and solids, in this order** (ADR 0024 D4; the
    [geometry representations](references/geometry-representations.md)
    reference explains the choices):
-   1. read: analytic geometry (done), then NURBS;
+   1. read: analytic geometry, then NURBS (both done);
    2. see: tessellation; edges in plan, shading with the GPU viewport;
    3. measure: exact bounds, area, volume, centroid;
    4. write ACIS from our B-rep, to save edited solids;

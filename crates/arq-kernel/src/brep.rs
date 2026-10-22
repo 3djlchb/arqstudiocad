@@ -66,7 +66,7 @@ pub struct Vertex {
 /// A bounded piece of a curve, from `start` to `end`; `reversed` when it
 /// runs against the curve's own direction. A degenerate edge (a cone's
 /// apex) has no curve.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Edge {
     /// The curve it runs along.
     pub curve: Option<Curve>,

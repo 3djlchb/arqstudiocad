@@ -1,14 +1,15 @@
 //! The surfaces a B-rep face lies on (ADR 0024 D1): planes, circular cones
-//! (cylinders included), elliptic cylinders, spheres and tori for now; NURBS surfaces come
-//! with the next step of reading. Each is unbounded: the face's loops trim
-//! it.
+//! (cylinders included), elliptic cylinders, spheres, tori and NURBS
+//! surfaces. Each is unbounded (a NURBS one bounded by its domain): the
+//! face's loops trim it.
 
 use arq_geometry::{GeometryError, GeometryResult, Point3, Transform3, Vector3};
 
 use crate::curve::EllipseCurve;
+use crate::nurbs::NurbsSurface;
 
 /// A face's surface.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Surface {
     /// A plane.
     Plane(Plane),
@@ -20,6 +21,8 @@ pub enum Surface {
     Sphere(Sphere),
     /// A torus.
     Torus(Torus),
+    /// A NURBS surface.
+    Nurbs(NurbsSurface),
 }
 
 impl Surface {
@@ -31,6 +34,7 @@ impl Surface {
             Self::EllipticCylinder(s) => s.distance(p),
             Self::Sphere(s) => s.distance(p),
             Self::Torus(s) => s.distance(p),
+            Self::Nurbs(s) => s.distance(p),
         }
     }
 
@@ -60,6 +64,7 @@ impl Surface {
                 s.major_radius * scale,
                 s.minor_radius * scale,
             )?),
+            Self::Nurbs(s) => Self::Nurbs(s.transformed(t)),
         })
     }
 }
