@@ -1,7 +1,10 @@
 //! Making and placing blocks (ADR 0023 D2): BLOCK turns entities into a new
 //! block definition and puts a reference to it where they were; INSERT
 //! places a reference to a block, its attributes taking their default
-//! values.
+//! values. The Blocks palette reads what it shows of each block here
+//! (ADR 0025).
+
+use std::collections::HashMap;
 
 use acadrust::entities::{AttributeEntity, Insert};
 use acadrust::tables::{BlockRecord, TableEntry};
@@ -13,6 +16,22 @@ use crate::document::Document;
 use crate::entity::EntityId;
 use crate::error::{DocumentError, DocumentResult};
 use crate::translate::handle;
+
+/// A block as the Blocks palette describes it (ADR 0025 D1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockInfo {
+    /// Its name, spelled as the block table spells it.
+    pub name: String,
+    /// Its description; empty when it has none.
+    pub description: String,
+    /// Its insertion units, as DWG's INSUNITS code: 0 unitless, 1 inches,
+    /// 2 feet, 4 millimeters, 5 centimeters, 6 meters…
+    pub units: i16,
+    /// The attribute definitions it holds, constant ones included.
+    pub attributes: usize,
+    /// Whether it is a dynamic block (ADR 0023 D3a).
+    pub dynamic: bool,
+}
 
 /// Characters a DWG block name cannot hold.
 const FORBIDDEN: &[char] = &[
@@ -33,6 +52,58 @@ impl Document {
             .collect();
         names.sort_by_key(|n| n.to_lowercase());
         names
+    }
+
+    /// What the Blocks palette shows of block `name`, found ignoring case;
+    /// `None` unless INSERT can place it (see `block_names`).
+    pub fn block_info(&self, name: &str) -> Option<BlockInfo> {
+        if !self
+            .block_names()
+            .iter()
+            .any(|n| n.eq_ignore_ascii_case(name))
+        {
+            return None;
+        }
+        let record = self.cad().block_records.get(name)?;
+        let attributes = self
+            .cad()
+            .entities_in_block(&record.name)
+            .filter(|e| matches!(e, EntityType::AttributeDefinition(_)))
+            .count();
+        Some(BlockInfo {
+            name: record.name.clone(),
+            description: record.description.clone(),
+            units: record.units,
+            attributes,
+            dynamic: self.is_dynamic_block(&record.name),
+        })
+    }
+
+    /// How many references each block has anywhere in the drawing: model
+    /// and paper space, and inside other blocks. A dynamic block's
+    /// references are drawn through anonymous copies (`*U…`); they count
+    /// for the dynamic block. Blocks without references are left out.
+    pub fn block_references(&self) -> HashMap<String, usize> {
+        let cad = self.cad();
+        let names: HashMap<Handle, &str> = cad
+            .block_records
+            .iter()
+            .map(|b| (b.handle(), b.name.as_str()))
+            .collect();
+        let mut counts = HashMap::new();
+        for e in cad.entities() {
+            if let EntityType::Insert(insert) = e {
+                // The reference's own link to its dynamic block, else the
+                // anonymous block's (AcadRust reads both kinds of file).
+                let definition = cad
+                    .dynamic_definition_for_insert(insert.common.handle)
+                    .map(|h| cad.dynamic_block_definition(h).unwrap_or(h));
+                if let Some(name) = definition.and_then(|h| names.get(&h)) {
+                    *counts.entry((*name).to_owned()).or_insert(0) += 1;
+                }
+            }
+        }
+        counts
     }
 
     /// Makes block `name` from `ids` with its base point at `base`, and

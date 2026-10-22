@@ -11,6 +11,7 @@ from typing import Protocol, SupportsFloat
 from arqstudiocad._core import (
     CadApplication,
     CadArc,
+    CadBlockInfo,
     CadBounds2,
     CadChangeSet,
     CadCircle,
@@ -53,6 +54,7 @@ class PointLike(Protocol):
 __all__ = [
     "CadApplication",
     "CadArc",
+    "CadBlockInfo",
     "CadBounds2",
     "CadChangeSet",
     "CadCircle",

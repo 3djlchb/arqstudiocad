@@ -176,3 +176,81 @@ fn an_inserted_block_gets_its_attributes_with_their_defaults() {
     assert!((a.height - 1.0).abs() < 1e-12);
     assert_eq!(a.common.owner_handle.value(), id);
 }
+
+/// Block ROTULO, base (0,0): a line and two attribute definitions, one of
+/// them constant.
+fn title_block() -> Vec<&'static str> {
+    vec![
+        "0", "BLOCK", "8", "0", "2", "ROTULO", "70", "2", "10", "0", "20", "0", "30", "0", "3",
+        "ROTULO", //
+        "0", "LINE", "8", "0", "10", "0", "20", "0", "30", "0", "11", "4", "21", "0", "31",
+        "0", //
+        "0", "ATTDEF", "8", "0", "10", "1", "20", "1", "30", "0", "40", "0.5", "1", "P-00", "3",
+        "Number", "2", "NUM", "70", "0", //
+        "0", "ATTDEF", "8", "0", "10", "0", "20", "2", "30", "0", "40", "0.5", "1", "FIJO", "3",
+        "Fixed", "2", "CONST", "70", "2", //
+        "0", "ENDBLK", "8", "0",
+    ]
+}
+
+#[test]
+fn block_info_tells_what_the_palette_shows() {
+    let door = door_block();
+    let title = title_block();
+    let mut doc = dxf(LAYERS, &[&door, &title], &[]);
+    let record = doc.cad_mut().block_records.get_mut("PUERTA").unwrap();
+    record.units = 5;
+    record.description = "Puerta de 90 cm".to_owned();
+    let info = doc.block_info("puerta").expect("found ignoring case");
+    assert_eq!(info.name, "PUERTA", "spelled as the table spells it");
+    assert_eq!(
+        (info.description.as_str(), info.units, info.attributes),
+        ("Puerta de 90 cm", 5, 0)
+    );
+    assert!(!info.dynamic);
+    let title = doc.block_info("ROTULO").unwrap();
+    assert_eq!(title.attributes, 2, "constant ones included");
+    assert_eq!((title.units, title.description.as_str()), (0, ""));
+    assert_eq!(doc.block_info("NADA"), None);
+    assert_eq!(
+        doc.block_info("*Model_Space"),
+        None,
+        "only what INSERT places"
+    );
+}
+
+#[test]
+fn block_references_count_everywhere_in_the_drawing() {
+    let door = door_block();
+    // A block that holds a door: its door counts too.
+    let wall: Vec<&str> = vec![
+        "0", "BLOCK", "8", "0", "2", "MURO", "70", "0", "10", "0", "20", "0", "30", "0", "3",
+        "MURO", //
+        "0", "INSERT", "8", "0", "2", "PUERTA", "10", "5", "20", "0", "30", "0", //
+        "0", "ENDBLK", "8", "0",
+    ];
+    let title = title_block();
+    let doc = dxf(
+        LAYERS,
+        &[&door, &wall, &title],
+        &[
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "puerta", "10", "9", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "MURO", "10", "0", "20", "5", "30", "0",
+            ],
+        ],
+    );
+    let counts = doc.block_references();
+    assert_eq!(
+        counts.get("PUERTA"),
+        Some(&3),
+        "two placed, one inside MURO"
+    );
+    assert_eq!(counts.get("MURO"), Some(&1));
+    assert_eq!(counts.get("ROTULO"), None, "not inserted");
+}
