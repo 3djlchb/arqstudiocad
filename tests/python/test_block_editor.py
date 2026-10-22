@@ -10,6 +10,7 @@ from test_commands import regression_drawing
 from ui_fakes import QuietUi
 
 from arqstudiocad.commands import CommandContext, CommandRunner
+from arqstudiocad.commands.blocks import edit_named, insert_named
 from arqstudiocad.commands.builtin import builtin_registry
 from arqstudiocad.core import CadApplication, CadDocument, InvalidOperationError
 from arqstudiocad.events import BlockSaved, CommandMessage, CommandPrompt, Event, EventBus
@@ -235,3 +236,23 @@ def test_the_block_editor_tab_shows_only_while_editing(window: MainWindow) -> No
         "&Save Block",
         "C&lose Block Editor",
     )
+
+
+def test_the_palette_starts_bedit_and_insert_with_the_block_chosen() -> None:
+    """ADR 0025 D5: the same commands, the block already named."""
+    h = Harness()
+    h.runner.start(insert_named("nada", 1.0, 0.0, False))
+    assert h.messages()[-1] == "There is no such block."
+    h.runner.start(insert_named("marco", 1.0, 0.0, True))
+    assert h.messages()[-1] == "Inserting block MARCO.", "spelled as the drawing does"
+    assert h.prompt().startswith("Specify insertion point")
+    h.run("20,0")
+    assert h.runner.active is None and h.document.undo_name == "INSERT"
+    h.runner.start(edit_named("MARCO"))
+    editor = h.active()
+    assert h.session.block_editor_of(editor) == (h.document, "MARCO")
+    h.runner.start(edit_named("MARCO"))
+    assert h.messages()[-1] == "Close this block editor before editing another block."
+    h.session.activate(h.document)
+    h.runner.start(edit_named("nada"))
+    assert h.messages()[-1] == "There is no such block."

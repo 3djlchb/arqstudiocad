@@ -1,7 +1,8 @@
 """BLOCK and INSERT (ADR 0023 D2): make a block from objects selected, and
 place a block, following the cursor until its insertion point is picked.
 BEDIT, BSAVE and BCLOSE (D3): edit a block's definition alone, in a block
-editor of its own, and save it back into the drawing."""
+editor of its own, and save it back into the drawing. The Blocks palette
+starts INSERT and BEDIT with the block already chosen (ADR 0025 D5)."""
 
 import math
 from collections.abc import Generator
@@ -61,7 +62,24 @@ def insert(ctx: CommandContext) -> CommandScript:
     else:
         while (name := _named(document, (yield ctx.ask(tr("Block name"))).strip())) is None:
             ctx.message(tr("There is no such block."))
-    scale, rotation = 1.0, 0.0
+    yield from place_block(ctx, document, name)
+
+
+def place_block(
+    ctx: CommandContext,
+    document: CadDocument,
+    name: str,
+    scale: float = 1.0,
+    rotation: float = 0.0,
+    on_screen: bool = True,
+) -> CommandScript:
+    """Places block ``name``: on screen, following the cursor until its
+    point is picked, with Scale and Rotate still offered; otherwise at the
+    origin at once. One undo step either way."""
+    if not on_screen:
+        _, changes = document.insert_block(name, ORIGIN, scale, rotation)
+        ctx.session.report(document, changes)
+        return
     document.begin_group("INSERT")
     placed = False
     try:
@@ -115,6 +133,11 @@ def bedit(ctx: CommandContext) -> CommandScript:
     else:
         while (name := _named(document, (yield ctx.ask(tr("Block name"))).strip())) is None:
             ctx.message(tr("There is no such block."))
+    _edit(ctx, document, name)
+
+
+def _edit(ctx: CommandContext, document: CadDocument, name: str) -> None:
+    """Opens block ``name`` in a block editor, unless it is dynamic."""
     if document.is_dynamic_block(name):
         # Its parameters wait for the parametric engine (D3a).
         raise CommandCancelledError(
@@ -122,6 +145,39 @@ def bedit(ctx: CommandContext) -> CommandScript:
         )
     ctx.session.open_block_editor(document, name)
     ctx.message(tr("Editing block {name}.", name=name))
+
+
+def insert_named(name: str, scale: float, rotation: float, on_screen: bool) -> Command:
+    """INSERT with block ``name`` already chosen, scaled and turned
+    (``rotation`` in radians), as the Blocks palette starts it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        ctx.message(tr("Inserting block {name}.", name=found))
+        yield from place_block(ctx, document, found, scale, rotation, on_screen)
+
+    return Command("INSERT", run, repeat=False)
+
+
+def edit_named(name: str) -> Command:
+    """BEDIT with block ``name`` already chosen, as the Blocks palette
+    starts it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        if ctx.session.block_editor_of(document) is not None:
+            raise CommandCancelledError(tr("Close this block editor before editing another block."))
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        _edit(ctx, document, found)
+        return
+        yield
+
+    return Command("BEDIT", run, repeat=False)
 
 
 def bsave(ctx: CommandContext) -> CommandScript:

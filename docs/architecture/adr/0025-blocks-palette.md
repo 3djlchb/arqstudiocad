@@ -196,6 +196,15 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - A dynamic block's references through anonymous copies (`*U…`) count for it when the file links the copy to the block, either from the reference or from the copy. AcadRust reads both kinds of link.
   - A copy the file does not link to any block counts for no listed block. In the maintainer's drawings such copies hold plain geometry: no link to read, no count to give.
 - The palette reads the drawing only while it is open. Closed, it waits and catches up when shown again, since counting references reads the whole drawing.
+- **Step 2c (2026-10-22):** Insert options and actions.
+  - Insert options: a foldable band with Scale, Rotation (in degrees) and Specify on screen.
+  - The buttons Insert (the primary action), Edit block and New…
+  - Enter or a double click on a block inserts it.
+  - Insert and Edit block start INSERT and BEDIT with the block already named (`insert_named`, `edit_named`), so they behave as typed: one undo step, the same refusals.
+  - On screen, INSERT follows the cursor and still offers Scale and Rotate. Otherwise the block goes at the origin at once.
+  - The command line shows "Inserting block <name>.", since a button types nothing.
+  - New… starts BLOCK.
+  - Explode on insert stays in step 5 with drag and drop.
 
 ## Consequences
 
