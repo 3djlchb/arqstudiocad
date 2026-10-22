@@ -53,9 +53,10 @@ def opened(window: MainWindow) -> BlocksPanel:
     return window.blocks_panel
 
 
-def palette_button(window: MainWindow) -> QToolButton:
+def palette_button(window: MainWindow, command: str = "BLOCKSPALETTE") -> QToolButton:
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
-    (button,) = groups["palettes"].buttons
+    action = window.command_actions[command]
+    (button,) = [b for b in groups["palettes"].buttons if b.defaultAction() is action]
     return button
 
 
@@ -213,3 +214,149 @@ def test_units_attributes_and_references_read_as_the_mockup() -> None:
         "1 reference",
         "6 references",
     ]
+
+
+# Step 2c: insert options and actions (ADR 0025 D5)
+
+
+def references(document: CadDocument, name: str) -> list[int]:
+    return [
+        e.id
+        for e in document.get_entities()
+        if e.kind == "INSERT" and dict(e.details).get("Block name") == name
+    ]
+
+
+def box(document: CadDocument, entity_id: int) -> tuple[float, float, float, float]:
+    bounds = document.get_entity(entity_id).bounds
+    assert bounds is not None
+    return (
+        round(bounds.min[0], 6),
+        round(bounds.min[1], 6),
+        round(bounds.max[0], 6),
+        round(bounds.max[1], 6),
+    )
+
+
+def test_the_actions_follow_the_drawing_and_the_selection(window: MainWindow) -> None:
+    panel = opened(window)
+    buttons = (panel.insert_button, panel.edit_button, panel.new_button)
+    assert [b.isEnabled() for b in buttons] == [False, False, False], "no drawing"
+    drawing_with_blocks(window, "Mesa")
+    assert [b.isEnabled() for b in buttons] == [False, False, True], "nothing selected"
+    panel.select("Mesa")
+    assert [b.isEnabled() for b in buttons] == [True, True, True]
+    assert (panel.insert_button.text(), panel.edit_button.text(), panel.new_button.text()) == (
+        "Insert",
+        "Edit block",
+        "New…",
+    )
+
+
+def test_insert_at_the_origin_with_the_options_is_one_step(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")  # a line (0,0)-(0,1)
+    before = references(document, "Mesa")
+    steps = len(document.undo_history)
+    panel.select("Mesa")
+    panel.scale.setValue(2.0)
+    panel.rotation.setValue(90.0)
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+    (new,) = set(references(document, "Mesa")) - set(before)
+    assert box(document, new) == (-2.0, 0.0, 0.0, 0.0), "twice as big, turned 90°"
+    assert len(document.undo_history) == steps + 1 and document.undo_name == "INSERT"
+    assert "Inserting block Mesa." in window.command_window.history.toPlainText()
+    assert window.runner.active is None
+    assert ("In drawing", "2 references") in panel.details.sections()[0][1]
+    document.undo()
+    assert references(document, "Mesa") == before
+
+
+def test_insert_on_screen_follows_the_cursor_until_a_point(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    before = references(document, "Mesa")
+    panel.select("Mesa")
+    panel.table.itemActivated.emit(panel.table.currentItem(), 0)  # Enter or double click
+    assert window.runner.active == "INSERT"
+    prompt = window.runner.prompt
+    assert prompt is not None and prompt.message == "Specify insertion point"
+    window.runner.answer_point((10.0, 5.0))
+    (new,) = set(references(document, "Mesa")) - set(before)
+    assert box(document, new) == (10.0, 5.0, 10.0, 6.0)
+    assert window.runner.active is None and document.undo_name == "INSERT"
+
+
+def test_edit_and_new_start_bedit_and_block(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    panel.select("Mesa")
+    panel.new_button.click()
+    assert window.runner.active == "BLOCK"
+    window.runner.cancel()
+    panel.edit_button.click()
+    editor = window.session.active
+    assert editor is not None and window.session.block_editor_of(editor) == (document, "Mesa")
+
+
+def test_the_insert_options_fold_and_speak_spanish(window: MainWindow) -> None:
+    panel = opened(window)
+    assert panel.options.isVisible() and panel.on_screen.isChecked()
+    assert (panel.scale.value(), panel.rotation.value()) == (1.0, 0.0)
+    panel.options_band.click()
+    assert not panel.options.isVisible()
+    panel.options_band.click()
+    assert panel.options.isVisible()
+    set_language("es")
+    try:
+        panel.retranslate()
+        texts = (panel.options_band.text(), panel.on_screen.text(), panel.insert_button.text())
+        assert texts == ("Opciones de inserción", "Precisar en pantalla", "Insertar")
+    finally:
+        set_language("en")
+
+
+# Step 2d: Properties and Layers join the Palettes group (ADR 0025 D2)
+
+
+def test_the_palettes_group_holds_blocks_layers_and_properties(window: MainWindow) -> None:
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    shown = [b.defaultAction() for b in groups["palettes"].buttons]
+    actions = window.command_actions
+    assert shown == [actions["BLOCKSPALETTE"], actions["LAYER"], actions["PROPERTIES"]]
+    assert actions["PROPERTIES"].shortcut().toString() == "Ctrl+1"
+    assert actions["PROPERTIES"].text() == "&Properties"
+    for command in ("LAYER", "PROPERTIES"):
+        assert palette_button(window, command).isChecked(), f"{command}: open at start"
+
+
+def test_the_properties_button_toggles_its_panel(window: MainWindow) -> None:
+    panel, button = window.properties_panel, palette_button(window, "PROPERTIES")
+    button.click()
+    assert panel.isHidden() and not button.isChecked()
+    button.click()
+    assert not panel.isHidden() and button.isChecked()
+    window.close_panel(panel)
+    for line in ("PROPERTIES", "PR"):
+        window.runner.execute(line)
+        assert not panel.isHidden() and button.isChecked(), f"{line}, without a drawing"
+        window.close_panel(panel)
+    set_language("es")
+    try:
+        window.runner.execute("PROPIEDADES")
+        assert not panel.isHidden() and button.isChecked()
+    finally:
+        set_language("en")
+
+
+def test_a_refused_command_leaves_its_button_up(window: MainWindow) -> None:
+    """LAYER needs a drawing: pressed without one, the button does not stay down."""
+    panel, button = window.layers_panel, palette_button(window, "LAYER")
+    button.click()
+    assert panel.isHidden() and not button.isChecked()
+    button.click()  # no drawing: LAYER refuses
+    assert panel.isHidden() and not button.isChecked()
+    window.session.new_document()
+    button.click()
+    assert not panel.isHidden() and button.isChecked()

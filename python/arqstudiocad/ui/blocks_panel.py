@@ -4,20 +4,28 @@ drawing, filtered as the user types, and the details of the one selected.
 Laid out as the maintainer's mockup (docs/design/blocks-palette.md): the
 sources (Template, Recent, Drawing), a caption naming where the blocks come
 from, the search with the grid and list views, the blocks, a footer, and
-the Selected block section. Only the Drawing source and the list view work
-yet; the others come with their steps (ADR 0025 D9) and say so.
+the Selected block section, the insert options and the actions: Insert,
+Edit block and New, which start INSERT, BEDIT and BLOCK. Only the Drawing
+source and the list view work yet; the others come with their steps (ADR
+0025 D9) and say so.
 """
+
+import math
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QCheckBox,
     QDockWidget,
+    QDoubleSpinBox,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
+    QPushButton,
     QSizePolicy,
     QSplitter,
     QStyle,
@@ -28,6 +36,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from arqstudiocad.commands import CommandRunner
+from arqstudiocad.commands.blocks import edit_named, insert_named
 from arqstudiocad.core import CadBlockInfo, CadDocument
 from arqstudiocad.events import Event
 from arqstudiocad.i18n import tr
@@ -99,11 +109,16 @@ class BlocksPanel(QDockWidget):
     """The blocks of the active drawing, without anonymous or layout blocks."""
 
     def __init__(
-        self, session: Session, events: QtEventBridge, parent: QWidget | None = None
+        self,
+        session: Session,
+        events: QtEventBridge,
+        runner: CommandRunner | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("blocks_panel")
         self._session = session
+        self._runner = runner
         #: The drawing changed while the palette was hidden.
         self._stale = True
         self._filling = False
@@ -157,6 +172,8 @@ class BlocksPanel(QDockWidget):
         header.setSectionResizeMode(NAME, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(IN_DRAWING, QHeaderView.ResizeMode.ResizeToContents)
         self.table.currentItemChanged.connect(self._on_current_changed)
+        # Enter or a double click inserts, as the Insert button.
+        self.table.itemActivated.connect(self.insert_selected)
         self.footer = QLabel()
         self.details = PropertyGrid()
         self.details.caption.hide()
@@ -175,7 +192,58 @@ class BlocksPanel(QDockWidget):
         splitter.addWidget(self.details)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
-        self.setWidget(splitter)
+
+        # Insert options: a foldable section band, as the mockup's.
+        self.options_band = QToolButton()
+        self.options_band.setCheckable(True)
+        self.options_band.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.options_band.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.options_band.toggled.connect(self._fold_options)
+        self.scale = QDoubleSpinBox()
+        self.scale.setDecimals(3)
+        self.scale.setRange(0.001, 1_000_000.0)
+        self.scale.setValue(1.0)
+        self.rotation = QDoubleSpinBox()
+        self.rotation.setDecimals(2)
+        self.rotation.setRange(-360.0, 360.0)
+        self.rotation.setSuffix("°")
+        self.on_screen = QCheckBox()
+        self.on_screen.setChecked(True)
+        self.scale_label, self.rotation_label = QLabel(), QLabel()
+        self.options = QWidget()
+        grid = QGridLayout(self.options)
+        grid.setContentsMargins(4, 2, 4, 2)
+        grid.addWidget(self.scale_label, 0, 0)
+        grid.addWidget(self.scale, 0, 1)
+        grid.addWidget(self.rotation_label, 0, 2)
+        grid.addWidget(self.rotation, 0, 3)
+        grid.addWidget(self.on_screen, 1, 0, 1, 4)
+        grid.setColumnStretch(1, 1)
+        grid.setColumnStretch(3, 1)
+        self.options_band.setChecked(True)
+        self._fold_options(True)
+
+        self.insert_button = QPushButton()
+        self.insert_button.setObjectName("blocks_insert")
+        self.edit_button = QPushButton()
+        self.new_button = QPushButton()
+        self.insert_button.clicked.connect(self.insert_selected)
+        self.edit_button.clicked.connect(self.edit_selected)
+        self.new_button.clicked.connect(self.new_block)
+        actions = QHBoxLayout()
+        actions.setContentsMargins(4, 4, 4, 4)
+        for action_button in (self.insert_button, self.edit_button, self.new_button):
+            actions.addWidget(action_button, 1)
+
+        body = QWidget()
+        rows = QVBoxLayout(body)
+        rows.setContentsMargins(0, 0, 0, 0)
+        rows.setSpacing(0)
+        rows.addWidget(splitter, 1)
+        rows.addWidget(self.options_band)
+        rows.addWidget(self.options)
+        rows.addLayout(actions)
+        self.setWidget(body)
         for signal in (events.active_document_changed, events.document_changed):
             signal.connect(self.refresh)
         self.restyle()
@@ -205,6 +273,18 @@ class BlocksPanel(QDockWidget):
         )
         for source_button in self.sources.values():
             source_button.setStyleSheet(segments)
+        # The property grid's section band, and Insert as the primary action.
+        self.options_band.setStyleSheet(
+            f"QToolButton {{ background-color: {button}; color: {text}; border: none; "
+            f"padding: 3px 4px; font-weight: bold; text-align: left; }}"
+        )
+        highlighted = colors.color(QPalette.ColorRole.HighlightedText).name()
+        self.insert_button.setStyleSheet(
+            f"QPushButton {{ background-color: {highlight}; color: {highlighted}; "
+            f"border: 1px solid {highlight}; border-radius: 2px; padding: 4px 8px; }}"
+            f"QPushButton:disabled {{ background-color: {window}; color: {muted}; "
+            f"border-color: {mid}; }}"
+        )
 
     def retranslate(self) -> None:
         self.setWindowTitle(tr("Blocks"))
@@ -215,6 +295,16 @@ class BlocksPanel(QDockWidget):
         self.grid_view.setToolTip(tr("Grid view (not available yet)"))
         self.list_view.setToolTip(tr("List view"))
         self.table.setHeaderLabels([tr("Name"), tr("In drawing")])
+        self.options_band.setText(tr("Insert options"))
+        self.scale_label.setText(tr("Scale"))
+        self.rotation_label.setText(tr("Rotation"))
+        self.on_screen.setText(tr("Specify on screen"))
+        self.on_screen.setToolTip(
+            tr("Pick the insertion point in the drawing; otherwise the block goes at the origin.")
+        )
+        self.insert_button.setText(tr("Insert"))
+        self.edit_button.setText(tr("Edit block"))
+        self.new_button.setText(tr("New…"))
         self._stale = True
         self.refresh()
 
@@ -288,6 +378,48 @@ class BlocksPanel(QDockWidget):
             self._filling = False
         self._show_details()
 
+    def insert_selected(self) -> None:
+        """Inserts the selected block with the insert options, through
+        INSERT: one undo step (ADR 0025 D5)."""
+        name = self.selected()
+        if name is None or self._runner is None or self.document() is None:
+            return
+        self._runner.start(
+            insert_named(
+                name,
+                self.scale.value(),
+                math.radians(self.rotation.value()),
+                self.on_screen.isChecked(),
+            )
+        )
+
+    def edit_selected(self) -> None:
+        """Opens the selected block in the block editor, through BEDIT."""
+        name = self.selected()
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(edit_named(name))
+
+    def new_block(self) -> None:
+        """Makes a new block from objects, through BLOCK."""
+        if self._runner is None or self.document() is None:
+            return
+        command = self._runner.registry.find("BLOCK")
+        if command is not None:
+            self._runner.start(command)
+
+    def _update_actions(self) -> None:
+        drawing = self.document() is not None
+        chosen = drawing and self.selected() is not None
+        self.insert_button.setEnabled(chosen)
+        self.edit_button.setEnabled(chosen)
+        self.new_button.setEnabled(drawing)
+
+    def _fold_options(self, unfolded: bool) -> None:
+        self.options.setVisible(unfolded)
+        self.options_band.setArrowType(
+            Qt.ArrowType.DownArrow if unfolded else Qt.ArrowType.RightArrow
+        )
+
     def _row(self, index: int) -> QTreeWidgetItem:
         item = self.table.topLevelItem(index)
         assert item is not None
@@ -298,6 +430,7 @@ class BlocksPanel(QDockWidget):
             self._show_details()
 
     def _show_details(self) -> None:
+        self._update_actions()
         document = self.document()
         name = self.selected()
         info = document.block_info(name) if document is not None and name else None

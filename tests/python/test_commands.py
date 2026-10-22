@@ -559,3 +559,17 @@ def test_in_spanish_prompts_are_translated_and_english_keys_still_work() -> None
     assert view.zooms == [2.0, 0.5]
     h.run("PLOF")
     assert h.messages()[-1] == 'Comando desconocido "PLOF".'
+
+
+def test_properties_opens_its_panel_with_or_without_a_drawing() -> None:
+    ui = FakeUi()
+    h = harness(ui)
+    h.run("PROPERTIES")
+    assert ui.asked == ["panel properties"], "no drawing needed, as in AutoCAD"
+    h.run("PR")
+    assert ui.asked == ["panel properties", "panel properties"]
+    h = harness()
+    h.run("PROPERTIES")
+    assert h.of(CommandCancelled)[-1] == CommandCancelled(
+        "PROPERTIES", "The properties panel is not available here."
+    )
