@@ -380,10 +380,13 @@ See [ADR 0006](adr/0006-i18n.md). In one sentence:
 
 Windows x86-64 and ARM64; macOS universal2 (Apple Silicon + Intel); Linux
 x86-64 (+ ARM64 when feasible) as `.deb`, `.rpm`, AUR, Flatpak and AppImage.
-Day-to-day testing is local (Windows + WSL2); GitHub Actions CI runs on manual
-dispatch and covers the platforms not available locally. No public release
-until the application is mature. See [ADR 0003](adr/0003-target-platforms.md)
-and [ADR 0005](adr/0005-development-conventions.md).
+Day-to-day testing is local (Windows + WSL2); GitHub Actions CI runs on every
+pull request to `main`, every push to `main`, and manual dispatch, covering
+the platforms not available locally. CI does not replace local checks; the
+packaging workflow remains manual. No public release until the application
+is mature. See [ADR 0003](adr/0003-target-platforms.md),
+[ADR 0005](adr/0005-development-conventions.md) and
+[ADR 0014](adr/0014-platform-direction.md), which amends the CI triggers.
 
 ## 15. Implementation phases
 
