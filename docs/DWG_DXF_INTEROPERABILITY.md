@@ -134,6 +134,95 @@ drawings; what saving loses today, now always asked:
 
 ## How to re-measure
 
+### Integrated product matrix (03.4)
+
+`tools/compatibility_matrix.py` measures the current public Python/core API,
+including our pinned engine patch and the product's safe-save protections.
+It complements the historical library comparison below; the comparison
+spike does not establish the current application's compatibility.
+
+```sh
+uv run python tools/compatibility_matrix.py target/corpus/acadrust target/corpus/libredwg --output target/compatibility-matrix.md
+uv run python tools/compatibility_matrix.py target/corpus/acadrust target/corpus/libredwg --format json --output target/compatibility-matrix.json
+```
+
+Pass additional files or directories to include local drawings. Inputs are
+searched recursively and deduplicated; a missing input or empty corpus is
+an error. Original drawings are never saved over. Each drawing is inspected
+in a separate process (120 seconds by default, configurable with `--timeout`),
+and DWG/DXF copies are written only in a temporary directory. A crash or
+timeout is recorded rather than dropping the row.
+
+The Markdown matrix groups whole-drawing results by **source format,
+source version and model-space entity kind**. A drawing with several kinds
+appears in several rows: the rows must not be added together. A successful
+save verifies the whole drawing through the core, not each kind independently.
+Per-file rows include the actual written version, including legacy-version
+upgrades. JSON also records source SHA-256, entity counts, dynamic-definition
+counts, undecoded-object names, recovery diagnostics and refused loss details.
+Both formats identify the environment, tool hash and checked-out Cargo.lock
+hash; these are provenance aids, not a compiled-binary fingerprint.
+
+Statuses:
+
+- Read `ok`: opened without recovery; `recovered`: usable recovery with
+  diagnostics, never counted as a clean read or exported by this tool.
+- Save `verified`: the core accepted the save and its read-back validation,
+  and the output reopened without recovery.
+- Save `blocked_loss`: the core refused possible losses; the tool **never
+  accepts losses**. A refusal is evidence to investigate, not proof that
+  each reported loss is semantically significant.
+- `error`, `timeout` or `crash`: failed measurement; `not_run`: no save was
+  attempted. A timeout/crash may occur during reading or saving; it does
+  not identify the failing stage.
+
+Exit 0 requires a nonempty corpus, every read clean and both formats verified;
+exit 1 means at least one refusal, recovery or failed measurement; exit 2
+means invalid input/options or a report I/O error. Reports are still written
+on exit 1. Core version strings alone do not identify local source changes;
+retain the checkout/revision and test results with reports when comparing runs.
+
+This measures **read and safe-save behavior** only. It does not certify Xref
+resolution, visual fidelity, BIM semantics, editing, recomputation or opening
+outputs in independent applications. The existing capability matrix's claims
+must not be promoted on these counts alone. Local reports may contain private
+file paths and technical details: keep them under ignored `target/`, never
+commit drawings or raw reports containing the maintainer's project data.
+
+#### First product run (2026-10-22)
+
+Measured on Windows with the current 0.1.0 development build: the 11 fetched
+AcadRust samples, 14 fetched LibreDWG regressions and five maintainer-provided
+exercise drawings. No input was modified. The machine-readable report is
+generated locally, not committed. The checkout was based on `56e0fe5` and
+included the pre-existing, uncommitted block-metadata API work; this is
+working-tree evidence, not a release certification.
+
+| Corpus | Clean reads | DWG verified | DWG blocked loss | DXF verified | DXF blocked loss |
+|---|---|---|---|---|---|
+| AcadRust + LibreDWG samples | 25/25 | 22/25 | 3/25 | 12/25 | 13/25 |
+| Maintainer's exercises | 5/5 | 5/5 | 0/5 | 4/5 | 1/5 |
+| Total | 30/30 | 27/30 | 3/30 | 16/30 | 14/30 |
+
+No recovery, timeout, crash or other error occurred. Eight source versions
+were represented: AC1009, AC1014, AC1015, AC1018, AC1021, AC1024, AC1027 and
+AC1032; this does not cover every supported version or every conversion pair.
+
+Three DWG saves were refused: the known DATAOBJECT in
+`acadrust/datatable/point_object_id.dxf`, and MULTILEADERSTYLE counts in
+LibreDWG's R14 and 2000 `Constraints.dwg`. The latter need investigation
+against the default-object loss allowance; do not bypass the guard.
+DXF refusals include dynamic-block markers, old constraint-group objects,
+DATATABLE, procedural/associative surface objects and AEC content in one
+exercise drawing. They are explicit refusals, not silently successful exports.
+
+Xref coverage remains unverified: this API does not inventory or resolve
+external references, so the filenames and successful reads do not establish
+that any of these inputs exercise Xrefs. AEC preservation evidence does not
+close semantic BIM or external-application validation (03.5).
+
+### Historical library comparison
+
 `tools/dwg-bench` (a workspace of its own) reads, writes and re-reads a
 corpus with AcadRust, opencadcodec and, when built with it, LibreDWG; every
 engine upgrade runs it and the round-trip corpus, and the results go into
