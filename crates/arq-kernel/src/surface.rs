@@ -159,6 +159,16 @@ impl Cone {
         self.radius
     }
 
+    /// The sine of its half angle (0 for a cylinder).
+    pub fn sin_half_angle(&self) -> f64 {
+        self.sin_half_angle
+    }
+
+    /// The cosine of its half angle (positive).
+    pub fn cos_half_angle(&self) -> f64 {
+        self.cos_half_angle
+    }
+
     /// The distance from `p` to the cone: across its side, measured
     /// perpendicular to it.
     pub fn distance(&self, p: Point3) -> f64 {

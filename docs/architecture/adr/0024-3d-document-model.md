@@ -108,6 +108,25 @@ part of this ADR.
   vectors, where both orders give the same surface. A net read in the
   wrong order fails the body's check, so the body stays kept and drawn as
   before, never wrong.
+- **Step 2, see (2026-10-22):** a body's wireframe, like a 2D wireframe
+  view: its edges, sampled within a chord tolerance, and isolines on its
+  curved faces, as many as the drawing's ISOLINES (0 to 64). Cylinders and
+  cones get generators; spheres meridians and the equator; tori circles
+  both ways; NURBS surfaces interior iso-curves; planes none. An isoline
+  is clipped to its face by ACIS's rule that a face lies to the left of
+  its loops seen from outside, trusted only near the boundary (within
+  0.15 of its size): farther, a curved surface may fold back and fool the
+  rule, so the state is carried along the isoline from its sample nearest
+  the boundary, and an isoline that never comes near the boundary is left
+  out rather than guessed (a large face around a small hole may show
+  fewer isolines than AutoCAD). Crossings are found by bisection.
+- The plan view draws that wireframe instead of the bounding box, also for
+  bodies inside blocks (the block's transform moves the points; the body
+  itself is not transformed), and the bodies' extents are the drawn ones.
+  Wireframes are cached by the hash of the ACIS data and the isoline
+  count, so an edited body is never drawn from a stale one. A body that
+  does not translate keeps its bounding box. Shading waits for the GPU
+  viewport (02.7).
 
 ## Consequences
 

@@ -172,3 +172,87 @@ fn homogeneous_control_points_divide_by_their_weight() {
         "no weight"
     );
 }
+
+/// A drawing holding `sat` as one 3DSOLID, and its id.
+fn drawing_with(sat: &SatDocument) -> (Document, u64) {
+    let mut cad = CadDocument::new();
+    let h = cad
+        .add_entity(EntityType::Solid3D(Solid3D::from_sat(&sat.to_sat_string())))
+        .unwrap();
+    (Document::from_engine(cad), h.value())
+}
+
+/// The rounded plan box of what is drawn for `id`, and whether any of it
+/// is a placeholder box.
+fn drawn(doc: &Document, id: u64) -> ([f64; 4], bool) {
+    let items = doc.drawing(id).unwrap();
+    let placeholder = items
+        .iter()
+        .any(|i| matches!(i.shape, crate::drawing::Shape::Placeholder(_)));
+    let b = items
+        .iter()
+        .map(|i| i.shape.bounds())
+        .reduce(|a, b| a.union(b))
+        .unwrap();
+    let r = |v: f64| (v * 1e4).round() / 1e4 + 0.0;
+    (
+        [
+            r(b.min().x()),
+            r(b.min().y()),
+            r(b.max().x()),
+            r(b.max().y()),
+        ],
+        placeholder,
+    )
+}
+
+#[test]
+fn a_solid_is_drawn_by_its_wireframe() {
+    // The box (0..2, -1..1, -1..1) in plan: its edges, no placeholder.
+    let (doc, id) = drawing_with(&primitives::build_box([1.0, 0.0, 0.0], 2.0, 2.0, 2.0));
+    assert_eq!(drawn(&doc, id), ([0.0, -1.0, 2.0, 1.0], false));
+    // A cylinder of radius 1 around the z axis: its circles, so its box
+    // (for picking and the index) is the whole circle, not its vertices.
+    let (doc, id) = drawing_with(&primitives::build_cylinder([0.0, 0.0, 0.0], 1.0, 3.0));
+    let (extent, placeholder) = drawn(&doc, id);
+    assert!(!placeholder);
+    assert!(
+        extent
+            .iter()
+            .zip([-1.0, -1.0, 1.0, 1.0])
+            .all(|(a, b)| (a - b).abs() < 1e-3),
+        "{extent:?}"
+    );
+    let b = doc.entity(id).unwrap().bounds().unwrap();
+    assert!(
+        (b.min().x() + 1.0).abs() < 1e-3 && (b.max().y() - 1.0).abs() < 1e-3,
+        "{b:?}"
+    );
+}
+
+#[test]
+fn a_solid_in_a_block_is_drawn_where_the_block_places_it() {
+    // The box (0..2, -1..1) as block CAJA based at (0,0), placed at (10,0)
+    // turned 90°: x becomes y, so (9..11, 0..2).
+    let (mut doc, id) = drawing_with(&primitives::build_box([1.0, 0.0, 0.0], 2.0, 2.0, 2.0));
+    let base = arq_geometry::Point2::new(0.0, 0.0).unwrap();
+    let first = doc.create_block("CAJA", base, &[id]).unwrap();
+    let at = arq_geometry::Point2::new(10.0, 0.0).unwrap();
+    let placed = doc
+        .insert_block("CAJA", at, 1.0, std::f64::consts::FRAC_PI_2)
+        .unwrap();
+    assert_eq!(drawn(&doc, first), ([0.0, -1.0, 2.0, 1.0], false));
+    assert_eq!(drawn(&doc, placed), ([9.0, 0.0, 11.0, 2.0], false));
+}
+
+#[test]
+fn a_changed_solid_is_drawn_from_its_new_data() {
+    // The wireframe cache is keyed by the ACIS data: new data, new drawing.
+    let (mut doc, id) = drawing_with(&primitives::build_box([1.0, 0.0, 0.0], 2.0, 2.0, 2.0));
+    assert_eq!(drawn(&doc, id).0, [0.0, -1.0, 2.0, 1.0]);
+    let moved = primitives::build_box([5.0, 0.0, 0.0], 2.0, 2.0, 2.0).to_sat_string();
+    if let Some(EntityType::Solid3D(s)) = doc.cad_mut().get_entity_mut(acadrust::Handle::new(id)) {
+        s.set_sat_data(&moved);
+    }
+    assert_eq!(drawn(&doc, id).0, [4.0, -1.0, 6.0, 1.0]);
+}

@@ -77,6 +77,13 @@ impl NurbsCurve {
 
     /// The shortest distance from `p` to the curve, within its domain.
     pub fn distance(&self, p: Point3) -> f64 {
+        self.point_at(self.closest_parameter(p)).distance_to(p)
+    }
+
+    /// The parameter of the curve's point closest to `p`, within its
+    /// domain: the closest of a set of samples, refined by golden-section
+    /// search around it.
+    pub fn closest_parameter(&self, p: Point3) -> f64 {
         let (a, b) = self.domain();
         let samples = 16 * (self.points.len() - self.degree);
         let step = (b - a) / samples as f64;
@@ -99,7 +106,7 @@ impl NurbsCurve {
                 lo = x1;
             }
         }
-        d2((lo + hi) / 2.0).sqrt()
+        (lo + hi) / 2.0
     }
 
     /// The curve moved by `t`: NURBS are invariant under affine maps of
@@ -198,6 +205,20 @@ impl NurbsSurface {
     /// squared distance with derivatives taken by finite differences, each
     /// step halved until it brings the point closer.
     pub fn distance(&self, p: Point3) -> f64 {
+        let (u, v) = self.closest_parameters(p);
+        self.point_at(u, v).distance_to(p)
+    }
+
+    /// The unit normal `∂S/∂u × ∂S/∂v` at the point closest to `p`; `None`
+    /// where the surface degenerates (a pole).
+    pub fn normal_near(&self, p: Point3) -> Option<Vector3> {
+        let (u, v) = self.closest_parameters(p);
+        let (su, sv) = self.derivatives(u, v);
+        su.cross(sv).normalized().ok()
+    }
+
+    /// The parameters of the point closest to `p`, within the domain.
+    pub fn closest_parameters(&self, p: Point3) -> (f64, f64) {
         let ((u0, u1), (v0, v1)) = self.domain();
         let nu = 8 * (self.count_u - self.degree_u);
         let nv = 8 * (self.count_v - self.degree_v);
@@ -213,13 +234,9 @@ impl NurbsSurface {
             }
         }
         let (mut u, mut v) = (best.0, best.1);
-        let (hu, hv) = ((u1 - u0) * 1e-7, (v1 - v0) * 1e-7);
         for _ in 0..40 {
             let s = self.point_at(u, v);
-            let su = (self.point_at((u + hu).min(u1), v) - self.point_at((u - hu).max(u0), v))
-                / (((u + hu).min(u1) - (u - hu).max(u0)).max(f64::MIN_POSITIVE));
-            let sv = (self.point_at(u, (v + hv).min(v1)) - self.point_at(u, (v - hv).max(v0)))
-                / (((v + hv).min(v1) - (v - hv).max(v0)).max(f64::MIN_POSITIVE));
+            let (su, sv) = self.derivatives(u, v);
             let r: Vector3 = p - s;
             let (a, b, c) = (su.dot(su), su.dot(sv), sv.dot(sv));
             let (e, f) = (su.dot(r), sv.dot(r));
@@ -246,7 +263,23 @@ impl NurbsSurface {
                 break;
             }
         }
-        self.point_at(u, v).distance_to(p).min(best.2.sqrt())
+        if self.point_at(u, v).distance_squared_to(p) <= best.2 {
+            (u, v)
+        } else {
+            (best.0, best.1)
+        }
+    }
+
+    /// The partial derivatives at `(u, v)`, by central differences inside
+    /// the domain.
+    fn derivatives(&self, u: f64, v: f64) -> (Vector3, Vector3) {
+        let ((u0, u1), (v0, v1)) = self.domain();
+        let (hu, hv) = ((u1 - u0) * 1e-7, (v1 - v0) * 1e-7);
+        let (ua, ub) = ((u - hu).max(u0), (u + hu).min(u1));
+        let (va, vb) = ((v - hv).max(v0), (v + hv).min(v1));
+        let su = (self.point_at(ub, v) - self.point_at(ua, v)) / (ub - ua).max(f64::MIN_POSITIVE);
+        let sv = (self.point_at(u, vb) - self.point_at(u, va)) / (vb - va).max(f64::MIN_POSITIVE);
+        (su, sv)
     }
 
     /// The surface moved by `t`.
