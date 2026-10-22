@@ -12,16 +12,16 @@ of its own; DXF is the open alternative and IFC the BIM exchange format. Its dir
 document in the [documentation index](docs/README.md).
 
 > **Status:** pre-alpha. The application starts, switches between English and
-> Spanish and is packaged for every target platform (phase 1). The geometry
-> core is done — lines, circles, arcs, transformations, intersections and snap
-> points (milestone 02.1) — and so is the document core: it opens and saves DWG
-> and DXF, edits lines, circles, arcs and layers with undo and redo, and keeps
-> everything else in the drawing intact (02.2). All of it can be scripted from
-> Python through `arqstudiocad.core` (02.3). The application shell shows
-> drawings in tabs, opens and saves them in the background, and has a command
-> line, Layers, Properties and History panels that dock, float or auto-hide,
-> Ribbon and Classic workspaces and a dark or light theme (02.4). It cannot
-> draw yet: selection and drawing commands are the next milestone.
+> Spanish and is packaged for every target platform (phase 1). It opens and
+> saves DWG and DXF, keeping everything in the drawing intact, with damaged
+> files reported and every save read back and checked (phase 03). You can
+> draw lines, polylines, circles, arcs and texts; select with windows, snaps
+> and ORTHO; move, copy, rotate, scale, mirror, erase and explode; edit with
+> grips and in the Properties panel; make, insert and edit blocks; and undo
+> and redo everything. The Ribbon and Classic workspaces, docking panels and
+> themes come with it, and all of the core can be scripted from Python
+> through `arqstudiocad.core`. The owned 3D kernel has begun: it reads the
+> drawing's solids into its own B-rep (milestone 02.8).
 
 | Layer | Technology | Owns |
 |---|---|---|
