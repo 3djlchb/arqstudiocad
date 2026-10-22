@@ -56,7 +56,9 @@ def hover(widget: SideTab) -> None:
 def test_panels_start_pinned_with_a_pin_in_the_title(qtbot: QtBot) -> None:
     window = make_window(qtbot)
     for panel in window.panels.values():
-        assert pins(window).is_pinned(panel) and panel.isVisible()
+        # Every panel is open but the Blocks palette, closed on first run (ADR 0025).
+        assert pins(window).is_pinned(panel)
+        assert panel.isVisible() == (panel is not window.blocks_panel)
         bar = panel.titleBarWidget()
         assert isinstance(bar, PanelTitleBar) and bar.pinned
         assert bar.pin.toolTip() == "Auto-hide"

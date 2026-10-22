@@ -317,6 +317,14 @@ def layer(ctx: CommandContext) -> CommandScript:
     yield
 
 
+def blocks_palette(ctx: CommandContext) -> CommandScript:
+    """Opens the Blocks palette (ADR 0025), with or without a drawing."""
+    if ctx.ui is None or not ctx.ui.show_panel("blocks"):
+        raise CommandCancelledError(tr("The blocks palette is not available here."))
+    return
+    yield
+
+
 #: Every command of this module, with AutoCAD's usual aliases.
 BUILTIN_COMMANDS = (
     Command("NEW", new, ("QNEW",)),
@@ -328,6 +336,7 @@ BUILTIN_COMMANDS = (
     Command("REDO", redo),
     Command("ZOOM", zoom, ("Z",)),
     Command("LAYER", layer, ("LA",)),
+    Command("BLOCKSPALETTE", blocks_palette),
     Command("ID", id_),
 )
 

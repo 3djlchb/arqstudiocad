@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from arqstudiocad.ui.panel_style import toggle_focus_style
 from arqstudiocad.workspaces import Discipline, RibbonGroup
 
 #: Buttons stacked in one column of a group.
@@ -49,6 +50,9 @@ class RibbonGroupWidget(QFrame):
             else:
                 button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setAutoRaise(True)
+            if actions[name].isCheckable():
+                # Pressed while what it toggles is open (ADR 0025 D2).
+                button.setStyleSheet(toggle_focus_style())
             grid.addWidget(button, index % ROWS, index // ROWS)
             self.buttons.append(button)
         self.title = QLabel()

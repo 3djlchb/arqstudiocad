@@ -45,6 +45,7 @@ def test_every_panel_docks_on_every_side_and_floats(qtbot: QtBot, layout: Layout
     window = make_window(qtbot)
     window.workspaces.show(None, layout)
     for dock in docks(window):
+        dock.show()  # the Blocks palette starts closed
         features = dock.features()
         assert features & QDockWidget.DockWidgetFeature.DockWidgetMovable
         assert features & QDockWidget.DockWidgetFeature.DockWidgetFloatable

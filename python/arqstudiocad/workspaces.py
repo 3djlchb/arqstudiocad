@@ -145,7 +145,11 @@ CAD = Discipline(
         RibbonTab(
             "view",
             lambda: tr("View"),
-            (RibbonGroup("navigate", lambda: tr("Navigate"), ("ZOOM",)),),
+            (
+                RibbonGroup("navigate", lambda: tr("Navigate"), ("ZOOM",)),
+                # Palettes, each button pressed while its palette is open (ADR 0025 D2).
+                RibbonGroup("palettes", lambda: tr("Palettes"), ("BLOCKSPALETTE",)),
+            ),
         ),
         # AutoCAD's contextual Block Editor tab: only while a block editor
         # is the active document (ADR 0023 D3).
