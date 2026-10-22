@@ -197,6 +197,7 @@ def test_ribbon_tabs_groups_and_buttons(qtbot: QtBot) -> None:
         "Block",
         "Text",
         "Navigate",
+        "Palettes",
         "Block Editor",
     ], "the block editor's contextual tab included, though hidden"
     new_button = shown.groups[0].buttons[0]

@@ -15,6 +15,20 @@ from PySide6.QtWidgets import (
     QTreeView,
 )
 
+#: The selection focus of every panel: a translucent background between
+#: accent lines, as a selected layer in the Layers panel.
+SELECTION_BACKGROUND = "rgba(117, 143, 164, 48)"
+SELECTION_LINE = "rgba(0, 140, 255, 230)"
+
+
+def toggle_focus_style() -> str:
+    """A tool button's look while what it toggles is open: the panels'
+    selection focus, framed in the accent color."""
+    return (
+        f"QToolButton:checked {{ background-color: {SELECTION_BACKGROUND}; "
+        f"border: 1px solid {SELECTION_LINE}; border-radius: 2px; }}"
+    )
+
 
 def apply_data_view_style(view: QAbstractItemView, *, row_height: int = 26) -> None:
     """Give tables and property grids the shared compact panel appearance."""
@@ -57,7 +71,7 @@ def apply_data_view_style(view: QAbstractItemView, *, row_height: int = 26) -> N
             alternate-background-color: {alternate};
             color: {text};
             border: none;
-            selection-background-color: rgba(117, 143, 164, 48);
+            selection-background-color: {SELECTION_BACKGROUND};
             selection-color: {text};
             outline: none;
         }}
@@ -66,9 +80,9 @@ def apply_data_view_style(view: QAbstractItemView, *, row_height: int = 26) -> N
             border-bottom: 1px solid {mid};
         }}
         QTreeView::item:selected, QTableView::item:selected, QListView::item:selected {{
-            background-color: rgba(117, 143, 164, 48);
-            border-top: 1px solid rgba(0, 140, 255, 230);
-            border-bottom: 1px solid rgba(0, 140, 255, 230);
+            background-color: {SELECTION_BACKGROUND};
+            border-top: 1px solid {SELECTION_LINE};
+            border-bottom: 1px solid {SELECTION_LINE};
         }}
         QHeaderView {{ border: none; background-color: {button}; }}
         QHeaderView::section {{
@@ -115,9 +129,9 @@ def apply_property_grid_style(view: QTreeView) -> None:
         }}
         QTreeView::item {{ padding: 2px 5px; border: none; }}
         QTreeView::item:selected {{
-            background-color: rgba(117, 143, 164, 48);
-            border-top: 1px solid rgba(0, 140, 255, 230);
-            border-bottom: 1px solid rgba(0, 140, 255, 230);
+            background-color: {SELECTION_BACKGROUND};
+            border-top: 1px solid {SELECTION_LINE};
+            border-bottom: 1px solid {SELECTION_LINE};
         }}
         QLineEdit {{
             background-color: {base};
@@ -144,14 +158,14 @@ def apply_property_grid_style(view: QTreeView) -> None:
         QComboBox QAbstractItemView {{
             background-color: {base};
             color: {text};
-            selection-background-color: rgba(117, 143, 164, 48);
+            selection-background-color: {SELECTION_BACKGROUND};
             selection-color: {text};
             border: 1px solid {border};
         }}
         QComboBox QAbstractItemView::item:selected {{
-            background-color: rgba(117, 143, 164, 48);
-            border-top: 1px solid rgba(0, 140, 255, 230);
-            border-bottom: 1px solid rgba(0, 140, 255, 230);
+            background-color: {SELECTION_BACKGROUND};
+            border-top: 1px solid {SELECTION_LINE};
+            border-bottom: 1px solid {SELECTION_LINE};
         }}
         """
     )

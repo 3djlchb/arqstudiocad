@@ -24,7 +24,7 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   owned kernel `arq-kernel` reads DWG solids into its B-rep (step 1,
   analytic and NURBS geometry: all 75 of LibreDWG's bodies) and draws
   them by their edges and isolines (step 2, see); step 3, measure, is
-  next.
+  next. The Blocks palette is proposed (ADR 0025, milestone 02.9).
 - **Engine:** AcadRust after 0.6.5, patched from our fork (ADR 0017's log,
   2026-10-20).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
@@ -73,6 +73,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
 | 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; attribute values kept as texts since ADR 0023 D1, PR #41); PLINE (PR #48); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep with analytic and NURBS geometry, and all 75 of LibreDWG's bodies read into it and check; step 2, see, done: solids drawn in plan by their edges and isolines (ISOLINES), in blocks too; step 3, measure, next |
+| 02.9 Blocks palette | A dockable palette of the drawing's, a template's and recent blocks, with previews, the dynamic-block tag, insertion by button or drag and drop, and copying definitions between files (ADR 0025; [design brief](design/blocks-palette.md)) | ○ proposed; eight steps (ADR 0025 D9), independent of the 3D kernel steps |
 
 ## Phase 03 — DWG/DXF ◐
 

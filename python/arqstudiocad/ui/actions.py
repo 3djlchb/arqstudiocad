@@ -5,6 +5,8 @@ written once and appears in every workspace. Triggering one starts its
 command, cancelling any command already running, as AutoCAD's menus do.
 """
 
+from collections.abc import Callable
+
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QWidget
 
@@ -14,7 +16,7 @@ from arqstudiocad.ui.command_icons import command_icon
 from arqstudiocad.ui.theme import Theme
 
 #: Commands with an action, and their standard shortcuts.
-SHORTCUTS: dict[str, QKeySequence.StandardKey | None] = {
+SHORTCUTS: dict[str, QKeySequence | QKeySequence.StandardKey | None] = {
     "NEW": QKeySequence.StandardKey.New,
     "OPEN": QKeySequence.StandardKey.Open,
     "SAVE": QKeySequence.StandardKey.Save,
@@ -24,6 +26,7 @@ SHORTCUTS: dict[str, QKeySequence.StandardKey | None] = {
     "REDO": QKeySequence.StandardKey.Redo,
     "ZOOM": None,
     "LAYER": None,
+    "BLOCKSPALETTE": QKeySequence("Ctrl+3"),
     "LINE": None,
     "PLINE": None,
     "CIRCLE": None,
@@ -58,6 +61,7 @@ def labels() -> dict[str, str]:
         "REDO": tr("&Redo"),
         "ZOOM": tr("&Zoom"),
         "LAYER": tr("&Layers…"),
+        "BLOCKSPALETTE": tr("&Blocks"),
         "LINE": tr("&Line"),
         "PLINE": tr("&Polyline"),
         "CIRCLE": tr("&Circle"),
@@ -85,13 +89,14 @@ class CommandActions:
     def __init__(self, runner: CommandRunner, parent: QWidget) -> None:
         self._runner = runner
         self.by_command: dict[str, QAction] = {}
+        self._closers: dict[str, Callable[[], None]] = {}
         for name, shortcut in SHORTCUTS.items():
             action = QAction(parent)
             action.setObjectName(f"action_{name.lower()}")
             if shortcut is not None:
                 action.setShortcut(shortcut)
             action.setStatusTip(name)
-            action.triggered.connect(lambda _checked=False, n=name: self.run(n))
+            action.triggered.connect(lambda checked=False, n=name: self._triggered(n, checked))
             self.by_command[name] = action
         self.retranslate()
 
@@ -102,6 +107,20 @@ class CommandActions:
         command = self._runner.registry.find(name)
         if command is not None:
             self._runner.start(command)
+
+    def toggle(self, name: str, close: Callable[[], None]) -> None:
+        """Makes ``name``'s action a toggle, as a palette's (ADR 0025 D2):
+        checking it runs the command, unchecking it calls ``close``. Whoever
+        owns what it toggles keeps its checked state up to date."""
+        self.by_command[name].setCheckable(True)
+        self._closers[name] = close
+
+    def _triggered(self, name: str, checked: bool) -> None:
+        close = self._closers.get(name)
+        if close is not None and not checked:
+            close()
+        else:
+            self.run(name)
 
     def set_theme(self, theme: Theme) -> None:
         """Refresh command icons for the active theme."""

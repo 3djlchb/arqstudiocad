@@ -51,6 +51,7 @@ from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
 from arqstudiocad.ui.background import QtWorker
+from arqstudiocad.ui.blocks_panel import BlocksPanel
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.document_tabs import DocumentTabs
 from arqstudiocad.ui.drafting_bar import DraftingBar
@@ -101,9 +102,11 @@ class MainWindow(QMainWindow):
         self.layers_panel = LayersPanel(self.session, self.events, self)
         self.properties_panel = PropertiesPanel(self.session, self.events, self)
         self.history_panel = HistoryPanel(self.session, self.events, self)
+        self.blocks_panel = BlocksPanel(self.session, self.events, self)
         self.panels: dict[str, QDockWidget] = {
             "layers": self.layers_panel,
             "properties": self.properties_panel,
+            "blocks": self.blocks_panel,
             "history": self.history_panel,
         }
         right = Qt.DockWidgetArea.RightDockWidgetArea
@@ -127,9 +130,15 @@ class MainWindow(QMainWindow):
         self.addDockWidget(right, self.layers_panel)
         self.splitDockWidget(self.layers_panel, self.history_panel, Qt.Orientation.Vertical)
         self.tabifyDockWidget(self.layers_panel, self.properties_panel)
+        self.tabifyDockWidget(self.layers_panel, self.blocks_panel)
+        # The Blocks palette starts closed, as AutoCAD's (ADR 0025 D2).
+        self.blocks_panel.hide()
         self.layers_panel.raise_()
         #: The pins: a panel stays open, or collapses to a tab on its side.
         self.auto_hide = AutoHide(self, self.panels.values(), settings)
+        # A palette's button toggles it and is pressed while it is open
+        # (ADR 0025 D2), agreeing with its item in the View menu.
+        self._palette_button("BLOCKSPALETTE", self.blocks_panel)
         for signal in (
             self.events.active_document_changed,
             self.events.document_saved,
@@ -296,6 +305,7 @@ class MainWindow(QMainWindow):
         self.layers_panel.retranslate()
         self.properties_panel.retranslate()
         self.history_panel.retranslate()
+        self.blocks_panel.retranslate()
         self.workspaces.retranslate()
         self.auto_hide.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
@@ -331,6 +341,7 @@ class MainWindow(QMainWindow):
         self.properties_panel.grid.restyle()
         self.layers_panel.restyle()
         self.history_panel.restyle()
+        self.blocks_panel.restyle()
         self.theme = theme
         self.command_actions.set_theme(theme)
         self.theme_actions[theme].setChecked(True)
@@ -360,6 +371,30 @@ class MainWindow(QMainWindow):
         panel.show()
         panel.raise_()
         return True
+
+    def _palette_button(self, command: str, palette: QDockWidget) -> None:
+        """Makes ``command``'s action toggle ``palette``, checked while it
+        is open."""
+        action = self.command_actions[command]
+
+        def follow(shown: bool) -> None:
+            # The View item toggles before the panel shows: trust its state.
+            action.setChecked(shown or not self.auto_hide.is_pinned(palette))
+
+        self.command_actions.toggle(command, partial(self.close_panel, palette))
+        palette.toggleViewAction().toggled.connect(follow)
+        action.setChecked(self.panel_open(palette))
+
+    def panel_open(self, panel: QDockWidget) -> bool:
+        """Whether ``panel`` is open: shown, or unpinned to its side tab."""
+        return not panel.isHidden() or not self.auto_hide.is_pinned(panel)
+
+    def close_panel(self, panel: QDockWidget) -> None:
+        """Closes ``panel``, pinned or not; the View menu opens it again."""
+        if self.auto_hide.is_pinned(panel):
+            panel.close()
+        else:
+            self.auto_hide.close(panel)
 
     # Viewports: one per open document; the active one is shown.
 

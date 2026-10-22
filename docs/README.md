@@ -19,5 +19,6 @@ its reasons.
 | [CONTRIBUTING](../CONTRIBUTING.md) ([español](../CONTRIBUTING.es.md)) | Workflow and contributions |
 | [ADRs](architecture/adr/README.md) | Every architectural decision and its reasons |
 | [References](references/) | Analyses of other projects and the DWG/DXF library comparison |
+| [Design briefs](design/) | The maintainer's interface designs from mockups, each turned into an ADR before code ([Blocks palette](design/blocks-palette.md)) |
 
 Documentation is licensed CC BY-SA 4.0 ([LICENSE](LICENSE)).

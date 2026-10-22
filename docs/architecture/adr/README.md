@@ -29,6 +29,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0022](0022-text-entities.md) | TEXT and MTEXT in 02.8: transform as a whole, one grip, content/height/rotation in Properties, TEXT command; mirrored texts stay readable; letters drawn in a built-in stroke font; basic MTEXT command with word wrapping; the drawing's own fonts and formatted MTEXT in phase 04 | Accepted |
 | [0023](0023-blocks.md) | Blocks in 02.8: EXPLODE keeps attribute values as texts; BLOCK and INSERT; a BEDIT-like block editor in its own tab; an Insert ribbon tab | Accepted |
 | [0024](0024-3d-document-model.md) | The 3D document model: a solid is our own B-rep; DWG ACIS read into it and kept byte for byte until edited; Truck the first temporary backend after review; read, see, measure, then create and edit | Accepted |
+| [0025](0025-blocks-palette.md) | The Blocks palette: Drawing, Template and Recent sources; previews in Rust from new change-set block fields; dynamic blocks tagged; inserting by button or drop through INSERT; copying definitions with clashes asked about; BLOCKSPALETTE, PROPERTIES, Ctrl+1 and Ctrl+3 | Proposed |
 
 Template:
 
