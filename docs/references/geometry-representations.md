@@ -58,7 +58,7 @@ reference for differential tests outside the product (ADR 0024 D3).
 |---|---|---|
 | 1 | Read: analytic geometry | Owned kernel (done) |
 | 1b | Read: NURBS curves and surfaces | Owned kernel, openNURBS as a mathematical reference (done) |
-| 2 | See: tessellation; edges in plan, shading with the GPU viewport (02.7) | Owned kernel; Truck for comparison |
+| 2 | See: edges and isolines in plan (done); shading with the GPU viewport (02.7) | Owned kernel; Truck for comparison |
 | 3 | Measure: exact bounds, area, volume, centroid | Owned kernel |
 | 4 | Write ACIS from our B-rep (to save an edited solid) | Owned kernel, checked by reading back and in other CAD applications |
 | 5 | Create: box, cylinder, cone, sphere, torus, wedge; extrusion and revolution of 2D profiles | Owned kernel (direct analytic constructions) |

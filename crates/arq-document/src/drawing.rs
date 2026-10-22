@@ -17,7 +17,8 @@ use std::f64::consts::TAU;
 use acadrust::EntityType;
 use acadrust::entities::{BoundaryEdge, Ellipse, Hatch, Insert, LwPolyline, Spline};
 use acadrust::types::{Matrix4, Transform, Vector2, Vector3};
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2};
+use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Point3};
+use arq_kernel::Wireframe;
 
 use crate::document::Document;
 use crate::entity::{Color, EntityId};
@@ -100,6 +101,10 @@ struct Context {
     insert_color: Option<Color>,
     /// Block names being expanded, outermost first, to stop cycles.
     blocks: Vec<String>,
+    /// Where the innermost block places its contents, when not where they
+    /// are: an ACIS body inside it is drawn from its own data, its points
+    /// moved, rather than its ACIS rewritten.
+    placement: Option<Transform>,
 }
 
 impl Document {
@@ -164,6 +169,7 @@ impl Context {
             insert_layer: None,
             insert_color: None,
             blocks: Vec::new(),
+            placement: None,
         }
     }
 }
@@ -290,6 +296,21 @@ impl<'a> Painter<'a> {
             },
             EntityType::Ellipse(el) => outline_ellipse(el, color, out),
             EntityType::Hatch(h) => self.outline_hatch(h, e, ctx, color, out),
+            EntityType::Solid3D(_)
+            | EntityType::Region(_)
+            | EntityType::Body(_)
+            | EntityType::Surface(_) => match self.doc.wireframes.get(e, self.isolines()) {
+                Some(wire) => outline_body(&wire, ctx.placement.as_ref(), color, out),
+                // Not translated yet: as the engine breaks it down.
+                _ => match &ctx.placement {
+                    None => self.emit_parts(e, ctx, out, color),
+                    Some(t) => {
+                        let mut moved = e.clone();
+                        moved.apply_transform(t);
+                        self.emit_parts(&moved, ctx, out, color);
+                    }
+                },
+            },
             EntityType::Insert(ins) => self.expand_insert(ins, &layer, color, ctx, out),
             EntityType::Dimension(dim) => {
                 // AutoCAD stores what it drew in an anonymous block, in
@@ -310,6 +331,12 @@ impl<'a> Painter<'a> {
             | EntityType::Seqend(_) => {}
             _ => self.emit_parts(e, ctx, out, color),
         }
+    }
+
+    /// The drawing's ISOLINES, the lines drawn on each curved face of a
+    /// solid (0 to 64).
+    fn isolines(&self) -> usize {
+        usize::try_from(self.doc.cad().header.isolines.clamp(0, 64)).unwrap_or(4)
     }
 
     /// A hatch's boundary, its fill pattern being later work (ADR 0013).
@@ -507,17 +534,18 @@ impl<'a> Painter<'a> {
         }
         let mut blocks = ctx.blocks.clone();
         blocks.push(name.to_owned());
+        let identity = is_identity(t);
         let inner = Context {
             insert_layer: Some(layer.to_owned()),
             insert_color: Some(color),
             blocks,
+            placement: (!identity).then_some(*t),
         };
-        let identity = is_identity(t);
         for child in self.doc.cad().entities_in_block(name) {
             if matches!(child, EntityType::AttributeDefinition(_)) {
                 continue; // definitions are drawn through the insert's values
             }
-            if identity {
+            if identity || crate::acis::is_body(child) {
                 self.emit(child, &inner, out);
             } else {
                 let mut moved = child.clone();
@@ -561,6 +589,28 @@ fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
     for i in 0..steps {
         if let Some(shape) = segment(at(i), at(i + 1)) {
             out.push(DrawItem { shape, color });
+        }
+    }
+}
+
+/// An ACIS body's wireframe in plan (ADR 0024 D4, step 2): its edges and
+/// isolines, moved by `placement` when it sits in a block placed elsewhere.
+fn outline_body(
+    wire: &Wireframe,
+    placement: Option<&Transform>,
+    color: Color,
+    out: &mut Vec<DrawItem>,
+) {
+    let plan = |p: Point3| {
+        let p = Vector3::new(p.x(), p.y(), p.z());
+        let q = placement.map_or(p, |t| t.apply(p));
+        (q.x, q.y)
+    };
+    for line in wire.edges.iter().chain(&wire.isolines) {
+        for pair in line.windows(2) {
+            if let Some(shape) = segment(plan(pair[0]), plan(pair[1])) {
+                out.push(DrawItem { shape, color });
+            }
         }
     }
 }

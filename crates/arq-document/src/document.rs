@@ -30,6 +30,8 @@ pub struct Document {
     recovery: Option<Recovery>,
     /// Objects read but kept undecoded (see `undecoded_objects`).
     undecoded: Vec<String>,
+    /// ACIS bodies' wireframes, by their data (see `solid.rs`).
+    pub(crate) wireframes: crate::solid::WireframeCache,
 }
 
 impl Document {
@@ -57,6 +59,7 @@ impl Document {
             recording: None,
             recovery: None,
             undecoded: Vec::new(),
+            wireframes: crate::solid::WireframeCache::default(),
         };
         doc.rebuild_model();
         doc
@@ -242,6 +245,7 @@ impl Document {
             recording: None,
             recovery: self.recovery.clone(),
             undecoded: self.undecoded.clone(),
+            wireframes: crate::solid::WireframeCache::default(),
         }
     }
 

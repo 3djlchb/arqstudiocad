@@ -8,6 +8,8 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::{Arc, Mutex};
 
 use acadrust::entities::acis::types::{
     SatBSplineSurface, SatBody, SatCoedge, SatConeSurface, SatDocument, SatEdge, SatEllipseCurve,
@@ -19,7 +21,7 @@ use arq_geometry::{Point3, Tolerance, Transform3, Vector3};
 use arq_kernel::{
     Body, BodyBuilder, Coedge, Cone, Curve, Edge, EdgeId, EllipseCurve, EllipticCylinder, Face,
     LineCurve, Loop, Lump, NurbsCurve, NurbsSurface, Plane, Shell, Sphere, Surface, Torus,
-    VertexId,
+    VertexId, Wireframe,
 };
 
 use crate::document::Document;
@@ -51,18 +53,68 @@ impl Document {
     /// Entity `id` as a body of the kernel, if it is an ACIS body (a
     /// 3DSOLID, SURFACE, REGION or BODY); `None` for anything else.
     pub fn solid(&self, id: EntityId) -> Option<Result<Body, Untranslated>> {
-        let e = self.cad().get_entity(handle(id))?;
-        let data = crate::acis::acis_data(e)?;
-        let doc = if data.is_binary {
-            acadrust::SabReader::read(&data.sab_data).ok()
-        } else {
-            SatDocument::parse(&data.sat_data).ok()
-        };
-        Some(
-            doc.ok_or(Untranslated::Unreadable)
-                .and_then(|d| translate(&d)),
-        )
+        body_of(self.cad().get_entity(handle(id))?)
     }
+}
+
+/// Wireframes of ACIS bodies already seen, keyed by the hash of their
+/// ACIS data and the isoline count: the same data always gives the same
+/// wireframe, so an edited body never meets a stale one. `None` records a
+/// body that does not translate.
+#[derive(Default)]
+pub(crate) struct WireframeCache {
+    entries: Mutex<HashMap<WireframeKey, Option<Arc<Wireframe>>>>,
+}
+
+/// The hash of an ACIS body's data, and the isoline count.
+type WireframeKey = (u64, usize);
+
+/// Entries kept at most; past it the cache starts over.
+const CACHED_WIREFRAMES: usize = 4096;
+
+impl WireframeCache {
+    /// The wireframe of ACIS body `e` with `isolines` isolines (chords a
+    /// thousandth of its size), computed once per data; `None` if it does
+    /// not translate yet.
+    pub(crate) fn get(&self, e: &acadrust::EntityType, isolines: usize) -> Option<Arc<Wireframe>> {
+        let data = crate::acis::acis_data(e)?;
+        let mut hasher = DefaultHasher::new();
+        data.is_binary.hash(&mut hasher);
+        data.sat_data.hash(&mut hasher);
+        data.sab_data.hash(&mut hasher);
+        let key = (hasher.finish(), isolines);
+        let mut entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(found) = entries.get(&key) {
+            return found.clone();
+        }
+        let wire = body_of(e).and_then(Result::ok).map(|body| {
+            let size = body
+                .vertex_bounds()
+                .map(|b| b.size().length())
+                .filter(|s| *s > 0.0)
+                .unwrap_or(1.0);
+            Arc::new(body.wireframe(size * 1e-3, isolines))
+        });
+        if entries.len() >= CACHED_WIREFRAMES {
+            entries.clear();
+        }
+        entries.insert(key, wire.clone());
+        wire
+    }
+}
+
+/// An engine entity as a body of the kernel, if it is an ACIS body.
+pub(crate) fn body_of(e: &acadrust::EntityType) -> Option<Result<Body, Untranslated>> {
+    let data = crate::acis::acis_data(e)?;
+    let doc = if data.is_binary {
+        acadrust::SabReader::read(&data.sab_data).ok()
+    } else {
+        SatDocument::parse(&data.sat_data).ok()
+    };
+    Some(
+        doc.ok_or(Untranslated::Unreadable)
+            .and_then(|d| translate(&d)),
+    )
 }
 
 /// Every body of an ACIS document, as one body of the kernel.

@@ -163,7 +163,11 @@ impl Document {
             EntityType::Insert(_)
             | EntityType::Dimension(_)
             | EntityType::LwPolyline(_)
-            | EntityType::Polyline2D(_) => self.drawn_extent(e),
+            | EntityType::Polyline2D(_)
+            | EntityType::Solid3D(_)
+            | EntityType::Region(_)
+            | EntityType::Body(_)
+            | EntityType::Surface(_) => self.drawn_extent(e),
             _ => None,
         }
     }

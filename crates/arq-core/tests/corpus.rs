@@ -351,7 +351,7 @@ fn whole_transform_problems(path: &Path) -> Vec<String> {
 /// for the report, and a problem for every visible entity that draws nothing
 /// although it has an extent.
 /// Kinds always drawn as what they are, never as a placeholder box.
-const DRAWN_WHOLE: [&str; 9] = [
+const DRAWN_WHOLE: [&str; 13] = [
     "LWPOLYLINE",
     "POLYLINE",
     "ELLIPSE",
@@ -361,6 +361,10 @@ const DRAWN_WHOLE: [&str; 9] = [
     "HATCH",
     "MESH",
     "INSERT",
+    "3DSOLID",
+    "REGION",
+    "BODY",
+    "SURFACE",
 ];
 
 fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
