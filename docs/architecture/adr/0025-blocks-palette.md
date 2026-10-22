@@ -178,6 +178,25 @@ Each step is its own pull request with tests, as ADR 0023 D5:
    clash dialog, the empty state, dropping a file.
 8. The context menu's operations, as their core operations land.
 
+## Implementation notes
+
+- **Step 2, first part (2026-10-22, PR #52):**
+  - the palette lists the drawing's blocks, with a search;
+  - its View-tab button toggles it and carries the selection focus while it is open.
+- **Step 2b (2026-10-22):** the palette takes the mockup's layout:
+  - the sources, with only Drawing enabled; Template and Recent say "Not available yet." until their steps;
+  - the caption "Definitions in <drawing>";
+  - the search, with the grid and list views (the grid waits for previews, step 3);
+  - the list's Name and In drawing columns;
+  - the Selected block section, in the Properties panel's property grid.
+- The core answers with two new queries:
+  - `block_info`: the name, description, insertion units (INSUNITS code), attribute definitions and whether the block is dynamic;
+  - `block_references`: the references of every block, counted in one pass over the drawing.
+- References count anywhere in the drawing: model and paper space, and inside other blocks.
+  - A dynamic block's references through anonymous copies (`*U…`) count for it when the file links the copy to the block, either from the reference or from the copy. AcadRust reads both kinds of link.
+  - A copy the file does not link to any block counts for no listed block. In the maintainer's drawings such copies hold plain geometry: no link to read, no count to give.
+- The palette reads the drawing only while it is open. Closed, it waits and catches up when shown again, since counting references reads the whole drawing.
+
 ## Consequences
 
 - Blocks become usable without knowing their names, the most common work

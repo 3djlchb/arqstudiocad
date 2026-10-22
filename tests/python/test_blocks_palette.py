@@ -1,5 +1,6 @@
-"""The Blocks palette (ADR 0025): the drawing's blocks, and a View-tab
-button that toggles the palette and is pressed while it is open (D2)."""
+"""The Blocks palette (ADR 0025): the drawing's blocks laid out as the
+mockup, the selected block's details, and a View-tab button that toggles
+the palette and is pressed while it is open (D2)."""
 
 import pytest
 from PySide6.QtWidgets import QMenu, QToolButton
@@ -8,6 +9,12 @@ from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadChangeSet, CadDocument
 from arqstudiocad.i18n import set_language
+from arqstudiocad.ui.blocks_panel import (
+    BlocksPanel,
+    attributes_text,
+    references_text,
+    units_name,
+)
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.panel_style import SELECTION_BACKGROUND, SELECTION_LINE
 from arqstudiocad.ui.ribbon import RibbonGroupWidget
@@ -38,8 +45,12 @@ def drawing_with_blocks(window: MainWindow, *names: str) -> CadDocument:
 
 
 def shown(window: MainWindow) -> list[str]:
-    rows = window.blocks_panel.list
-    return [rows.item(i).text() for i in range(rows.count())]
+    return window.blocks_panel.shown()
+
+
+def opened(window: MainWindow) -> BlocksPanel:
+    assert window.show_panel("blocks")
+    return window.blocks_panel
 
 
 def palette_button(window: MainWindow) -> QToolButton:
@@ -49,7 +60,7 @@ def palette_button(window: MainWindow) -> QToolButton:
 
 
 def test_the_palette_lists_the_drawings_blocks_and_filters_them(window: MainWindow) -> None:
-    panel = window.blocks_panel
+    panel = opened(window)
     assert shown(window) == [] and panel.footer.text() == "No drawing is open."
     drawing_with_blocks(window, "Puerta_090", "Mesa", "puerta_080")
     assert shown(window) == ["Mesa", "puerta_080", "Puerta_090"], "as INSERT offers them"
@@ -116,3 +127,89 @@ def test_an_unpinned_palette_counts_as_open(window: MainWindow) -> None:
     assert button.isChecked(), "collapsed to its side tab, still open"
     button.click()
     assert window.auto_hide.is_pinned(panel) and panel.isHidden() and not button.isChecked()
+
+
+def test_the_palette_is_laid_out_as_the_mockup(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    sources = [(b.text(), b.isEnabled(), b.isChecked()) for b in panel.sources.values()]
+    assert sources == [
+        ("Template", False, False),
+        ("Recent", False, False),
+        ("Drawing", True, True),
+    ], "only the drawing's blocks yet"
+    assert panel.sources["template"].toolTip() == "Not available yet."
+    assert panel.source_caption.text() == f"Definitions in {document.name}"
+    assert panel.list_view.isChecked() and not panel.grid_view.isEnabled()
+    header = panel.table.headerItem()
+    assert (header.text(0), header.text(1)) == ("Name", "In drawing")
+
+
+def test_the_selected_block_shows_its_details_and_references(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa", "Silla")
+    assert panel.details.sections() == [], "nothing selected"
+    assert panel.select("Mesa")
+    assert panel.details.sections() == [
+        (
+            "Selected block",
+            [
+                ("Name", "Mesa"),
+                ("Type", "Static"),
+                ("Units", "Unitless"),
+                ("Attributes", "No attributes"),
+                ("In drawing", "1 reference"),
+                ("Source", document.name),
+            ],
+        )
+    ]
+    row = panel.table.topLevelItem(0)
+    assert row is not None and (row.text(0), row.text(1)) == ("Mesa", "1")
+    window.session.edit(document, lambda d: d.insert_block("Mesa", (5, 5))[1])
+    assert panel.selected() == "Mesa", "kept across a change"
+    assert ("In drawing", "2 references") in panel.details.sections()[0][1]
+    panel.search.setText("sil")
+    assert panel.selected() is None and panel.details.sections() == []
+
+
+def test_a_hidden_palette_waits_to_be_shown(window: MainWindow) -> None:
+    panel = window.blocks_panel
+    drawing_with_blocks(window, "Mesa")
+    assert panel.isHidden() and shown(window) == [], "not read while closed"
+    opened(window)
+    assert shown(window) == ["Mesa"]
+
+
+def test_the_details_speak_spanish(window: MainWindow) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, "Mesa")
+    set_language("es")
+    try:
+        panel.retranslate()
+        panel.select("Mesa")
+        title, rows = panel.details.sections()[0]
+        assert title == "Bloque seleccionado"
+        assert ("Atributos", "Ninguno") in rows and ("Tipo", "Estático") in rows
+        assert [b.text() for b in panel.sources.values()] == ["Plantilla", "Recientes", "Dibujo"]
+    finally:
+        set_language("en")
+
+
+def test_units_attributes_and_references_read_as_the_mockup() -> None:
+    assert [units_name(c) for c in (0, 4, 5, 6, 99)] == [
+        "Unitless",
+        "Millimeters",
+        "Centimeters",
+        "Meters",
+        "Unitless",
+    ]
+    assert [attributes_text(n) for n in (0, 1, 6)] == [
+        "No attributes",
+        "1 attribute",
+        "6 attributes",
+    ]
+    assert [references_text(n) for n in (0, 1, 6)] == [
+        "Not inserted",
+        "1 reference",
+        "6 references",
+    ]

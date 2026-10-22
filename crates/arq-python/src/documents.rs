@@ -25,7 +25,7 @@ use pyo3::prelude::*;
 
 use crate::changes::{CadChangeSet, CadGroup};
 use crate::errors::IntoPy;
-use crate::info::{CadEntityInfo, CadLayerInfo};
+use crate::info::{CadBlockInfo, CadEntityInfo, CadLayerInfo};
 use crate::values::{
     CadArc, CadBounds2, CadCircle, CadColor, CadGrip, CadLine, CadSnap, PyPoint, PyVector,
     snap_kinds,
@@ -454,6 +454,20 @@ impl CadDocument {
     #[getter]
     fn block_names(&self) -> PyResult<Vec<String>> {
         self.read(|cad| cad.document().block_names())
+    }
+
+    /// What the Blocks palette shows of block `name` (found ignoring
+    /// case), or None unless INSERT can place it (ADR 0025 D1).
+    fn block_info(&self, name: &str) -> PyResult<Option<CadBlockInfo>> {
+        self.read(|cad| cad.document().block_info(name).map(CadBlockInfo))
+    }
+
+    /// How many references each block has anywhere in the drawing, a
+    /// dynamic block's anonymous copies included; blocks without any are
+    /// left out.
+    #[getter]
+    fn block_references(&self) -> PyResult<std::collections::HashMap<String, usize>> {
+        self.read(|cad| cad.document().block_references())
     }
 
     /// Whether block `name` is dynamic, so the block editor refuses it

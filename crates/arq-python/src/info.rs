@@ -1,8 +1,8 @@
-//! `CadEntityInfo` and `CadLayerInfo`: immutable descriptions of an entity
-//! and a layer (contract §4, ADR 0012 D4.2). They are copies taken when the
+//! `CadEntityInfo`, `CadLayerInfo` and `CadBlockInfo`: immutable
+//! descriptions of an entity, a layer and a block (contract §4, ADR 0012 D4.2). They are copies taken when the
 //! query ran; later edits never change them.
 
-use arq_core::{Entity, Layer, TextData};
+use arq_core::{BlockInfo, Entity, Layer, TextData};
 use arq_geometry::Geometry2;
 use pyo3::prelude::*;
 use pyo3::types::PyString;
@@ -270,8 +270,52 @@ impl CadLayerInfo {
 }
 
 /// Adds the classes to the module.
+/// A block as the Blocks palette shows it (ADR 0025 D1).
+#[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, PartialEq)]
+pub struct CadBlockInfo(pub BlockInfo);
+
+#[pymethods]
+impl CadBlockInfo {
+    /// Its name, spelled as the block table spells it.
+    #[getter]
+    fn name(&self) -> &str {
+        &self.0.name
+    }
+
+    /// Its description; empty when it has none.
+    #[getter]
+    fn description(&self) -> &str {
+        &self.0.description
+    }
+
+    /// Its insertion units, as DWG's INSUNITS code (0 unitless, 4
+    /// millimeters, 5 centimeters, 6 meters…).
+    #[getter]
+    fn units(&self) -> i16 {
+        self.0.units
+    }
+
+    /// The attribute definitions it holds, constant ones included.
+    #[getter]
+    fn attributes(&self) -> usize {
+        self.0.attributes
+    }
+
+    /// Whether it is a dynamic block.
+    #[getter]
+    fn is_dynamic(&self) -> bool {
+        self.0.dynamic
+    }
+
+    fn __repr__(&self) -> String {
+        format!("CadBlockInfo(name={:?})", self.0.name)
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadEntityInfo>()?;
+    m.add_class::<CadBlockInfo>()?;
     m.add_class::<CadLayerInfo>()?;
     m.add_class::<CadText>()?;
     Ok(())
