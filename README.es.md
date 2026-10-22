@@ -12,17 +12,17 @@ propio; DXF es la alternativa abierta e IFC el formato de intercambio BIM. Su ru
 rectores en el [índice de documentación](docs/README.md) (en inglés).
 
 > **Estado:** pre-alfa. La aplicación arranca, cambia entre inglés y español y
-> se empaqueta para todas las plataformas objetivo (fase 1). El núcleo
-> geométrico está terminado —líneas, círculos, arcos, transformaciones,
-> intersecciones y puntos de referencia (hito 02.1)— y también el núcleo del
-> documento: abre y guarda DWG y DXF, edita líneas, círculos, arcos y capas
-> con deshacer y rehacer, y conserva intacto todo lo demás del dibujo (02.2).
-> Todo ello se puede programar desde Python con `arqstudiocad.core` (02.3). El
-> armazón de la aplicación muestra los dibujos en pestañas, los abre y guarda
-> en segundo plano, y tiene línea de comandos, paneles de Capas, Propiedades e
-> Historial que se acoplan, flotan o se ocultan solos, espacios de trabajo
-> Cinta de opciones y Clásico, y tema oscuro o claro (02.4). Todavía no permite
-> dibujar: la selección y los comandos de dibujo son el siguiente hito.
+> se empaqueta para todas las plataformas objetivo (fase 1). Abre y guarda DWG
+> y DXF conservando intacto todo el dibujo, avisa de los archivos dañados y
+> comprueba cada guardado releyéndolo (fase 03). Permite dibujar líneas,
+> polilíneas, círculos, arcos y textos; seleccionar con ventanas, referencias a
+> objetos y ORTO; mover, copiar, girar, escalar, reflejar, borrar y
+> descomponer; editar con pinzamientos y en el panel Propiedades; crear,
+> insertar y editar bloques; y deshacer y rehacer todo. Incluye los espacios
+> de trabajo Cinta de opciones y Clásico, paneles acoplables y temas, y todo el
+> núcleo se puede programar desde Python con `arqstudiocad.core`. El kernel 3D
+> propio ya ha empezado: lee los sólidos del dibujo a su propio B-rep (hito
+> 02.8).
 
 | Capa | Tecnología | Responsable de |
 |---|---|---|

@@ -17,10 +17,14 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **On hold:** milestone 02.7's GPU viewport waits for the reference
   machine (GT 730 on LMDE 7), its release gate (ADR 0007); the work
   resumes when the maintainer has it at hand (maintainer, 2026-10-18).
-- **Current:** milestone 02.8: texts are done, single-line and basic
-  multiline (ADR 0022); blocks are done (ADR 0023: EXPLODE with
-  attributes, BLOCK and INSERT, and the block editor); dynamic blocks wait
-  for the parametric engine, milestone 04.1 (D3a).
+- **Current:** milestone 02.8: texts (ADR 0022), blocks (ADR 0023: EXPLODE
+  with attributes, BLOCK and INSERT, the block editor) and the PLINE
+  command are done; dynamic blocks wait for the parametric engine,
+  milestone 04.1 (D3a). The 3D document model is decided (ADR 0024) and the
+  owned kernel `arq-kernel` reads DWG solids into its B-rep (step 1,
+  analytic geometry: 73 of LibreDWG's 75 bodies); reading NURBS is next.
+- **Engine:** AcadRust after 0.6.5, patched from our fork (ADR 0017's log,
+  2026-10-20).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu
@@ -31,9 +35,11 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   styling, and CAD color selection; 03.2 is done and 03.4 compatibility work
   is in progress.
 - **Milestone 02.8** is in progress alongside 02.7: the 3D mathematical
-  foundation, polyline vertex editing and block-reference EXPLODE are done;
-  texts are done (ADR 0022); block content editing and the 3D document
-  decision remain.
+  foundation, polyline vertex editing and PLINE, texts, blocks and the 3D
+  document decision are done; the owned kernel's steps (NURBS reading,
+  then see, measure, write ACIS, create, transform), stage 2 of the own
+  model (ADR 0018 D2) and 3D wireframe with user coordinate systems
+  remain.
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -64,7 +70,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ✅ steps 2.5.1–2.5.8 complete and manually validated by the maintainer |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
-| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; references with attributes are refused until their data can be preserved); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep and analytic geometry, and 73 of LibreDWG's 75 bodies read into it and check (the other two wait for spline geometry); spline reading and step 2, see, next |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; attribute values kept as texts since ADR 0023 D1, PR #41); PLINE (PR #48); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep and analytic geometry, and 73 of LibreDWG's 75 bodies read into it and check (the other two wait for spline geometry); spline reading and step 2, see, next |
 
 ## Phase 03 — DWG/DXF ◐
 
@@ -74,7 +80,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 
 | Milestone | Content | Status |
 |---|---|---|
-| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ |
+| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ (since 2026-10-20 AcadRust after 0.6.5, patched from our fork: ADR 0017's log) |
 | 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; kept in our AcadRust fork | ✅ every measured difference checked and the right ones brought in (R2004 lofted surfaces); the fork's wrong readings replaced by keeping objects verbatim; R11 linetypes, TOLERANCE in DXF and our own RAY and ACIS checks fixed; LibreDWG's seven regression drawings round-trip |
 | 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ✅ damaged files refused or recovered and marked; saves read back and checked; losses asked before saving; regression drawings made by the tests |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ first matrix from the comparison |
@@ -156,9 +162,8 @@ Milestone 02.8 proceeds in independently reviewable steps:
 2. **Wider 2D entities:** polyline vertex editing, block contents and explode,
    and text support under the existing document and editing contracts. The
    polyline vertex grips and transactional vertex editing (PR #35) and the
-   transactional EXPLODE of block references (PR #36) are complete; block
-   references with attributes are refused until their data can be preserved
-   by the operation. Texts are complete (ADR 0022: drawn with their letters
+   transactional EXPLODE of block references (PR #36) are complete; their
+   attribute values become texts (ADR 0023 D1). Texts are complete (ADR 0022: drawn with their letters
    in a built-in stroke font, transformed as a whole, one grip, content,
    height and rotation in Properties, the TEXT command; the drawing's own
    fonts and formatted MTEXT stay in phase 04). Blocks are complete (ADR
