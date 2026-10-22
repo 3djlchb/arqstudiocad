@@ -1,22 +1,25 @@
 //! An ACIS body (3DSOLID, SURFACE, REGION, BODY) read into the kernel's
 //! own boundary representation (ADR 0024 D2, step 1 of D4): planes,
-//! circular cones and cylinders, spheres and tori, bounded by straight and
-//! elliptic edges. A body with anything else (spline surfaces and curves
-//! first) is not translated yet; its ACIS data stays kept as it is, so
-//! nothing is lost either way.
+//! circular and elliptic cylinders, cones, spheres, tori and B-spline
+//! (NURBS) surfaces, bounded by straight, elliptic and B-spline edges. A
+//! body with anything else (offset and mesh surfaces, procedural curves
+//! without their spline) is not translated yet; its ACIS data stays kept
+//! as it is, so nothing is lost either way.
 
 use std::collections::HashMap;
 use std::fmt;
 
 use acadrust::entities::acis::types::{
-    SatBody, SatCoedge, SatConeSurface, SatDocument, SatEdge, SatEllipseCurve, SatFace, SatLoop,
-    SatLump, SatPlaneSurface, SatPoint, SatPointer, SatRecord, SatShell, SatSphereSurface,
-    SatStraightCurve, SatTorusSurface, SatTransform, SatVertex, Sense,
+    SatBSplineSurface, SatBody, SatCoedge, SatConeSurface, SatDocument, SatEdge, SatEllipseCurve,
+    SatFace, SatIntCurve, SatLoop, SatLump, SatPlaneSurface, SatPoint, SatPointer, SatRecord,
+    SatShell, SatSphereSurface, SatSplineSurface, SatSplineSurfaceKind, SatStraightCurve,
+    SatTorusSurface, SatTransform, SatVertex, Sense,
 };
 use arq_geometry::{Point3, Tolerance, Transform3, Vector3};
 use arq_kernel::{
     Body, BodyBuilder, Coedge, Cone, Curve, Edge, EdgeId, EllipseCurve, EllipticCylinder, Face,
-    LineCurve, Loop, Lump, Plane, Shell, Sphere, Surface, Torus, VertexId,
+    LineCurve, Loop, Lump, NurbsCurve, NurbsSurface, Plane, Shell, Sphere, Surface, Torus,
+    VertexId,
 };
 
 use crate::document::Document;
@@ -184,7 +187,7 @@ impl<'a> Reader<'a> {
         let record = self
             .resolve(face.surface())
             .ok_or_else(|| invalid("a face's surface"))?;
-        let (surface, inward) = surface(record)?;
+        let (surface, inward) = surface(self.doc, record)?;
         let mut loops = Vec::new();
         let mut lp = face.first_loop();
         while let Some(record) = self.resolve(lp) {
@@ -233,7 +236,7 @@ impl<'a> Reader<'a> {
         let start = self.vertex(e.start_vertex())?;
         let end = self.vertex(e.end_vertex())?;
         let curve = match self.resolve(e.curve()) {
-            Some(record) => Some(curve(record)?),
+            Some(record) => Some(curve(self.doc, record)?),
             None => None,
         };
         let id = self.builder.edge(Edge {
@@ -268,7 +271,7 @@ impl<'a> Reader<'a> {
 
 /// A face's surface, and whether ACIS's own normal points inward (a
 /// sphere or torus of negative radius).
-fn surface(record: &SatRecord) -> Result<(Surface, bool), Untranslated> {
+fn surface(doc: &SatDocument, record: &SatRecord) -> Result<(Surface, bool), Untranslated> {
     let bad = |_| invalid(&record.entity_type);
     if let Some(s) = SatPlaneSurface::from_record(record) {
         let plane = Plane::new(point3(s.root_point())?, vector3(s.normal())?).map_err(bad)?;
@@ -311,11 +314,50 @@ fn surface(record: &SatRecord) -> Result<(Surface, bool), Untranslated> {
         .map_err(bad)?;
         return Ok((Surface::Torus(torus), minor < 0.0));
     }
+    if let Some(s) = SatSplineSurface::from_record(record)
+        && matches!(s.kind(), SatSplineSurfaceKind::Spline)
+        && s.offset_in(doc).is_none()
+        && let Some(b) = s.bspline(doc)
+    {
+        return Ok((Surface::Nurbs(nurbs_surface(&b).map_err(bad)?), false));
+    }
     Err(Untranslated::Unsupported(record.entity_type.clone()))
 }
 
+/// A B-spline surface from AcadRust's decoded net: homogeneous control
+/// points `[x·w, y·w, z·w, w]`, `v` varying fastest.
+fn nurbs_surface(b: &SatBSplineSurface) -> arq_geometry::GeometryResult<NurbsSurface> {
+    let (points, weights) = split_homogeneous(&b.control_points)?;
+    NurbsSurface::new(
+        b.degree_u,
+        b.degree_v,
+        b.u_knots.clone(),
+        b.v_knots.clone(),
+        b.control_count_u,
+        b.control_count_v,
+        points,
+        weights,
+    )
+}
+
+/// Points and weights from homogeneous `[x·w, y·w, z·w, w]`.
+fn split_homogeneous(
+    control: &[[f64; 4]],
+) -> arq_geometry::GeometryResult<(Vec<Point3>, Vec<f64>)> {
+    let mut points = Vec::with_capacity(control.len());
+    let mut weights = Vec::with_capacity(control.len());
+    for &[x, y, z, w] in control {
+        if !(w.is_finite() && w > 0.0) {
+            return Err(arq_geometry::GeometryError::OutOfRange { what: "weight" });
+        }
+        points.push(Point3::new(x / w, y / w, z / w)?);
+        weights.push(w);
+    }
+    Ok((points, weights))
+}
+
 /// An edge's curve.
-fn curve(record: &SatRecord) -> Result<Curve, Untranslated> {
+fn curve(doc: &SatDocument, record: &SatRecord) -> Result<Curve, Untranslated> {
     let bad = |_| invalid(&record.entity_type);
     if let Some(c) = SatStraightCurve::from_record(record) {
         return Ok(Curve::Line(
@@ -332,6 +374,14 @@ fn curve(record: &SatRecord) -> Result<Curve, Untranslated> {
             )
             .map_err(bad)?,
         ));
+    }
+    if let Some(c) = SatIntCurve::from_record(record)
+        && let Some((degree, knots, control)) = c.bspline_in(doc)
+    {
+        let curve = split_homogeneous(&control)
+            .and_then(|(points, weights)| NurbsCurve::new(degree, knots, points, weights))
+            .map_err(bad)?;
+        return Ok(Curve::Nurbs(curve));
     }
     Err(Untranslated::Unsupported(record.entity_type.clone()))
 }

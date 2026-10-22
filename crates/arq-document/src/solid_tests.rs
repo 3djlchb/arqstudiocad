@@ -59,6 +59,7 @@ fn curved_primitives_read_with_their_surfaces() {
                 Surface::EllipticCylinder(_) => "elliptic cylinder",
                 Surface::Sphere(_) => "sphere",
                 Surface::Torus(_) => "torus",
+                Surface::Nurbs(_) => "nurbs",
             })
             .collect();
         k.sort_unstable();
@@ -156,5 +157,18 @@ fn what_is_not_translated_says_why() {
     assert_eq!(
         doc.solid(broken.value()),
         Some(Err(Untranslated::Unreadable))
+    );
+}
+
+#[test]
+fn homogeneous_control_points_divide_by_their_weight() {
+    // AcadRust gives a rational net as [x·w, y·w, z·w, w].
+    let (points, weights) =
+        super::split_homogeneous(&[[2.0, 2.0, 0.0, 2.0], [1.0, 0.0, 0.0, 1.0]]).unwrap();
+    assert_eq!(points[0], arq_geometry::Point3::new(1.0, 1.0, 0.0).unwrap());
+    assert_eq!(weights, [2.0, 1.0]);
+    assert!(
+        super::split_homogeneous(&[[1.0, 0.0, 0.0, 0.0]]).is_err(),
+        "no weight"
     );
 }

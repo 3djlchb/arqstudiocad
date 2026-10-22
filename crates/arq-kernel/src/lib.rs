@@ -7,8 +7,8 @@
 //! |---|---|
 //! | A solid, sheet or region | [`Body`], built with [`BodyBuilder`] |
 //! | Its parts | [`Vertex`], [`Edge`], [`Coedge`], [`Loop`], [`Face`], [`Shell`], [`Lump`] |
-//! | An edge's curve | [`Curve`]: [`LineCurve`], [`EllipseCurve`] |
-//! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`] |
+//! | An edge's curve | [`Curve`]: [`LineCurve`], [`EllipseCurve`], [`NurbsCurve`] |
+//! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |
 //! | Why parts are no body | [`BrepError`] |
 //!
 //! Like `arq-geometry`, this crate depends on no document, Python or GUI;
@@ -16,6 +16,7 @@
 
 mod brep;
 mod curve;
+mod nurbs;
 mod surface;
 
 pub use brep::{
@@ -23,4 +24,5 @@ pub use brep::{
     Shell, ShellId, Vertex, VertexId,
 };
 pub use curve::{Curve, EllipseCurve, LineCurve};
+pub use nurbs::{NurbsCurve, NurbsSurface};
 pub use surface::{Cone, EllipticCylinder, Plane, Sphere, Surface, Torus};
