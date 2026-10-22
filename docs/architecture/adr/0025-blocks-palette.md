@@ -40,7 +40,9 @@ INSERT and never replaces it. It shows one source at a time:
   be inserted, and its tooltip says why.
 
 Anonymous (`*`) and layout blocks are never listed, as INSERT does not
-offer them (ADR 0023 D2). By default it docks on the right, tabbed with
+offer them (ADR 0023 D2). Blocks AutoCAD makes by itself under ordinary
+names, such as dimension arrowheads (`_ArchTick`, `_Open90`…), are listed
+like any other, as AutoCAD lists them *(maintainer, 2026-10-22)*. By default it docks on the right, tabbed with
 Properties and Layers. It moves, floats, auto-hides and saves its state
 per workspace like every panel (ADR 0015).
 
