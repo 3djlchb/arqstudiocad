@@ -44,7 +44,7 @@ when its parameters change).
 | Associative network (ASSOC*) | ✅ | 100 % / 100 % | — | ○ | ○ | |
 | XDATA, XRECORD | ✅ | 100 % (measured on 14,169 entities) | — | ○ | — | where application data goes in DWG |
 | Custom / proxy / AEC objects (BIM) | ✅ preserved | 100 % in the same DWG version; refused on conversion to 2018 | ○ proxy graphics | — | — | lost as DXF: asked first ([No silent loss](#no-silent-loss)) |
-| External references (Xrefs) | ? | ? | ? | ○ | — | **not in the corpus yet** (03.5) |
+| External references (Xrefs) | ◐ synthetic DXF path, flags and INSERT | ◐ synthetic metadata round-trips through DWG and DXF | ? | ○ | — | [Controlled corpus](#xref-metadata-corpus); resolution and independent drawings pending (03.5) |
 | BIM drawings (AutoCAD Architecture, Civil 3D, Revit/ArchiCAD exports) | ◐ | ◐ | ◐ | ○ | — | few samples; the maintainer will produce more |
 | DWG R11/R12 | ✅ (R11 16-bit linetype indices fixed in our fork; ACEB10 reads in full) | — | ✅ | ✅ | — | saved as DWG 2018 |
 | Damaged files | ✅ refused, or recovered and marked | — | — | — | — | [Damaged files](#damaged-files) |
@@ -210,16 +210,83 @@ AC1032; this does not cover every supported version or every conversion pair.
 
 Three DWG saves were refused: the known DATAOBJECT in
 `acadrust/datatable/point_object_id.dxf`, and MULTILEADERSTYLE counts in
-LibreDWG's R14 and 2000 `Constraints.dwg`. The latter need investigation
-against the default-object loss allowance; do not bypass the guard.
+LibreDWG's R14 and 2000 `Constraints.dwg`. The latter are explained by the
+[focused investigation](#legacy-multileaderstyle-refusals); the guard remains enabled.
 DXF refusals include dynamic-block markers, old constraint-group objects,
 DATATABLE, procedural/associative surface objects and AEC content in one
 exercise drawing. They are explicit refusals, not silently successful exports.
 
-Xref coverage remains unverified: this API does not inventory or resolve
+Xref coverage in this initial 30-file run remains unverified: this API does not inventory or resolve
 external references, so the filenames and successful reads do not establish
 that any of these inputs exercise Xrefs. AEC preservation evidence does not
 close semantic BIM or external-application validation (03.5).
+
+#### Legacy MULTILEADERSTYLE refusals
+
+Follow-up investigation (2026-10-22), pinned AcadRust fork `5f473cc`:
+
+- Both `r14/Constraints.dwg` and `2000/Constraints.dwg` decode two
+  `MultiLeaderStyle` objects, handles 216 and 229 (decimal), owned by 215.
+  Both have description `Standard`, but `property_changed` is respectively
+  false and true. Their decoded names are empty. This does not establish
+  that either is disposable or that either is used by visible geometry.
+- The fork's `src/io/dwg/dwg_writer.rs::prepare_legacy_document` removes
+  the `ACAD_MLEADERSTYLE` dictionary and its children for these old versions.
+  Reading the raw output confirms `MULTILEADERSTYLE: 2 -> 0` in each case.
+- `crates/arq-document/src/inventory.rs::default_losses` measures only
+  one such loss in an empty drawing of the same version. `save_losses`
+  rejects the two-object loss because it exceeds that allowance. The
+  diagnostic reports full before/after counts, not the excess alone.
+- `crates/arq-document/src/compatibility_tests.rs::legacy_multileaderstyle_refusals_exceed_the_default_allowance`
+  reproduces the counts and checks that a normal save refuses and leaves an
+  existing target untouched. Raw serialization is used only in a temporary
+  diagnostic file to inspect the rejected output; production saves retain
+  all guards. Run after fetching the existing corpus:
+
+  ```sh
+  cargo test -p arq-document legacy_multileaderstyle_refusals -- --ignored --nocapture
+  ```
+
+The existing `crates/arq-core/tests/corpus.rs::codec_regression_constraints_kept_undecoded`
+explicitly accepts `object MULTILEADERSTYLE` to inspect constraint preservation.
+Its success therefore does not contradict the strict matrix's refusal.
+No broader default allowance or automatic loss acceptance is justified by
+this evidence. Semantic use of these styles and external application behavior
+remain unverified; the refusal is retained, not relabeled as a verified save.
+
+#### Xref metadata corpus
+
+`tests/fixtures/xrefs/` now supplies five original synthetic DXFs: four hosts
+(relative attachment, overlay, missing target, nested attachment) and one
+line-only child. See its README for the file graph and limits.
+
+`crates/arq-document/src/compatibility_tests.rs::xref_fixture_metadata_roundtrips`
+checks the source metadata and eight safe-save/reopen paths (four hosts times
+DWG/DXF): reference path, attachment/overlay flags, INSERT name, position,
+scale and rotation. The host keeps only its INSERT; the child geometry is
+not merged. These tests run with ordinary `cargo test` and require no download.
+The fixtures are AC1009 inputs; this is not coverage of all source versions.
+These dedicated test assertions do not extend the production save validator:
+`verify.rs::validate_roundtrip` compares entities and layers, while the
+inventory counts block definitions rather than comparing Xref paths or flags.
+
+```sh
+cargo test -p arq-document xref_fixture_metadata_roundtrips
+uv run python tools/compatibility_matrix.py tests/fixtures/xrefs --output target/xref-compatibility-matrix.md
+```
+
+Measured on 2026-10-22 with the rebuilt working tree based on `f55b382`
+(including pre-existing block-preview changes): five clean reads, five DWG
+saves verified as AC1032 and five DXF saves verified as AC1012, without
+recovery or accepted losses. Source SHA-256 values stayed unchanged. Local
+reports are `target/xref-compatibility-matrix.md` and `.json`. These five
+synthetic inputs are reported separately from the initial 30-file corpus.
+
+This closes the lack of a controlled metadata corpus, not Xref support as a
+whole. The product still lacks a dedicated public reference inventory/resolver.
+Loading external geometry, nested/overlay propagation, missing-file reporting,
+cycles, cached geometry, authored DWG hosts and independent application checks
+remain open. The generic matrix remains a read/safe-save report, unchanged.
 
 ### Historical library comparison
 
