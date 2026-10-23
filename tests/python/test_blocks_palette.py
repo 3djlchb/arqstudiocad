@@ -555,3 +555,27 @@ def test_the_grid_scrolls_to_the_selected_card(qtbot: QtBot, window: MainWindow)
     qtbot.waitUntil(
         lambda: panel.grid.viewport().rect().intersects(panel.grid.visualItemRect(last))
     )
+
+
+def first_row(panel: BlocksPanel) -> int:
+    """How many cards the grid has laid out in its first row."""
+    top = panel.grid.visualItemRect(panel.grid.item(0)).top()
+    rects = (panel.grid.visualItemRect(panel.grid.item(i)) for i in range(panel.grid.count()))
+    return sum(1 for rect in rects if rect.top() == top)
+
+
+def test_a_wider_palette_holds_more_columns_of_the_same_cards(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, *(f"Bloque_{i:02}" for i in range(12)))
+    panel.setFloating(True)
+    panel.resize(340, 700)  # about the narrowest it goes
+    qtbot.wait(50)
+    narrow = first_row(panel)
+    assert 1 < narrow < 12, "the cards wrap into rows"
+    drawn = panel.previews.drawn
+    panel.resize(900, 700)
+    qtbot.waitUntil(lambda: first_row(panel) > narrow)
+    assert panel.grid.iconSize() == QSize(64, 64), "the previews keep their size"
+    assert panel.previews.drawn == drawn, "nothing drawn again"

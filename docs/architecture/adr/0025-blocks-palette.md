@@ -214,7 +214,7 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - `Document::block_drawing` draws a block as a reference at the origin would, every layer shown. `arq_render::preview` fits that drawing to a square, in one ink on transparency.
   - The palette inks each preview twice, in the theme's Text color and in its Highlight color, so a selected card shows accent strokes as the mockup.
   - Previews are cached in the palette per drawing, size and block. A change that names any block forgets that drawing's previews, since one block may hold another; so does a theme change.
-  - The grid is the default view: three cards to a row, sized to the palette, names elided. The list shows a small preview by each name. One selection drives both views, and the chosen view is remembered in the settings.
+  - The grid is the default view, names elided. Its previews are a fixed 64 px and the list's 24 px, so a wider palette holds more columns rather than bigger cards, and resizing it never draws a preview again *(maintainer, 2026-10-23, instead of the mockup's three cards to a row)*. The list shows a small preview by each name. One selection drives both views, and the chosen view is remembered in the settings.
 - **Step 4 (2026-10-23):** the dynamic-block tag.
   - A dynamic block's previews, plain and selected, carry the tag in their top-left corner: a five-pointed star in `#004b4e` on a `#ffa64d` square with a 2 px radius, 13 px on cards and 10 px in rows, in both themes. It is painted, not written, so it needs no font and no translation.
   - The card's tooltip and the accessible description say "Dynamic block", translated. The footer shows the tag itself and "Dynamic block" while a dynamic block is shown.

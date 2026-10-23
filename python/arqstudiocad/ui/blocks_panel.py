@@ -24,7 +24,6 @@ from PySide6.QtGui import (
     QPalette,
     QPixmap,
     QPolygonF,
-    QResizeEvent,
     QShowEvent,
 )
 from PySide6.QtWidgets import (
@@ -76,8 +75,11 @@ GRID, LIST = "grid", "list"
 VIEW_SETTING = "blocks_palette/view"
 #: Previews in the list's rows, in pixels.
 ROW_PREVIEW = 24
-#: Cards per row of the grid, as the mockup.
-CARDS_PER_ROW = 3
+#: Previews on the grid's cards, in pixels: fixed, so a wider palette holds
+#: more columns rather than bigger cards (maintainer, 2026-10-23).
+CARD_PREVIEW = 64
+#: Room around a card's preview, in pixels.
+CARD_MARGIN = 16
 #: The dynamic-block tag: a five-pointed star, a symbol the same in every
 #: language, in turquoise on orange, the same in both themes, as the
 #: maintainer chose (ADR 0025 D4, 2026-10-23); about 5:1.
@@ -179,8 +181,8 @@ class PreviewCache:
 
 
 class BlockGrid(QListWidget):
-    """The grid view: cards of a preview and a name, three to a row, sized
-    to the palette's width."""
+    """The grid view: cards of a preview and a name, all one size; as many
+    columns as the palette's width holds."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -191,22 +193,13 @@ class BlockGrid(QListWidget):
         self.setWrapping(True)
         self.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.setSpacing(2)
-        self.fit_cards()
+        self.setIconSize(QSize(CARD_PREVIEW, CARD_PREVIEW))
+        side = CARD_PREVIEW + CARD_MARGIN
+        self.setGridSize(QSize(side, side + self.fontMetrics().height() + 4))
 
     def card_size(self) -> int:
-        """A card's width: a third of the room, less the spacing."""
-        room = self.viewport().width() - 2 * self.spacing() * CARDS_PER_ROW
-        return max(48, room // CARDS_PER_ROW)
-
-    def fit_cards(self) -> None:
-        side = self.card_size()
-        text = self.fontMetrics().height() + 8
-        self.setGridSize(QSize(side + 2 * self.spacing(), side + text))
-        self.setIconSize(QSize(side - 16, side - 16))
-
-    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
-        super().resizeEvent(event)
-        self.fit_cards()
+        """A card's preview side, in pixels."""
+        return CARD_PREVIEW
 
 
 def source_title(source: str) -> str:
