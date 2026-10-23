@@ -7,7 +7,7 @@
 //! never reaches the painter with huge coordinates. Consecutive shapes of
 //! one color are stroked as one path.
 
-use arq_core::{Color, Shape};
+use arq_core::{Color, DrawItem, Shape};
 use arq_geometry::Tolerance;
 use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
 
@@ -50,10 +50,46 @@ pub struct Image {
 
 /// Paints `scene` as `camera` sees it.
 pub fn render(scene: &Scene, camera: &Camera, style: Style) -> Image {
+    let [r, g, b] = style.background;
+    paint(
+        scene,
+        camera,
+        style,
+        tiny_skia::Color::from_rgba8(r, g, b, 255),
+    )
+}
+
+/// A picture of `items` fitted to a `size` × `size` square, every shape in
+/// one color, `ink`, on a transparent background: a block's preview in the
+/// Blocks palette (ADR 0025 D3), tinted by whoever shows it.
+pub fn preview(items: &[DrawItem], size: u32, ink: [u8; 3]) -> Image {
+    let [r, g, b] = ink;
+    let inked = items
+        .iter()
+        .map(|item| DrawItem {
+            shape: item.shape,
+            color: Color::Rgb { r, g, b },
+        })
+        .collect();
+    let scene = Scene::from_items(inked);
+    let size = size.max(1);
+    let mut camera = Camera::new(size, size);
+    if let Some(bounds) = scene.bounds() {
+        camera.fit(bounds);
+    }
+    paint(
+        &scene,
+        &camera,
+        Style::default(),
+        tiny_skia::Color::TRANSPARENT,
+    )
+}
+
+/// Paints `scene` as `camera` sees it over `fill`.
+fn paint(scene: &Scene, camera: &Camera, style: Style, fill: tiny_skia::Color) -> Image {
     let (width, height) = camera.size();
     let mut pixmap = Pixmap::new(width, height).expect("a camera is at least 1x1");
-    let [r, g, b] = style.background;
-    pixmap.fill(tiny_skia::Color::from_rgba8(r, g, b, 255));
+    pixmap.fill(fill);
 
     if let Some(view) = camera.visible() {
         // A little beyond the edges, so strokes touching them are drawn.

@@ -208,6 +208,12 @@ Each step is its own pull request with tests, as ADR 0023 D5:
 - **Step 2d (2026-10-22):** PROPERTIES (alias `PR`, Spanish `PROPIEDADES`) and Ctrl+1 open the Properties panel, with or without a drawing.
   - The View tab's Palettes group holds Blocks, Layers and Properties. Each button toggles its panel and carries the focus while the panel is open.
   - LAYER keeps needing a drawing. Its button, which the Home tab shares, does not stay pressed when LAYER refuses.
+- **Step 3 (2026-10-22):** previews and the grid view.
+  - `CadChangeSet` names the block definitions a change created, modified (its contents) and deleted (contract §6, amended). The fields are found at commit by comparing the block tables, inverted by undo and merged across steps.
+  - `Document::block_drawing` draws a block as a reference at the origin would, every layer shown. `arq_render::preview` fits that drawing to a square, in one ink on transparency.
+  - The palette inks each preview twice, in the theme's Text color and in its Highlight color, so a selected card shows accent strokes as the mockup.
+  - Previews are cached in the palette per drawing, size and block. A change that names any block forgets that drawing's previews, since one block may hold another; so does a theme change.
+  - The grid is the default view: three cards to a row, sized to the palette, names elided. The list shows a small preview by each name. One selection drives both views, and the chosen view is remembered in the settings.
 
 ## Consequences
 

@@ -470,6 +470,29 @@ impl CadDocument {
         self.read(|cad| cad.document().block_references())
     }
 
+    /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a
+    /// `size` × `size` RGBA image (premultiplied, rows top to bottom), its
+    /// drawing fitted in, every stroke in `ink` on transparency. None unless
+    /// INSERT can place it.
+    fn block_preview<'py>(
+        &self,
+        py: Python<'py>,
+        name: &str,
+        size: u32,
+        ink: (u8, u8, u8),
+    ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
+        if !(1..=1024).contains(&size) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "a preview is 1 to 1024 pixels wide",
+            ));
+        }
+        let items = self.read(|cad| cad.document().block_drawing(name))?;
+        Ok(items.map(|items| {
+            let image = arq_render::preview(&items, size, [ink.0, ink.1, ink.2]);
+            pyo3::types::PyBytes::new(py, &image.pixels)
+        }))
+    }
+
     /// Whether block `name` is dynamic, so the block editor refuses it
     /// (ADR 0023 D3a).
     fn is_dynamic_block(&self, name: &str) -> PyResult<bool> {

@@ -37,6 +37,16 @@ impl Scene {
         scene
     }
 
+    /// A scene of loose shapes, not of a document's entities: a preview's.
+    pub(crate) fn from_items(items: Vec<DrawItem>) -> Self {
+        let mut scene = Self {
+            entries: vec![entry(0, items)],
+            index: HashMap::new(),
+        };
+        scene.reindex();
+        scene
+    }
+
     /// Brings the scene up to date after `changes`. Entities are redrawn
     /// one by one; a layer or document change (colors, visibility) redraws
     /// everything. Returns whether anything changed.

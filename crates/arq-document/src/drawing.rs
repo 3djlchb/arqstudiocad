@@ -135,6 +135,21 @@ impl Document {
             .reduce(|a, b| a.union(b))
     }
 
+    /// What block `name` draws, as a reference at the origin would draw
+    /// it, every layer shown: the picture of its preview in the Blocks
+    /// palette (ADR 0025 D3). `None` unless INSERT can place it.
+    pub fn block_drawing(&self, name: &str) -> Option<Vec<DrawItem>> {
+        let info = self.block_info(name)?;
+        let reference = EntityType::Insert(Insert::new(info.name, Vector3::new(0.0, 0.0, 0.0)));
+        let painter = Painter {
+            every_layer: true,
+            ..Painter::new(self)
+        };
+        let mut out = Vec::new();
+        painter.emit(&reference, &Context::top(), &mut out);
+        Some(out)
+    }
+
     /// What to draw for every entity in model space, in drawing order.
     pub fn drawing_all(&self) -> Vec<(EntityId, Vec<DrawItem>)> {
         let painter = Painter::new(self);
