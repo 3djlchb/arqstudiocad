@@ -288,6 +288,12 @@ Loading external geometry, nested/overlay propagation, missing-file reporting,
 cycles, cached geometry, authored DWG hosts and independent application checks
 remain open. The generic matrix remains a read/safe-save report, unchanged.
 
+For the next independently authored Xref set, follow the
+[ProgeCAD exercise](testing/progecad-xrefs.md). The maintainer has ProgeCAD
+but has not yet created this set; no external result is claimed. The future
+inventory/resolver/display/reload design is [ADR 0026](architecture/adr/0026-external-reference-loading.md)
+(proposed, implementation in phase 04 or later).
+
 ### Historical library comparison
 
 `tools/dwg-bench` (a workspace of its own) reads, writes and re-reads a
