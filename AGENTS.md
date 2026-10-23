@@ -46,6 +46,7 @@ uv run pytest                                  # Python tests
 uv run ruff check && uv run ruff format --check && uv run mypy
 uv run stubtest arqstudiocad._core            # the .pyi stub matches the module
 cargo deny check                               # dependency licenses + advisories
+tools/new_worktree.ps1 <topic>                 # a task's own working copy (or .sh)
 bash tools/check_cpu_floor.sh                  # Linux/WSL + Intel SDE, before a release: tests on the floor CPU
 ```
 
@@ -61,3 +62,25 @@ it is not a substitute for running the checks locally.
 One branch per feature or fix (`feature/<topic>`, `fix/<topic>`), small commits,
 PR to `main` (master plan §13). Before a new library, engine or technology,
 apply the rule for new technologies (master plan §16).
+
+### Working copies
+
+Several agents may work at once. A folder has one checked-out branch, so an
+agent that switches branches in a shared folder switches everyone's and
+carries their uncommitted work along. Therefore:
+
+- The main folder (`arqstudiocad/`) stays on `main`, clean. Never switch its
+  branch, edit, or commit there.
+- Every task starts a working copy of its own, a sibling folder on a new
+  branch from `origin/main`:
+  `tools/new_worktree.ps1 <topic> [-Kind fix]` (Windows) or
+  `tools/new_worktree.sh <topic> [fix]` (Linux, macOS); both run `uv sync`
+  there. Work, test, commit, push and open the PR only from that folder.
+  A new folder builds its environment from scratch (minutes) and has no
+  `target/corpus`: run `uv run python tools/fetch_codec_samples.py` there
+  before the tests that read the samples.
+- Before each commit, check `git branch --show-current` and stage files by
+  path, never `git add -A`. A commit on `main` is refused by the hooks.
+- Finding someone else's uncommitted work: leave it alone and tell the user.
+- After the merge: `git worktree remove ../arqstudiocad-<topic>`, then delete
+  the branch locally and on `origin`.

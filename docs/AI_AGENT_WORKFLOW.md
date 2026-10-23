@@ -11,9 +11,13 @@ unchanged since the previous session. Before proposing implementation details,
 changing logic, or editing code, perform this fresh-start review:
 
 1. Read `AGENTS.md` and this workflow.
-2. Inspect `git status --short --branch`, the current diff, recent commits, and
-   the relevant files. Preserve existing and uncommitted work; do not reset,
-   overwrite, or reformat unrelated changes.
+2. Inspect `git status --short --branch`, `git worktree list`, the current
+   diff, recent commits, and the relevant files. Preserve existing and
+   uncommitted work; do not reset, overwrite, or reformat unrelated changes.
+   Do the task in a working copy of its own (`tools/new_worktree.ps1` or
+   `.sh`), never in the main folder or in another task's folder, so agents
+   working at the same time cannot switch each other's branch
+   ([AGENTS.md, "Working copies"](../AGENTS.md)).
 3. Read `docs/MASTER_PLAN.md`, `docs/PROJECT_CHARTER.md`,
    `docs/MODULES_AND_ROADMAP.md`, and the relevant sections of
    `docs/architecture/technical-contract.md`. Read applicable ADRs and linked
@@ -42,7 +46,7 @@ implementations. The roadmap tracks progress but does not override those
 decisions. Propose an ADR when a task requires a new architectural decision;
 do not let an agent-specific preference become an undocumented project rule.
 
-Each agent must work from the checked-out branch and current files. A handoff
+Each agent must work from its own working copy's branch and current files. A handoff
 note is useful only for task-specific context not already captured in code or
 documentation; it never replaces a fresh repository scan. The same procedure
 applies when resuming after a day, a week, or a change of agent.

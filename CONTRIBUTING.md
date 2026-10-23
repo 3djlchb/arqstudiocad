@@ -78,10 +78,16 @@ the full [AI agent workflow](docs/AI_AGENT_WORKFLOW.md); do not rely on prior
 chat context as a substitute for inspecting the branch, diff, code, tests and
 applicable ADRs.
 
+When several agents work at once, each task gets a working copy of its own,
+a sibling folder on its own branch, made with `tools/new_worktree.ps1 <topic>`
+(Windows) or `tools/new_worktree.sh <topic>`; the main folder stays on `main`
+(see "Working copies" in [AGENTS.md](AGENTS.md)).
+
 ## Branches, commits and pull requests
 
 - One branch per feature or fix, named `feature/<topic>` or `fix/<topic>`
-  (`feature/native-format`, `fix/document-roundtrip`).
+  (`feature/native-format`, `fix/document-roundtrip`). The pre-commit hooks
+  refuse commits on `main`.
 - One topic per pull request; small is easier to review and to revert.
 - Commit messages: an imperative summary line in English (`Add LINE command`),
   then a body that explains *why* when it is not obvious.
