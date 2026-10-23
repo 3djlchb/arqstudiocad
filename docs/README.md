@@ -14,6 +14,7 @@ its reasons.
 | [AI agent workflow](AI_AGENT_WORKFLOW.md) | Shared scan, implementation and handoff process for any coding agent |
 | [Data and formats](DATA_AND_FORMATS.md) | Document model, working format, exchange formats, conversion rule |
 | [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md) | The engine decision, protections, capability matrix |
+| [ProgeCAD Xref exercise](testing/progecad-xrefs.md) | Author an independent reference set and record external reopening results (not yet executed) |
 | [Testing and performance](TESTING_AND_PERFORMANCE.md) | Test pyramid, measurements, benchmark rules |
 | [Licenses and distribution](LICENSES_AND_DISTRIBUTION.md) | Licenses, obligations, new-technology rule, platforms, release criteria |
 | [CONTRIBUTING](../CONTRIBUTING.md) ([español](../CONTRIBUTING.es.md)) | Workflow and contributions |
