@@ -273,3 +273,11 @@ fn block_drawing_is_the_block_seen_from_its_base_point() {
     assert!(doc.block_drawing("NADA").is_none());
     assert!(doc.block_drawing("*Model_Space").is_none());
 }
+
+#[test]
+fn a_static_block_has_no_parameters() {
+    let door = door_block();
+    let doc = dxf(LAYERS, &[&door], &[]);
+    let info = doc.block_info("PUERTA").unwrap();
+    assert!(!info.dynamic && info.parameters.is_empty());
+}

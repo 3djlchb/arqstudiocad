@@ -7,15 +7,26 @@ from, the search with the grid and list views, the blocks, a footer, and
 the Selected block section, the insert options and the actions: Insert,
 Edit block and New, which start INSERT, BEDIT and BLOCK. Blocks show as
 cards with previews in the grid view, or as rows in the list view; the
-previews are drawn in Rust and kept until a change touches a block. Only
+previews are drawn in Rust and kept until a change touches a block; a
+dynamic block's carries the star tag (ADR 0025 D4). Only
 the Drawing source works yet; the others come with their steps (ADR 0025
 D9) and say so.
 """
 
 import math
 
-from PySide6.QtCore import QSettings, QSize, Qt
-from PySide6.QtGui import QIcon, QImage, QPalette, QPixmap, QResizeEvent, QShowEvent
+from PySide6.QtCore import QPointF, QSettings, QSize, Qt
+from PySide6.QtGui import (
+    QColor,
+    QIcon,
+    QImage,
+    QPainter,
+    QPalette,
+    QPixmap,
+    QPolygonF,
+    QResizeEvent,
+    QShowEvent,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -67,6 +78,55 @@ VIEW_SETTING = "blocks_palette/view"
 ROW_PREVIEW = 24
 #: Cards per row of the grid, as the mockup.
 CARDS_PER_ROW = 3
+#: The dynamic-block tag: a five-pointed star, a symbol the same in every
+#: language, in turquoise on orange, the same in both themes, as the
+#: maintainer chose (ADR 0025 D4, 2026-10-23); about 5:1.
+TAG_BACKGROUND = "#ffa64d"
+TAG_STAR = "#004b4e"
+#: The tag's side in pixels: on cards, and in the list's small previews.
+TAG_ON_CARDS, TAG_IN_ROWS = 13, 10
+
+
+def tag_side(size: int) -> int:
+    """The tag's side on a preview of ``size`` pixels (logical)."""
+    return TAG_IN_ROWS if size <= ROW_PREVIEW else TAG_ON_CARDS
+
+
+def star(center: QPointF, radius: float) -> QPolygonF:
+    """A five-pointed star, its top point up."""
+    inner = radius * 0.382  # where the sides of a regular pentagram cross
+    points = []
+    for i in range(10):
+        r = radius if i % 2 == 0 else inner
+        angle = math.pi / 2 + i * math.pi / 5
+        points.append(QPointF(center.x() + r * math.cos(angle), center.y() - r * math.sin(angle)))
+    return QPolygonF(points)
+
+
+def paint_tag(pixmap: QPixmap, size: int) -> None:
+    """Paints the dynamic-block tag in the top-left corner of a preview of
+    ``size`` pixels (logical): a filled star on a rounded orange square."""
+    side = tag_side(size)
+    painter = QPainter(pixmap)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(TAG_BACKGROUND))
+        painter.drawRoundedRect(0, 0, side, side, 2, 2)
+        painter.setBrush(QColor(TAG_STAR))
+        painter.drawPolygon(star(QPointF(side / 2, side / 2 + 0.5), side * 0.42))
+    finally:
+        painter.end()
+
+
+def tag_pixmap(ratio: float = 1.0) -> QPixmap:
+    """The tag alone, as the footer's legend shows it."""
+    side = TAG_ON_CARDS
+    pixmap = QPixmap(round(side * ratio), round(side * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    paint_tag(pixmap, side * 4)
+    return pixmap
 
 
 class PreviewCache:
@@ -86,6 +146,7 @@ class PreviewCache:
         found = self._icons.get(key)
         if found is None:
             found = QIcon()
+            dynamic = document.is_dynamic_block(name)
             pixels = max(1, round(size * ratio))
             for role, mode in (
                 (QPalette.ColorRole.Text, QIcon.Mode.Normal),
@@ -102,6 +163,8 @@ class PreviewCache:
                 ).copy()
                 pixmap = QPixmap.fromImage(image)
                 pixmap.setDevicePixelRatio(ratio)
+                if dynamic:
+                    paint_tag(pixmap, size)
                 found.addPixmap(pixmap, mode)
                 self.drawn += 1
             self._icons[key] = found
@@ -181,6 +244,15 @@ def units_name(code: int) -> str:
         21: tr("US survey feet"),
     }
     return names.get(code, tr("Unitless"))
+
+
+def type_text(info: CadBlockInfo) -> str:
+    """Static, or Dynamic block with the parameters it shows, if read."""
+    if not info.is_dynamic:
+        return tr("Static")
+    if not info.parameters:
+        return tr("Dynamic block")
+    return tr("Dynamic block · {parameters}", parameters=", ".join(info.parameters))
 
 
 def attributes_text(count: int) -> str:
@@ -281,6 +353,15 @@ class BlocksPanel(QDockWidget):
         (self.list_view if chosen == LIST else self.grid_view).setChecked(True)
         self._on_view_chosen()
         self.footer = QLabel()
+        # The tag's legend: the star as it looks, then what it means.
+        self.legend_tag = QLabel()
+        self.legend_text = QLabel()
+        self.legend = QWidget()
+        legend_row = QHBoxLayout(self.legend)
+        legend_row.setContentsMargins(0, 0, 0, 0)
+        legend_row.setSpacing(4)
+        legend_row.addWidget(self.legend_tag)
+        legend_row.addWidget(self.legend_text, 1)
         self.details = PropertyGrid()
         self.details.caption.hide()
 
@@ -292,6 +373,7 @@ class BlocksPanel(QDockWidget):
         column.addLayout(search_row)
         column.addWidget(self.views, 1)
         column.addWidget(self.footer)
+        column.addWidget(self.legend)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(top)
@@ -368,7 +450,7 @@ class BlocksPanel(QDockWidget):
         text = colors.color(QPalette.ColorRole.ButtonText).name()
         mid = colors.color(QPalette.ColorRole.Mid).name()
         highlight = colors.color(QPalette.ColorRole.Highlight).name()
-        for label in (self.source_caption, self.footer):
+        for label in (self.source_caption, self.footer, self.legend_text):
             label.setStyleSheet(f"color: {muted};")
         # A segmented control: the active source on the Button color with a
         # line in Highlight under it, as the mockup.
@@ -413,6 +495,9 @@ class BlocksPanel(QDockWidget):
         self.grid_view.setToolTip(tr("Grid view"))
         self.list_view.setToolTip(tr("List view"))
         self.table.setHeaderLabels([tr("Name"), tr("In drawing")])
+        self.legend_tag.setPixmap(tag_pixmap(self.devicePixelRatioF()))
+        self.legend_tag.setToolTip(tr("Dynamic block"))
+        self.legend_text.setText(tr("Dynamic block"))
         self.options_band.setText(tr("Insert options"))
         self.scale_label.setText(tr("Scale"))
         self.rotation_label.setText(tr("Rotation"))
@@ -478,6 +563,7 @@ class BlocksPanel(QDockWidget):
             self.table.clear()
             self.grid.clear()
             if document is None:
+                self.legend.setVisible(False)
                 self.table.setEnabled(False)
                 self.source_caption.setText("")
                 self.footer.setText(tr("No drawing is open."))
@@ -486,6 +572,8 @@ class BlocksPanel(QDockWidget):
                 self.source_caption.setText(tr("Definitions in {name}", name=document.name))
                 self._references = references = document.block_references
                 shown = self.names()
+                dynamic = {name for name in shown if document.is_dynamic_block(name)}
+                self.legend.setVisible(bool(dynamic))
                 for name in shown:
                     count = references.get(name, 0)
                     item = QTreeWidgetItem([name, str(count)])
@@ -496,6 +584,14 @@ class BlocksPanel(QDockWidget):
                     self.table.addTopLevelItem(item)
                     card = QListWidgetItem(self._icon(document, name, self.grid.card_size()), name)
                     card.setToolTip(name)
+                    if name in dynamic:
+                        # The tag is drawn: say it to screen readers and tooltips.
+                        card.setToolTip(f"{name}\n{tr('Dynamic block')}")
+                        card.setData(Qt.ItemDataRole.AccessibleDescriptionRole, tr("Dynamic block"))
+                        item.setToolTip(NAME, card.toolTip())
+                        item.setData(
+                            NAME, Qt.ItemDataRole.AccessibleDescriptionRole, tr("Dynamic block")
+                        )
                     self.grid.addItem(card)
                 if not document.block_names:
                     self.footer.setText(tr("The drawing has no blocks."))
@@ -541,11 +637,18 @@ class BlocksPanel(QDockWidget):
             self._runner.start(command)
 
     def _update_actions(self) -> None:
-        drawing = self.document() is not None
-        chosen = drawing and self.selected() is not None
+        document = self.document()
+        name = self.selected()
+        chosen = document is not None and name is not None
         self.insert_button.setEnabled(chosen)
-        self.edit_button.setEnabled(chosen)
-        self.new_button.setEnabled(drawing)
+        self.new_button.setEnabled(document is not None)
+        # A dynamic block's parameters wait for the parametric engine
+        # (ADR 0023 D3a): it is inserted, never edited, and the button says why.
+        dynamic = document is not None and name is not None and document.is_dynamic_block(name)
+        self.edit_button.setEnabled(chosen and not dynamic)
+        self.edit_button.setToolTip(
+            tr("{name} is a dynamic block: it cannot be edited yet.", name=name) if dynamic else ""
+        )
 
     def _fold_options(self, unfolded: bool) -> None:
         self.options.setVisible(unfolded)
@@ -610,7 +713,7 @@ class BlocksPanel(QDockWidget):
         if info.description:
             rows.append((tr("Description"), info.description))
         rows += [
-            (tr("Type"), tr("Dynamic block") if info.is_dynamic else tr("Static")),
+            (tr("Type"), type_text(info)),
             (tr("Units"), units_name(info.units)),
             (tr("Attributes"), attributes_text(info.attributes)),
             (tr("In drawing"), references_text(references)),

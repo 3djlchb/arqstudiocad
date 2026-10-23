@@ -31,6 +31,9 @@ pub struct BlockInfo {
     pub attributes: usize,
     /// Whether it is a dynamic block (ADR 0023 D3a).
     pub dynamic: bool,
+    /// A dynamic block's parameters the user sees, by name, in the file's
+    /// order; empty for a static block or when the engine cannot read them.
+    pub parameters: Vec<String>,
 }
 
 /// Characters a DWG block name cannot hold.
@@ -70,12 +73,28 @@ impl Document {
             .entities_in_block(&record.name)
             .filter(|e| matches!(e, EntityType::AttributeDefinition(_)))
             .count();
+        let dynamic = self.is_dynamic_block(&record.name);
+        let mut parameters: Vec<String> = Vec::new();
+        if dynamic {
+            let shown = self
+                .cad()
+                .dynamic_block_properties(record.handle(), None)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|p| p.show && !p.name.is_empty());
+            for property in shown {
+                if !parameters.contains(&property.name) {
+                    parameters.push(property.name);
+                }
+            }
+        }
         Some(BlockInfo {
             name: record.name.clone(),
             description: record.description.clone(),
             units: record.units,
             attributes,
-            dynamic: self.is_dynamic_block(&record.name),
+            dynamic,
+            parameters,
         })
     }
 

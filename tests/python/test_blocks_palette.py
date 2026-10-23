@@ -5,7 +5,7 @@ the palette and is pressed while it is open (D2)."""
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings, QSize
+from PySide6.QtCore import QSettings, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QImage, QPalette
 from PySide6.QtWidgets import QMenu, QToolButton
 from pytestqt.qtbot import QtBot
@@ -14,6 +14,10 @@ from ui_fakes import QuietUi
 from arqstudiocad.core import CadChangeSet, CadDocument
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui.blocks_panel import (
+    TAG_BACKGROUND,
+    TAG_IN_ROWS,
+    TAG_ON_CARDS,
+    TAG_STAR,
     BlocksPanel,
     attributes_text,
     references_text,
@@ -459,3 +463,95 @@ def test_previews_are_drawn_again_only_when_a_block_changes(window: MainWindow) 
     again = panel.previews.drawn
     window.session.edit(document, lambda d: d.undo())
     assert panel.previews.drawn > again and "Puerta" not in cards(panel), "undo too"
+
+
+# Step 4: the dynamic-block tag (ADR 0025 D4)
+
+
+def dynamic_drawing(window: MainWindow) -> CadDocument:
+    """AcadRust's lookup sample: one dynamic block, My_Look_Block."""
+    from test_block_editor import LOOKUP
+    from test_commands import regression_drawing
+
+    document = window.session.open_document(regression_drawing(LOOKUP))
+    window.session.activate(document)
+    return document
+
+
+def tagged(image: QImage) -> bool:
+    """Whether the tag sits in the preview's top-left corner: orange at its
+    edge, the turquoise star in its middle."""
+    ratio = image.devicePixelRatio()
+    width = image.width() / ratio
+    # Rows' previews are 24 px with the small tag; the legend is the tag alone.
+    side = (TAG_IN_ROWS if TAG_ON_CARDS < width <= 24 else TAG_ON_CARDS) * ratio
+    edge = image.pixelColor(round(ratio), round(side / 2))
+    middle = image.pixelColor(round(side / 2), round(side / 2))
+    return (edge.name(), middle.name()) == (TAG_BACKGROUND, TAG_STAR)
+
+
+def test_a_dynamic_block_carries_the_tag_and_cannot_be_edited(window: MainWindow) -> None:
+    assert (TAG_BACKGROUND, TAG_STAR) == ("#ffa64d", "#004b4e"), "the maintainer's colors"
+    panel = opened(window)
+    document = dynamic_drawing(window)
+    line, _ = document.add_line((0, 0), (5, 5))
+    window.session.edit(document, lambda d: d.create_block("Estatico", (0, 0), [line])[1])
+    names = cards(panel)
+    dynamic, static = names.index("My_Look_Block"), names.index("Estatico")
+    size = QSize(panel.grid.card_size(), panel.grid.card_size())
+    for mode in (QIcon.Mode.Normal, QIcon.Mode.Selected):
+        assert tagged(panel.grid.item(dynamic).icon().pixmap(size, mode).toImage()), mode
+        assert not tagged(panel.grid.item(static).icon().pixmap(size, mode).toImage())
+    row = panel.table.topLevelItem(names.index("My_Look_Block"))
+    assert row is not None
+    assert tagged(row.icon(0).pixmap(QSize(24, 24)).toImage()), "in the list too"
+    card = panel.grid.item(dynamic)
+    assert card.toolTip() == "My_Look_Block\nDynamic block"
+    assert card.data(Qt.ItemDataRole.AccessibleDescriptionRole) == "Dynamic block"
+    assert panel.legend.isVisible() and panel.legend_text.text() == "Dynamic block"
+    assert tagged(panel.legend_tag.pixmap().toImage()), "the legend shows the tag itself"
+
+    panel.select("My_Look_Block")
+    assert not panel.edit_button.isEnabled() and panel.insert_button.isEnabled()
+    assert panel.edit_button.toolTip() == (
+        "My_Look_Block is a dynamic block: it cannot be edited yet."
+    )
+    info = document.block_info("My_Look_Block")
+    assert info is not None and info.is_dynamic and info.parameters
+    rows = dict(panel.details.sections()[0][1])
+    assert rows["Type"] == "Dynamic block · " + ", ".join(info.parameters)
+    panel.select("Estatico")
+    assert panel.edit_button.isEnabled() and panel.edit_button.toolTip() == ""
+    panel.search.setText("estat")
+    assert not panel.legend.isVisible(), "no dynamic block shown: no legend"
+
+
+def test_the_tag_is_a_symbol_the_same_in_every_language(window: MainWindow) -> None:
+    panel = opened(window)
+    dynamic_drawing(window)
+    index = cards(panel).index("My_Look_Block")
+    size = QSize(panel.grid.card_size(), panel.grid.card_size())
+    english = panel.grid.item(index).icon().pixmap(size).toImage()
+    drawn = panel.previews.drawn
+    set_language("es")
+    try:
+        panel.retranslate()
+        assert panel.previews.drawn == drawn, "no tag to draw again"
+        spanish = panel.grid.item(index).icon().pixmap(size).toImage()
+        assert spanish == english and tagged(spanish)
+        assert panel.legend_text.text() == "Bloque dinámico"
+        card = panel.grid.item(index)
+        assert card.toolTip() == "My_Look_Block\nBloque dinámico"
+    finally:
+        set_language("en")
+
+
+def test_the_grid_scrolls_to_the_selected_card(qtbot: QtBot, window: MainWindow) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, *(f"Bloque_{i:02}" for i in range(30)))
+    last = panel.grid.item(panel.grid.count() - 1)
+    assert not panel.grid.viewport().rect().intersects(panel.grid.visualItemRect(last))
+    panel.select("Bloque_29")
+    qtbot.waitUntil(
+        lambda: panel.grid.viewport().rect().intersects(panel.grid.visualItemRect(last))
+    )

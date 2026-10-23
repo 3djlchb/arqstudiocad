@@ -88,10 +88,11 @@ are additional to it.
 ### D4 — Dynamic blocks are tagged, not edited *(maintainer)*
 
 A dynamic block carries a tag in the top-left corner of its preview, in
-both views. The tag text is a `tr()` string: **DB** in English, **BD** in
-the Spanish pack. Its tooltip and accessible name are "Dynamic block". Its
-colors are fixed: text `#004b4e` on `#ffa64d`, bold, with a 2 px corner
-radius. They stay the same in both themes, an exception to ADR 0015's
+both views: a **five-pointed star** filled in `#004b4e` on a `#ffa64d`
+square with a 2 px corner radius. A symbol reads the same in every language,
+so it replaces the letters the brief proposed (DB in English, BD in Spanish)
+*(maintainer, 2026-10-23)*. Its tooltip and accessible name, "Dynamic
+block", are translated. Its colors are fixed. They stay the same in both themes, an exception to ADR 0015's
 "follow the active theme" that the maintainer chose so the tag reads the
 same everywhere; the contrast is about 5:1. As ADR 0023 D3a requires,
 dynamic blocks are shown, inserted and exploded in the state the file
@@ -214,6 +215,12 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - The palette inks each preview twice, in the theme's Text color and in its Highlight color, so a selected card shows accent strokes as the mockup.
   - Previews are cached in the palette per drawing, size and block. A change that names any block forgets that drawing's previews, since one block may hold another; so does a theme change.
   - The grid is the default view: three cards to a row, sized to the palette, names elided. The list shows a small preview by each name. One selection drives both views, and the chosen view is remembered in the settings.
+- **Step 4 (2026-10-23):** the dynamic-block tag.
+  - A dynamic block's previews, plain and selected, carry the tag in their top-left corner: a five-pointed star in `#004b4e` on a `#ffa64d` square with a 2 px radius, 13 px on cards and 10 px in rows, in both themes. It is painted, not written, so it needs no font and no translation.
+  - The card's tooltip and the accessible description say "Dynamic block", translated. The footer shows the tag itself and "Dynamic block" while a dynamic block is shown.
+  - Edit block is disabled for a dynamic block, with BEDIT's refusal as its tooltip.
+  - The Type row lists the parameters the block shows (`BlockInfo::parameters`, from AcadRust's dynamic properties), or says "Dynamic block" alone when none can be read.
+  - The legend's "drag onto the drawing to insert" comes with drag and drop in step 5.
 
 ## Consequences
 

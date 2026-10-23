@@ -95,6 +95,10 @@ shown disabled without explanation.
 
 Dynamic blocks must be told apart from static ones at a glance.
 
+> **Changed (maintainer, 2026-10-23):** the tag is a five-pointed star in
+> `#004b4e` on `#ffa64d`, the same in every language, instead of the DB/BD
+> letters below. See [ADR 0025 D4](../architecture/adr/0025-blocks-palette.md).
+
 - **Tag**: a small label in the **top-left corner of the preview**, in
   both grid and list view.
 - **Text**: **DB** in English; the Spanish catalog translates it as **BD**
