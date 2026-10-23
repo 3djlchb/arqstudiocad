@@ -2,7 +2,11 @@
 mockup, the selected block's details, and a View-tab button that toggles
 the palette and is pressed while it is open (D2)."""
 
+from pathlib import Path
+
 import pytest
+from PySide6.QtCore import QSettings, QSize
+from PySide6.QtGui import QColor, QIcon, QImage, QPalette
 from PySide6.QtWidgets import QMenu, QToolButton
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
@@ -141,7 +145,7 @@ def test_the_palette_is_laid_out_as_the_mockup(window: MainWindow) -> None:
     ], "only the drawing's blocks yet"
     assert panel.sources["template"].toolTip() == "Not available yet."
     assert panel.source_caption.text() == f"Definitions in {document.name}"
-    assert panel.list_view.isChecked() and not panel.grid_view.isEnabled()
+    assert panel.grid_view.isChecked() and panel.view() == "grid", "cards first, as the mockup"
     header = panel.table.headerItem()
     assert (header.text(0), header.text(1)) == ("Name", "In drawing")
 
@@ -360,3 +364,98 @@ def test_a_refused_command_leaves_its_button_up(window: MainWindow) -> None:
     window.session.new_document()
     button.click()
     assert not panel.isHidden() and button.isChecked()
+
+
+# Step 3: previews and the grid view (ADR 0025 D3)
+
+
+def test_the_core_names_changed_blocks_and_draws_their_previews() -> None:
+    from arqstudiocad.core import CadApplication
+
+    document = CadApplication().create_document("previews")
+    line, _ = document.add_line((0, 0), (10, 10))
+    _, made = document.create_block("Mesa", (0, 0), [line])
+    assert made.blocks_created == ("Mesa",) and made.blocks_deleted == ()
+    undone = document.undo()
+    assert undone.blocks_deleted == ("Mesa",)
+    document.redo()
+    data = document.block_preview("mesa", 32, (255, 0, 0))
+    assert data is not None and len(data) == 32 * 32 * 4
+    pixels = [data[i : i + 4] for i in range(0, len(data), 4)]
+    assert any(px[3] for px in pixels) and pixels[0][3] == 0, "ink on transparency"
+    assert document.block_preview("nada", 32, (255, 0, 0)) is None
+    with pytest.raises(ValueError, match="1 to 1024"):
+        document.block_preview("Mesa", 0, (255, 0, 0))
+
+
+def cards(panel: BlocksPanel) -> list[str]:
+    return [panel.grid.item(i).text() for i in range(panel.grid.count())]
+
+
+def test_the_grid_shows_cards_with_previews(window: MainWindow) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, "Mesa", "Silla", "Puerta")
+    assert panel.views.currentWidget() is panel.grid
+    assert cards(panel) == ["Mesa", "Puerta", "Silla"] == shown(window)
+    card = panel.grid.item(0)
+    size = panel.grid.card_size()
+    plain = card.icon().pixmap(QSize(size, size), QIcon.Mode.Normal).toImage()
+    chosen = card.icon().pixmap(QSize(size, size), QIcon.Mode.Selected).toImage()
+    assert not plain.isNull() and plain != chosen, "accent strokes when selected"
+
+    def ink(image: QImage) -> QColor:
+        """The color of the most opaque pixel: the stroke's."""
+        pixels = [
+            image.pixelColor(x, y) for x in range(image.width()) for y in range(image.height())
+        ]
+        return max(pixels, key=lambda c: c.alpha())
+
+    def near(a: QColor, b: QColor) -> bool:
+        return (
+            max(abs(a.red() - b.red()), abs(a.green() - b.green()), abs(a.blue() - b.blue())) <= 4
+        )
+
+    palette = panel.palette()
+    assert near(ink(chosen), palette.color(QPalette.ColorRole.Highlight)), "the theme's accent"
+    assert near(ink(plain), palette.color(QPalette.ColorRole.Text)), "the theme's text color"
+    row = panel.table.topLevelItem(0)
+    assert row is not None and not row.icon(0).isNull(), "a small preview in the list"
+
+
+def test_a_card_and_a_row_are_one_selection(window: MainWindow) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, "Mesa", "Silla")
+    panel.grid.setCurrentItem(panel.grid.item(1))
+    assert panel.selected() == "Silla"
+    assert panel.details.sections()[0][1][0] == ("Name", "Silla")
+    panel.select("Mesa")
+    current = panel.grid.currentItem()
+    assert current is not None and current.text() == "Mesa"
+    panel.grid.itemActivated.emit(current)  # Enter or a double click on a card
+    assert window.runner.active == "INSERT"
+
+
+def test_the_chosen_view_is_remembered(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    first = MainWindow(ui=QuietUi(), settings=settings)
+    qtbot.addWidget(first)
+    first.blocks_panel.list_view.click()
+    assert first.blocks_panel.views.currentWidget() is first.blocks_panel.table
+    second = MainWindow(ui=QuietUi(), settings=settings)
+    qtbot.addWidget(second)
+    assert second.blocks_panel.view() == "list"
+
+
+def test_previews_are_drawn_again_only_when_a_block_changes(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa", "Silla")
+    drawn = panel.previews.drawn
+    window.session.edit(document, lambda d: d.add_line((50, 50), (60, 60))[1])
+    window.session.edit(document, lambda d: d.insert_block("Mesa", (5, 5))[1])
+    assert panel.previews.drawn == drawn, "the blocks did not change"
+    line, _ = document.add_line((0, 0), (0, 3))
+    window.session.edit(document, lambda d: d.create_block("Puerta", (0, 0), [line])[1])
+    assert panel.previews.drawn > drawn, "a block changed: every preview again"
+    again = panel.previews.drawn
+    window.session.edit(document, lambda d: d.undo())
+    assert panel.previews.drawn > again and "Puerta" not in cards(panel), "undo too"

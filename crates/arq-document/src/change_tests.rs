@@ -271,6 +271,16 @@ fn merging_block_changes() {
     let a = set(&["MESA", "SILLA"], &["PUERTA"], &[]);
     let b = set(&[], &["MESA", "PUERTA"], &["SILLA"]);
     assert_eq!(a.then(&b), set(&["MESA"], &["PUERTA"], &[]));
+    // Changed only in the second step: changed.
+    assert_eq!(
+        set(&[], &[], &[]).then(&set(&[], &["MESA"], &[])),
+        set(&[], &["MESA"], &[])
+    );
+    // Removed then made again under the same name: changed.
+    assert_eq!(
+        set(&[], &[], &["MESA"]).then(&set(&["MESA"], &[], &[])),
+        set(&[], &["MESA"], &[])
+    );
     assert_eq!(
         set(&["MESA"], &[], &[]).inverted(),
         set(&[], &[], &["MESA"])

@@ -5,15 +5,17 @@ Laid out as the maintainer's mockup (docs/design/blocks-palette.md): the
 sources (Template, Recent, Drawing), a caption naming where the blocks come
 from, the search with the grid and list views, the blocks, a footer, and
 the Selected block section, the insert options and the actions: Insert,
-Edit block and New, which start INSERT, BEDIT and BLOCK. Only the Drawing
-source and the list view work yet; the others come with their steps (ADR
-0025 D9) and say so.
+Edit block and New, which start INSERT, BEDIT and BLOCK. Blocks show as
+cards with previews in the grid view, or as rows in the list view; the
+previews are drawn in Rust and kept until a change touches a block. Only
+the Drawing source works yet; the others come with their steps (ADR 0025
+D9) and say so.
 """
 
 import math
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette, QShowEvent
+from PySide6.QtCore import QSettings, QSize, Qt
+from PySide6.QtGui import QIcon, QImage, QPalette, QPixmap, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -25,9 +27,13 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListView,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QStackedWidget,
     QStyle,
     QToolButton,
     QTreeWidget,
@@ -39,17 +45,105 @@ from PySide6.QtWidgets import (
 from arqstudiocad.commands import CommandRunner
 from arqstudiocad.commands.blocks import edit_named, insert_named
 from arqstudiocad.core import CadBlockInfo, CadDocument
-from arqstudiocad.events import Event
+from arqstudiocad.events import DocumentChanged, Event
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
 from arqstudiocad.ui.event_bridge import QtEventBridge
-from arqstudiocad.ui.panel_style import apply_data_view_style
+from arqstudiocad.ui.panel_style import (
+    SELECTION_BACKGROUND,
+    SELECTION_LINE,
+    apply_data_view_style,
+)
 from arqstudiocad.ui.property_grid import PropertyGrid, Section
 
 #: The palette's sources, in the order the mockup shows them.
 SOURCES = ("template", "recent", "drawing")
 #: Columns of the list view.
 NAME, IN_DRAWING = 0, 1
+#: The views, and where the chosen one is remembered.
+GRID, LIST = "grid", "list"
+VIEW_SETTING = "blocks_palette/view"
+#: Previews in the list's rows, in pixels.
+ROW_PREVIEW = 24
+#: Cards per row of the grid, as the mockup.
+CARDS_PER_ROW = 3
+
+
+class PreviewCache:
+    """Block previews as icons, plain and selected, per drawing, size and
+    name; a drawing's are forgotten when a change touches any of its
+    blocks, since a block may hold another (ADR 0025 D3)."""
+
+    def __init__(self) -> None:
+        self._icons: dict[tuple[int, int, str], QIcon] = {}
+        #: How many previews were drawn, for tests and measurements.
+        self.drawn = 0
+
+    def icon(
+        self, document: CadDocument, name: str, size: int, ink: QPalette, ratio: float
+    ) -> QIcon:
+        key = (document.id, size, name)
+        found = self._icons.get(key)
+        if found is None:
+            found = QIcon()
+            pixels = max(1, round(size * ratio))
+            for role, mode in (
+                (QPalette.ColorRole.Text, QIcon.Mode.Normal),
+                (QPalette.ColorRole.Highlight, QIcon.Mode.Selected),
+            ):
+                color = ink.color(role)
+                data = document.block_preview(
+                    name, pixels, (color.red(), color.green(), color.blue())
+                )
+                if data is None:
+                    continue
+                image = QImage(
+                    data, pixels, pixels, QImage.Format.Format_RGBA8888_Premultiplied
+                ).copy()
+                pixmap = QPixmap.fromImage(image)
+                pixmap.setDevicePixelRatio(ratio)
+                found.addPixmap(pixmap, mode)
+                self.drawn += 1
+            self._icons[key] = found
+        return found
+
+    def forget(self, document_id: int) -> None:
+        for key in [k for k in self._icons if k[0] == document_id]:
+            del self._icons[key]
+
+    def clear(self) -> None:
+        self._icons.clear()
+
+
+class BlockGrid(QListWidget):
+    """The grid view: cards of a preview and a name, three to a row, sized
+    to the palette's width."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setViewMode(QListView.ViewMode.IconMode)
+        self.setResizeMode(QListView.ResizeMode.Adjust)
+        self.setMovement(QListView.Movement.Static)
+        self.setUniformItemSizes(True)
+        self.setWrapping(True)
+        self.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.setSpacing(2)
+        self.fit_cards()
+
+    def card_size(self) -> int:
+        """A card's width: a third of the room, less the spacing."""
+        room = self.viewport().width() - 2 * self.spacing() * CARDS_PER_ROW
+        return max(48, room // CARDS_PER_ROW)
+
+    def fit_cards(self) -> None:
+        side = self.card_size()
+        text = self.fontMetrics().height() + 8
+        self.setGridSize(QSize(side + 2 * self.spacing(), side + text))
+        self.setIconSize(QSize(side - 16, side - 16))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
+        super().resizeEvent(event)
+        self.fit_cards()
 
 
 def source_title(source: str) -> str:
@@ -114,11 +208,15 @@ class BlocksPanel(QDockWidget):
         events: QtEventBridge,
         runner: CommandRunner | None = None,
         parent: QWidget | None = None,
+        settings: QSettings | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("blocks_panel")
         self._session = session
         self._runner = runner
+        self._settings = settings
+        self.previews = PreviewCache()
+        self._syncing = False
         #: The drawing changed while the palette was hidden.
         self._stale = True
         self._filling = False
@@ -155,9 +253,7 @@ class BlocksPanel(QDockWidget):
             button.setCheckable(True)
             button.setAutoRaise(True)
             views.addButton(button)
-        self.list_view.setChecked(True)
-        # The grid shows previews, which come in step 3 (ADR 0025 D9).
-        self.grid_view.setEnabled(False)
+        self.grid_view.toggled.connect(self._on_view_chosen)
         search_row = QHBoxLayout()
         search_row.addWidget(self.search, 1)
         search_row.addWidget(self.grid_view)
@@ -174,6 +270,16 @@ class BlocksPanel(QDockWidget):
         self.table.currentItemChanged.connect(self._on_current_changed)
         # Enter or a double click inserts, as the Insert button.
         self.table.itemActivated.connect(self.insert_selected)
+        self.table.setIconSize(QSize(ROW_PREVIEW, ROW_PREVIEW))
+        self.grid = BlockGrid()
+        self.grid.currentItemChanged.connect(self._on_card_chosen)
+        self.grid.itemActivated.connect(self.insert_selected)
+        self.views = QStackedWidget()
+        self.views.addWidget(self.grid)
+        self.views.addWidget(self.table)
+        chosen = self._settings.value(VIEW_SETTING, GRID) if self._settings else GRID
+        (self.list_view if chosen == LIST else self.grid_view).setChecked(True)
+        self._on_view_chosen()
         self.footer = QLabel()
         self.details = PropertyGrid()
         self.details.caption.hide()
@@ -184,7 +290,7 @@ class BlocksPanel(QDockWidget):
         column.addLayout(source_row)
         column.addWidget(self.source_caption)
         column.addLayout(search_row)
-        column.addWidget(self.table, 1)
+        column.addWidget(self.views, 1)
         column.addWidget(self.footer)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -253,6 +359,8 @@ class BlocksPanel(QDockWidget):
         """Refresh palette-based colors after a theme change."""
         apply_data_view_style(self.table)
         self.details.restyle()
+        # Previews are inked with the theme's colors: drawn again.
+        self.previews.clear()
         colors = self.palette()
         muted = colors.color(QPalette.ColorRole.PlaceholderText).name()
         window = colors.color(QPalette.ColorRole.Window).name()
@@ -273,6 +381,16 @@ class BlocksPanel(QDockWidget):
         )
         for source_button in self.sources.values():
             source_button.setStyleSheet(segments)
+        base = colors.color(QPalette.ColorRole.Base).name()
+        alternate = colors.color(QPalette.ColorRole.AlternateBase).name()
+        self.grid.setStyleSheet(
+            f"QListWidget {{ background-color: {base}; color: {text}; border: none; "
+            f"outline: none; }}"
+            f"QListWidget::item {{ background-color: {alternate}; border: 1px solid {mid}; "
+            f"border-radius: 2px; }}"
+            f"QListWidget::item:selected {{ background-color: {SELECTION_BACKGROUND}; "
+            f"border: 1px solid {SELECTION_LINE}; color: {text}; }}"
+        )
         # The property grid's section band, and Insert as the primary action.
         self.options_band.setStyleSheet(
             f"QToolButton {{ background-color: {button}; color: {text}; border: none; "
@@ -292,7 +410,7 @@ class BlocksPanel(QDockWidget):
             button.setText(source_title(source))
             button.setToolTip("" if button.isEnabled() else tr("Not available yet."))
         self.search.setPlaceholderText(tr("Search blocks"))
-        self.grid_view.setToolTip(tr("Grid view (not available yet)"))
+        self.grid_view.setToolTip(tr("Grid view"))
         self.list_view.setToolTip(tr("List view"))
         self.table.setHeaderLabels([tr("Name"), tr("In drawing")])
         self.options_band.setText(tr("Insert options"))
@@ -321,15 +439,19 @@ class BlocksPanel(QDockWidget):
         return [name for name in document.block_names if wanted in name.casefold()]
 
     def shown(self) -> list[str]:
-        """The names the list shows, in order."""
+        """The names the views show, in order."""
         return [self._row(i).text(NAME) for i in range(self.table.topLevelItemCount())]
+
+    def view(self) -> str:
+        """The view shown: ``GRID`` or ``LIST``."""
+        return GRID if self.grid_view.isChecked() else LIST
 
     def selected(self) -> str | None:
         item = self.table.currentItem()
         return item.text(NAME) if item is not None else None
 
     def select(self, name: str) -> bool:
-        """Selects block ``name`` in the list; False if it is not shown."""
+        """Selects block ``name`` in both views; False if it is not shown."""
         for index in range(self.table.topLevelItemCount()):
             item = self._row(index)
             if item.text(NAME) == name:
@@ -338,6 +460,12 @@ class BlocksPanel(QDockWidget):
         return False
 
     def refresh(self, event: Event | str | None = None) -> None:
+        if isinstance(event, DocumentChanged) and (
+            event.changes.blocks_created
+            or event.changes.blocks_modified
+            or event.changes.blocks_deleted
+        ):
+            self.previews.forget(event.document_id)
         if not self.isVisible():
             # Counting references reads the whole drawing: not while closed.
             self._stale = True
@@ -348,6 +476,7 @@ class BlocksPanel(QDockWidget):
         self._filling = True
         try:
             self.table.clear()
+            self.grid.clear()
             if document is None:
                 self.table.setEnabled(False)
                 self.source_caption.setText("")
@@ -363,7 +492,11 @@ class BlocksPanel(QDockWidget):
                     item.setTextAlignment(
                         IN_DRAWING, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                     )
+                    item.setIcon(NAME, self._icon(document, name, ROW_PREVIEW))
                     self.table.addTopLevelItem(item)
+                    card = QListWidgetItem(self._icon(document, name, self.grid.card_size()), name)
+                    card.setToolTip(name)
+                    self.grid.addItem(card)
                 if not document.block_names:
                     self.footer.setText(tr("The drawing has no blocks."))
                 elif not shown:
@@ -425,9 +558,40 @@ class BlocksPanel(QDockWidget):
         assert item is not None
         return item
 
+    def _icon(self, document: CadDocument, name: str, size: int) -> QIcon:
+        return self.previews.icon(document, name, size, self.palette(), self.devicePixelRatioF())
+
     def _on_current_changed(self) -> None:
+        # The grid follows the list's selection.
+        name = self.selected()
+        self._syncing = True
+        try:
+            card = next(
+                (
+                    self.grid.item(i)
+                    for i in range(self.grid.count())
+                    if self.grid.item(i).text() == name
+                ),
+                None,
+            )
+            if card is None:
+                self.grid.clearSelection()
+            else:
+                self.grid.setCurrentItem(card)
+        finally:
+            self._syncing = False
         if not self._filling:
             self._show_details()
+
+    def _on_card_chosen(self, card: QListWidgetItem | None) -> None:
+        if not self._syncing and card is not None:
+            self.select(card.text())
+
+    def _on_view_chosen(self) -> None:
+        view = self.view()
+        self.views.setCurrentWidget(self.grid if view == GRID else self.table)
+        if self._settings is not None:
+            self._settings.setValue(VIEW_SETTING, view)
 
     def _show_details(self) -> None:
         self._update_actions()
