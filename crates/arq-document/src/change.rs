@@ -28,6 +28,9 @@ pub struct ChangeSet {
     layers_created: Vec<LayerId>,
     layers_modified: Vec<LayerId>,
     layers_deleted: Vec<LayerId>,
+    blocks_created: Vec<String>,
+    blocks_modified: Vec<String>,
+    blocks_deleted: Vec<String>,
     document: bool,
 }
 
@@ -56,6 +59,19 @@ impl ChangeSet {
     pub fn layers_deleted(&self) -> &[LayerId] {
         &self.layers_deleted
     }
+    /// Block definitions created, by name (ADR 0025 D3).
+    pub fn blocks_created(&self) -> &[String] {
+        &self.blocks_created
+    }
+    /// Block definitions whose contents changed, by name.
+    pub fn blocks_modified(&self) -> &[String] {
+        &self.blocks_modified
+    }
+    /// Block definitions removed, by name; a renamed block is one name
+    /// removed and another created.
+    pub fn blocks_deleted(&self) -> &[String] {
+        &self.blocks_deleted
+    }
     /// Whether a document-level setting changed (e.g. the current layer).
     pub fn document_changed(&self) -> bool {
         self.document
@@ -74,6 +90,9 @@ impl ChangeSet {
             layers_created: self.layers_deleted.clone(),
             layers_modified: self.layers_modified.clone(),
             layers_deleted: self.layers_created.clone(),
+            blocks_created: self.blocks_deleted.clone(),
+            blocks_modified: self.blocks_modified.clone(),
+            blocks_deleted: self.blocks_created.clone(),
             document: self.document,
         }
     }
@@ -82,26 +101,27 @@ impl ChangeSet {
     /// modified is created; created then deleted is nothing; modified then
     /// deleted is deleted.
     pub fn then(&self, next: &Self) -> Self {
-        fn merge(a: (&[u64], &[u64], &[u64]), b: (&[u64], &[u64], &[u64])) -> [Vec<u64>; 3] {
-            let mut created: BTreeSet<u64> = a.0.iter().copied().collect();
-            let mut modified: BTreeSet<u64> = a.1.iter().copied().collect();
-            let mut deleted: BTreeSet<u64> = a.2.iter().copied().collect();
-            for &id in b.0 {
-                if !deleted.remove(&id) {
-                    created.insert(id);
+        type Three<'a, T> = (&'a [T], &'a [T], &'a [T]);
+        fn merge<T: Ord + Clone>(a: Three<'_, T>, b: Three<'_, T>) -> [Vec<T>; 3] {
+            let mut created: BTreeSet<T> = a.0.iter().cloned().collect();
+            let mut modified: BTreeSet<T> = a.1.iter().cloned().collect();
+            let mut deleted: BTreeSet<T> = a.2.iter().cloned().collect();
+            for id in b.0 {
+                if !deleted.remove(id) {
+                    created.insert(id.clone());
                 } else {
-                    modified.insert(id); // deleted then re-created: changed
+                    modified.insert(id.clone()); // deleted then re-created: changed
                 }
             }
-            for &id in b.1 {
-                if !created.contains(&id) {
-                    modified.insert(id);
+            for id in b.1 {
+                if !created.contains(id) {
+                    modified.insert(id.clone());
                 }
             }
-            for &id in b.2 {
-                if !created.remove(&id) {
-                    modified.remove(&id);
-                    deleted.insert(id);
+            for id in b.2 {
+                if !created.remove(id) {
+                    modified.remove(id);
+                    deleted.insert(id.clone());
                 }
             }
             [created, modified, deleted].map(|s| s.into_iter().collect())
@@ -122,6 +142,18 @@ impl ChangeSet {
                 &next.layers_deleted,
             ),
         );
+        let [blocks_created, blocks_modified, blocks_deleted] = merge(
+            (
+                &self.blocks_created,
+                &self.blocks_modified,
+                &self.blocks_deleted,
+            ),
+            (
+                &next.blocks_created,
+                &next.blocks_modified,
+                &next.blocks_deleted,
+            ),
+        );
         Self {
             created,
             modified,
@@ -129,6 +161,9 @@ impl ChangeSet {
             layers_created,
             layers_modified,
             layers_deleted,
+            blocks_created,
+            blocks_modified,
+            blocks_deleted,
             document: self.document || next.document,
         }
     }
@@ -214,9 +249,17 @@ impl Document {
             .map(|b| b.handle)
             .collect();
         let in_model = |e: &EntityType| !definitions.contains(&e.common().owner_handle);
+        // The definitions whose contents the change touched.
+        let mut touched: BTreeSet<Handle> = BTreeSet::new();
         for (handle, before) in rec.recorder.take_before_images() {
             let after = self.cad().get_entity_arc(handle);
             let id = handle.value();
+            for side in [&before, &after].into_iter().flatten() {
+                let owner = side.common().owner_handle;
+                if definitions.contains(&owner) {
+                    touched.insert(owner);
+                }
+            }
             let shown = before.as_deref().or(after.as_deref()).is_some_and(in_model);
             match (&before, &after) {
                 (None, None) => continue, // created and deleted in the same change
@@ -237,6 +280,32 @@ impl Document {
                 after,
             });
         }
+        // Definitions by name, before (the structure snapshot, if tables
+        // were touched) and now.
+        let names = |cad: &CadDocument| -> BTreeSet<String> {
+            cad.block_records
+                .iter()
+                .filter(|b| !b.is_model_space() && !b.is_paper_space() && !b.is_layout())
+                .map(|b| b.name.clone())
+                .collect()
+        };
+        let now = names(self.cad());
+        let before = rec
+            .structure_before
+            .as_deref()
+            .map_or_else(|| now.clone(), names);
+        summary.blocks_created = now.difference(&before).cloned().collect();
+        summary.blocks_deleted = before.difference(&now).cloned().collect();
+        summary.blocks_modified = self
+            .cad()
+            .block_records
+            .iter()
+            .filter(|b| touched.contains(&b.handle))
+            .map(|b| b.name.clone())
+            .filter(|n| before.contains(n) && now.contains(n))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         let structure = rec.structure_before.map(|mut before| {
             // Undo must not roll back the handle counter: ids are never reused.
             CadDocument::align_added_entity_structure(&mut before, self.cad(), &created);

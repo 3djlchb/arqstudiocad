@@ -214,3 +214,65 @@ fn merging_change_sets() {
     assert_eq!(a.then(&b), set(&[1], &[], &[3]));
     assert_eq!(set(&[], &[], &[7]).inverted(), set(&[7], &[], &[]));
 }
+
+#[test]
+fn block_definitions_are_reported_by_name() {
+    let mut doc = Document::new();
+    let l0 = zero(&doc);
+    let a = doc.add_entity(line((0.0, 0.0), (1.0, 0.0)), l0).unwrap();
+    let mut made = record(&mut doc, |d| {
+        d.create_block("MESA", p(0.0, 0.0), &[a]).unwrap();
+    });
+    let summary = made.summary().clone();
+    assert_eq!(summary.blocks_created(), ["MESA"]);
+    assert!(summary.blocks_modified().is_empty() && summary.blocks_deleted().is_empty());
+    // Its contents saved again, as the block editor saves them.
+    let mut editor = doc.block_editor("MESA").unwrap();
+    let editor_l0 = editor.layer_by_name("0").unwrap().id();
+    editor
+        .add_entity(line((0.0, 0.0), (0.0, 1.0)), editor_l0)
+        .unwrap();
+    let mut edited = record(&mut doc, |d| {
+        d.replace_block_contents("MESA", &editor).unwrap()
+    });
+    assert_eq!(edited.summary().blocks_modified(), ["MESA"]);
+    assert!(edited.summary().blocks_created().is_empty());
+    // A drawing edit names no block.
+    let drawn = record(&mut doc, |d| {
+        d.add_entity(line((5.0, 5.0), (6.0, 5.0)), l0).unwrap();
+    });
+    assert!(drawn.summary().blocks_modified().is_empty());
+    assert!(drawn.summary().blocks_created().is_empty());
+    // Undo: the contents change back, then the block goes.
+    assert_eq!(
+        doc.undo_change(&mut edited).unwrap().blocks_modified(),
+        ["MESA"]
+    );
+    assert_eq!(
+        doc.undo_change(&mut made).unwrap().blocks_deleted(),
+        ["MESA"]
+    );
+    assert!(doc.block_names().is_empty());
+    assert_eq!(
+        doc.redo_change(&mut made).unwrap().blocks_created(),
+        ["MESA"]
+    );
+}
+
+#[test]
+fn merging_block_changes() {
+    let set = |c: &[&str], m: &[&str], d: &[&str]| ChangeSet {
+        blocks_created: c.iter().map(|s| (*s).to_owned()).collect(),
+        blocks_modified: m.iter().map(|s| (*s).to_owned()).collect(),
+        blocks_deleted: d.iter().map(|s| (*s).to_owned()).collect(),
+        ..ChangeSet::default()
+    };
+    // Made then edited is made; made then removed is nothing.
+    let a = set(&["MESA", "SILLA"], &["PUERTA"], &[]);
+    let b = set(&[], &["MESA", "PUERTA"], &["SILLA"]);
+    assert_eq!(a.then(&b), set(&["MESA"], &["PUERTA"], &[]));
+    assert_eq!(
+        set(&["MESA"], &[], &[]).inverted(),
+        set(&[], &[], &["MESA"])
+    );
+}

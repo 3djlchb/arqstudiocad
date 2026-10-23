@@ -9,9 +9,9 @@ use pyo3::types::{PyTuple, PyType};
 
 use crate::documents::CadDocument;
 
-/// What one change did: entities and layers created, modified and deleted,
-/// and whether a document setting (such as the current layer) changed. The
-/// interface refreshes only that.
+/// What one change did: entities, layers and block definitions created,
+/// modified and deleted, and whether a document setting (such as the current
+/// layer) changed. The interface refreshes only that.
 #[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
 #[derive(Clone, PartialEq)]
 pub struct CadChangeSet(pub ChangeSet);
@@ -54,6 +54,24 @@ impl CadChangeSet {
         PyTuple::new(py, self.0.layers_deleted())
     }
 
+    /// Block definitions created, by name.
+    #[getter]
+    fn blocks_created<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.0.blocks_created())
+    }
+
+    /// Block definitions whose contents changed, by name.
+    #[getter]
+    fn blocks_modified<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.0.blocks_modified())
+    }
+
+    /// Block definitions removed, by name.
+    #[getter]
+    fn blocks_deleted<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyTuple>> {
+        PyTuple::new(py, self.0.blocks_deleted())
+    }
+
     /// Whether a document-level setting changed (e.g. the current layer).
     #[getter]
     fn document_changed(&self) -> bool {
@@ -79,6 +97,15 @@ impl CadChangeSet {
         ] {
             if !ids.is_empty() {
                 parts.push(format!("{name}={ids:?}"));
+            }
+        }
+        for (name, blocks) in [
+            ("blocks_created", c.blocks_created()),
+            ("blocks_modified", c.blocks_modified()),
+            ("blocks_deleted", c.blocks_deleted()),
+        ] {
+            if !blocks.is_empty() {
+                parts.push(format!("{name}={blocks:?}"));
             }
         }
         if c.document_changed() {

@@ -6,7 +6,7 @@
 //! world positions that land on a pixel's middle (y = 50.5 is row 50).
 
 use arq_core::{CadDocument, Color, Document};
-use arq_geometry::{Point2, Vector2};
+use arq_geometry::{Line, Point2, Vector2};
 
 use super::*;
 use crate::scene::Scene;
@@ -233,4 +233,51 @@ fn a_diagonal_stays_exact_when_zoomed_in_a_million_times() {
     for (x, y) in [(50, 49), (60, 39), (40, 59)] {
         assert_ne!(pixel(&img, x, y), DARK.background, "({x}, {y})");
     }
+}
+
+#[test]
+fn a_preview_is_inked_on_transparency_and_fitted() {
+    use arq_core::DrawItem;
+    let item = |a: (f64, f64), b: (f64, f64)| DrawItem {
+        shape: Shape::Line(Line::new(p(a.0, a.1), p(b.0, b.1)).unwrap()),
+        color: Color::Index(1),
+    };
+    // A square far from the origin: it fills the preview whatever its place.
+    let square = [
+        item((1000.0, 1000.0), (1010.0, 1000.0)),
+        item((1010.0, 1000.0), (1010.0, 1010.0)),
+        item((1010.0, 1010.0), (1000.0, 1010.0)),
+        item((1000.0, 1010.0), (1000.0, 1000.0)),
+    ];
+    let ink = [200, 210, 220];
+    let image = crate::preview(&square, 40, ink);
+    assert_eq!(
+        (image.width, image.height, image.pixels.len()),
+        (40, 40, 40 * 40 * 4)
+    );
+    let at = |x: usize, y: usize| {
+        let i = (y * 40 + x) * 4;
+        <[u8; 4]>::try_from(&image.pixels[i..i + 4]).unwrap()
+    };
+    assert_eq!(at(20, 20)[3], 0, "transparent inside the square");
+    assert_eq!(at(0, 0)[3], 0, "and around it");
+    // The square's left side, 5 % in: about two pixels from the edge.
+    let left: Vec<[u8; 4]> = (1..4).map(|x| at(x, 20)).collect();
+    assert!(
+        left.iter().any(|px| px[3] > 0),
+        "the left side is drawn: {left:?}"
+    );
+    for px in image
+        .pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|px| px[3] == 255)
+    {
+        assert_eq!(&px[..3], ink, "every opaque pixel is the ink");
+    }
+    assert!(
+        crate::preview(&[], 8, ink).pixels.iter().all(|&b| b == 0),
+        "nothing: empty"
+    );
 }

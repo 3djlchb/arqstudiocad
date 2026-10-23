@@ -227,6 +227,9 @@ pub struct CadChangeSet {   // read through accessors of the same names
     layers_created: Vec<LayerId>,
     layers_modified: Vec<LayerId>,
     layers_deleted: Vec<LayerId>,
+    blocks_created: Vec<String>,   // block definitions, by name (ADR 0025 D3)
+    blocks_modified: Vec<String>,  // contents changed
+    blocks_deleted: Vec<String>,   // a rename is one deleted and one created
     document: bool,         // a document setting changed (e.g. current layer)
 }
 ```
@@ -239,8 +242,10 @@ pub struct CadChangeSet {   // read through accessors of the same names
 - Every core operation is one transaction (one undo step); commands that
   combine operations wrap them in a group, undone as one step and rolled back
   as one on failure.
-- Each committed transaction returns a `CadChangeSet`: entities and layers
-  created, modified and deleted, plus a document-level flag.
+- Each committed transaction returns a `CadChangeSet`: entities, layers and
+  block definitions created, modified and deleted, plus a document-level
+  flag. Entities are model-space entities only; a block's contents are
+  reported through its definition's name.
 
 ## 7. Contract E — Events and UI synchronization
 

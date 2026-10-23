@@ -254,3 +254,22 @@ fn block_references_count_everywhere_in_the_drawing() {
     assert_eq!(counts.get("MURO"), Some(&1));
     assert_eq!(counts.get("ROTULO"), None, "not inserted");
 }
+
+#[test]
+fn block_drawing_is_the_block_seen_from_its_base_point() {
+    let door = door_block(); // base (1,1): lines (1,1)-(2,1) and (1,1)-(1,2)
+    let doc = dxf(LAYERS, &[&door], &[]);
+    let mut ends: Vec<_> = doc
+        .block_drawing("puerta")
+        .expect("found ignoring case")
+        .into_iter()
+        .filter_map(|item| match item.shape {
+            Shape::Line(l) => Some(((l.start().x(), l.start().y()), (l.end().x(), l.end().y()))),
+            _ => None,
+        })
+        .collect();
+    ends.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(ends, [((0.0, 0.0), (0.0, 1.0)), ((0.0, 0.0), (1.0, 0.0))]);
+    assert!(doc.block_drawing("NADA").is_none());
+    assert!(doc.block_drawing("*Model_Space").is_none());
+}
