@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QMenu, QToolButton
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
-from arqstudiocad.core import CadChangeSet, CadDocument
+from arqstudiocad.core import CadChangeSet, CadColor, CadDocument
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui.blocks_panel import (
     TAG_BACKGROUND,
@@ -383,45 +383,49 @@ def test_the_core_names_changed_blocks_and_draws_their_previews() -> None:
     undone = document.undo()
     assert undone.blocks_deleted == ("Mesa",)
     document.redo()
-    data = document.block_preview("mesa", 32, (255, 0, 0))
+    data = document.block_preview("mesa", 32, (0, 0, 0), ink=(255, 0, 0))
     assert data is not None and len(data) == 32 * 32 * 4
     pixels = [data[i : i + 4] for i in range(0, len(data), 4)]
     assert any(px[3] for px in pixels) and pixels[0][3] == 0, "ink on transparency"
-    assert document.block_preview("nada", 32, (255, 0, 0)) is None
+    assert document.block_preview("Mesa", 32, (0, 0, 0)) is not None, "its own colors"
+    assert document.block_preview("nada", 32, (0, 0, 0)) is None
     with pytest.raises(ValueError, match="1 to 1024"):
-        document.block_preview("Mesa", 0, (255, 0, 0))
+        document.block_preview("Mesa", 0, (0, 0, 0))
 
 
 def cards(panel: BlocksPanel) -> list[str]:
     return [panel.grid.item(i).text() for i in range(panel.grid.count())]
 
 
-def test_the_grid_shows_cards_with_previews(window: MainWindow) -> None:
+def test_the_grid_shows_cards_with_previews_in_their_layers_colors(window: MainWindow) -> None:
     panel = opened(window)
-    drawing_with_blocks(window, "Mesa", "Silla", "Puerta")
+    document = drawing_with_blocks(window, "Silla", "Puerta")
+    red, _ = document.create_layer("Rojo")
+    document.set_layer_color(red, CadColor.from_index(1))
+    line, _ = document.add_line((0, 0), (4, 3))
+    document.set_entity_layer([line], red)
+    window.session.edit(document, lambda d: d.create_block("Mesa", (0, 0), [line])[1])
     assert panel.views.currentWidget() is panel.grid
     assert cards(panel) == ["Mesa", "Puerta", "Silla"] == shown(window)
-    card = panel.grid.item(0)
-    size = panel.grid.card_size()
-    plain = card.icon().pixmap(QSize(size, size), QIcon.Mode.Normal).toImage()
-    chosen = card.icon().pixmap(QSize(size, size), QIcon.Mode.Selected).toImage()
-    assert not plain.isNull() and plain != chosen, "accent strokes when selected"
+    size = QSize(panel.grid.card_size(), panel.grid.card_size())
 
-    def ink(image: QImage) -> QColor:
-        """The color of the most opaque pixel: the stroke's."""
+    def ink(name: str, mode: QIcon.Mode = QIcon.Mode.Normal) -> QColor:
+        """The color of the preview's most opaque pixel: its stroke's."""
+        card = panel.grid.item(cards(panel).index(name))
+        image = card.icon().pixmap(size, mode).toImage()
         pixels = [
             image.pixelColor(x, y) for x in range(image.width()) for y in range(image.height())
         ]
         return max(pixels, key=lambda c: c.alpha())
 
-    def near(a: QColor, b: QColor) -> bool:
-        return (
-            max(abs(a.red() - b.red()), abs(a.green() - b.green()), abs(a.blue() - b.blue())) <= 4
-        )
+    def near(color: QColor, rgb: tuple[int, int, int]) -> bool:
+        channels = (color.red(), color.green(), color.blue())
+        return max(abs(a - b) for a, b in zip(channels, rgb, strict=True)) <= 6
 
-    palette = panel.palette()
-    assert near(ink(chosen), palette.color(QPalette.ColorRole.Highlight)), "the theme's accent"
-    assert near(ink(plain), palette.color(QPalette.ColorRole.Text)), "the theme's text color"
+    assert near(ink("Mesa"), (255, 0, 0)), "the red layer's color"
+    dark = panel.palette().color(QPalette.ColorRole.Base).lightness() < 128
+    assert near(ink("Silla"), (255, 255, 255) if dark else (0, 0, 0)), "ACI 7 on the theme"
+    assert ink("Mesa", QIcon.Mode.Selected) == ink("Mesa"), "the card's frame shows selection"
     row = panel.table.topLevelItem(0)
     assert row is not None and not row.icon(0).isNull(), "a small preview in the list"
 

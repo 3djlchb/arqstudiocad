@@ -142,32 +142,29 @@ class PreviewCache:
         self.drawn = 0
 
     def icon(
-        self, document: CadDocument, name: str, size: int, ink: QPalette, ratio: float
+        self, document: CadDocument, name: str, size: int, colors: QPalette, ratio: float
     ) -> QIcon:
+        """Block ``name``'s preview in its layers' colors, as the viewport
+        draws them over the theme's Base color (maintainer, 2026-10-23)."""
         key = (document.id, size, name)
         found = self._icons.get(key)
         if found is None:
             found = QIcon()
-            dynamic = document.is_dynamic_block(name)
             pixels = max(1, round(size * ratio))
-            for role, mode in (
-                (QPalette.ColorRole.Text, QIcon.Mode.Normal),
-                (QPalette.ColorRole.Highlight, QIcon.Mode.Selected),
-            ):
-                color = ink.color(role)
-                data = document.block_preview(
-                    name, pixels, (color.red(), color.green(), color.blue())
-                )
-                if data is None:
-                    continue
+            base = colors.color(QPalette.ColorRole.Base)
+            data = document.block_preview(name, pixels, (base.red(), base.green(), base.blue()))
+            if data is not None:
                 image = QImage(
                     data, pixels, pixels, QImage.Format.Format_RGBA8888_Premultiplied
                 ).copy()
                 pixmap = QPixmap.fromImage(image)
                 pixmap.setDevicePixelRatio(ratio)
-                if dynamic:
+                if document.is_dynamic_block(name):
                     paint_tag(pixmap, size)
-                found.addPixmap(pixmap, mode)
+                # The same picture when selected: the card's frame shows the
+                # selection, and Qt would otherwise tint the colors.
+                found.addPixmap(pixmap, QIcon.Mode.Normal)
+                found.addPixmap(pixmap, QIcon.Mode.Selected)
                 self.drawn += 1
             self._icons[key] = found
         return found
@@ -434,7 +431,7 @@ class BlocksPanel(QDockWidget):
         """Refresh palette-based colors after a theme change."""
         apply_data_view_style(self.table)
         self.details.restyle()
-        # Previews are inked with the theme's colors: drawn again.
+        # Previews are drawn over the theme's Base color: drawn again.
         self.previews.clear()
         colors = self.palette()
         muted = colors.color(QPalette.ColorRole.PlaceholderText).name()

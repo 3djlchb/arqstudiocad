@@ -47,6 +47,8 @@ offer them (ADR 0023 D2).
    - *Grid view*: three columns of cards. Each card holds a preview of the
      block (line drawing on `Base`, light grey strokes; accent strokes
      when selected) and its name below, elided with an ellipsis.
+     *Changed (maintainer, 2026-10-23): previews keep their layers'
+     colors, a fixed 64 px, as many columns as fit; see ADR 0025.*
    - *List view*: the shared compact table style (`panel_style.py`): a
      header row, then rows with a small preview, the name, and a right
      column: "In drawing" (number of references) for Template and Drawing,

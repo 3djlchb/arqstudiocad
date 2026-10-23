@@ -212,7 +212,7 @@ Each step is its own pull request with tests, as ADR 0023 D5:
 - **Step 3 (2026-10-22):** previews and the grid view.
   - `CadChangeSet` names the block definitions a change created, modified (its contents) and deleted (contract §6, amended). The fields are found at commit by comparing the block tables, inverted by undo and merged across steps.
   - `Document::block_drawing` draws a block as a reference at the origin would, every layer shown. `arq_render::preview` fits that drawing to a square, in one ink on transparency.
-  - The palette inks each preview twice, in the theme's Text color and in its Highlight color, so a selected card shows accent strokes as the mockup.
+  - Each preview keeps the colors of its layers, as the viewport draws them over the theme's Base color (ACI 7 white on dark, black on light); `preview` can still ink a drawing in one color. A selected card shows its selection by the card's frame, not by tinting the drawing *(maintainer, 2026-10-23, instead of the mockup's grey strokes with accent when selected)*.
   - Previews are cached in the palette per drawing, size and block. A change that names any block forgets that drawing's previews, since one block may hold another; so does a theme change.
   - The grid is the default view, names elided. Its previews are a fixed 64 px and the list's 24 px, so a wider palette holds more columns rather than bigger cards, and resizing it never draws a preview again *(maintainer, 2026-10-23, instead of the mockup's three cards to a row)*. The list shows a small preview by each name. One selection drives both views, and the chosen view is remembered in the settings.
 - **Step 4 (2026-10-23):** the dynamic-block tag.

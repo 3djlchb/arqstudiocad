@@ -472,14 +472,16 @@ impl CadDocument {
 
     /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a
     /// `size` × `size` RGBA image (premultiplied, rows top to bottom), its
-    /// drawing fitted in, every stroke in `ink` on transparency. None unless
-    /// INSERT can place it.
+    /// drawing fitted in on transparency, in its own colors as seen over
+    /// `background`, or all in `ink`. None unless INSERT can place it.
+    #[pyo3(signature = (name, size, background, ink=None))]
     fn block_preview<'py>(
         &self,
         py: Python<'py>,
         name: &str,
         size: u32,
-        ink: (u8, u8, u8),
+        background: (u8, u8, u8),
+        ink: Option<(u8, u8, u8)>,
     ) -> PyResult<Option<Bound<'py, pyo3::types::PyBytes>>> {
         if !(1..=1024).contains(&size) {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -488,7 +490,12 @@ impl CadDocument {
         }
         let items = self.read(|cad| cad.document().block_drawing(name))?;
         Ok(items.map(|items| {
-            let image = arq_render::preview(&items, size, [ink.0, ink.1, ink.2]);
+            let image = arq_render::preview(
+                &items,
+                size,
+                [background.0, background.1, background.2],
+                ink.map(|(r, g, b)| [r, g, b]),
+            );
             pyo3::types::PyBytes::new(py, &image.pixels)
         }))
     }

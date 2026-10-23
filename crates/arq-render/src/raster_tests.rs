@@ -250,7 +250,7 @@ fn a_preview_is_inked_on_transparency_and_fitted() {
         item((1000.0, 1010.0), (1000.0, 1000.0)),
     ];
     let ink = [200, 210, 220];
-    let image = crate::preview(&square, 40, ink);
+    let image = crate::preview(&square, 40, [33, 40, 48], Some(ink));
     assert_eq!(
         (image.width, image.height, image.pixels.len()),
         (40, 40, 40 * 40 * 4)
@@ -277,7 +277,45 @@ fn a_preview_is_inked_on_transparency_and_fitted() {
         assert_eq!(&px[..3], ink, "every opaque pixel is the ink");
     }
     assert!(
-        crate::preview(&[], 8, ink).pixels.iter().all(|&b| b == 0),
+        crate::preview(&[], 8, [33, 40, 48], Some(ink))
+            .pixels
+            .iter()
+            .all(|&b| b == 0),
         "nothing: empty"
     );
+}
+
+#[test]
+fn a_preview_keeps_each_shape_color_on_its_background() {
+    use arq_core::DrawItem;
+    let line = |y: f64, color: Color| DrawItem {
+        shape: Shape::Line(Line::new(p(0.0, y), p(10.0, y)).unwrap()),
+        color,
+    };
+    let items = [line(0.0, Color::Index(1)), line(10.0, Color::Index(7))];
+    // The colors of the strokes, back from premultiplied alpha.
+    let colors = |background: [u8; 3]| -> Vec<[u8; 3]> {
+        let image = crate::preview(&items, 40, background, None);
+        let (pixels, _) = image.pixels.as_chunks::<4>();
+        pixels
+            .iter()
+            .filter(|px| px[3] >= 96)
+            .map(|px| {
+                let a = f64::from(px[3]);
+                [0, 1, 2].map(|i| (f64::from(px[i]) * 255.0 / a).round().min(255.0) as u8)
+            })
+            .collect()
+    };
+    let near = |found: &[[u8; 3]], want: [u8; 3]| {
+        found
+            .iter()
+            .any(|c| (0..3).all(|i| c[i].abs_diff(want[i]) <= 6))
+    };
+    let dark = colors([33, 40, 48]);
+    assert!(near(&dark, [255, 0, 0]), "red, as its layer says");
+    assert!(near(&dark, [255, 255, 255]), "ACI 7 white on dark");
+    let light = colors([255, 255, 255]);
+    assert!(near(&light, [255, 0, 0]));
+    assert!(near(&light, [0, 0, 0]), "ACI 7 black on light");
+    assert!(!near(&light, [255, 255, 255]));
 }
