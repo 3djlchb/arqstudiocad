@@ -81,10 +81,17 @@ incompatible. Sigue el [flujo de trabajo para agentes de IA](docs/AI_AGENT_WORKF
 el contexto de chats anteriores no sustituye revisar la rama, los cambios, el
 código, las pruebas y los ADR aplicables.
 
+Cuando trabajan varios agentes a la vez, cada tarea tiene su propia copia de
+trabajo, una carpeta hermana con su propia rama, creada con
+`tools/new_worktree.ps1 <tema>` (Windows) o `tools/new_worktree.sh <tema>`;
+la carpeta principal se queda en `main` (consulta "Working copies" en
+[AGENTS.md](AGENTS.md)).
+
 ## Ramas, commits y pull requests
 
 - Una rama por funcionalidad o corrección, llamada `feature/<tema>` o
-  `fix/<tema>` (`feature/native-format`, `fix/document-roundtrip`).
+  `fix/<tema>` (`feature/native-format`, `fix/document-roundtrip`). Los hooks
+  de pre-commit rechazan los commits en `main`.
 - Un tema por pull request; lo pequeño es más fácil de revisar y de revertir.
 - Mensajes de commit: una primera línea en inglés, en imperativo
   (`Add LINE command`), y un cuerpo que explique el *porqué* cuando no sea obvio.
