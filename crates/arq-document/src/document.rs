@@ -112,7 +112,9 @@ impl Document {
         ))
     }
 
-    /// The drawing as DXF bytes.
+    /// The drawing as DXF bytes. AutoCAD Architecture (AEC) records with no
+    /// DXF form are left out by the engine (0.6.7); the safe save finds
+    /// them missing and asks before losing them (ADR 0017 D5.3).
     pub fn to_dxf_bytes(&self) -> DocumentResult<Vec<u8>> {
         Ok(DxfWriter::new(&self.cad).write_to_vec()?)
     }

@@ -518,13 +518,13 @@ fn codec_samples_round_trip() {
 }
 
 /// The same constraint drawing in seven DWG versions (LibreDWG's test
-/// data). R14 to 2010 store their constraint group and its geometry
-/// dependencies in an old layout the engine cannot decode yet: they must
-/// open intact, keep those objects verbatim, and lose nothing when saved in
-/// their own version (ADR 0017 D2, D5.4).
+/// data). R14 to 2010 store their constraint group in an old layout that
+/// was kept verbatim until AcadRust 0.6.6 decoded it (the original's #135):
+/// every version must open intact, with nothing left undecoded, and lose
+/// nothing when saved in its own version (ADR 0017 D2, D5.4).
 #[test]
 #[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
-fn codec_regression_constraints_kept_undecoded() {
+fn codec_regression_constraints_read() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
     assert!(
         root.is_dir(),
@@ -555,13 +555,9 @@ fn codec_regression_constraints_kept_undecoded() {
             .and_then(Path::file_name)
             .map(|v| v.to_string_lossy().into_owned())
             .unwrap_or_default();
-        let old_layout = ["r14", "2000", "2004", "2007", "2010"].contains(&version.as_str());
         let undecoded = doc.undecoded_objects();
-        let has_group = undecoded
-            .iter()
-            .any(|o| o.starts_with("ACDBASSOC2DCONSTRAINTGROUP"));
-        if old_layout != has_group {
-            problems.push(format!("{name}: undecoded {undecoded:?}"));
+        if !undecoded.is_empty() {
+            problems.push(format!("{name} ({version}): undecoded {undecoded:?}"));
         }
         if doc.snapshot().undecoded_objects() != undecoded {
             problems.push(format!("{name}: a snapshot forgets what is undecoded"));
@@ -614,14 +610,11 @@ fn codec_regression_fork_fixes() {
     );
     // R2004 lofted surface with a binary extra modeler block.
     assert_eq!(count(&open("2004/Surface.dwg"), "SURFACE"), 5);
-    // Solid history (ACSH_*), kept verbatim by our patch.
+    // Solid history (ACSH_*), once kept verbatim by our patch, decoded by
+    // AcadRust since 0.6.6 (the round trip below checks nothing is lost).
     let atmos = open("2007/ATMOS-DC22S.dwg");
     let undecoded = atmos.undecoded_objects();
-    assert_eq!(undecoded.len(), 9, "{undecoded:?}");
-    assert!(
-        undecoded.iter().all(|o| o.starts_with("ACSH_")),
-        "{undecoded:?}"
-    );
+    assert!(undecoded.is_empty(), "{undecoded:?}");
     // Old-layout geometry dependencies, once kept undecoded too: AcadRust
     // now decodes them (the round trip below checks nothing is lost).
     for name in [
