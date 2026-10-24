@@ -169,7 +169,7 @@ impl Document {
         self.cad_mut()
             .layers
             .add(layer)
-            .map_err(DocumentError::Codec)?;
+            .map_err(|e| DocumentError::Codec(e.to_string()))?;
         self.sync_layers();
         self.note_layer(id, LayerNote::Created);
         Ok(id)
@@ -194,7 +194,7 @@ impl Document {
         self.record_all_entities();
         self.cad_mut()
             .rename_layer(&old, new_name)
-            .map_err(DocumentError::Codec)?;
+            .map_err(|e| DocumentError::Codec(e.to_string()))?;
         // Entities keep their layer's id; the model names it from the table.
         self.sync_layers();
         self.note_layer(id, LayerNote::Modified);

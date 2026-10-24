@@ -278,11 +278,14 @@ def test_new_save_open_close_from_the_command_line(tmp_path: Path) -> None:
     assert h.messages()[-1] == "No drawing is open."
 
 
-#: LibreDWG's constraint drawing in the 2010 version: its constraint group
-#: is kept undecoded (fetched by tools/fetch_codec_samples.py).
+#: LibreDWG's constraint drawing in the 2010 version, its constraint group
+#: decoded since AcadRust 0.6.6 (fetched by tools/fetch_codec_samples.py).
 CONSTRAINTS_2010 = (
     Path(__file__).resolve().parents[2] / "target/corpus/libredwg/2010/Constraints.dwg"
 )
+#: LibreDWG's 2004 lofted surfaces: two edge action parameters the engine
+#: keeps undecoded.
+SURFACE_2004 = Path(__file__).resolve().parents[2] / "target/corpus/libredwg/2004/Surface.dwg"
 
 
 def regression_drawing(path: Path) -> Path:
@@ -297,16 +300,18 @@ def regression_drawing(path: Path) -> Path:
 
 def test_open_notes_objects_kept_undecoded() -> None:
     h = harness()
-    h.run("OPEN", str(regression_drawing(CONSTRAINTS_2010)))
+    h.run("OPEN", str(regression_drawing(SURFACE_2004)))
     doc = h.session.active
     assert doc is not None and doc.recovery_problems == []
-    # The engine decodes its geometry dependencies; the constraint group in
-    # its old layout stays kept as it is.
-    assert doc.undecoded_objects == ["ACDBASSOC2DCONSTRAINTGROUP (3E3)"]
+    kept = ["ACDBASSOCEDGEACTIONPARAM (2E3)", "ACDBASSOCEDGEACTIONPARAM (50F)"]
+    assert doc.undecoded_objects == kept
     assert h.messages()[-1] == (
-        "1 objects the program cannot read yet are kept as they are: "
-        "ACDBASSOC2DCONSTRAINTGROUP (3E3)"
+        "2 objects the program cannot read yet are kept as they are: " + ", ".join(kept)
     )
+    # The constraint group's old layout, once kept so, is read since 0.6.6.
+    h.run("OPEN", str(regression_drawing(CONSTRAINTS_2010)))
+    constraints = h.session.active
+    assert constraints is not None and constraints.undecoded_objects == []
 
 
 def test_a_recovered_drawing_is_reported_and_not_saved_over_unasked(tmp_path: Path) -> None:

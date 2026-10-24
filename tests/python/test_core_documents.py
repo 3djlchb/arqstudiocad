@@ -49,8 +49,8 @@ def test_a_file_with_nothing_to_recover_is_refused(app: CadApplication, tmp_path
 
 
 def test_a_drawing_read_intact_keeps_nothing_undecoded(app: CadApplication, tmp_path: Path) -> None:
-    # The constraint drawings that have such objects are fetched for the
-    # Rust corpus (`codec_regression_constraints_kept_undecoded`).
+    # A drawing that has such objects (LibreDWG's 2004 Surface.dwg) is
+    # fetched for `test_open_notes_objects_kept_undecoded`.
     doc = app.create_document("x")
     doc.add_line((0, 0), (1, 1))
     doc.save(tmp_path / "x.dwg")

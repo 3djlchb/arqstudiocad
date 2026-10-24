@@ -31,8 +31,8 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   options and actions, and step 2d PROPERTIES (Ctrl+1) with Layers and
   Properties in the Palettes group; step 3 drew its previews and the grid
   of cards. The remaining design is recorded in the proposed ADR 0025.
-- **Engine:** AcadRust after 0.6.5, patched from our fork (ADR 0017's log,
-  2026-10-20).
+- **Engine:** AcadRust 0.6.7, patched from our fork (ADR 0017's log,
+  2026-10-24).
 - **Before:** milestone 02.7 uses the spatial index for bounding-box
   queries and as the broad phase for picking, window/crossing selection, and
   object snaps; exact geometry checks remain in place. A crash-isolated wgpu
@@ -90,7 +90,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 
 | Milestone | Content | Status |
 |---|---|---|
-| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ (since 2026-10-20 AcadRust after 0.6.5, patched from our fork: ADR 0017's log) |
+| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ (since 2026-10-24 AcadRust 0.6.7, patched from our fork: ADR 0017's log) |
 | 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; kept in our AcadRust fork | ✅ every measured difference checked and the right ones brought in (R2004 lofted surfaces); the fork's wrong readings replaced by keeping objects verbatim; R11 linetypes, TOLERANCE in DXF and our own RAY and ACIS checks fixed; LibreDWG's seven regression drawings round-trip |
 | 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ✅ damaged files refused or recovered and marked; saves read back and checked; losses asked before saving; regression drawings made by the tests |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ reproducible integrated-core read/safe-save report (`tools/compatibility_matrix.py`); initial 30-file run: DWG 27 verified / 3 refused, DXF 16 verified / 14 refused; two legacy MULTILEADERSTYLE refusals explained and regression-tested; synthetic Xref corpus checks path, flags and INSERT transformations through DWG/DXF; reference resolution, broader version/operation coverage, visual/semantic fidelity and external validation remain open ([measurements](DWG_DXF_INTEROPERABILITY.md#integrated-product-matrix-034)) |

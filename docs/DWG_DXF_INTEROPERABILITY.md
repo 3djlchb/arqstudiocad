@@ -2,7 +2,7 @@
 
 Module M02, phase 03. The decision is
 [ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md): AcadRust
-(crates.io, `=0.6.5`, patched from our fork) as the base, behind `arq-document`; opencadcodec's
+(crates.io, `=0.6.7`, patched from our fork) as the base, behind `arq-document`; opencadcodec's
 improvements brought in one by one; LibreDWG out of the product. The
 evidence is the [library comparison](references/dwg-library-comparison.md)
 (220 drawings, 6,600 operations); the tool is `tools/dwg-bench`.
@@ -40,7 +40,7 @@ when its parameters change).
 | Meshes, 3D faces | ✅ | 100 % / 100 % | ◐ edges in plan | ○ | — | |
 | Ellipses, splines, 2D solids | ✅ | ✅ (not measured separately) | ◐ broken into lines and arcs | ○ | — | |
 | Dynamic blocks | ✅ definitions, parameters, actions, grips | 100 % / 100 % | ✅ current state (the evaluated block) | ○ | ○ visibility, stretch… | ADR 0016 D7, our parametric engine (ADR 0017 D6), milestone 04.1 |
-| Geometric and dimensional constraints | ✅ 2013+; ◐ R14–2010 kept undecoded (old layout, decoding pending) | ✅ preserved; R14–2010 byte for byte in the same version; lost as DXF (asked) | — | ○ | ○ | 03.2; opencadcodec's reading proved wrong for the old layout |
+| Geometric and dimensional constraints | ✅ every version, R14–2010's old layout included (since AcadRust 0.6.7) | ✅ preserved, DWG and DXF, no loss (LibreDWG's `Constraints.dwg`, R14–2018) | — | ○ | ○ | 03.2; the old layout decoded by the original's #135, from opencadcodec |
 | Associative network (ASSOC*) | ✅ | 100 % / 100 % | — | ○ | ○ | |
 | XDATA, XRECORD | ✅ | 100 % (measured on 14,169 entities) | — | ○ | — | where application data goes in DWG |
 | Custom / proxy / AEC objects (BIM) | ✅ preserved | 100 % in the same DWG version; refused on conversion to 2018 | ○ proxy graphics | — | — | lost as DXF: asked first ([No silent loss](#no-silent-loss)) |

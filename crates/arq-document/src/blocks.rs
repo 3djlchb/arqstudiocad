@@ -229,7 +229,7 @@ impl Document {
         self.cad_mut()
             .block_records
             .add(record)
-            .map_err(DocumentError::InvalidBlockName)?;
+            .map_err(|e| DocumentError::InvalidBlockName(e.to_string()))?;
         Ok(h)
     }
 

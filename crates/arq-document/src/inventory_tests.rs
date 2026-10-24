@@ -145,3 +145,34 @@ fn intact_xdata_is_no_loss() {
         with_xdata().save(dir.path().join(name)).unwrap();
     }
 }
+
+/// AutoCAD Architecture records have no DXF form in the engine yet: a DXF
+/// save leaves them out and asks first, never failing the whole file nor
+/// dropping them silently (ADR 0017 D5.3).
+#[test]
+fn aec_records_are_a_loss_asked_about_in_dxf() {
+    use acadrust::classes::arch::ArchObject;
+    use acadrust::objects::ObjectType;
+
+    let mut doc = Document::new();
+    let owner = doc.cad().header.named_objects_dict_handle;
+    let handle = doc.cad_mut().allocate_handle();
+    doc.cad_mut().objects.insert(
+        handle,
+        ObjectType::Arch(ArchObject::new(
+            "AEC_DISP_PROPS_LAYOUT_GRID2D",
+            handle,
+            owner,
+        )),
+    );
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plano.dxf");
+    let Err(DocumentError::Lossy { losses, .. }) = doc.save(&path) else {
+        panic!("the AEC record's loss is asked about")
+    };
+    let kinds: Vec<&str> = losses.iter().map(super::Loss::kind).collect();
+    assert_eq!(kinds, ["object AEC_DISP_PROPS_LAYOUT_GRID2D"]);
+    assert!(!path.exists(), "nothing written");
+    doc.save_accepting(&path, |_| true).unwrap();
+    assert!(path.exists(), "saved once the loss is accepted");
+}
