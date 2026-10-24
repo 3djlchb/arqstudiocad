@@ -308,6 +308,13 @@ impl CadBlockInfo {
         self.0.dynamic
     }
 
+    /// A dynamic block's parameters the user sees, by name; empty for a
+    /// static block or when they cannot be read.
+    #[getter]
+    fn parameters(&self) -> Vec<String> {
+        self.0.parameters.clone()
+    }
+
     fn __repr__(&self) -> String {
         format!("CadBlockInfo(name={:?})", self.0.name)
     }

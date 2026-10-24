@@ -10,7 +10,7 @@
 //! | What to draw, kept up to date from change sets | [`Scene`] |
 //! | Which part of the plan is shown | [`Camera`] |
 //! | Paint it into an image on the CPU | [`render`] → [`Image`], with a [`Style`] |
-//! | A block's preview, in one color on transparency | [`preview`] |
+//! | A block's preview, in its colors on transparency | [`preview`] |
 //! | ACI colors | [`aci_rgb`], [`aci_rgb_on`] |
 
 mod aci;

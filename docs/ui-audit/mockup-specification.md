@@ -132,7 +132,7 @@ in the application. No new frontend framework or product dependency is proposed.
 ## Separate future-design board
 
 If later authorized, add a visibly labeled ADR 0025 proposal view: Drawing /
-Template / Recent, grid/list previews, dynamic DB/BD badge, Selected block,
+Template / Recent, grid/list previews, dynamic-block star badge, Selected block,
 Insert options, Insert/Edit/New and cross-file clash dialogue. Follow the ADR's
 View tab, Ctrl+3, proposed Ctrl+1 and free Ctrl+2, rather than the older brief's
 Insert-tab shortcut suggestions. Template work is read-only; insertion goes

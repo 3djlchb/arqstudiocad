@@ -59,19 +59,19 @@ pub fn render(scene: &Scene, camera: &Camera, style: Style) -> Image {
     )
 }
 
-/// A picture of `items` fitted to a `size` × `size` square, every shape in
-/// one color, `ink`, on a transparent background: a block's preview in the
-/// Blocks palette (ADR 0025 D3), tinted by whoever shows it.
-pub fn preview(items: &[DrawItem], size: u32, ink: [u8; 3]) -> Image {
-    let [r, g, b] = ink;
-    let inked = items
+/// A picture of `items` fitted to a `size` × `size` square on a transparent
+/// background: a block's preview in the Blocks palette (ADR 0025 D3). Each
+/// shape keeps its own color, as the viewport draws it over `background`
+/// (ACI 7 white on dark, black on light), unless `ink` paints them all.
+pub fn preview(items: &[DrawItem], size: u32, background: [u8; 3], ink: Option<[u8; 3]>) -> Image {
+    let shown = items
         .iter()
         .map(|item| DrawItem {
             shape: item.shape,
-            color: Color::Rgb { r, g, b },
+            color: ink.map_or(item.color, |[r, g, b]| Color::Rgb { r, g, b }),
         })
         .collect();
-    let scene = Scene::from_items(inked);
+    let scene = Scene::from_items(shown);
     let size = size.max(1);
     let mut camera = Camera::new(size, size);
     if let Some(bounds) = scene.bounds() {
@@ -80,7 +80,7 @@ pub fn preview(items: &[DrawItem], size: u32, ink: [u8; 3]) -> Image {
     paint(
         &scene,
         &camera,
-        Style::default(),
+        Style { background },
         tiny_skia::Color::TRANSPARENT,
     )
 }

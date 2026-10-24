@@ -131,6 +131,7 @@
   "Drawings (*.dwg *.dxf);;DWG drawings (*.dwg);;DXF drawings (*.dxf)": "Dibujos (*.dwg *.dxf);;Dibujos DWG (*.dwg);;Dibujos DXF (*.dxf)",
   "Drawing{number}": "Dibujo{number}",
   "Dynamic block": "Bloque dinámico",
+  "Dynamic block · {parameters}": "Bloque dinámico · {parameters}",
   "E&xit": "&Salir",
   "E&xplode": "Desco&mponer",
   "Edit block": "Editar bloque",
