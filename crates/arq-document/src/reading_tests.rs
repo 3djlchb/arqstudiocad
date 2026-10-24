@@ -141,9 +141,10 @@ fn truncated_old_dwg_is_damaged_not_empty() {
     }
 }
 
-/// A corrupt 2007 DWG made the engine panic.
+/// A corrupt 2007 DWG made the engine panic; since AcadRust 0.6.6 it
+/// reports the failure instead. Either way the file is damaged, said once.
 #[test]
-fn an_engine_panic_is_a_damaged_file() {
+fn an_engine_failure_is_a_damaged_file() {
     let error = read(
         flip_middle(&dwg(DxfVersion::AC1021)),
         FileFormat::Dwg,
@@ -153,10 +154,10 @@ fn an_engine_panic_is_a_damaged_file() {
     let DocumentError::Damaged { problems, .. } = error else {
         panic!("{error}")
     };
+    assert_eq!(problems.len(), 1, "{problems:?}");
     assert!(
-        problems
-            .iter()
-            .any(|p| p.starts_with("the reader stopped unexpectedly")),
+        problems[0].starts_with("the reader stopped unexpectedly")
+            || problems[0].contains("DWG reader failed"),
         "{problems:?}"
     );
 }

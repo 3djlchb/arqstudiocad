@@ -173,6 +173,7 @@ fn object_name(o: &ObjectType) -> String {
     match o {
         ObjectType::DynamicBlock(d) => d.dxf_name.to_uppercase(),
         ObjectType::Associative(a) => a.dxf_name.to_uppercase(),
+        ObjectType::Arch(a) => a.dxf_name.to_uppercase(),
         ObjectType::BlockVisibilityParameter(_) => "BLOCKVISIBILITYPARAMETER".to_owned(),
         ObjectType::Unknown { type_name, .. } => type_name.to_uppercase(),
         ObjectType::ProxyObject(_) => "ACAD_PROXY_OBJECT".to_owned(),

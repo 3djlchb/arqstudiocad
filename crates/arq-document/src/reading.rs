@@ -83,7 +83,10 @@ pub(crate) fn read(bytes: Vec<u8>, format: FileFormat, path: &Path) -> DocumentR
         }
         Ok(_) => Err(damaged(path, problems)),
         Err(problem) => {
-            problems.push(problem);
+            // Both reads often fail alike: say it once.
+            if !problems.contains(&problem) {
+                problems.push(problem);
+            }
             Err(damaged(path, problems))
         }
     }

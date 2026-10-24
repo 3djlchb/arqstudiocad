@@ -32,7 +32,7 @@ pyo3 = "0.29.3"
 # DWG/DXF engine (ADR 0017): AcadRust from crates.io, pinned to the exact version
 # measured. Upgrade only deliberately, after the round-trip corpus and
 # tools/dwg-bench pass, and record it in ADR 0017's log.
-acadrust = "=0.6.5"
+acadrust = "=0.6.7"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -49,7 +49,8 @@ codegen-units = 1
 # AcadRust after 0.6.5 (the original's 2b12197) with our changes, kept in
 # our fork (ADR 0017 D2): class objects that fail to decode kept verbatim;
 # inline surfaces' binary extra modeler block; TOLERANCE text and box in
-# DXF; R11/R12 current layer, style and linetype names; DXF hatch
-# elliptic edge angles in degrees. Branch
-# arqstudiocad/on-2b12197 of our fork; THIRD_PARTY.md lists them.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "5f473ccba816c7b6ff937e32de0df4174bde28c4" }
+# DXF; R11/R12 current layer, style and linetype names (the original now
+# writes DXF hatch elliptic edge angles in degrees itself). Branch
+# arqstudiocad/on-c5555a5 of our fork, on the original's c5555a5 (0.6.7);
+# THIRD_PARTY.md lists them.
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "955bdd8e68d554be1db681541bd1e53140a79ebc" }
