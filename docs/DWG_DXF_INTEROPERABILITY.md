@@ -288,10 +288,18 @@ Loading external geometry, nested/overlay propagation, missing-file reporting,
 cycles, cached geometry, authored DWG hosts and independent application checks
 remain open. The generic matrix remains a read/safe-save report, unchanged.
 
-For the next independently authored Xref set, follow the
-[ProgeCAD exercise](testing/progecad-xrefs.md). The maintainer has ProgeCAD
-but has not yet created this set; no external result is claimed. The future
-inventory/resolver/display/reload design is [ADR 0026](architecture/adr/0026-external-reference-loading.md)
+The [ProgeCAD exercise](testing/progecad-xrefs.md) now has six independently
+authored DWG 2013 sources. Both the initial 0.6.5 run and the 0.6.7 rerun after
+PRs #61/#62 read all six cleanly and pass twelve core safe saves, without
+accepted losses. Ten retained host outputs per run were reopened in ProgeCAD.
+**Unloaded state is lost on DXF export in both runs**, despite a core-verified
+save; DWG retains it. Paths, attachment/overlay behavior and INSERT parameters
+match the stated checks in the other observed cases. Full numerical/reload
+acceptance remains open. The separate local Rust corpus fails the five hosts
+because their external INSERTs draw nothing; its rendering-policy decision is
+still pending. See [hashes, observations, checks and limits](testing/progecad-xrefs-results.md).
+The future inventory/resolver/display/reload design is
+[ADR 0026](architecture/adr/0026-external-reference-loading.md)
 (proposed, implementation in phase 04 or later).
 
 ### Historical library comparison

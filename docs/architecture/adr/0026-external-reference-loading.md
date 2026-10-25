@@ -9,8 +9,12 @@ Date: 2026-10-22 · Status: **Proposed** · Builds on [0017](0017-dwg-dxf-engine
 Milestone 03.4 now checks synthetic Xref metadata preservation. The product
 does not yet provide a public reference inventory or an external-file resolver.
 The maintainer requests external validation in ProgeCAD and a loading design.
-The [exercise](../../testing/progecad-xrefs.md) is prepared; no independently
-authored set or external result is available yet.
+The [exercise](../../testing/progecad-xrefs.md) now has six independently
+authored ProgeCAD DWGs and external reopen observations for outputs from
+AcadRust 0.6.5 and 0.6.7 ([results](../../testing/progecad-xrefs-results.md)).
+Unloaded state is lost in DXF, while the local corpus also rejects unrepresented
+Xref INSERTs. These findings do not change this ADR's Proposed status or
+authorize its implementation; the provisional-marker/test policy remains open.
 
 Existing implementation anchors:
 
