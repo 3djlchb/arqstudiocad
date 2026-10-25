@@ -519,7 +519,22 @@ impl<'a> Painter<'a> {
                     ))
                     .then(&Transform::from_translation(ins.insert_point))
                     .then(&ocs);
-                self.expand_block(&ins.block_name, &t, layer, color, ctx, out);
+                if record.flags.is_xref
+                    || record.flags.is_xref_overlay
+                    || record.flags.is_xref_unloaded
+                    || !record.xref_path.is_empty()
+                {
+                    if self.style(layer).shown {
+                        let label = record
+                            .xref_path
+                            .rsplit(['/', '\\'])
+                            .find(|part| !part.is_empty())
+                            .unwrap_or(&record.name);
+                        xref_marker(label, base, &t, color, out);
+                    }
+                } else {
+                    self.expand_block(&ins.block_name, &t, layer, color, ctx, out);
+                }
             }
         }
         // Attribute values already sit in world coordinates.
@@ -568,6 +583,51 @@ impl<'a> Painter<'a> {
                 self.emit(&moved, &inner, out);
             }
         }
+    }
+}
+
+/// A derived filename label, never inserted into the persistent document.
+/// Transform the strokes themselves so mirrored and nonuniform scales survive.
+fn xref_marker(label: &str, base: Vector3, t: &Transform, color: Color, out: &mut Vec<DrawItem>) {
+    use crate::text_layout::{HAlign, TextFrame, VAlign, layout};
+    let frame = TextFrame {
+        lines: vec![label.to_owned()],
+        first: (0.0, 0.0),
+        second: None,
+        height: 1.0,
+        rotation: 0.0,
+        width_factor: 1.0,
+        oblique: 0.0,
+        h: HAlign::Left,
+        v: VAlign::Baseline,
+        backward: false,
+        upside_down: false,
+        normal: crate::ocs::PlanNormal::Up,
+        wrap: None,
+    };
+    let Some(laid) = layout(&frame) else { return };
+    let map = |p: Point2| {
+        let q = t.apply(Vector3::new(base.x + p.x(), base.y + p.y(), base.z));
+        (q.x, q.y)
+    };
+    let start = out.len();
+    for (a, b) in laid.strokes {
+        if let Some(shape) = segment(map(a), map(b)) {
+            out.push(DrawItem { shape, color });
+        }
+    }
+    if let Some(bounds) = out[start..]
+        .iter()
+        .map(|i| i.shape.bounds())
+        .reduce(Bounds2::union)
+    {
+        out.insert(
+            start,
+            DrawItem {
+                shape: Shape::Text(bounds),
+                color,
+            },
+        );
     }
 }
 
