@@ -1,10 +1,12 @@
 # ProgeCAD Xref validation exercise
 
-Status: ready to execute; **no external validation result recorded yet**.
-Milestones 03.4/03.5. The maintainer confirmed ProgeCAD 2026 on 2026-10-22,
-but does not yet have an authored Xref set. Record the edition, exact build,
-language and DWG save version before starting; these remain unknown.
-The application version does not establish the DWG save version.
+Status: six source DWGs have been authored in ProgeCAD 2026 Professional
+(Spanish), saved as DWG 2013 (AC1027). The initial 0.6.5 run and the rerun after
+AcadRust 0.6.7 / Blocks palette step 4 are recorded in
+[the results](progecad-xrefs-results.md). Ten outputs per run were reopened.
+An unloaded-reference DXF fidelity failure and the local corpus's empty-Xref
+rendering failure remain open, along with numerical measurements and reload.
+The exact ProgeCAD build has not been recorded. Milestones 03.4/03.5 remain open.
 
 This exercise creates original drawings in ProgeCAD. Do not substitute the
 synthetic DXFs in `tests/fixtures/xrefs/`: those test adapter metadata, not
