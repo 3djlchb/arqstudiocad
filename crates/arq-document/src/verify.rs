@@ -52,12 +52,104 @@ impl Document {
             |a, b| rules.same_layer(a, b),
             &mut differences,
         );
+        self.compare_xrefs(written, &mut differences);
         if differences.len() > MAX_DIFFERENCES {
             let more = differences.len() - MAX_DIFFERENCES;
             differences.truncate(MAX_DIFFERENCES);
             differences.push(format!("and {more} more"));
         }
         differences
+    }
+}
+
+/// Reference metadata is independent of visible geometry and inventory counts.
+/// In particular, accepting count losses must never accept a changed unload state.
+impl Document {
+    fn compare_xrefs(&self, written: &Document, differences: &mut Vec<String>) {
+        let references = |doc: &Document| {
+            doc.cad()
+                .block_records
+                .iter()
+                .filter(|b| {
+                    b.flags.is_xref
+                        || b.flags.is_xref_overlay
+                        || b.flags.is_xref_unloaded
+                        || !b.xref_path.is_empty()
+                })
+                .map(|b| {
+                    (
+                        b.name.to_uppercase(),
+                        (
+                            b.xref_path.clone(),
+                            b.flags.is_xref,
+                            b.flags.is_xref_overlay,
+                            b.flags.is_xref_unloaded,
+                        ),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
+        let expected = references(self);
+        let found = references(written);
+        for name in expected.keys().chain(found.keys()).collect::<BTreeSet<_>>() {
+            if expected.get(name) != found.get(name) {
+                differences.push(format!(
+                    "Xref {name} metadata changed: was {:?}, now {:?}",
+                    expected.get(name),
+                    found.get(name)
+                ));
+            }
+        }
+        // Compare every stored instance, including instances inside blocks.
+        let instances = |doc: &Document| {
+            doc.cad()
+                .entities()
+                .filter_map(|e| {
+                    let acadrust::EntityType::Insert(i) = e else {
+                        return None;
+                    };
+                    let name = i.block_name.to_uppercase();
+                    if !expected.contains_key(&name) && !found.contains_key(&name) {
+                        return None;
+                    }
+                    Some((
+                        e.common().handle,
+                        (
+                            name,
+                            e.common().owner_handle,
+                            [
+                                i.insert_point.x,
+                                i.insert_point.y,
+                                i.insert_point.z,
+                                i.x_scale(),
+                                i.y_scale(),
+                                i.z_scale(),
+                                i.rotation,
+                                i.normal.x,
+                                i.normal.y,
+                                i.normal.z,
+                                f64::from(i.row_count),
+                                f64::from(i.column_count),
+                                i.row_spacing,
+                                i.column_spacing,
+                            ],
+                        ),
+                    ))
+                })
+                .collect::<BTreeMap<_, _>>()
+        };
+        let (a, b) = (instances(self), instances(written));
+        for id in a.keys().chain(b.keys()).collect::<BTreeSet<_>>() {
+            let same = match (a.get(id), b.get(id)) {
+                (Some((an, ao, av)), Some((bn, bo, bv))) => {
+                    an == bn && ao == bo && av.iter().zip(bv).all(|(x, y)| near(*x, *y))
+                }
+                _ => false,
+            };
+            if !same {
+                differences.push(format!("Xref INSERT {id:?} placement or ownership changed"));
+            }
+        }
     }
 }
 
