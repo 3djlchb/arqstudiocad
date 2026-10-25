@@ -15,6 +15,7 @@ from arqstudiocad.events import (
     ActiveDocumentChanged,
     ActiveLayerChanged,
     BlockSaved,
+    BlockUsed,
     DocumentChanged,
     DocumentClosed,
     DocumentOpened,
@@ -111,6 +112,11 @@ class Session:
         changes = self.report(document, document.save_block(name, editor))
         self.bus.publish(BlockSaved(editor.id, document.id, name))
         return changes
+
+    def block_used(self, source: CadDocument, name: str, how: str) -> None:
+        """Tells everyone block ``name`` of ``source`` was created or
+        inserted, as ``how`` says (``BlockUsed``)."""
+        self.bus.publish(BlockUsed(source.id, name, source.path, how))
 
     def save(self, document: CadDocument, path: Path) -> None:
         """Saves as DWG or DXF, by the extension."""

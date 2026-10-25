@@ -25,6 +25,7 @@ from arqstudiocad.commands.modify import select_objects
 from arqstudiocad.core import CadDocument, CadError, InvalidOperationError
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
+from arqstudiocad.recent_blocks import CREATED, FROM_TEMPLATE, INSERTED
 
 #: Where INSERT first puts the block it shows following the cursor.
 ORIGIN = (0.0, 0.0)
@@ -61,6 +62,7 @@ def block(ctx: CommandContext) -> CommandScript:
     except InvalidOperationError:
         raise CommandCancelledError(tr("{name} is not a valid block name.", name=name)) from None
     ctx.session.report(document, changes)
+    ctx.session.block_used(document, name, CREATED)
     ctx.message(tr("Block {name} made from {count} objects.", name=name, count=len(ids)))
 
 
@@ -99,7 +101,10 @@ def place_block(
     ``at`` (the origin by default) at once. With ``explode`` the reference
     is then replaced by its contents, as EXPLODE does (ADR 0025 D5). A
     block of ``source`` (a template) is first copied into the drawing, as
-    ``choices`` resolve its clashes (D6). One undo step either way."""
+    ``choices`` resolve its clashes (D6). One undo step either way; the
+    Blocks palette's Recent source lists the block (D1)."""
+    used = name
+    how = FROM_TEMPLATE if source is not None and source == ctx.session.template else INSERTED
     if not on_screen:
         document.begin_group("INSERT")
         try:
@@ -113,6 +118,7 @@ def place_block(
             ctx.session.report(document, document.cancel_group())
             raise
         document.end_group()
+        ctx.session.block_used(source or document, used, how)
         return
     document.begin_group("INSERT")
     placed = False
@@ -149,6 +155,7 @@ def place_block(
     finally:
         if placed:
             document.end_group()
+            ctx.session.block_used(source or document, used, how)
         else:
             # Cancelled: nothing was inserted.
             ctx.session.report(document, document.cancel_group())
@@ -192,23 +199,40 @@ def insert_named(
     explode: bool = False,
     source: CadDocument | None = None,
     at: tuple[float, float] | None = None,
+    load: Path | None = None,
+    loaded: Callable[[CadDocument], None] | None = None,
 ) -> Command:
     """INSERT with block ``name`` already chosen, scaled and turned
     (``rotation`` in radians), exploded if asked, as the Blocks palette
     starts it: from its Insert button or a drop on the drawing, at ``at``
-    when the drop came first. A block of ``source`` (a template) is copied
-    into the drawing first, in the same undo step; a block whose name the
-    drawing uses for other contents is asked about, never resolved
-    silently (ADR 0025 D6)."""
+    when the drop came first. A block of ``source`` (a template, another
+    drawing) is copied into the drawing first, in the same undo step; a
+    block whose name the drawing uses for other contents is asked about,
+    never resolved silently (ADR 0025 D6). With ``load``, the source is
+    that file, read first in the background and given to ``loaded``, as
+    for a recent block whose file is not open (D1)."""
 
     def run(ctx: CommandContext) -> CommandScript:
         document = ctx.document()
-        found = _named(source if source is not None else document, name)
+        origin = source
+        if load is not None:
+            app, file = ctx.session.app, load
+            try:
+                origin = yield ctx.background(
+                    lambda: app.open_document(file), tr("Reading {name}…", name=file.name)
+                )
+            except CadError as error:
+                raise CommandCancelledError(
+                    tr("{name} cannot be read: {reason}", name=file.name, reason=error)
+                ) from None
+            if loaded is not None:
+                loaded(origin)
+        found = _named(origin if origin is not None else document, name)
         if found is None:
             raise CommandCancelledError(tr("There is no such block."))
         choices: dict[str, ClashChoice] = {}
-        if source is not None:
-            clashes = block_clashes(document, source, found)
+        if origin is not None:
+            clashes = block_clashes(document, origin, found)
             if clashes:
                 choices = yield from _resolve(ctx, clashes)
         ctx.message(tr("Inserting block {name}.", name=found))
@@ -220,7 +244,7 @@ def insert_named(
             rotation,
             on_screen and at is None,
             explode,
-            source,
+            origin,
             choices,
             at,
         )
@@ -322,6 +346,30 @@ def load_template(path: Path | None, loaded: Callable[[CadDocument], None]) -> C
     return Command("BLOCKSPALETTE", run, repeat=False)
 
 
+def read_files(
+    paths: Sequence[Path], read: Callable[[dict[Path, CadDocument | str]], None]
+) -> Command:
+    """Opens the files of recent blocks for the Blocks palette in the
+    background, as a template is (ADR 0025 D1): ``read`` gets each file's
+    document, or why it cannot be read. None is shown in a tab nor written."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        app = ctx.session.app
+
+        def task() -> dict[Path, CadDocument | str]:
+            found: dict[Path, CadDocument | str] = {}
+            for path in paths:
+                try:
+                    found[path] = app.open_document(path)
+                except Exception as error:  # one file's failure, not the others'
+                    found[path] = str(error)
+            return found
+
+        read((yield ctx.background(task, tr("Reading the recent blocks' files…"))))
+
+    return Command("BLOCKSPALETTE", run, repeat=False)
+
+
 def edit_named(name: str) -> Command:
     """BEDIT with block ``name`` already chosen, as the Blocks palette
     starts it."""
@@ -405,9 +453,9 @@ def _copied(
     source: CadDocument | None,
     choices: dict[str, ClashChoice] | None = None,
 ) -> str:
-    """Block ``name`` in the drawing: copied from ``source`` first, when
-    there is one, as ``choices`` resolve its clashes, within the INSERT
-    group (ADR 0025 D6)."""
+    """Block ``name`` in the drawing: copied from ``source`` (a template,
+    another drawing) first, when there is one, as ``choices`` resolve its
+    clashes, within the INSERT group (ADR 0025 D6)."""
     if source is None:
         return name
     chosen = choices or {}
@@ -421,7 +469,12 @@ def _copied(
         )
     except CadError as error:
         raise CommandCancelledError(
-            tr("{name} cannot be copied from the template: {reason}", name=name, reason=error)
+            tr(
+                "{name} cannot be copied from {source}: {reason}",
+                name=name,
+                source=source.name,
+                reason=error,
+            )
         ) from None
     ctx.session.report(document, changes)
     return copied

@@ -12,7 +12,7 @@ from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.blocks import insert_named
 from arqstudiocad.commands.builtin import builtin_registry
 from arqstudiocad.core import CadApplication, CadDocument, InvalidOperationError
-from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
+from arqstudiocad.events import BlockUsed, CommandMessage, CommandPrompt, Event, EventBus
 from arqstudiocad.i18n import set_language
 from arqstudiocad.paths import sample_template
 from arqstudiocad.session import Session
@@ -263,3 +263,48 @@ def test_a_point_given_first_places_the_block_there_without_asking() -> None:
     (placed,) = [e.id for e in h.document.get_entities() if e.kind == "INSERT"]
     (x0, y0), (x1, y1) = ends(h.document, placed)
     assert x0 < 50 < x1 and y0 < 60 < y1, "around the point given"
+
+
+def used(h: Harness) -> list[BlockUsed]:
+    return [e for e in h.events if isinstance(e, BlockUsed)]
+
+
+def test_block_and_insert_say_which_block_was_used(tmp_path: Path) -> None:
+    """For the Blocks palette's Recent source (ADR 0025 D1)."""
+    h = Harness()
+    h.session.select(h.document, [h.a])
+    h.run("BLOCK", "MARCO", "10,10")
+    assert used(h) == [BlockUsed(h.document.id, "MARCO", None, "created")]
+    h.run("INSERT", "marco", "S", "2")
+    h.runner.cancel()
+    assert len(used(h)) == 1, "cancelled: nothing was inserted"
+    h.run("INSERT", "marco", "5,5")
+    assert used(h)[-1] == BlockUsed(h.document.id, "MARCO", None, "inserted"), (
+        "as the drawing spells it"
+    )
+    h.runner.start(insert_named("MARCO", 1.0, 0.0, False))
+    assert len(used(h)) == 3
+    template = h.session.app.open_document(sample_template())
+    h.runner.start(insert_named("Tree", 1.0, 0.0, False, source=template))
+    assert used(h)[-1] == BlockUsed(template.id, "Tree", sample_template(), "inserted")
+    h.session.template = template
+    h.runner.start(insert_named("Tree", 1.0, 0.0, True, source=template))
+    h.run("0,0")
+    assert used(h)[-1] == BlockUsed(template.id, "Tree", sample_template(), "template")
+
+
+def test_insert_reads_a_recent_blocks_file_first(tmp_path: Path) -> None:
+    h = Harness()
+    loaded: list[CadDocument] = []
+    steps = len(h.document.undo_history)
+    h.runner.start(
+        insert_named("Tree", 1.0, 0.0, False, load=sample_template(), loaded=loaded.append)
+    )
+    (read,) = loaded
+    assert read.path == sample_template() and read not in h.session.documents, "never a tab"
+    assert "Tree" in h.document.block_names and h.document.undo_history[steps:] == ["INSERT"]
+    assert used(h)[-1] == BlockUsed(read.id, "Tree", sample_template(), "inserted")
+    missing = tmp_path / "gone.dwg"
+    h.runner.start(insert_named("Tree", 1.0, 0.0, False, load=missing, loaded=loaded.append))
+    assert h.messages()[-1].startswith("gone.dwg cannot be read: ")
+    assert len(loaded) == 1 and len(h.document.undo_history) == steps + 1

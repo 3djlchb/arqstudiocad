@@ -12,11 +12,15 @@ dynamic block's carries the star tag (ADR 0025 D4).
 
 The Drawing source shows the active drawing's blocks; the Template source a
 template's, loaded in the background and never shown in a tab (D7): a block
-inserted from it is copied into the drawing first (D6). Recent comes with
-its step (D9) and says so.
+inserted from it is copied into the drawing first (D6). The Recent source
+lists the blocks created or inserted in this session and the previous one,
+each from the file it came from, read in the background when no drawing
+open holds it (D1).
 """
 
 import math
+import os
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -62,12 +66,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from arqstudiocad.commands import CommandRunner
-from arqstudiocad.commands.blocks import edit_named, insert_named, load_template
-from arqstudiocad.core import CadBlockInfo, CadDocument
-from arqstudiocad.events import DocumentChanged, Event
+from arqstudiocad.commands import Command, CommandRunner
+from arqstudiocad.commands.blocks import edit_named, insert_named, load_template, read_files
+from arqstudiocad.core import CadBlockInfo, CadDocument, CadError
+from arqstudiocad.events import BlockUsed, DocumentChanged, DocumentClosed, DocumentSaved, Event
 from arqstudiocad.i18n import tr
 from arqstudiocad.paths import sample_template
+from arqstudiocad.recent_blocks import CREATED, FROM_TEMPLATE, RecentBlock, RecentBlocks, used_text
 from arqstudiocad.recent_files import RecentFiles, same_file
 from arqstudiocad.session import Session
 from arqstudiocad.ui.block_drag import block_mime
@@ -81,7 +86,7 @@ from arqstudiocad.ui.property_grid import PropertyGrid, Section
 
 #: The palette's sources, in the order the mockup shows them.
 SOURCES = ("template", "recent", "drawing")
-#: Columns of the list view.
+#: Columns of the list view: the second is Used for the Recent source.
 NAME, IN_DRAWING = 0, 1
 #: The views, and where the chosen one is remembered.
 GRID, LIST = "grid", "list"
@@ -89,6 +94,10 @@ VIEW_SETTING = "blocks_palette/view"
 #: The templates loaded last, newest first, as the settings keep them.
 TEMPLATES_SETTING = "blocks_palette/templates"
 TEMPLATES_LIMIT = 8
+#: The recent blocks, and the number of the session that used them last
+#: (ADR 0025 D1: this session and the previous one).
+RECENT_SETTING = "blocks_palette/recent"
+SESSION_SETTING = "blocks_palette/session"
 #: Files the palette loads as templates, dropped or chosen (ADR 0025 D5, D7).
 TEMPLATE_SUFFIXES = (".dwt", ".dwg", ".dxf")
 #: The empty Template source's placeholder picture, in pixels.
@@ -238,11 +247,11 @@ class PreviewCache:
         self._icons.clear()
 
 
-#: What a drag of a block carries, by its name (None: no drag).
-DragPayload = Callable[[str], QMimeData | None]
+#: What a drag of a block carries, by its row (None: no drag).
+DragPayload = Callable[[int], QMimeData | None]
 
 
-def no_drag(name: str) -> QMimeData | None:
+def no_drag(row: int) -> QMimeData | None:
     return None
 
 
@@ -262,7 +271,7 @@ class BlockTable(QTreeWidget):
         drag_only(self)
 
     def mimeData(self, items: Sequence[QTreeWidgetItem]) -> QMimeData:  # noqa: N802 (Qt API)
-        mime = self.payload(items[0].text(NAME)) if items else None
+        mime = self.payload(self.indexOfTopLevelItem(items[0])) if items else None
         return mime if mime is not None else QMimeData()
 
 
@@ -287,7 +296,7 @@ class BlockGrid(QListWidget):
         drag_only(self)
 
     def mimeData(self, items: Sequence[QListWidgetItem]) -> QMimeData:  # noqa: N802 (Qt API)
-        mime = self.payload(items[0].text()) if items else None
+        mime = self.payload(self.row(items[0])) if items else None
         return mime if mime is not None else QMimeData()
 
     def card_size(self) -> int:
@@ -301,6 +310,29 @@ def source_title(source: str) -> str:
         "recent": tr("Recent"),
         "drawing": tr("Drawing"),
     }[source]
+
+
+def file_key(path: Path) -> str:
+    """A file's name as the operating system compares names."""
+    return os.path.normcase(os.path.abspath(path))
+
+
+def modified_time(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def how_text(block: RecentBlock, here: bool, source: str) -> str:
+    """How a recent block was used, from where: ``here`` when its file is
+    the active drawing (the brief's "created here", "from the template",
+    "created in Planta_alta.dwg")."""
+    if block.how == CREATED:
+        return tr("Created here") if here else tr("Created in {file}", file=source)
+    if block.how == FROM_TEMPLATE:
+        return tr("From the template {file}", file=source)
+    return tr("Inserted here") if here else tr("Inserted from {file}", file=source)
 
 
 def units_name(code: int) -> str:
@@ -358,8 +390,8 @@ def references_text(count: int) -> str:
 
 
 class BlocksPanel(QDockWidget):
-    """The blocks of the active drawing or of a template, without anonymous
-    or layout blocks."""
+    """The blocks of the active drawing, of a template, or used last,
+    without anonymous or layout blocks."""
 
     def __init__(
         self,
@@ -394,6 +426,25 @@ class BlocksPanel(QDockWidget):
         )
         # A template dropped on the palette is loaded (ADR 0025 D5).
         self.setAcceptDrops(True)
+        # The Recent source: this session and the previous one (D1).
+        session_number = 1
+        if settings is not None:
+            try:
+                session_number = int(str(settings.value(SESSION_SETTING, 0))) + 1
+            except ValueError:
+                session_number = 1
+            settings.setValue(SESSION_SETTING, session_number)
+        stored_recent = settings.value(RECENT_SETTING, "") if settings is not None else ""
+        self.recent = RecentBlocks(
+            stored_recent if isinstance(stored_recent, str) else "", session_number
+        )
+        #: The recent blocks shown, row by row.
+        self._recent_rows: list[RecentBlock] = []
+        #: Files of recent blocks read for the palette, as a template is,
+        #: by file_key, with the time each was modified when read.
+        self._recent_files: dict[str, tuple[CadDocument, float | None]] = {}
+        #: Why a recent block's file could not be read, by file_key.
+        self._unreadable: dict[str, str] = {}
 
         self.sources: dict[str, QToolButton] = {}
         self._source_group = QButtonGroup(self)
@@ -404,14 +455,14 @@ class BlocksPanel(QDockWidget):
             button.setObjectName(f"blocks_source_{source}")
             button.setCheckable(True)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            # Recent comes with its step (ADR 0025 D9).
-            button.setEnabled(source != "recent")
             button.clicked.connect(lambda _=False, s=source: self.set_source(s))
             self._source_group.addButton(button)
             source_row.addWidget(button)
             self.sources[source] = button
         self.sources["drawing"].setChecked(True)
         self.source_caption = QLabel()
+        # Recent's caption is a sentence: it wraps rather than widen the palette.
+        self.source_caption.setWordWrap(True)
         # The Template source's row: the templates used last, and a folder
         # button to load another.
         self.template_combo = QComboBox()
@@ -465,9 +516,12 @@ class BlocksPanel(QDockWidget):
         self.table.payload = self.grid.payload = self._drag_payload
         #: Whether INSERT runs for a block being dragged over the drawing.
         self._dropping = False
-        #: A template's block being dragged whose clashes are asked about
-        #: once it is dropped: a dialog cannot open during a drag.
-        self._pending_drop: str | None = None
+        #: The row being dragged.
+        self._dragged: int | None = None
+        #: A block being dragged that is inserted once it is dropped: its
+        #: clashes are asked about then, as a dialog cannot open during a
+        #: drag, or its file is read then. Its name, source and file.
+        self._pending_drop: tuple[str, CadDocument | None, Path | None] | None = None
         # The Template source with no template loaded, as the mockup's.
         self.empty = QWidget()
         self.empty.setObjectName("blocks_no_template")
@@ -584,6 +638,9 @@ class BlocksPanel(QDockWidget):
         self.setWidget(body)
         for signal in (events.active_document_changed, events.document_changed):
             signal.connect(self.refresh)
+        events.block_used.connect(self._block_used)
+        events.document_saved.connect(self._document_saved)
+        events.document_closed.connect(self._document_closed)
         self.restyle()
         self.retranslate()
 
@@ -653,7 +710,6 @@ class BlocksPanel(QDockWidget):
         self.setWindowTitle(tr("Blocks"))
         for source, button in self.sources.items():
             button.setText(source_title(source))
-            button.setToolTip("" if button.isEnabled() else tr("Not available yet."))
         self.template_combo.setPlaceholderText(tr("No template is loaded"))
         self.load_button.setIcon(
             QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
@@ -672,7 +728,6 @@ class BlocksPanel(QDockWidget):
         self.search.setPlaceholderText(tr("Search blocks"))
         self.grid_view.setToolTip(tr("Grid view"))
         self.list_view.setToolTip(tr("List view"))
-        self.table.setHeaderLabels([tr("Name"), tr("In drawing")])
         self.legend_tag.setPixmap(tag_pixmap(self.devicePixelRatioF()))
         self.legend_tag.setToolTip(tr("Dynamic block"))
         self.legend_text.setText(tr("Dynamic block"))
@@ -703,14 +758,157 @@ class BlocksPanel(QDockWidget):
         return self._source
 
     def source_document(self) -> CadDocument | None:
-        """Where the blocks shown come from: the template or the drawing."""
+        """Where the blocks shown come from: the template or the drawing;
+        for Recent, where the selected block comes from."""
+        if self._source == "recent":
+            block = self.selected_recent()
+            return None if block is None else self.recent_source(block)
         return self.template if self._source == "template" else self.document()
 
     def set_source(self, source: str) -> None:
         """Shows the blocks of ``source``, one of SOURCES."""
         self._source = source
         self.sources[source].setChecked(True)
+        if source == "recent":
+            # Chosen again: files that could not be read are tried again.
+            self._unreadable.clear()
         self.refresh()
+
+    # The Recent source (ADR 0025 D1)
+
+    def recent_source(self, block: RecentBlock) -> CadDocument | None:
+        """Where recent ``block`` is found: the open drawing it came from,
+        the open drawing or the template of its file, unsaved changes
+        included (maintainer, 2026-10-25), or its file as read for the
+        palette; None while its file is not read."""
+        documents = [d for d in self._session.documents if d.is_open]
+        if block.document_id is not None:
+            for document in documents:
+                if document.id == block.document_id:
+                    return document
+        if block.path is None:
+            return None
+        for document in documents:
+            if document.path is not None and same_file(document.path, block.path):
+                return document
+        template = self.template
+        if (
+            template is not None
+            and template.path is not None
+            and same_file(template.path, block.path)
+        ):
+            return template
+        found = self._recent_files.get(file_key(block.path))
+        return None if found is None else found[0]
+
+    def recent_problem(self, block: RecentBlock) -> str | None:
+        """Why recent ``block`` cannot be inserted, if it cannot: its file
+        is missing, unreadable, or no longer holds it (ADR 0025 D1)."""
+        source = self.recent_source(block)
+        if source is not None:
+            if block_named(source, block.name) is None:
+                return tr(
+                    "{file} no longer has a block named {name}.", file=source.name, name=block.name
+                )
+            return None
+        if block.path is None:
+            return tr("The drawing was closed without being saved.")
+        reason = self._unreadable.get(file_key(block.path))
+        if reason is not None:
+            return reason
+        if not block.path.is_file():
+            return tr("{file} was not found.", file=str(block.path))
+        return None
+
+    def selected_recent(self) -> RecentBlock | None:
+        """The recent block selected, while the Recent source is shown."""
+        item = self.table.currentItem()
+        if self._source != "recent" or item is None:
+            return None
+        row = self.table.indexOfTopLevelItem(item)
+        return self._recent_rows[row] if 0 <= row < len(self._recent_rows) else None
+
+    def _block_used(self, event: BlockUsed) -> None:
+        self.recent.add(event.name, event.path, event.how, event.source_id)
+        self._save_recent()
+        if self._source == "recent":
+            self.refresh()
+
+    def _document_saved(self, event: DocumentSaved) -> None:
+        self.recent.saved(event.document_id, event.path)
+        self._save_recent()
+
+    def _document_closed(self, event: DocumentClosed) -> None:
+        self.recent.closed(event.document_id)
+        self._save_recent()
+        if self._source == "recent":
+            self.refresh()
+
+    def _save_recent(self) -> None:
+        if self._settings is not None:
+            self._settings.setValue(RECENT_SETTING, self.recent.to_json())
+
+    def _recent_file_read(self, document: CadDocument) -> None:
+        """A recent block's file, read for the palette: kept while the list
+        names it, never in a tab nor written, as a template."""
+        if document.path is None:
+            return
+        key = file_key(document.path)
+        old = self._recent_files.pop(key, None)
+        if old is not None and old[0] != document:
+            self._close_recent_file(old[0])
+        self._unreadable.pop(key, None)
+        self._recent_files[key] = (document, modified_time(document.path))
+
+    def _recent_files_read(self, read: dict[Path, CadDocument | str]) -> None:
+        for path, found in read.items():
+            if isinstance(found, str):
+                self._unreadable[file_key(path)] = tr(
+                    "{file} cannot be read: {reason}", file=path.name, reason=found
+                )
+            else:
+                self._recent_file_read(found)
+        self.refresh()
+
+    def _close_recent_file(self, document: CadDocument) -> None:
+        self.previews.forget(document.id)
+        self.recent.closed(document.id)
+        if document.is_open:
+            self._session.app.close_document(document.id)
+
+    def _read_recent_files(self) -> None:
+        """Reads, in the background, the files of the recent blocks that no
+        open drawing nor the template holds, for their previews; forgets
+        the files read before that changed since or are named no more."""
+        wanted: dict[str, Path] = {}
+        for block in self.recent.blocks:
+            if block.path is not None:
+                wanted.setdefault(file_key(block.path), block.path)
+        for key, (document, modified) in list(self._recent_files.items()):
+            path = wanted.get(key)
+            if path is None or modified_time(path) != modified:
+                del self._recent_files[key]
+                self._close_recent_file(document)
+        missing = [
+            path
+            for key, path in wanted.items()
+            if key not in self._unreadable
+            and path.is_file()
+            and not any(
+                self.recent_source(b) is not None
+                for b in self.recent.blocks
+                if b.path is not None and file_key(b.path) == key
+            )
+        ]
+        runner = self._runner
+        if not missing:
+            return
+        if runner is None:
+            self._recent_files_read(read_now(self._session, missing))
+        elif runner.active is None and runner.busy is None:
+            # Never in the way of a command at work, nor of a reading under
+            # way: tried at the next refresh.
+            runner.start(read_files(missing, self._recent_files_read))
 
     def load_template(self, path: Path | None = None) -> None:
         """Loads ``path``, or a file the user chooses, as the template, in the
@@ -801,11 +999,17 @@ class BlocksPanel(QDockWidget):
     def names(self) -> list[str]:
         """The blocks of the source shown that match the search,
         case-insensitively."""
+        if self._source == "recent":
+            return [b.name for b in self._recent_matching()]
         document = self.source_document()
         if document is None:
             return []
         wanted = self.search.text().strip().casefold()
         return [name for name in document.block_names if wanted in name.casefold()]
+
+    def _recent_matching(self) -> list[RecentBlock]:
+        wanted = self.search.text().strip().casefold()
+        return [b for b in self.recent.blocks if wanted in b.name.casefold()]
 
     def shown(self) -> list[str]:
         """The names the views show, in order."""
@@ -841,21 +1045,30 @@ class BlocksPanel(QDockWidget):
             return
         self._stale = False
         drawing = self.document()
-        document = self.source_document()
         from_template = self._source == "template"
         self.template_row.setVisible(from_template)
         self.source_caption.setVisible(not from_template)
         self._show_view()
-        chosen = self.selected()
+        if self._source == "recent":
+            self._read_recent_files()
+        chosen = self._chosen_key()
         self._filling = True
         try:
             self.table.clear()
             self.grid.clear()
+            self._recent_rows = []
             self._references = {
                 name.upper(): count
                 for name, count in (drawing.block_references if drawing else {}).items()
             }
             references = self._references
+            self.table.setHeaderLabels(
+                [tr("Name"), tr("Used") if self._source == "recent" else tr("In drawing")]
+            )
+            if self._source == "recent":
+                self._fill_recent(drawing)
+                return
+            document = self.source_document()
             if document is None:
                 self.legend.setVisible(False)
                 self.drag_hint.setVisible(False)
@@ -901,33 +1114,135 @@ class BlocksPanel(QDockWidget):
                     self.footer.setText(tr("1 block"))
                 else:
                     self.footer.setText(tr("{count} blocks", count=len(shown)))
-            if chosen is not None:
-                self.select(chosen)
         finally:
+            self._select_key(chosen)
             self._filling = False
-        self._show_details()
+            self._show_details()
+
+    def _fill_recent(self, drawing: CadDocument | None) -> None:
+        """The Recent source's rows: each block from its own file, the
+        newest first; one that cannot be inserted shown greyed, saying why."""
+        self.table.setEnabled(True)
+        self.source_caption.setText(tr("Blocks created or inserted in this session and the last."))
+        shown = self._recent_matching()
+        now = time.time()
+        muted = self.palette().color(QPalette.ColorRole.PlaceholderText)
+        dynamic = False
+        for block in shown:
+            source = self.recent_source(block)
+            problem = self.recent_problem(block)
+            name = block.name if source is None else block_named(source, block.name) or block.name
+            file = source.name if source is not None else (block.path or Path(name)).name
+            how = how_text(block, source is not None and source == drawing, file)
+            used = used_text(block.when, now)
+            tip = f"{name}\n{how} · {used}" + (f"\n{problem}" if problem else "")
+            item = QTreeWidgetItem([name, used])
+            item.setTextAlignment(
+                IN_DRAWING, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            card = QListWidgetItem(name)
+            if source is not None and problem is None:
+                item.setIcon(NAME, self._icon(source, name, ROW_PREVIEW))
+                card.setIcon(self._icon(source, name, self.grid.card_size()))
+                if source.is_dynamic_block(name):
+                    dynamic = True
+                    tip += f"\n{tr('Dynamic block')}"
+                    card.setData(Qt.ItemDataRole.AccessibleDescriptionRole, tr("Dynamic block"))
+                    item.setData(
+                        NAME, Qt.ItemDataRole.AccessibleDescriptionRole, tr("Dynamic block")
+                    )
+            if problem is not None:
+                item.setForeground(NAME, muted)
+                card.setForeground(muted)
+            item.setToolTip(NAME, tip)
+            card.setToolTip(tip)
+            self.table.addTopLevelItem(item)
+            self.grid.addItem(card)
+            self._recent_rows.append(block)
+        self.legend.setVisible(dynamic)
+        self.drag_hint.setVisible(bool(shown) and drawing is not None)
+        if not self.recent.blocks:
+            self.footer.setText(tr("No block was created or inserted lately."))
+        elif not shown:
+            self.footer.setText(tr("No block matches the search."))
+        elif len(shown) == 1:
+            self.footer.setText(tr("1 block"))
+        else:
+            self.footer.setText(tr("{count} blocks", count=len(shown)))
+
+    def _chosen_key(self) -> tuple[str, str] | None:
+        """What is selected, to select it again once the views are filled."""
+        recent = self.selected_recent()
+        if recent is not None:
+            return (recent.name.casefold(), "" if recent.path is None else file_key(recent.path))
+        name = self.selected()
+        return None if name is None else (name, "")
+
+    def _select_key(self, key: tuple[str, str] | None) -> None:
+        if key is None:
+            return
+        if self._source != "recent":
+            self.select(key[0])
+            return
+        for row, block in enumerate(self._recent_rows):
+            path = "" if block.path is None else file_key(block.path)
+            if (block.name.casefold(), path) == key:
+                self.table.setCurrentItem(self._row(row))
+                return
 
     def insert_selected(self) -> None:
         """Inserts the selected block with the insert options, through
         INSERT: one undo step (ADR 0025 D5)."""
         name = self.selected()
-        if name is None or self._runner is None or self.document() is None:
+        row = self._current_row()
+        if name is None or row is None or self._runner is None or self.document() is None:
             return
-        self._runner.start(
-            insert_named(
-                name,
-                self.scale.value(),
-                math.radians(self.rotation.value()),
-                self.on_screen.isChecked(),
-                self.explode.isChecked(),
-                self._inserting_from(),
-            )
+        recent = self.selected_recent()
+        if recent is not None and self.recent_problem(recent) is not None:
+            return  # it cannot be inserted: the button says why
+        source, load = self._inserting_from(row)
+        self._runner.start(self._insert(name, self.on_screen.isChecked(), source, load))
+
+    def _insert(
+        self,
+        name: str,
+        on_screen: bool,
+        source: CadDocument | None,
+        load: Path | None,
+        at: tuple[float, float] | None = None,
+    ) -> Command:
+        """INSERT for block ``name`` with the insert options."""
+        return insert_named(
+            name,
+            self.scale.value(),
+            math.radians(self.rotation.value()),
+            on_screen,
+            self.explode.isChecked(),
+            source,
+            at,
+            load,
+            self._recent_file_read if load is not None else None,
         )
 
-    def _inserting_from(self) -> CadDocument | None:
-        """The template a block inserted now is copied from; None for the
-        drawing's own blocks."""
-        return self.template if self._source == "template" else None
+    def _current_row(self) -> int | None:
+        item = self.table.currentItem()
+        return None if item is None else self.table.indexOfTopLevelItem(item)
+
+    def _inserting_from(self, row: int) -> tuple[CadDocument | None, Path | None]:
+        """Where the block at ``row`` inserted now is copied from: the
+        template, or for a recent block the drawing or file it came from,
+        or the file to read first; nothing for the drawing's own blocks."""
+        if self._source == "template":
+            return self.template, None
+        if self._source != "recent" or not 0 <= row < len(self._recent_rows):
+            return None, None
+        block = self._recent_rows[row]
+        if self.recent_problem(block) is not None:
+            return None, None
+        source = self.recent_source(block)
+        if source is not None:
+            return (None if source == self.document() else source), None
+        return None, block.path
 
     def start_drop_insert(self, name: str) -> None:
         """A block dragged from here came over the drawing: INSERT runs on
@@ -936,21 +1251,13 @@ class BlocksPanel(QDockWidget):
         document = self.document()
         if self._runner is None or document is None:
             return
-        template = self._inserting_from()
-        if template is not None and document.block_clashes(name, template):
-            self._pending_drop = name
+        source, load = self._inserting_from(self._dragged if self._dragged is not None else -1)
+        if load is not None or (source is not None and document.block_clashes(name, source)):
+            # Asked about, or read, once the drag is over.
+            self._pending_drop = (name, source, load)
             return
         self._dropping = True
-        self._runner.start(
-            insert_named(
-                name,
-                self.scale.value(),
-                math.radians(self.rotation.value()),
-                True,
-                self.explode.isChecked(),
-                self._inserting_from(),
-            )
-        )
+        self._runner.start(self._insert(name, True, source, None))
 
     def end_drop_insert(self, dropped: bool) -> None:
         """The drag ended: dropped, the block is placed; otherwise the
@@ -960,29 +1267,29 @@ class BlocksPanel(QDockWidget):
             runner.cancel()
         self._dropping = False
         self._pending_drop = None
+        self._dragged = None
 
     def drop_insert_at(self, point: tuple[float, float]) -> None:
-        """A template's block whose names clash was dropped at ``point``: once
-        the drag is over, INSERT asks about the clashes and places it there
-        (ADR 0025 D5, D6)."""
-        name, runner = self._pending_drop, self._runner
-        if name is None or runner is None:
+        """A block whose names clash, or whose file is not read, was dropped
+        at ``point``: once the drag is over, INSERT reads its file, asks
+        about the clashes and places it there (ADR 0025 D5, D6)."""
+        pending, runner = self._pending_drop, self._runner
+        if pending is None or runner is None:
             return
-        command = insert_named(
-            name,
-            self.scale.value(),
-            math.radians(self.rotation.value()),
-            False,
-            self.explode.isChecked(),
-            self._inserting_from(),
-            at=(point[0], point[1]),
-        )
+        name, source, load = pending
+        command = self._insert(name, False, source, load, at=(point[0], point[1]))
         QTimer.singleShot(0, lambda: runner.start(command))
 
-    def _drag_payload(self, name: str) -> QMimeData | None:
+    def _drag_payload(self, row: int) -> QMimeData | None:
         # For the active drawing, which a template's block is copied into.
         document = self.document()
-        return None if document is None else block_mime(document.id, name)
+        item = self.table.topLevelItem(row)
+        if document is None or item is None:
+            return None
+        if self._source == "recent" and self.recent_problem(self._recent_rows[row]) is not None:
+            return None
+        self._dragged = row
+        return block_mime(document.id, item.text(NAME))
 
     def edit_selected(self) -> None:
         """Opens the selected block in the block editor, through BEDIT."""
@@ -1009,6 +1316,13 @@ class BlocksPanel(QDockWidget):
         self.new_button.setEnabled(document is not None)
         # A dynamic block's parameters wait for the parametric engine
         # (ADR 0023 D3a): it is inserted, never edited, and the button says why.
+        recent = self.selected_recent()
+        problem = None if recent is None else self.recent_problem(recent)
+        if recent is not None:
+            # Read first if need be: only a block that cannot be had is refused.
+            chosen = document is not None and problem is None
+            self.insert_button.setEnabled(chosen)
+        self.insert_button.setToolTip(problem or "")
         dynamic = source is not None and name is not None and source.is_dynamic_block(name)
         if self._source != "drawing":
             # A template is never written (ADR 0025 D7).
@@ -1043,18 +1357,12 @@ class BlocksPanel(QDockWidget):
         return self.previews.icon(document, name, size, self.palette(), self.devicePixelRatioF())
 
     def _on_current_changed(self) -> None:
-        # The grid follows the list's selection.
-        name = self.selected()
+        # The grid follows the list's selection, row by row: Recent may
+        # list two blocks of one name.
+        row = self._current_row()
         self._syncing = True
         try:
-            card = next(
-                (
-                    self.grid.item(i)
-                    for i in range(self.grid.count())
-                    if self.grid.item(i).text() == name
-                ),
-                None,
-            )
+            card = None if row is None else self.grid.item(row)
             if card is None:
                 self.grid.clearSelection()
             else:
@@ -1065,8 +1373,10 @@ class BlocksPanel(QDockWidget):
             self._show_details()
 
     def _on_card_chosen(self, card: QListWidgetItem | None) -> None:
-        if not self._syncing and card is not None:
-            self.select(card.text())
+        # While the views are filled, the grid may be ahead of the list.
+        row = self.table.topLevelItem(self.grid.row(card)) if card is not None else None
+        if not self._syncing and row is not None:
+            self.table.setCurrentItem(row)
 
     def _on_view_chosen(self) -> None:
         self._show_view()
@@ -1075,6 +1385,10 @@ class BlocksPanel(QDockWidget):
 
     def _show_details(self) -> None:
         self._update_actions()
+        recent = self.selected_recent()
+        if recent is not None:
+            self.details.show_sections("", [self._recent_section(recent)])
+            return
         document = self.source_document()
         name = self.selected()
         info = document.block_info(name) if document is not None and name else None
@@ -1083,6 +1397,25 @@ class BlocksPanel(QDockWidget):
             return
         count = self._references.get(info.name.upper(), 0)
         self.details.show_sections("", [self._section(document, info, count)])
+
+    def _recent_section(self, block: RecentBlock) -> Section:
+        """A recent block's details: as any block's when its file is at hand,
+        with how and when it was used; otherwise why it cannot be inserted."""
+        source = self.recent_source(block)
+        problem = self.recent_problem(block)
+        name = None if source is None else block_named(source, block.name)
+        file = source.name if source is not None else (block.path or Path(block.name)).name
+        here = source is not None and source == self.document()
+        used = (tr("Used"), f"{how_text(block, here, file)} · {used_text(block.when, time.time())}")
+        info = source.block_info(name) if source is not None and name is not None else None
+        if source is None or info is None:
+            rows = [(tr("Name"), block.name), used, (tr("Source"), file)]
+            if problem is not None:
+                rows.append((tr("Cannot be inserted"), problem))
+            return Section("selected_block", tr("Selected block"), rows)
+        count = self._references.get(info.name.upper(), 0)
+        section = self._section(source, info, count)
+        return Section(section.key, section.title, [*section.rows, used])
 
     @staticmethod
     def _section(document: CadDocument, info: CadBlockInfo, references: int) -> Section:
@@ -1103,3 +1436,20 @@ class BlocksPanel(QDockWidget):
         super().showEvent(event)
         if self._stale:
             self.refresh()
+
+
+def block_named(document: CadDocument, name: str) -> str | None:
+    """The block called ``name``, ignoring case, as ``document`` spells it."""
+    wanted = name.casefold()
+    return next((n for n in document.block_names if n.casefold() == wanted), None)
+
+
+def read_now(session: Session, paths: Sequence[Path]) -> dict[Path, CadDocument | str]:
+    """``paths`` opened at once, without a command runner (tests)."""
+    read: dict[Path, CadDocument | str] = {}
+    for path in paths:
+        try:
+            read[path] = session.app.open_document(path)
+        except CadError as error:
+            read[path] = str(error)
+    return read
