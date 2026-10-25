@@ -37,6 +37,10 @@ import math
 from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
     QImage,
     QKeyEvent,
     QMouseEvent,
@@ -62,6 +66,7 @@ from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point, ortho
+from arqstudiocad.ui.block_drag import dragged_block
 
 #: Zoom factor of one wheel notch (120 eighths of a degree).
 WHEEL_STEP = 1.25
@@ -128,6 +133,12 @@ class Viewport(QWidget):
     key_typed = Signal(object)
     #: A grip was clicked (a ``CadGrip``): it should be edited.
     grip_clicked = Signal(object)
+    #: A block dragged from the Blocks palette came over the drawing (its
+    #: name): INSERT should start, so it follows the cursor (ADR 0025 D5).
+    block_drag_entered = Signal(str)
+    #: That drag ended: dropped (True), its point already picked, or left
+    #: the drawing (False), so the INSERT it started should be cancelled.
+    block_drag_ended = Signal(bool)
 
     def __init__(
         self,
@@ -167,6 +178,9 @@ class Viewport(QWidget):
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setMinimumSize(64, 64)
+        # A block dragged from the palette over the drawing, by name.
+        self._drop_name: str | None = None
+        self.setAcceptDrops(True)
 
     # The view, for commands (ViewControl)
 
@@ -388,6 +402,54 @@ class Viewport(QWidget):
             return
         super().keyPressEvent(event)
 
+    # Dropping a block from the palette (ADR 0025 D5)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802 (Qt API)
+        found = dragged_block(event.mimeData())
+        if found is None or found[0] != self.document.id:
+            event.ignore()  # another drawing's block, or not a block
+            return
+        event.acceptProposedAction()
+        self._drop_name = found[1]
+        self.block_drag_entered.emit(found[1])
+        self._follow_drop(event.position())
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:  # noqa: N802 (Qt API)
+        if self._drop_name is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._follow_drop(event.position())
+
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:  # noqa: N802 (Qt API)
+        if self._drop_name is not None:
+            self._drop_name = None
+            self.update()
+            self.block_drag_ended.emit(False)
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802 (Qt API)
+        if self._drop_name is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._follow_drop(event.position())
+        target = self._target if self._asking else None
+        self._drop_name = None
+        self.update()
+        if target is not None:
+            self.point_picked.emit(target)  # where INSERT puts the block
+        self.block_drag_ended.emit(True)
+
+    def _follow_drop(self, position: QPointF) -> None:
+        """The dragged block follows the cursor, snapped, as at a click."""
+        if self._asking:
+            self._aim(position)
+        world = self.view.to_world(*self._physical(position))
+        if self.drafting is not None:
+            self.drafting.cursor = world
+        self.cursor_moved.emit(*world)
+        self.update()
+
     def leaveEvent(self, event: object) -> None:  # noqa: N802 (Qt API)
         self._set_hover(None)
 
@@ -455,6 +517,8 @@ class Viewport(QWidget):
         self._paint_grips(painter)
         if self._asking:
             self._paint_point(painter)
+        if self._drop_name is not None:
+            self._paint_drop(painter)
         if self._press is not None and self._band is not None:
             crossing = self._band.x() < self._press.x()
             color = CROSSING if crossing else SELECTED
@@ -466,6 +530,16 @@ class Viewport(QWidget):
             painter.setPen(pen)
             painter.setBrush(fill)
             painter.drawRect(QRectF(self._press, self._band).normalized())
+
+    def _paint_drop(self, painter: QPainter) -> None:
+        """The drawing takes the dragged block: a dashed frame and a note."""
+        pen = QPen(self.palette().highlight().color(), 2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(QRectF(self.rect()).adjusted(2, 2, -2, -2))
+        painter.setPen(self.palette().text().color())
+        painter.drawText(QPointF(12, 22), tr("Drop to insert {name}", name=self._drop_name))
 
     def _paint_grips(self, painter: QPainter) -> None:
         """Grips as filled squares, the hot one red."""

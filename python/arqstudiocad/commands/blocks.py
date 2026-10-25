@@ -72,13 +72,23 @@ def place_block(
     scale: float = 1.0,
     rotation: float = 0.0,
     on_screen: bool = True,
+    explode: bool = False,
 ) -> CommandScript:
     """Places block ``name``: on screen, following the cursor until its
     point is picked, with Scale and Rotate still offered; otherwise at the
-    origin at once. One undo step either way."""
+    origin at once. With ``explode`` the reference is then replaced by its
+    contents, as EXPLODE does (ADR 0025 D5). One undo step either way."""
     if not on_screen:
-        _, changes = document.insert_block(name, ORIGIN, scale, rotation)
-        ctx.session.report(document, changes)
+        document.begin_group("INSERT")
+        try:
+            placed, changes = document.insert_block(name, ORIGIN, scale, rotation)
+            ctx.session.report(document, changes)
+            if explode:
+                ctx.session.report(document, document.explode_entities([placed])[1])
+        except BaseException:
+            ctx.session.report(document, document.cancel_group())
+            raise
+        document.end_group()
         return
     document.begin_group("INSERT")
     placed = False
@@ -103,6 +113,8 @@ def place_block(
                 rotation = math.radians(degrees)
             else:
                 ctx.session.report(document, document.move_entities([shown], answer))
+                if explode:
+                    ctx.session.report(document, document.explode_entities([shown])[1])
                 placed = True
                 return
             # Shown again with the new scale or rotation.
@@ -147,9 +159,12 @@ def _edit(ctx: CommandContext, document: CadDocument, name: str) -> None:
     ctx.message(tr("Editing block {name}.", name=name))
 
 
-def insert_named(name: str, scale: float, rotation: float, on_screen: bool) -> Command:
+def insert_named(
+    name: str, scale: float, rotation: float, on_screen: bool, explode: bool = False
+) -> Command:
     """INSERT with block ``name`` already chosen, scaled and turned
-    (``rotation`` in radians), as the Blocks palette starts it."""
+    (``rotation`` in radians), exploded if asked, as the Blocks palette
+    starts it: from its Insert button or a drop on the drawing."""
 
     def run(ctx: CommandContext) -> CommandScript:
         document = ctx.document()
@@ -157,7 +172,7 @@ def insert_named(name: str, scale: float, rotation: float, on_screen: bool) -> C
         if found is None:
             raise CommandCancelledError(tr("There is no such block."))
         ctx.message(tr("Inserting block {name}.", name=found))
-        yield from place_block(ctx, document, found, scale, rotation, on_screen)
+        yield from place_block(ctx, document, found, scale, rotation, on_screen, explode)
 
     return Command("INSERT", run, repeat=False)
 

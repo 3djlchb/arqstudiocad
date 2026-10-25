@@ -446,6 +446,9 @@ class MainWindow(QMainWindow):
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
         viewport.escape_pressed.connect(self.command_window.escape)
+        # A block dragged from the Blocks palette is placed by INSERT (ADR 0025 D5).
+        viewport.block_drag_entered.connect(self.blocks_panel.start_drop_insert)
+        viewport.block_drag_ended.connect(self.blocks_panel.end_drop_insert)
         self.viewports[event.document_id] = viewport
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()
