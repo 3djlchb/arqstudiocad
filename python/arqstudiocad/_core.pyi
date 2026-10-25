@@ -4,7 +4,7 @@ Checked against the built module by ``stubtest`` (ADR 0012, D4.8). Import
 these names from :mod:`arqstudiocad.core`, not from here.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from os import PathLike
 from pathlib import Path
 from types import TracebackType
@@ -313,6 +313,15 @@ class CadDocument:
     def is_dynamic_block(self, name: str) -> bool: ...
     def open_block_editor(self, name: str, title: str) -> CadDocument: ...
     def save_block(self, name: str, editor: CadDocument) -> CadChangeSet: ...
+    def block_clashes(self, name: str, source: CadDocument) -> list[str]: ...
+    def copy_block(
+        self,
+        name: str,
+        source: CadDocument,
+        keep: Sequence[str] = ...,
+        redefine: Sequence[str] = ...,
+        rename: Mapping[str, str] = ...,
+    ) -> tuple[str, CadChangeSet]: ...
     def add_mtext(
         self,
         content: str,

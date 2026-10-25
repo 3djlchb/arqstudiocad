@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use arq_core::{
     CadApplication as CoreApplication, CadChangeSet as ChangeSet, CadDocument as CoreDocument,
-    CadError, DocumentId, EntityId, LayerId,
+    CadError, ClashChoice, DocumentId, EntityId, LayerId,
 };
 use arq_geometry::{Geometry2, Line};
 use pyo3::exceptions::PyTypeError;
@@ -523,6 +523,42 @@ impl CadDocument {
             .save_block(editor.id, self.id, name)
             .py()
             .map(CadChangeSet)
+    }
+
+    /// The blocks copying block `name` from `source` would bring whose
+    /// names this drawing uses for other contents, `name` first if it is
+    /// one: each needs a choice (ADR 0025 D6).
+    fn block_clashes(&self, name: &str, source: &CadDocument) -> PyResult<Vec<String>> {
+        self.store.block_clashes(source.id, self.id, name).py()
+    }
+
+    /// Copies block `name` from `source` with the blocks it nests and the
+    /// layers, linetypes and text styles they use that this drawing lacks;
+    /// returns its name here and the changes (ADR 0025 D6). Each clashing
+    /// block is kept as this drawing has it (`keep`), redefined from
+    /// `source` (`redefine`) or copied under a new name (`rename`, old to
+    /// new); one left out is an error. One undo step, or part of a group.
+    #[pyo3(signature = (name, source, keep = Vec::new(), redefine = Vec::new(), rename = std::collections::BTreeMap::new()))]
+    fn copy_block(
+        &self,
+        name: &str,
+        source: &CadDocument,
+        keep: Vec<String>,
+        redefine: Vec<String>,
+        rename: std::collections::BTreeMap<String, String>,
+    ) -> PyResult<(String, CadChangeSet)> {
+        let mut choices = std::collections::BTreeMap::new();
+        choices.extend(keep.into_iter().map(|n| (n, ClashChoice::UseDrawing)));
+        choices.extend(redefine.into_iter().map(|n| (n, ClashChoice::Redefine)));
+        choices.extend(
+            rename
+                .into_iter()
+                .map(|(n, new)| (n, ClashChoice::Rename(new))),
+        );
+        self.store
+            .copy_block(source.id, self.id, name, &choices)
+            .py()
+            .map(|(name, changes)| (name, CadChangeSet(changes)))
     }
 
     /// Writes a multiline text on the current layer with the current text
