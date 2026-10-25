@@ -449,6 +449,7 @@ class MainWindow(QMainWindow):
         # A block dragged from the Blocks palette is placed by INSERT (ADR 0025 D5).
         viewport.block_drag_entered.connect(self.blocks_panel.start_drop_insert)
         viewport.block_drag_ended.connect(self.blocks_panel.end_drop_insert)
+        viewport.block_dropped.connect(self.blocks_panel.drop_insert_at)
         self.viewports[event.document_id] = viewport
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()

@@ -152,6 +152,18 @@ either side, can only be used as the drawing has it. Redefine and Copy
 with another name are offered disabled, with the reason. A dynamic block
 that does not clash is copied whole, its parameters and actions included.
 
+**The dialog shows both blocks** *(maintainer, 2026-10-25)*: each clashing
+block has two 96 px previews, the template's block on the left and the
+drawing's on the right, so the user sees the difference before choosing.
+
+**BLOCK checks the template too** *(maintainer, 2026-10-25)*: creating a
+block, with BLOCK or the palette's New…, checks the name in two places.
+- A name the drawing uses is refused, and the message says it is in the
+  drawing.
+- A name only the loaded template uses gets a warning, and BLOCK goes on:
+  they are two files with no clash yet, and inserting that block from the
+  template will ask.
+
 ### D7 — Reading templates
 
 A `.dwt` is a DWG file with another extension: the core opens it as DWG,
@@ -283,6 +295,17 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - Edit block is disabled for a template's blocks, with the reason as its tooltip.
   - Insert, Enter, a double click or a drop onto the drawing copies the block (D6) and inserts it, in one INSERT undo step.
   - A block whose name clashes with a different block of the drawing is not inserted yet: INSERT stops and names the clashing blocks. The clash dialog comes with step 7c.
+- **Step 7c (2026-10-25):** the clash dialog.
+  - INSERT from a template asks about every clashing block, nested ones included, before copying. Cancel changes nothing.
+  - Each clash shows, as the maintainer asked:
+    - the template's block on the left and the drawing's on the right, 96 px each, framed as the palette's cards;
+    - the three choices: **Use the drawing's** (the default), **Redefine from the template**, and **Copy with another name**, which proposes `Name_2`.
+  - A new name must be valid, free in the drawing, and not chosen twice. Until it is, Insert is disabled and the dialog says why.
+  - A dynamic block, on either side, can only be used as the drawing has it. The other two choices are disabled, with the reason.
+  - Without a dialog, the command line asks the same questions.
+  - A template's block that clashes cannot be asked about during a drag. INSERT starts when the block is dropped, and places it at the drop point after the dialog, found as a click finds a point (object snaps, ORTHO).
+  - BLOCK checks the name against the drawing and the loaded template, as decided in D6. The session knows the palette's template (`Session.template`).
+  - The UI service `resolve_block_clashes` takes the `BlockClash` records and returns a `ClashChoice` for each.
 
 ## Consequences
 

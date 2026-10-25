@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QToolButton, QWi
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
+from arqstudiocad.commands import ClashChoice
 from arqstudiocad.core import CadChangeSet, CadColor, CadDocument
 from arqstudiocad.i18n import set_language
 from arqstudiocad.paths import sample_template
@@ -794,6 +795,7 @@ def test_a_template_loads_in_the_background_and_shows_its_blocks(
     wait_idle(qtbot, window)
     template = panel.template
     assert template is not None and template not in window.session.documents, "never a tab"
+    assert window.session.template is template, "BLOCK checks its names"
     assert sorted(panel.shown(), key=str.lower) == sorted(template.block_names, key=str.lower)
     assert len(panel.shown()) == 10 and panel.views.currentWidget() is panel.grid
     assert panel.template_combo.currentText() == "Sample template"
@@ -847,7 +849,7 @@ def test_a_template_block_dropped_on_the_drawing_lands_there(
     }
 
 
-def test_a_clashing_template_block_is_not_inserted_silently(
+def test_a_clashing_template_block_is_asked_about_and_cancel_changes_nothing(
     qtbot: QtBot, window: MainWindow
 ) -> None:
     document = drawing_with_blocks(window, "wc")  # its own WC: one line
@@ -857,10 +859,13 @@ def test_a_clashing_template_block_is_not_inserted_silently(
     # The drawing's own wc, counted whatever its case.
     assert dict(panel.details.sections()[0][1])["In drawing"] == "1 reference"
     panel.on_screen.setChecked(False)
-    panel.insert_button.click()
-    assert history(window)[-1] == (
-        "The drawing has other blocks named WC: WC cannot be inserted from the template yet."
-    )
+    panel.insert_button.click()  # the dialog is cancelled
+    assert isinstance(window.ui, QuietUi) and window.ui.asked[-1] == "clashes WC"
+    (clash,) = window.ui.clashes
+    assert (clash.name, clash.drawing_name, clash.suggested) == ("WC", "wc", "WC_2")
+    assert clash.template is panel.template and clash.drawing is document
+    assert not clash.dynamic
+    assert "Inserting block WC." not in history(window), "cancelled before copying"
     assert len(document.undo_history) == steps and references(document, "WC") == []
     assert len(references(document, "wc")) == 1, "the drawing's own, untouched"
 
@@ -947,3 +952,94 @@ def test_the_template_source_speaks_spanish(qtbot: QtBot, window: MainWindow) ->
         assert panel.load_button.toolTip() == "Cargar plantilla…"
     finally:
         set_language("en")
+
+
+# Step 7c: the clash dialog (ADR 0025 D6)
+
+
+def clash_answered(qtbot: QtBot, window: MainWindow, answer: ClashChoice) -> CadDocument:
+    """A drawing with its own wc and the sample template loaded; the clash
+    dialog will answer ``answer`` for WC."""
+    document = drawing_with_blocks(window, "wc")
+    with_template(qtbot, window)
+    assert isinstance(window.ui, QuietUi)
+    window.ui.clash_answer = {"WC": answer}
+    return document
+
+
+def insert_wc(window: MainWindow) -> None:
+    panel = window.blocks_panel
+    panel.select("WC")
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+
+
+def test_copy_with_another_name_inserts_the_renamed_copy(qtbot: QtBot, window: MainWindow) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("rename", "WC_2"))
+    steps = len(document.undo_history)
+    insert_wc(window)
+    assert sorted(document.block_names, key=str.lower) == ["wc", "WC_2"]
+    assert len(references(document, "WC_2")) == 1 and len(references(document, "wc")) == 1
+    assert len(document.undo_history) == steps + 1 and document.undo_name == "INSERT"
+    document.undo()
+    assert document.block_names == ["wc"], "one undo takes the copy away too"
+
+
+def test_redefine_replaces_the_drawings_block(qtbot: QtBot, window: MainWindow) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("redefine"))
+    template = window.blocks_panel.template
+    assert template is not None
+    insert_wc(window)
+    assert document.block_clashes("WC", template) == [], "now the template's"
+    assert document.block_names == ["wc"] and len(references(document, "wc")) == 2
+    document.undo()
+    assert document.block_clashes("WC", template) == ["WC"], "undone in one step"
+
+
+def test_use_the_drawings_inserts_its_own_block(qtbot: QtBot, window: MainWindow) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("keep"))
+    template = window.blocks_panel.template
+    assert template is not None
+    insert_wc(window)
+    assert document.block_clashes("WC", template) == ["WC"], "the drawing's, unchanged"
+    assert len(references(document, "wc")) == 2
+
+
+def test_a_clashing_block_dropped_is_asked_about_then_placed_there(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("rename", "WC_2"))
+    panel = window.blocks_panel
+    viewport = window.viewports[document.id]
+    viewport.zoom_extents()
+    panel.select("WC")
+    mime = panel.grid.mimeData([panel.grid.currentItem()])
+    at = screen(viewport, 0.25, 0.5)
+    QApplication.sendEvent(viewport, drag_event("enter", viewport, mime, at))
+    assert window.runner.active is None, "no dialog during the drag: asked once dropped"
+    QApplication.sendEvent(viewport, drag_event("drop", viewport, mime, at))
+    qtbot.waitUntil(lambda: bool(references(document, "WC_2")))
+    assert isinstance(window.ui, QuietUi) and window.ui.asked[-1] == "clashes WC"
+    (placed,) = references(document, "WC_2")
+    x0, y0, x1, y1 = box(document, placed)
+    assert x0 <= 0.25 <= x1 and y0 <= 0.5 <= y1, "where it was dropped"
+    assert document.undo_name == "INSERT"
+
+
+def test_a_clashing_dynamic_block_can_only_use_the_drawings(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    from test_block_editor import LOOKUP
+    from test_commands import regression_drawing
+
+    path = regression_drawing(LOOKUP)
+    template = window.session.app.open_document(path)
+    name = next(n for n in template.block_names if template.is_dynamic_block(n))
+    drawing_with_blocks(window, name)
+    panel = with_template(qtbot, window, path)
+    assert isinstance(window.ui, QuietUi)
+    panel.select(name)
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+    (clash,) = window.ui.clashes
+    assert clash.dynamic and clash.name == name

@@ -6,12 +6,14 @@ starts INSERT and BEDIT with the block already chosen (ADR 0025 D5), loads
 templates and inserts their blocks, copying each first (D6, D7)."""
 
 import math
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Sequence
 from pathlib import Path
 from typing import Any
 
 from arqstudiocad.commands import (
     Background,
+    BlockClash,
+    ClashChoice,
     Command,
     CommandCancelledError,
     CommandContext,
@@ -36,7 +38,20 @@ def block(ctx: CommandContext) -> CommandScript:
         name = (yield ctx.ask(tr("Block name"))).strip()
         if _named(document, name) is None:
             break
-        ctx.message(tr("A block named {name} exists.", name=name))
+        ctx.message(tr("A block named {name} exists in the drawing.", name=name))
+    template = ctx.session.template
+    found = _named(template, name) if template is not None and template.is_open else None
+    if template is not None and found is not None:
+        # Two files, no clash yet: inserting it from the template will ask
+        # (maintainer, 2026-10-25).
+        ctx.message(
+            tr(
+                "The template {template} has a block named {name}: inserting it "
+                "from the template will ask what to do.",
+                template=template.name,
+                name=found,
+            )
+        )
     base = yield ctx.point(tr("Specify base point"))
     ids = yield from select_objects(ctx, document)
     if not ids:
@@ -76,18 +91,21 @@ def place_block(
     on_screen: bool = True,
     explode: bool = False,
     source: CadDocument | None = None,
+    choices: dict[str, ClashChoice] | None = None,
+    at: tuple[float, float] | None = None,
 ) -> CommandScript:
     """Places block ``name``: on screen, following the cursor until its
-    point is picked, with Scale and Rotate still offered; otherwise at the
-    origin at once. With ``explode`` the reference is then replaced by its
-    contents, as EXPLODE does (ADR 0025 D5). A block of ``source`` (a
-    template) is first copied into the drawing (D6). One undo step either
-    way."""
+    point is picked, with Scale and Rotate still offered; otherwise at
+    ``at`` (the origin by default) at once. With ``explode`` the reference
+    is then replaced by its contents, as EXPLODE does (ADR 0025 D5). A
+    block of ``source`` (a template) is first copied into the drawing, as
+    ``choices`` resolve its clashes (D6). One undo step either way."""
     if not on_screen:
         document.begin_group("INSERT")
         try:
-            name = _copied(ctx, document, name, source)
-            placed, changes = document.insert_block(name, ORIGIN, scale, rotation)
+            name = _copied(ctx, document, name, source, choices)
+            point = at if at is not None else ORIGIN
+            placed, changes = document.insert_block(name, point, scale, rotation)
             ctx.session.report(document, changes)
             if explode:
                 ctx.session.report(document, document.explode_entities([placed])[1])
@@ -99,7 +117,7 @@ def place_block(
     document.begin_group("INSERT")
     placed = False
     try:
-        name = _copied(ctx, document, name, source)
+        name = _copied(ctx, document, name, source, choices)
         # The block, at the origin, follows the cursor as a drag preview.
         shown, changes = document.insert_block(name, ORIGIN, scale, rotation)
         ctx.session.report(document, changes)
@@ -173,35 +191,103 @@ def insert_named(
     on_screen: bool,
     explode: bool = False,
     source: CadDocument | None = None,
+    at: tuple[float, float] | None = None,
 ) -> Command:
     """INSERT with block ``name`` already chosen, scaled and turned
     (``rotation`` in radians), exploded if asked, as the Blocks palette
-    starts it: from its Insert button or a drop on the drawing. A block of
-    ``source`` (a template) is copied into the drawing first, in the same
-    undo step (ADR 0025 D6)."""
+    starts it: from its Insert button or a drop on the drawing, at ``at``
+    when the drop came first. A block of ``source`` (a template) is copied
+    into the drawing first, in the same undo step; a block whose name the
+    drawing uses for other contents is asked about, never resolved
+    silently (ADR 0025 D6)."""
 
     def run(ctx: CommandContext) -> CommandScript:
         document = ctx.document()
         found = _named(source if source is not None else document, name)
         if found is None:
             raise CommandCancelledError(tr("There is no such block."))
+        choices: dict[str, ClashChoice] = {}
         if source is not None:
-            clashes = document.block_clashes(found, source)
+            clashes = block_clashes(document, source, found)
             if clashes:
-                # Never resolved silently (D6): the choice comes with the
-                # clash dialog (step 7c).
-                raise CommandCancelledError(
-                    tr(
-                        "The drawing has other blocks named {names}: "
-                        "{name} cannot be inserted from the template yet.",
-                        names=", ".join(clashes),
-                        name=found,
-                    )
-                )
+                choices = yield from _resolve(ctx, clashes)
         ctx.message(tr("Inserting block {name}.", name=found))
-        yield from place_block(ctx, document, found, scale, rotation, on_screen, explode, source)
+        yield from place_block(
+            ctx,
+            document,
+            found,
+            scale,
+            rotation,
+            on_screen and at is None,
+            explode,
+            source,
+            choices,
+            at,
+        )
 
     return Command("INSERT", run, repeat=False)
+
+
+def block_clashes(document: CadDocument, source: CadDocument, name: str) -> list[BlockClash]:
+    """The blocks copying ``name`` from ``source`` would bring whose names
+    ``document`` uses for other contents, ready for the clash dialog."""
+    taken = {n.casefold() for n in document.block_names + source.block_names}
+    found = []
+    for clash in document.block_clashes(name, source):
+        here = _named(document, clash) or clash
+        suggested = _free_name(clash, taken)
+        dynamic = source.is_dynamic_block(clash) or document.is_dynamic_block(here)
+        found.append(BlockClash(clash, source, document, here, dynamic, suggested))
+    return found
+
+
+def _free_name(name: str, taken: set[str]) -> str:
+    """``name_2``, ``name_3``… the first not ``taken`` (case-folded)."""
+    number = 2
+    while f"{name}_{number}".casefold() in taken:
+        number += 1
+    return f"{name}_{number}"
+
+
+def _resolve(
+    ctx: CommandContext, clashes: Sequence[BlockClash]
+) -> Generator[Prompt | Background, Any, dict[str, ClashChoice]]:
+    """A choice for each clash: from the clash dialog, or asked at the
+    command line without one. A dynamic block can only be used as the
+    drawing has it (maintainer, 2026-10-25)."""
+    if ctx.ui is not None:
+        answer = ctx.ui.resolve_block_clashes(clashes)
+        if answer is None:
+            raise CommandCancelledError()
+        return answer
+    choices: dict[str, ClashChoice] = {}
+    for clash in clashes:
+        if clash.dynamic:
+            ctx.message(
+                tr(
+                    "{name} is a dynamic block: the drawing's is used.",
+                    name=clash.drawing_name,
+                )
+            )
+            choices[clash.name] = ClashChoice("keep")
+            continue
+        key = yield ctx.choose(
+            tr("The drawing has another block named {name}", name=clash.drawing_name),
+            [
+                Option("U", tr("Use the drawing's")),
+                Option("R", tr("Redefine")),
+                Option("C", tr("Copy with another name")),
+            ],
+            default="U",
+        )
+        if key == "R":
+            choices[clash.name] = ClashChoice("redefine")
+        elif key == "C":
+            new = (yield ctx.ask(tr("New block name"), default=clash.suggested)).strip()
+            choices[clash.name] = ClashChoice("rename", new or clash.suggested)
+        else:
+            choices[clash.name] = ClashChoice("keep")
+    return choices
 
 
 def load_template(path: Path | None, loaded: Callable[[CadDocument], None]) -> Command:
@@ -313,13 +399,30 @@ def _editor(ctx: CommandContext) -> CadDocument:
 
 
 def _copied(
-    ctx: CommandContext, document: CadDocument, name: str, source: CadDocument | None
+    ctx: CommandContext,
+    document: CadDocument,
+    name: str,
+    source: CadDocument | None,
+    choices: dict[str, ClashChoice] | None = None,
 ) -> str:
     """Block ``name`` in the drawing: copied from ``source`` first, when
-    there is one, within the INSERT group (ADR 0025 D6)."""
+    there is one, as ``choices`` resolve its clashes, within the INSERT
+    group (ADR 0025 D6)."""
     if source is None:
         return name
-    copied, changes = document.copy_block(name, source)
+    chosen = choices or {}
+    try:
+        copied, changes = document.copy_block(
+            name,
+            source,
+            keep=[n for n, c in chosen.items() if c.action == "keep"],
+            redefine=[n for n, c in chosen.items() if c.action == "redefine"],
+            rename={n: c.name for n, c in chosen.items() if c.action == "rename"},
+        )
+    except CadError as error:
+        raise CommandCancelledError(
+            tr("{name} cannot be copied from the template: {reason}", name=name, reason=error)
+        ) from None
     ctx.session.report(document, changes)
     return copied
 

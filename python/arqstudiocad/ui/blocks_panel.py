@@ -20,7 +20,7 @@ import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QPointF, QRectF, QSettings, QSize, Qt
+from PySide6.QtCore import QMimeData, QPointF, QRectF, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
     QDragEnterEvent,
@@ -182,6 +182,25 @@ def template_file(path: str) -> Path | None:
     return file if file.suffix.lower() in TEMPLATE_SUFFIXES else None
 
 
+def preview_pixmap(
+    document: CadDocument, name: str, size: int, colors: QPalette, ratio: float
+) -> QPixmap | None:
+    """Block ``name``'s preview, ``size`` logical pixels square, in its
+    layers' colors as the viewport draws them over the theme's Base color,
+    with the dynamic-block tag (ADR 0025 D3, D4); None if it cannot be drawn."""
+    pixels = max(1, round(size * ratio))
+    base = colors.color(QPalette.ColorRole.Base)
+    data = document.block_preview(name, pixels, (base.red(), base.green(), base.blue()))
+    if data is None:
+        return None
+    image = QImage(data, pixels, pixels, QImage.Format.Format_RGBA8888_Premultiplied).copy()
+    pixmap = QPixmap.fromImage(image)
+    pixmap.setDevicePixelRatio(ratio)
+    if document.is_dynamic_block(name):
+        paint_tag(pixmap, size)
+    return pixmap
+
+
 class PreviewCache:
     """Block previews as icons, plain and selected, per drawing, size and
     name; a drawing's are forgotten when a change touches any of its
@@ -201,17 +220,8 @@ class PreviewCache:
         found = self._icons.get(key)
         if found is None:
             found = QIcon()
-            pixels = max(1, round(size * ratio))
-            base = colors.color(QPalette.ColorRole.Base)
-            data = document.block_preview(name, pixels, (base.red(), base.green(), base.blue()))
-            if data is not None:
-                image = QImage(
-                    data, pixels, pixels, QImage.Format.Format_RGBA8888_Premultiplied
-                ).copy()
-                pixmap = QPixmap.fromImage(image)
-                pixmap.setDevicePixelRatio(ratio)
-                if document.is_dynamic_block(name):
-                    paint_tag(pixmap, size)
+            pixmap = preview_pixmap(document, name, size, colors, ratio)
+            if pixmap is not None:
                 # The same picture when selected: the card's frame shows the
                 # selection, and Qt would otherwise tint the colors.
                 found.addPixmap(pixmap, QIcon.Mode.Normal)
@@ -455,6 +465,9 @@ class BlocksPanel(QDockWidget):
         self.table.payload = self.grid.payload = self._drag_payload
         #: Whether INSERT runs for a block being dragged over the drawing.
         self._dropping = False
+        #: A template's block being dragged whose clashes are asked about
+        #: once it is dropped: a dialog cannot open during a drag.
+        self._pending_drop: str | None = None
         # The Template source with no template loaded, as the mockup's.
         self.empty = QWidget()
         self.empty.setObjectName("blocks_no_template")
@@ -712,7 +725,7 @@ class BlocksPanel(QDockWidget):
         if old is not None:
             self.previews.forget(old.id)
             self._session.app.close_document(old.id)
-        self.template = template
+        self.template = self._session.template = template
         if template.path is not None:
             self.recent_templates.add(template.path)
             if self._settings is not None:
@@ -920,7 +933,12 @@ class BlocksPanel(QDockWidget):
         """A block dragged from here came over the drawing: INSERT runs on
         screen with the insert options, so the block follows the cursor
         until it is dropped (ADR 0025 D5)."""
-        if self._runner is None or self.document() is None:
+        document = self.document()
+        if self._runner is None or document is None:
+            return
+        template = self._inserting_from()
+        if template is not None and document.block_clashes(name, template):
+            self._pending_drop = name
             return
         self._dropping = True
         self._runner.start(
@@ -941,6 +959,25 @@ class BlocksPanel(QDockWidget):
         if self._dropping and not dropped and runner is not None and runner.active == "INSERT":
             runner.cancel()
         self._dropping = False
+        self._pending_drop = None
+
+    def drop_insert_at(self, point: tuple[float, float]) -> None:
+        """A template's block whose names clash was dropped at ``point``: once
+        the drag is over, INSERT asks about the clashes and places it there
+        (ADR 0025 D5, D6)."""
+        name, runner = self._pending_drop, self._runner
+        if name is None or runner is None:
+            return
+        command = insert_named(
+            name,
+            self.scale.value(),
+            math.radians(self.rotation.value()),
+            False,
+            self.explode.isChecked(),
+            self._inserting_from(),
+            at=(point[0], point[1]),
+        )
+        QTimer.singleShot(0, lambda: runner.start(command))
 
     def _drag_payload(self, name: str) -> QMimeData | None:
         # For the active drawing, which a template's block is copied into.

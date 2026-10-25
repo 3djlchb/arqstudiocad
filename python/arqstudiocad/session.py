@@ -41,6 +41,9 @@ class Session:
         self.drafting = Drafting(bus)
         # Block editors (ADR 0023 D3): each edits a block of a document.
         self._editors: dict[int, tuple[CadDocument, str]] = {}
+        #: The template the Blocks palette shows (ADR 0025 D7): read-only,
+        #: never in a tab; BLOCK warns of a name it already uses.
+        self.template: CadDocument | None = None
 
     @property
     def documents(self) -> list[CadDocument]:

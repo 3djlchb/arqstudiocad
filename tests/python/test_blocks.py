@@ -9,10 +9,12 @@ from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
 from arqstudiocad.commands import CommandContext, CommandRunner
+from arqstudiocad.commands.blocks import insert_named
 from arqstudiocad.commands.builtin import builtin_registry
 from arqstudiocad.core import CadApplication, CadDocument, InvalidOperationError
 from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
 from arqstudiocad.i18n import set_language
+from arqstudiocad.paths import sample_template
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 
@@ -92,7 +94,7 @@ def test_block_asks_for_objects_and_refuses_names_in_use_or_invalid() -> None:
     h.run("")
     assert h.document.block_names == ["MARCO"]
     h.run("BLOCK", "marco")
-    assert h.messages()[-1] == "A block named marco exists."
+    assert h.messages()[-1] == "A block named marco exists in the drawing."
     assert h.prompt().text == "Block name:", "asked again"
     h.runner.cancel()
     h.session.select(h.document, [h.b])
@@ -207,3 +209,57 @@ def test_a_drag_without_band_draws_no_rubber_band(window: MainWindow, tmp_path: 
     shown = document.get_entities()[0].id
     assert band_pixels(Drag("move", (shown,))) > 10, "a band joins the base to the cursor"
     assert band_pixels(Drag("move", (shown,), band=False)) == 0
+
+
+# The template's names (ADR 0025 D6, step 7c)
+
+
+def test_block_warns_of_a_name_the_template_uses_and_goes_on() -> None:
+    h = Harness()
+    h.session.template = h.session.app.open_document(sample_template())
+    h.run("BLOCK", "wc")
+    assert h.messages()[-1] == (
+        "The template arqstudiocad-sample.dwt has a block named WC: inserting it "
+        "from the template will ask what to do."
+    )
+    assert h.prompt().text.startswith("Specify base point"), "not refused: two files"
+    h.run("10,10")
+    h.session.select(h.document, [h.a])
+    h.run("")
+    assert h.document.block_names == ["wc"]
+
+
+def clashing(h: Harness) -> CadDocument:
+    """The harness drawing with its own wc (one line), and the sample
+    template, whose WC differs."""
+    reference, _ = h.document.create_block("wc", (10, 10), [h.a])
+    h.document.delete_entities([reference])
+    return h.session.app.open_document(sample_template())
+
+
+def test_insert_asks_about_a_clash_at_the_command_line() -> None:
+    h = Harness()
+    template = clashing(h)
+    steps = len(h.document.undo_history)
+    h.runner.start(insert_named("WC", 1.0, 0.0, False, source=template))
+    assert h.prompt().text.startswith("The drawing has another block named wc")
+    h.run("C")
+    assert h.prompt().text.startswith("New block name") and "WC_2" in h.prompt().text
+    h.run("")
+    assert sorted(h.document.block_names, key=str.lower) == ["wc", "WC_2"]
+    assert len(h.document.undo_history) == steps + 1 and h.document.undo_name == "INSERT"
+    h.runner.start(insert_named("WC", 1.0, 0.0, False, source=template))
+    h.run("R")
+    assert h.document.block_clashes("WC", template) == [], "redefined from the template"
+    h.runner.start(insert_named("WC", 1.0, 0.0, False, source=template))
+    assert h.runner.active is None, "nothing left to ask: the same block now"
+
+
+def test_a_point_given_first_places_the_block_there_without_asking() -> None:
+    h = Harness()
+    template = h.session.app.open_document(sample_template())
+    h.runner.start(insert_named("Tree", 1.0, 0.0, True, source=template, at=(50.0, 60.0)))
+    assert h.runner.active is None, "dropped first: no point is asked"
+    (placed,) = [e.id for e in h.document.get_entities() if e.kind == "INSERT"]
+    (x0, y0), (x1, y1) = ends(h.document, placed)
+    assert x0 < 50 < x1 and y0 < 60 < y1, "around the point given"

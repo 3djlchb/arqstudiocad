@@ -7,10 +7,10 @@ from typing import Literal
 
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
-from arqstudiocad.commands import ViewControl
+from arqstudiocad.commands import BlockClash, ClashChoice, ViewControl
 from arqstudiocad.core import CadDocument
 from arqstudiocad.i18n import tr
-from arqstudiocad.ui import text_dialog
+from arqstudiocad.ui import block_clash_dialog, text_dialog
 
 
 def drawing_filter() -> str:
@@ -139,6 +139,9 @@ class QtUiServices:
             self._parent, title, tr("Block:"), list(names), 0, False
         )
         return name if chosen and name else None
+
+    def resolve_block_clashes(self, clashes: Sequence[BlockClash]) -> dict[str, ClashChoice] | None:
+        return block_clash_dialog.resolve_block_clashes(clashes, self._parent)
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         return text_dialog.ask_text(self._parent, title, text)
