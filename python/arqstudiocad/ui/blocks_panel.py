@@ -8,21 +8,28 @@ the Selected block section, the insert options and the actions: Insert,
 Edit block and New, which start INSERT, BEDIT and BLOCK. Blocks show as
 cards with previews in the grid view, or as rows in the list view; the
 previews are drawn in Rust and kept until a change touches a block; a
-dynamic block's carries the star tag (ADR 0025 D4). Only
-the Drawing source works yet; the others come with their steps (ADR 0025
-D9) and say so.
+dynamic block's carries the star tag (ADR 0025 D4).
+
+The Drawing source shows the active drawing's blocks; the Template source a
+template's, loaded in the background and never shown in a tab (D7): a block
+inserted from it is copied into the drawing first (D6). Recent comes with
+its step (D9) and says so.
 """
 
 import math
 from collections.abc import Callable, Sequence
+from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QPointF, QSettings, QSize, Qt
+from PySide6.QtCore import QMimeData, QPointF, QRectF, QSettings, QSize, Qt
 from PySide6.QtGui import (
     QColor,
+    QDragEnterEvent,
+    QDropEvent,
     QIcon,
     QImage,
     QPainter,
     QPalette,
+    QPen,
     QPixmap,
     QPolygonF,
     QShowEvent,
@@ -32,6 +39,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QDockWidget,
     QDoubleSpinBox,
     QGridLayout,
@@ -55,10 +63,12 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad.commands import CommandRunner
-from arqstudiocad.commands.blocks import edit_named, insert_named
+from arqstudiocad.commands.blocks import edit_named, insert_named, load_template
 from arqstudiocad.core import CadBlockInfo, CadDocument
 from arqstudiocad.events import DocumentChanged, Event
 from arqstudiocad.i18n import tr
+from arqstudiocad.paths import sample_template
+from arqstudiocad.recent_files import RecentFiles, same_file
 from arqstudiocad.session import Session
 from arqstudiocad.ui.block_drag import block_mime
 from arqstudiocad.ui.event_bridge import QtEventBridge
@@ -76,6 +86,13 @@ NAME, IN_DRAWING = 0, 1
 #: The views, and where the chosen one is remembered.
 GRID, LIST = "grid", "list"
 VIEW_SETTING = "blocks_palette/view"
+#: The templates loaded last, newest first, as the settings keep them.
+TEMPLATES_SETTING = "blocks_palette/templates"
+TEMPLATES_LIMIT = 8
+#: Files the palette loads as templates, dropped or chosen (ADR 0025 D5, D7).
+TEMPLATE_SUFFIXES = (".dwt", ".dwg", ".dxf")
+#: The empty Template source's placeholder picture, in pixels.
+EMPTY_ICON = 48
 #: Previews in the list's rows, in pixels.
 ROW_PREVIEW = 24
 #: Previews on the grid's cards, in pixels: fixed, so a wider palette holds
@@ -132,6 +149,37 @@ def tag_pixmap(ratio: float = 1.0) -> QPixmap:
     pixmap.fill(Qt.GlobalColor.transparent)
     paint_tag(pixmap, side * 4)
     return pixmap
+
+
+def empty_icon(color: QColor, ratio: float = 1.0) -> QPixmap:
+    """The empty Template source's placeholder, as the mockup draws it: three
+    dashed squares and a plus where the fourth would be."""
+    side = EMPTY_ICON
+    pixmap = QPixmap(round(side * ratio), round(side * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    try:
+        pen = QPen(color, 1.5)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        cell = side / 2 - 4
+        for x, y in ((2, 2), (side / 2 + 2, 2), (2, side / 2 + 2)):
+            painter.drawRect(QRectF(x, y, cell, cell))
+        pen.setStyle(Qt.PenStyle.SolidLine)
+        painter.setPen(pen)
+        middle = side * 3 / 4
+        painter.drawLine(QPointF(middle - 6, middle), QPointF(middle + 6, middle))
+        painter.drawLine(QPointF(middle, middle - 6), QPointF(middle, middle + 6))
+    finally:
+        painter.end()
+    return pixmap
+
+
+def template_file(path: str) -> Path | None:
+    """A file the palette loads as a template, if ``path`` names one."""
+    file = Path(path)
+    return file if file.suffix.lower() in TEMPLATE_SUFFIXES else None
 
 
 class PreviewCache:
@@ -300,7 +348,8 @@ def references_text(count: int) -> str:
 
 
 class BlocksPanel(QDockWidget):
-    """The blocks of the active drawing, without anonymous or layout blocks."""
+    """The blocks of the active drawing or of a template, without anonymous
+    or layout blocks."""
 
     def __init__(
         self,
@@ -320,8 +369,21 @@ class BlocksPanel(QDockWidget):
         #: The drawing changed while the palette was hidden.
         self._stale = True
         self._filling = False
-        #: Each block's references, counted at the last refresh.
+        #: Each block's references in the active drawing, by upper-case
+        #: name, counted at the last refresh.
         self._references: dict[str, int] = {}
+        #: The source shown: one of SOURCES.
+        self._source = "drawing"
+        #: The template loaded, read-only and never in a tab (ADR 0025 D7).
+        self.template: CadDocument | None = None
+        stored = settings.value(TEMPLATES_SETTING, []) if settings is not None else []
+        # An INI file gives back a list of one as a plain string.
+        paths = [stored] if isinstance(stored, str) else stored
+        self.recent_templates = RecentFiles(
+            paths if isinstance(paths, list) else [], TEMPLATES_LIMIT
+        )
+        # A template dropped on the palette is loaded (ADR 0025 D5).
+        self.setAcceptDrops(True)
 
         self.sources: dict[str, QToolButton] = {}
         self._source_group = QButtonGroup(self)
@@ -332,13 +394,29 @@ class BlocksPanel(QDockWidget):
             button.setObjectName(f"blocks_source_{source}")
             button.setCheckable(True)
             button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            # Only the drawing's blocks yet (ADR 0025 D9).
-            button.setEnabled(source == "drawing")
+            # Recent comes with its step (ADR 0025 D9).
+            button.setEnabled(source != "recent")
+            button.clicked.connect(lambda _=False, s=source: self.set_source(s))
             self._source_group.addButton(button)
             source_row.addWidget(button)
             self.sources[source] = button
         self.sources["drawing"].setChecked(True)
         self.source_caption = QLabel()
+        # The Template source's row: the templates used last, and a folder
+        # button to load another.
+        self.template_combo = QComboBox()
+        self.template_combo.setObjectName("blocks_template")
+        self.template_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.template_combo.activated.connect(self._on_template_chosen)
+        self.load_button = QToolButton()
+        self.load_button.setObjectName("blocks_load_template")
+        self.load_button.setAutoRaise(True)
+        self.load_button.clicked.connect(lambda: self.load_template())
+        self.template_row = QWidget()
+        template_row = QHBoxLayout(self.template_row)
+        template_row.setContentsMargins(0, 0, 0, 0)
+        template_row.addWidget(self.template_combo, 1)
+        template_row.addWidget(self.load_button)
 
         self.search = QLineEdit()
         self.search.setClearButtonEnabled(True)
@@ -377,9 +455,32 @@ class BlocksPanel(QDockWidget):
         self.table.payload = self.grid.payload = self._drag_payload
         #: Whether INSERT runs for a block being dragged over the drawing.
         self._dropping = False
+        # The Template source with no template loaded, as the mockup's.
+        self.empty = QWidget()
+        self.empty.setObjectName("blocks_no_template")
+        self.empty_icon = QLabel()
+        self.empty_title = QLabel()
+        self.empty_text = QLabel()
+        self.empty_text.setWordWrap(True)
+        self.empty_load = QPushButton()
+        self.empty_load.setObjectName("blocks_empty_load")
+        self.empty_load.clicked.connect(lambda: self.load_template())
+        self.empty_recent_label = QLabel()
+        self.empty_recent = QVBoxLayout()
+        empty = QVBoxLayout(self.empty)
+        empty.addStretch(1)
+        for widget in (self.empty_icon, self.empty_title, self.empty_text):
+            widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty.addWidget(widget)
+        empty.addWidget(self.empty_load, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.empty_recent_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty.addWidget(self.empty_recent_label)
+        empty.addLayout(self.empty_recent)
+        empty.addStretch(2)
         self.views = QStackedWidget()
         self.views.addWidget(self.grid)
         self.views.addWidget(self.table)
+        self.views.addWidget(self.empty)
         chosen = self._settings.value(VIEW_SETTING, GRID) if self._settings else GRID
         (self.list_view if chosen == LIST else self.grid_view).setChecked(True)
         self._on_view_chosen()
@@ -402,6 +503,7 @@ class BlocksPanel(QDockWidget):
         column.setContentsMargins(4, 4, 4, 0)
         column.addLayout(source_row)
         column.addWidget(self.source_caption)
+        column.addWidget(self.template_row)
         column.addLayout(search_row)
         column.addWidget(self.views, 1)
         column.addWidget(self.footer)
@@ -485,8 +587,19 @@ class BlocksPanel(QDockWidget):
         text = colors.color(QPalette.ColorRole.ButtonText).name()
         mid = colors.color(QPalette.ColorRole.Mid).name()
         highlight = colors.color(QPalette.ColorRole.Highlight).name()
-        for label in (self.source_caption, self.footer, self.legend_text, self.drag_hint):
+        for label in (
+            self.source_caption,
+            self.footer,
+            self.legend_text,
+            self.drag_hint,
+            self.empty_text,
+            self.empty_recent_label,
+        ):
             label.setStyleSheet(f"color: {muted};")
+        self.empty_title.setStyleSheet(f"color: {text}; font-weight: bold;")
+        self.empty_icon.setPixmap(
+            empty_icon(colors.color(QPalette.ColorRole.PlaceholderText), self.devicePixelRatioF())
+        )
         # A segmented control: the active source on the Button color with a
         # line in Highlight under it, as the mockup.
         segments = (
@@ -514,18 +627,35 @@ class BlocksPanel(QDockWidget):
             f"padding: 3px 4px; font-weight: bold; text-align: left; }}"
         )
         highlighted = colors.color(QPalette.ColorRole.HighlightedText).name()
-        self.insert_button.setStyleSheet(
+        primary = (
             f"QPushButton {{ background-color: {highlight}; color: {highlighted}; "
             f"border: 1px solid {highlight}; border-radius: 2px; padding: 4px 8px; }}"
             f"QPushButton:disabled {{ background-color: {window}; color: {muted}; "
             f"border-color: {mid}; }}"
         )
+        self.insert_button.setStyleSheet(primary)
+        self.empty_load.setStyleSheet(primary)
 
     def retranslate(self) -> None:
         self.setWindowTitle(tr("Blocks"))
         for source, button in self.sources.items():
             button.setText(source_title(source))
             button.setToolTip("" if button.isEnabled() else tr("Not available yet."))
+        self.template_combo.setPlaceholderText(tr("No template is loaded"))
+        self.load_button.setIcon(
+            QApplication.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
+        )
+        self.load_button.setToolTip(tr("Load template…"))
+        self.empty_title.setText(tr("No template is loaded"))
+        self.empty_text.setText(
+            tr(
+                "Load a .dwt or .dwg file to see its blocks here. "
+                "You can also drop the file on this panel."
+            )
+        )
+        self.empty_load.setText(tr("Load template…"))
+        self.empty_recent_label.setText(tr("Recently used"))
+        self._fill_templates()
         self.search.setPlaceholderText(tr("Search blocks"))
         self.grid_view.setToolTip(tr("Grid view"))
         self.list_view.setToolTip(tr("List view"))
@@ -555,9 +685,110 @@ class BlocksPanel(QDockWidget):
         document = self._session.active
         return document if document is not None and document.is_open else None
 
+    def source(self) -> str:
+        """The source shown: ``"template"``, ``"recent"`` or ``"drawing"``."""
+        return self._source
+
+    def source_document(self) -> CadDocument | None:
+        """Where the blocks shown come from: the template or the drawing."""
+        return self.template if self._source == "template" else self.document()
+
+    def set_source(self, source: str) -> None:
+        """Shows the blocks of ``source``, one of SOURCES."""
+        self._source = source
+        self.sources[source].setChecked(True)
+        self.refresh()
+
+    def load_template(self, path: Path | None = None) -> None:
+        """Loads ``path``, or a file the user chooses, as the template, in the
+        background (ADR 0025 D7); the Template source shows it once loaded."""
+        if self._runner is not None:
+            self._runner.start(load_template(path, self._template_loaded))
+        elif path is not None:
+            self._template_loaded(self._session.app.open_document(path))
+
+    def _template_loaded(self, template: CadDocument) -> None:
+        old = self.template
+        if old is not None:
+            self.previews.forget(old.id)
+            self._session.app.close_document(old.id)
+        self.template = template
+        if template.path is not None:
+            self.recent_templates.add(template.path)
+            if self._settings is not None:
+                self._settings.setValue(TEMPLATES_SETTING, self.recent_templates.to_strings())
+        self._fill_templates()
+        self.set_source("template")
+
+    def templates(self) -> list[Path]:
+        """The templates offered: those used last, then the sample template
+        when it is not among them (ADR 0025 D7)."""
+        offered = self.recent_templates.paths
+        sample = sample_template()
+        if sample.is_file() and not any(same_file(sample, p) for p in offered):
+            offered.append(sample)
+        return offered
+
+    def _template_title(self, path: Path) -> str:
+        return tr("Sample template") if same_file(path, sample_template()) else path.name
+
+    def _fill_templates(self) -> None:
+        """The combo and the empty state's buttons list the templates offered."""
+        offered = self.templates()
+        self.template_combo.clear()
+        for path in offered:
+            self.template_combo.addItem(self._template_title(path), str(path))
+            self.template_combo.setItemData(
+                self.template_combo.count() - 1, str(path), Qt.ItemDataRole.ToolTipRole
+            )
+        loaded = self.template.path if self.template is not None else None
+        current = next(
+            (i for i, path in enumerate(offered) if loaded is not None and same_file(path, loaded)),
+            -1,
+        )
+        self.template_combo.setCurrentIndex(current)
+        while self.empty_recent.count():
+            item = self.empty_recent.takeAt(0)
+            widget = item.widget() if item is not None else None
+            if widget is not None:
+                widget.deleteLater()
+        for path in offered:
+            button = QPushButton(self._template_title(path))
+            button.setToolTip(str(path))
+            button.clicked.connect(lambda _=False, chosen=path: self.load_template(chosen))
+            self.empty_recent.addWidget(button)
+        self.empty_recent_label.setVisible(bool(offered))
+
+    def _on_template_chosen(self, index: int) -> None:
+        chosen = self.template_combo.itemData(index)
+        loaded = self.template.path if self.template is not None else None
+        if chosen and (loaded is None or not same_file(Path(chosen), loaded)):
+            self.load_template(Path(chosen))
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802 (Qt API)
+        if self._dropped_template(event.mimeData()) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:  # noqa: N802 (Qt API)
+        path = self._dropped_template(event.mimeData())
+        if path is None:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.load_template(path)
+
+    @staticmethod
+    def _dropped_template(mime: QMimeData) -> Path | None:
+        """The one template file a drop carries, if it carries one."""
+        files = [url.toLocalFile() for url in mime.urls() if url.isLocalFile()]
+        return template_file(files[0]) if len(files) == 1 else None
+
     def names(self) -> list[str]:
-        """The active drawing's blocks that match the search, case-insensitively."""
-        document = self.document()
+        """The blocks of the source shown that match the search,
+        case-insensitively."""
+        document = self.source_document()
         if document is None:
             return []
         wanted = self.search.text().strip().casefold()
@@ -596,28 +827,38 @@ class BlocksPanel(QDockWidget):
             self._stale = True
             return
         self._stale = False
-        document = self.document()
+        drawing = self.document()
+        document = self.source_document()
+        from_template = self._source == "template"
+        self.template_row.setVisible(from_template)
+        self.source_caption.setVisible(not from_template)
+        self._show_view()
         chosen = self.selected()
         self._filling = True
         try:
             self.table.clear()
             self.grid.clear()
+            self._references = {
+                name.upper(): count
+                for name, count in (drawing.block_references if drawing else {}).items()
+            }
+            references = self._references
             if document is None:
                 self.legend.setVisible(False)
                 self.drag_hint.setVisible(False)
                 self.table.setEnabled(False)
                 self.source_caption.setText("")
-                self.footer.setText(tr("No drawing is open."))
+                self.footer.setText("" if from_template else tr("No drawing is open."))
             else:
                 self.table.setEnabled(True)
                 self.source_caption.setText(tr("Definitions in {name}", name=document.name))
-                self._references = references = document.block_references
                 shown = self.names()
                 dynamic = {name for name in shown if document.is_dynamic_block(name)}
                 self.legend.setVisible(bool(dynamic))
-                self.drag_hint.setVisible(bool(shown))
+                # Dragged onto a drawing, which there must be.
+                self.drag_hint.setVisible(bool(shown) and drawing is not None)
                 for name in shown:
-                    count = references.get(name, 0)
+                    count = references.get(name.upper(), 0)
                     item = QTreeWidgetItem([name, str(count)])
                     item.setTextAlignment(
                         IN_DRAWING, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -636,7 +877,11 @@ class BlocksPanel(QDockWidget):
                         )
                     self.grid.addItem(card)
                 if not document.block_names:
-                    self.footer.setText(tr("The drawing has no blocks."))
+                    self.footer.setText(
+                        tr("The template has no blocks.")
+                        if from_template
+                        else tr("The drawing has no blocks.")
+                    )
                 elif not shown:
                     self.footer.setText(tr("No block matches the search."))
                 elif len(shown) == 1:
@@ -662,8 +907,14 @@ class BlocksPanel(QDockWidget):
                 math.radians(self.rotation.value()),
                 self.on_screen.isChecked(),
                 self.explode.isChecked(),
+                self._inserting_from(),
             )
         )
+
+    def _inserting_from(self) -> CadDocument | None:
+        """The template a block inserted now is copied from; None for the
+        drawing's own blocks."""
+        return self.template if self._source == "template" else None
 
     def start_drop_insert(self, name: str) -> None:
         """A block dragged from here came over the drawing: INSERT runs on
@@ -679,6 +930,7 @@ class BlocksPanel(QDockWidget):
                 math.radians(self.rotation.value()),
                 True,
                 self.explode.isChecked(),
+                self._inserting_from(),
             )
         )
 
@@ -691,12 +943,15 @@ class BlocksPanel(QDockWidget):
         self._dropping = False
 
     def _drag_payload(self, name: str) -> QMimeData | None:
+        # For the active drawing, which a template's block is copied into.
         document = self.document()
         return None if document is None else block_mime(document.id, name)
 
     def edit_selected(self) -> None:
         """Opens the selected block in the block editor, through BEDIT."""
         name = self.selected()
+        if self._source != "drawing":
+            return
         if name is not None and self._runner is not None and self.document() is not None:
             self._runner.start(edit_named(name))
 
@@ -710,13 +965,19 @@ class BlocksPanel(QDockWidget):
 
     def _update_actions(self) -> None:
         document = self.document()
+        source = self.source_document()
         name = self.selected()
-        chosen = document is not None and name is not None
+        chosen = document is not None and source is not None and name is not None
         self.insert_button.setEnabled(chosen)
         self.new_button.setEnabled(document is not None)
         # A dynamic block's parameters wait for the parametric engine
         # (ADR 0023 D3a): it is inserted, never edited, and the button says why.
-        dynamic = document is not None and name is not None and document.is_dynamic_block(name)
+        dynamic = source is not None and name is not None and source.is_dynamic_block(name)
+        if self._source != "drawing":
+            # A template is never written (ADR 0025 D7).
+            self.edit_button.setEnabled(False)
+            self.edit_button.setToolTip(tr("Only the drawing's blocks can be edited."))
+            return
         self.edit_button.setEnabled(chosen and not dynamic)
         self.edit_button.setToolTip(
             tr("{name} is a dynamic block: it cannot be edited yet.", name=name) if dynamic else ""
@@ -732,6 +993,14 @@ class BlocksPanel(QDockWidget):
         item = self.table.topLevelItem(index)
         assert item is not None
         return item
+
+    def _show_view(self) -> None:
+        """The grid or the list, as chosen; the empty state while the Template
+        source has no template."""
+        if self._source == "template" and self.template is None:
+            self.views.setCurrentWidget(self.empty)
+        else:
+            self.views.setCurrentWidget(self.grid if self.view() == GRID else self.table)
 
     def _icon(self, document: CadDocument, name: str, size: int) -> QIcon:
         return self.previews.icon(document, name, size, self.palette(), self.devicePixelRatioF())
@@ -763,20 +1032,19 @@ class BlocksPanel(QDockWidget):
             self.select(card.text())
 
     def _on_view_chosen(self) -> None:
-        view = self.view()
-        self.views.setCurrentWidget(self.grid if view == GRID else self.table)
+        self._show_view()
         if self._settings is not None:
-            self._settings.setValue(VIEW_SETTING, view)
+            self._settings.setValue(VIEW_SETTING, self.view())
 
     def _show_details(self) -> None:
         self._update_actions()
-        document = self.document()
+        document = self.source_document()
         name = self.selected()
         info = document.block_info(name) if document is not None and name else None
         if document is None or info is None:
             self.details.show_sections("", [])
             return
-        count = self._references.get(info.name, 0)
+        count = self._references.get(info.name.upper(), 0)
         self.details.show_sections("", [self._section(document, info, count)])
 
     @staticmethod

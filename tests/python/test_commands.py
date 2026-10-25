@@ -104,6 +104,10 @@ class FakeUi:
         self.asked.append("open")
         return self.open_path
 
+    def choose_template_path(self) -> Path | None:
+        self.asked.append("template")
+        return None
+
     def choose_save_path(self, suggested: str) -> Path | None:
         self.asked.append(f"save {suggested}")
         return self.save_path
