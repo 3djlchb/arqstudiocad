@@ -115,6 +115,34 @@ class QtUiServices:
             return "overwrite"
         return "cancel"
 
+    def report_block_name_taken(self, name: str) -> None:
+        QMessageBox(
+            QMessageBox.Icon.Warning,
+            tr("Block name in use"),
+            tr("A block named {name} exists in the drawing. Type another name.", name=name),
+            QMessageBox.StandardButton.Ok,
+            self._parent,
+        ).exec()
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Information,
+            tr("Block name in the template"),
+            tr(
+                "The template {template} has a block named {name}. You can make this "
+                "block: inserting {name} from the template will ask what to do.",
+                template=template,
+                name=name,
+            ),
+            QMessageBox.StandardButton.NoButton,
+            self._parent,
+        )
+        go_on = box.addButton(tr("Continue"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("Another name"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(go_on)
+        box.exec()
+        return box.clickedButton() == go_on
+
     def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
         box = QMessageBox(
             QMessageBox.Icon.Warning,

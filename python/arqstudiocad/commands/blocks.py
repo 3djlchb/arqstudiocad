@@ -35,14 +35,19 @@ def block(ctx: CommandContext) -> CommandScript:
     """A block named and based at a point, made from objects selected; a
     reference to it takes their place (AutoCAD's "Convert to block")."""
     document = ctx.document()
+    template = ctx.session.template
     while True:
         name = (yield ctx.ask(tr("Block name"))).strip()
-        if _named(document, name) is None:
+        taken = _named(document, name)
+        if taken is not None:
+            ctx.message(tr("A block named {name} exists in the drawing.", name=name))
+            if ctx.ui is not None:
+                # Said in a dialog as well (maintainer, 2026-10-25).
+                ctx.ui.report_block_name_taken(taken)
+            continue
+        found = _named(template, name) if template is not None and template.is_open else None
+        if template is None or found is None:
             break
-        ctx.message(tr("A block named {name} exists in the drawing.", name=name))
-    template = ctx.session.template
-    found = _named(template, name) if template is not None and template.is_open else None
-    if template is not None and found is not None:
         # Two files, no clash yet: inserting it from the template will ask
         # (maintainer, 2026-10-25).
         ctx.message(
@@ -53,6 +58,8 @@ def block(ctx: CommandContext) -> CommandScript:
                 name=found,
             )
         )
+        if ctx.ui is None or ctx.ui.ask_block_name_in_template(found, template.name):
+            break
     base = yield ctx.point(tr("Specify base point"))
     ids = yield from select_objects(ctx, document)
     if not ids:

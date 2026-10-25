@@ -114,6 +114,13 @@ class FakeUi:
         self.asked.append("clashes")
         return None
 
+    def report_block_name_taken(self, name: str) -> None:
+        self.asked.append("name taken")
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        self.asked.append("name in template")
+        return True
+
     def choose_save_path(self, suggested: str) -> Path | None:
         self.asked.append(f"save {suggested}")
         return self.save_path

@@ -168,6 +168,9 @@ block, with BLOCK or the palette's New…, checks the name in two places.
 - A name only the loaded template uses gets a warning, and BLOCK goes on:
   they are two files with no clash yet, and inserting that block from the
   template will ask.
+- With the interface, both are dialogs as well as command-line messages
+  *(maintainer, 2026-10-25)*: a warning with OK, after which BLOCK asks for
+  the name again; and a note with **Continue** and **Another name**.
 
 ### D7 — Reading templates
 

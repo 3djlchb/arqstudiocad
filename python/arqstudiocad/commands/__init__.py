@@ -187,6 +187,16 @@ class UiServices(Protocol):
         """Whether to save ``name`` although it would lose ``losses``."""
         ...
 
+    def report_block_name_taken(self, name: str) -> None:
+        """Says the drawing already has a block called ``name``: BLOCK asks
+        for another name (maintainer, 2026-10-25)."""
+        ...
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        """Whether to go on making block ``name``, which the loaded template
+        ``template`` also has (True), or type another name (False)."""
+        ...
+
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         """One of the drawing's blocks, chosen in a window called ``title``
         (INSERT, BEDIT, ADR 0023); None if it was cancelled."""

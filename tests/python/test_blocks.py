@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QMessageBox, QWidget
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
@@ -17,6 +18,7 @@ from arqstudiocad.i18n import set_language
 from arqstudiocad.paths import sample_template
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
+from arqstudiocad.ui.qt_services import QtUiServices
 
 
 def ends(document: CadDocument, entity_id: int) -> list[tuple[float, float]]:
@@ -308,3 +310,52 @@ def test_insert_reads_a_recent_blocks_file_first(tmp_path: Path) -> None:
     h.runner.start(insert_named("Tree", 1.0, 0.0, False, load=missing, loaded=loaded.append))
     assert h.messages()[-1].startswith("gone.dwg cannot be read: ")
     assert len(loaded) == 1 and len(h.document.undo_history) == steps + 1
+
+
+def test_block_says_a_name_in_use_in_a_dialog_too() -> None:
+    """The maintainer's request (2026-10-25): with an interface, BLOCK's
+    refusal and the template's warning are dialogs as well."""
+    ui = QuietUi(template_name_answer=False)
+    h = Harness(ui)
+    h.document.create_block("MARCO", (10, 10), [h.a])
+    h.session.template = h.session.app.open_document(sample_template())
+    h.run("BLOCK", "marco")
+    assert ui.asked[-1] == "name taken MARCO" and h.prompt().text == "Block name:"
+    h.run("wc")
+    assert ui.asked[-1] == "name in template WC arqstudiocad-sample.dwt"
+    assert h.prompt().text == "Block name:", "Another name: asked again"
+    ui.template_name_answer = True
+    h.run("wc")
+    assert h.prompt().text.startswith("Specify base point"), "Continue: BLOCK goes on"
+    h.run("0,0")
+    h.session.select(h.document, [h.b])
+    h.run("")
+    assert sorted(h.document.block_names) == ["MARCO", "wc"]
+
+
+def answer_box(monkeypatch: pytest.MonkeyPatch, button: str) -> list[str]:
+    """The next message box shown is answered with ``button``; its text."""
+    seen: list[str] = []
+
+    def answer(box: QMessageBox) -> int:
+        seen.append(box.text())
+        (chosen,) = [b for b in box.buttons() if b.text() == button]
+        chosen.click()
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", answer)
+    return seen
+
+
+def test_the_block_name_dialogs(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    services = QtUiServices(parent)
+    seen = answer_box(monkeypatch, "OK")
+    services.report_block_name_taken("MARCO")
+    assert seen == ["A block named MARCO exists in the drawing. Type another name."]
+    seen = answer_box(monkeypatch, "Continue")
+    assert services.ask_block_name_in_template("WC", "plantilla.dwt")
+    assert seen[0].startswith("The template plantilla.dwt has a block named WC.")
+    answer_box(monkeypatch, "Another name")
+    assert not services.ask_block_name_in_template("WC", "plantilla.dwt")
