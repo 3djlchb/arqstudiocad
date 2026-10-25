@@ -262,6 +262,27 @@ Each step is its own pull request with tests, as ADR 0023 D5:
     - a dynamic block whose graph AcadRust cannot move.
   - In the maintainer's drawings, 45 of 51 blocks copy, and every copy saves and reads back. The other six are dynamic blocks whose graph cannot be moved yet.
   - One undo step, or part of INSERT's group: `CadApplication::copy_block` copies from a snapshot of the source document. The Python API is `CadDocument.copy_block(name, source, keep, redefine, rename)` and `block_clashes(name, source)`.
+- **Step 7b (2026-10-25):** the Template source.
+  - The Template segment works; Recent still says "Not available yet."
+  - Its source row has:
+    - a combo of the templates used last, newest first, with the sample template always offered;
+    - a folder button, "Load template…".
+  - The templates used are kept in the settings (at most eight).
+  - With no template loaded, the palette shows the mockup's empty state:
+    - "No template is loaded" and how to load one;
+    - a primary **Load template…** button;
+    - the templates used last as buttons.
+  - A template loads in the background as OPEN does, so other commands get "Please wait". The file dialog is a new interface service (`choose_template_path`).
+  - A loaded template:
+    - is never shown in a tab nor written;
+    - replaces and closes the previous one;
+    - stays loaded when the active drawing changes.
+  - A file that cannot be read leaves the loaded template as it was, and says why.
+  - Dropping one `.dwt`, `.dwg` or `.dxf` file on the palette loads it.
+  - The template's blocks show as the drawing's do, with previews and the dynamic-block tag. "In drawing" counts the active drawing's references to a block of that name, ignoring case. The Selected block section names the template file as its Source.
+  - Edit block is disabled for a template's blocks, with the reason as its tooltip.
+  - Insert, Enter, a double click or a drop onto the drawing copies the block (D6) and inserts it, in one INSERT undo step.
+  - A block whose name clashes with a different block of the drawing is not inserted yet: INSERT stops and names the clashing blocks. The clash dialog comes with step 7c.
 
 ## Consequences
 

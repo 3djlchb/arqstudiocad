@@ -2,10 +2,12 @@
 place a block, following the cursor until its insertion point is picked.
 BEDIT, BSAVE and BCLOSE (D3): edit a block's definition alone, in a block
 editor of its own, and save it back into the drawing. The Blocks palette
-starts INSERT and BEDIT with the block already chosen (ADR 0025 D5)."""
+starts INSERT and BEDIT with the block already chosen (ADR 0025 D5), loads
+templates and inserts their blocks, copying each first (D6, D7)."""
 
 import math
-from collections.abc import Generator
+from collections.abc import Callable, Generator
+from pathlib import Path
 from typing import Any
 
 from arqstudiocad.commands import (
@@ -18,7 +20,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import select_objects
-from arqstudiocad.core import CadDocument, InvalidOperationError
+from arqstudiocad.core import CadDocument, CadError, InvalidOperationError
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 
@@ -73,14 +75,18 @@ def place_block(
     rotation: float = 0.0,
     on_screen: bool = True,
     explode: bool = False,
+    source: CadDocument | None = None,
 ) -> CommandScript:
     """Places block ``name``: on screen, following the cursor until its
     point is picked, with Scale and Rotate still offered; otherwise at the
     origin at once. With ``explode`` the reference is then replaced by its
-    contents, as EXPLODE does (ADR 0025 D5). One undo step either way."""
+    contents, as EXPLODE does (ADR 0025 D5). A block of ``source`` (a
+    template) is first copied into the drawing (D6). One undo step either
+    way."""
     if not on_screen:
         document.begin_group("INSERT")
         try:
+            name = _copied(ctx, document, name, source)
             placed, changes = document.insert_block(name, ORIGIN, scale, rotation)
             ctx.session.report(document, changes)
             if explode:
@@ -93,6 +99,7 @@ def place_block(
     document.begin_group("INSERT")
     placed = False
     try:
+        name = _copied(ctx, document, name, source)
         # The block, at the origin, follows the cursor as a drag preview.
         shown, changes = document.insert_block(name, ORIGIN, scale, rotation)
         ctx.session.report(document, changes)
@@ -160,21 +167,73 @@ def _edit(ctx: CommandContext, document: CadDocument, name: str) -> None:
 
 
 def insert_named(
-    name: str, scale: float, rotation: float, on_screen: bool, explode: bool = False
+    name: str,
+    scale: float,
+    rotation: float,
+    on_screen: bool,
+    explode: bool = False,
+    source: CadDocument | None = None,
 ) -> Command:
     """INSERT with block ``name`` already chosen, scaled and turned
     (``rotation`` in radians), exploded if asked, as the Blocks palette
-    starts it: from its Insert button or a drop on the drawing."""
+    starts it: from its Insert button or a drop on the drawing. A block of
+    ``source`` (a template) is copied into the drawing first, in the same
+    undo step (ADR 0025 D6)."""
 
     def run(ctx: CommandContext) -> CommandScript:
         document = ctx.document()
-        found = _named(document, name)
+        found = _named(source if source is not None else document, name)
         if found is None:
             raise CommandCancelledError(tr("There is no such block."))
+        if source is not None:
+            clashes = document.block_clashes(found, source)
+            if clashes:
+                # Never resolved silently (D6): the choice comes with the
+                # clash dialog (step 7c).
+                raise CommandCancelledError(
+                    tr(
+                        "The drawing has other blocks named {names}: "
+                        "{name} cannot be inserted from the template yet.",
+                        names=", ".join(clashes),
+                        name=found,
+                    )
+                )
         ctx.message(tr("Inserting block {name}.", name=found))
-        yield from place_block(ctx, document, found, scale, rotation, on_screen, explode)
+        yield from place_block(ctx, document, found, scale, rotation, on_screen, explode, source)
 
     return Command("INSERT", run, repeat=False)
+
+
+def load_template(path: Path | None, loaded: Callable[[CadDocument], None]) -> Command:
+    """Opens a template for the Blocks palette in the background, as OPEN
+    opens a drawing (ADR 0025 D7): ``path``, or a file the user chooses.
+    The template is never shown in a tab nor written; ``loaded`` gets it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        chosen = path
+        if chosen is None:
+            if ctx.ui is None:
+                chosen = Path((yield ctx.ask(tr("Template to load"))))
+            else:
+                chosen = ctx.ui.choose_template_path()
+                if chosen is None:
+                    raise CommandCancelledError()
+        app = ctx.session.app
+        file = chosen
+        try:
+            template = yield ctx.background(
+                lambda: app.open_document(file),
+                tr("Loading template {name}…", name=file.name),
+            )
+        except CadError as error:
+            raise CommandCancelledError(
+                tr("{name} cannot be loaded as a template: {reason}", name=file.name, reason=error)
+            ) from None
+        loaded(template)
+        count = len(template.block_names)
+        ctx.message(tr("Template {name} loaded: {count} blocks.", name=file.name, count=count))
+
+    return Command("BLOCKSPALETTE", run, repeat=False)
 
 
 def edit_named(name: str) -> Command:
@@ -251,6 +310,18 @@ def _editor(ctx: CommandContext) -> CadDocument:
     if ctx.session.block_editor_of(document) is None:
         raise CommandCancelledError(tr("This is not a block editor."))
     return document
+
+
+def _copied(
+    ctx: CommandContext, document: CadDocument, name: str, source: CadDocument | None
+) -> str:
+    """Block ``name`` in the drawing: copied from ``source`` first, when
+    there is one, within the INSERT group (ADR 0025 D6)."""
+    if source is None:
+        return name
+    copied, changes = document.copy_block(name, source)
+    ctx.session.report(document, changes)
+    return copied
 
 
 def _named(document: CadDocument, name: str) -> str | None:

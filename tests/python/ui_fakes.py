@@ -33,6 +33,8 @@ class QuietUi:
     ``panel_for`` shows the real panels (``window.show_panel``)."""
 
     open_path: Path | None = None
+    #: The template the Blocks palette's file dialog returns (None: cancelled).
+    template_path: Path | None = None
     save_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
     overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
@@ -51,6 +53,10 @@ class QuietUi:
     def choose_open_path(self) -> Path | None:
         self.asked.append("open")
         return self.open_path
+
+    def choose_template_path(self) -> Path | None:
+        self.asked.append("template")
+        return self.template_path
 
     def choose_save_path(self, suggested: str) -> Path | None:
         self.asked.append(f"save {suggested}")

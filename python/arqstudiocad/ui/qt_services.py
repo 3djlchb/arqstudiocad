@@ -41,6 +41,13 @@ class QtUiServices:
         )
         return self._remember(path)
 
+    def choose_template_path(self) -> Path | None:
+        filters = tr("Templates and drawings (*.dwt *.dwg *.dxf)")
+        path, _ = QFileDialog.getOpenFileName(
+            self._parent, tr("Load template"), self.last_folder, filters
+        )
+        return self._remember(path)
+
     def choose_save_path(self, suggested: str) -> Path | None:
         start = str(Path(self.last_folder) / suggested) if self.last_folder else suggested
         # DXF first until the round-trip corpus makes DWG the default

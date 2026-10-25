@@ -5,7 +5,7 @@ the palette and is pressed while it is open (D2)."""
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent, QMimeData, QPointF, QSettings, QSize, Qt
+from PySide6.QtCore import QEvent, QMimeData, QPointF, QSettings, QSize, Qt, QUrl
 from PySide6.QtGui import (
     QColor,
     QDragEnterEvent,
@@ -16,21 +16,24 @@ from PySide6.QtGui import (
     QImage,
     QPalette,
 )
-from PySide6.QtWidgets import QApplication, QMenu, QToolButton, QWidget
+from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadChangeSet, CadColor, CadDocument
 from arqstudiocad.i18n import set_language
+from arqstudiocad.paths import sample_template
 from arqstudiocad.ui.block_drag import BLOCK_MIME, block_mime, dragged_block
 from arqstudiocad.ui.blocks_panel import (
     TAG_BACKGROUND,
     TAG_IN_ROWS,
     TAG_ON_CARDS,
     TAG_STAR,
+    TEMPLATES_SETTING,
     BlocksPanel,
     attributes_text,
     references_text,
+    template_file,
     units_name,
 )
 from arqstudiocad.ui.main_window import MainWindow
@@ -154,11 +157,12 @@ def test_the_palette_is_laid_out_as_the_mockup(window: MainWindow) -> None:
     document = drawing_with_blocks(window, "Mesa")
     sources = [(b.text(), b.isEnabled(), b.isChecked()) for b in panel.sources.values()]
     assert sources == [
-        ("Template", False, False),
+        ("Template", True, False),
         ("Recent", False, False),
         ("Drawing", True, True),
-    ], "only the drawing's blocks yet"
-    assert panel.sources["template"].toolTip() == "Not available yet."
+    ], "the drawing's blocks first; Recent waits for its step"
+    assert panel.sources["recent"].toolTip() == "Not available yet."
+    assert panel.sources["template"].toolTip() == ""
     assert panel.source_caption.text() == f"Definitions in {document.name}"
     assert panel.grid_view.isChecked() and panel.view() == "grid", "cards first, as the mockup"
     header = panel.table.headerItem()
@@ -722,3 +726,224 @@ def test_a_dropped_block_with_explode_leaves_its_contents_there(window: MainWind
     x0, y0, _, _ = box(document, line)
     assert (round(x0, 2), round(y0, 2)) == (0.25, 0.5), "its contents where it was dropped"
     assert document.undo_name == "INSERT"
+
+
+# Step 7b: the Template source (ADR 0025 D1, D6, D7)
+
+
+def wait_idle(qtbot: QtBot, window: MainWindow) -> None:
+    qtbot.waitUntil(lambda: window.runner.busy is None, timeout=30_000)
+
+
+def with_template(qtbot: QtBot, window: MainWindow, path: Path | None = None) -> BlocksPanel:
+    """The palette with ``path`` (the sample template) loaded, as its empty
+    state's button loads it."""
+    panel = opened(window)
+    assert isinstance(window.ui, QuietUi)
+    window.ui.template_path = path if path is not None else sample_template()
+    panel.set_source("template")
+    panel.empty_load.click()
+    wait_idle(qtbot, window)
+    return panel
+
+
+def history(window: MainWindow) -> list[str]:
+    return window.command_window.history.toPlainText().splitlines()
+
+
+def offered(panel: BlocksPanel) -> list[str]:
+    """The templates the empty Template source offers, as buttons."""
+    texts = []
+    for i in range(panel.empty_recent.count()):
+        item = panel.empty_recent.itemAt(i)
+        button = item.widget() if item is not None else None
+        assert isinstance(button, QPushButton)
+        texts.append(button.text())
+    return texts
+
+
+def test_with_no_template_the_source_says_how_to_load_one(window: MainWindow) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, "Mesa")
+    panel.set_source("template")
+    assert panel.sources["template"].isChecked() and panel.source() == "template"
+    assert panel.views.currentWidget() is panel.empty
+    assert panel.empty_title.text() == "No template is loaded"
+    assert "drop the file on this panel" in panel.empty_text.text()
+    assert panel.template_row.isVisibleTo(panel) and not panel.source_caption.isVisibleTo(panel)
+    assert offered(panel) == ["Sample template"], "the sample is always offered"
+    assert panel.template_combo.currentIndex() == -1
+    assert panel.template_combo.placeholderText() == "No template is loaded"
+    assert panel.shown() == [] and not panel.insert_button.isEnabled()
+    panel.set_source("drawing")
+    assert panel.shown() == ["Mesa"] and panel.views.currentWidget() is panel.grid
+    assert panel.source_caption.isVisibleTo(panel) and not panel.template_row.isVisibleTo(panel)
+
+
+def test_a_template_loads_in_the_background_and_shows_its_blocks(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    drawing_with_blocks(window, "Mesa")
+    panel = opened(window)
+    assert isinstance(window.ui, QuietUi)
+    window.ui.template_path = sample_template()
+    panel.set_source("template")
+    panel.empty_load.click()
+    assert window.ui.asked[-1] == "template", "the file dialog"
+    assert window.runner.busy == "Loading template arqstudiocad-sample.dwt…"
+    wait_idle(qtbot, window)
+    template = panel.template
+    assert template is not None and template not in window.session.documents, "never a tab"
+    assert sorted(panel.shown(), key=str.lower) == sorted(template.block_names, key=str.lower)
+    assert len(panel.shown()) == 10 and panel.views.currentWidget() is panel.grid
+    assert panel.template_combo.currentText() == "Sample template"
+    assert history(window)[-1] == "Template arqstudiocad-sample.dwt loaded: 10 blocks."
+    panel.select("Door_090")
+    rows = dict(panel.details.sections()[0][1])
+    assert rows["Source"] == "arqstudiocad-sample.dwt" and rows["In drawing"] == "Not inserted"
+    assert not panel.edit_button.isEnabled(), "a template is never written"
+    assert panel.edit_button.toolTip() == "Only the drawing's blocks can be edited."
+
+
+def test_a_template_block_is_copied_and_inserted_in_one_step(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    document = drawing_with_blocks(window, "Mesa")
+    panel = with_template(qtbot, window)
+    steps = len(document.undo_history)
+    panel.select("Door_090")
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+    assert "Door_090" in document.block_names
+    assert len(references(document, "Door_090")) == 1
+    assert "A-DOOR" in {layer.name for layer in document.get_layers()}, "with its layer"
+    assert len(document.undo_history) == steps + 1 and document.undo_name == "INSERT"
+    assert dict(panel.details.sections()[0][1])["In drawing"] == "1 reference"
+    assert panel.template is not None and not panel.template.is_modified
+    document.undo()
+    assert "Door_090" not in document.block_names, "one undo takes the copy away too"
+    assert references(document, "Door_090") == []
+
+
+def test_a_template_block_dropped_on_the_drawing_lands_there(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    document = drawing_with_blocks(window, "Mesa")
+    panel = with_template(qtbot, window)
+    viewport = window.viewports[document.id]
+    viewport.zoom_extents()
+    panel.select("Column_30x30")
+    mime = panel.grid.mimeData([panel.grid.currentItem()])
+    assert dragged_block(mime) == (document.id, "Column_30x30"), "for the active drawing"
+    at = screen(viewport, 0.25, 0.5)
+    QApplication.sendEvent(viewport, drag_event("enter", viewport, mime, at))
+    assert window.runner.active == "INSERT"
+    QApplication.sendEvent(viewport, drag_event("drop", viewport, mime, at))
+    (placed,) = references(document, "Column_30x30")
+    assert document.undo_name == "INSERT"
+    document.undo()
+    assert "Column_30x30" not in document.block_names and placed not in {
+        e.id for e in document.get_entities()
+    }
+
+
+def test_a_clashing_template_block_is_not_inserted_silently(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    document = drawing_with_blocks(window, "wc")  # its own WC: one line
+    panel = with_template(qtbot, window)
+    steps = len(document.undo_history)
+    panel.select("WC")
+    # The drawing's own wc, counted whatever its case.
+    assert dict(panel.details.sections()[0][1])["In drawing"] == "1 reference"
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+    assert history(window)[-1] == (
+        "The drawing has other blocks named WC: WC cannot be inserted from the template yet."
+    )
+    assert len(document.undo_history) == steps and references(document, "WC") == []
+    assert len(references(document, "wc")) == 1, "the drawing's own, untouched"
+
+
+def test_a_template_file_dropped_on_the_palette_is_loaded(qtbot: QtBot, window: MainWindow) -> None:
+    panel = opened(window)
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(sample_template()))])
+    enter = drag_event("enter", panel, mime, QPointF(10, 10))
+    QApplication.sendEvent(panel, enter)
+    assert enter.isAccepted()
+    QApplication.sendEvent(panel, drag_event("drop", panel, mime, QPointF(10, 10)))
+    wait_idle(qtbot, window)
+    assert panel.source() == "template" and len(panel.shown()) == 10
+    other = QMimeData()
+    other.setUrls([QUrl.fromLocalFile("C:/plano.pdf")])
+    refused = drag_event("enter", panel, other, QPointF(10, 10))
+    QApplication.sendEvent(panel, refused)
+    assert not refused.isAccepted(), "only drawings and templates"
+    assert template_file("a.DWT") == Path("a.DWT") and template_file("a.txt") is None
+
+
+def test_templates_used_are_remembered_and_offered(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    template = tmp_path / "mine.dwt"
+    template.write_bytes(sample_template().read_bytes())
+    first = MainWindow(ui=QuietUi(), settings=settings)
+    qtbot.addWidget(first)
+    first.blocks_panel.load_template(template)
+    wait_idle(qtbot, first)
+    assert first.blocks_panel.template_combo.currentText() == "mine.dwt"
+    first.blocks_panel.load_template(sample_template())
+    wait_idle(qtbot, first)
+    stored = settings.value(TEMPLATES_SETTING)
+    assert isinstance(stored, list) and len(stored) == 2
+    second = MainWindow(ui=QuietUi(), settings=settings)
+    qtbot.addWidget(second)
+    combo = second.blocks_panel.template_combo
+    assert [combo.itemText(i) for i in range(combo.count())] == ["Sample template", "mine.dwt"]
+    assert second.blocks_panel.template is None, "offered, not loaded"
+    combo.activated.emit(1)  # chosen in the combo
+    wait_idle(qtbot, second)
+    template_doc = second.blocks_panel.template
+    assert template_doc is not None and template_doc.name == "mine.dwt"
+
+
+def test_a_file_that_is_no_template_leaves_the_loaded_one(
+    qtbot: QtBot, window: MainWindow, tmp_path: Path
+) -> None:
+    panel = with_template(qtbot, window)
+    loaded = panel.template
+    broken = tmp_path / "roto.dwt"
+    broken.write_bytes(b"not a drawing")
+    panel.load_template(broken)
+    wait_idle(qtbot, window)
+    assert panel.template is loaded and len(panel.shown()) == 10
+    assert history(window)[-1].startswith("roto.dwt cannot be loaded as a template")
+
+
+def test_a_new_template_replaces_and_closes_the_old_one(
+    qtbot: QtBot, window: MainWindow, tmp_path: Path
+) -> None:
+    panel = with_template(qtbot, window)
+    old = panel.template
+    assert old is not None
+    copy = tmp_path / "otra.dwt"
+    copy.write_bytes(sample_template().read_bytes())
+    panel.load_template(copy)
+    wait_idle(qtbot, window)
+    assert panel.template is not old and not old.is_open, "closed in the core"
+
+
+def test_the_template_source_speaks_spanish(qtbot: QtBot, window: MainWindow) -> None:
+    panel = opened(window)
+    panel.set_source("template")
+    set_language("es")
+    try:
+        window.retranslate()
+        assert panel.sources["template"].text() == "Plantilla"
+        assert panel.empty_title.text() == "No hay ninguna plantilla cargada"
+        assert panel.empty_load.text() == "Cargar plantilla…"
+        assert panel.empty_recent_label.text() == "Usadas hace poco"
+        assert offered(panel) == ["Plantilla de ejemplo"]
+        assert panel.load_button.toolTip() == "Cargar plantilla…"
+    finally:
+        set_language("en")
