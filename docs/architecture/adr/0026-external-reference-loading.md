@@ -12,9 +12,9 @@ The maintainer requests external validation in ProgeCAD and a loading design.
 The [exercise](../../testing/progecad-xrefs.md) now has six independently
 authored ProgeCAD DWGs and external reopen observations for outputs from
 AcadRust 0.6.5 and 0.6.7 ([results](../../testing/progecad-xrefs-results.md)).
-Unloaded state is lost in DXF, while the local corpus also rejects unrepresented
-Xref INSERTs. These findings do not change this ADR's Proposed status or
-authorize its implementation; the provisional-marker/test policy remains open.
+The baseline exposed lost unloaded state in DXF and unrepresented Xref INSERTs.
+The narrow safeguards below address representation and silent loss. They do not
+change this ADR's Proposed status or authorize the external-file loader.
 
 Existing implementation anchors:
 
@@ -23,9 +23,10 @@ Existing implementation anchors:
   including empty or malformed paths; this filter is not an inventory API.
 - `crates/arq-document/src/compatibility_tests.rs::xref_fixture_metadata_roundtrips`
   verifies paths, attachment/overlay flags and INSERT transforms through saves.
-- `crates/arq-document/src/verify.rs::Document::validate_roundtrip` and
-  `inventory.rs::Document::save_losses` do not specifically compare Xref paths,
-  modes or unload flags. Counts alone cannot detect a path changed in place.
+- `crates/arq-document/src/verify.rs::Document::validate_roundtrip` compares Xref
+  paths, attachment/overlay and unload flags, and stored INSERT placements and
+  ownership. `inventory.rs::Document::save_losses` separately compares counts.
+  A changed reference fails verification even when count losses are accepted.
 - `crates/arq-document/src/drawing.rs::Painter` expands local block geometry;
   its `MAX_DEPTH` is not an external-file graph traversal policy.
 - `crates/arq-core/src/app.rs::CadApplication::save_document` snapshots a
@@ -38,6 +39,29 @@ ADR 0023 D2 places Xref functionality in phase 04 or later. This proposal does
 not change that schedule or authorize an early loader. Phase 03 work gathers
 preservation evidence; later implementation follows the staged acceptance
 criteria below. These are proposed contracts, not existing APIs.
+
+## Authorized preservation and display safeguard (phase 03)
+
+The maintainer authorized a filename marker and a save-preservation safeguard.
+These narrow changes do not accept this loading proposal or move the external
+resolver into phase 03.
+
+`drawing.rs::Painter::expand_insert` draws the stored path's final filename
+(falling back to the block name) through the existing built-in stroke font.
+The marker has a nominal height of one model unit before the INSERT transform;
+it follows array placements, scale, rotation, normal, layer visibility and
+resolved color. Its text bounds support picking. No file is resolved or loaded,
+no cached external geometry is expanded, and drawing does not mutate the host.
+Both loaded and unloaded references receive this provisional marker; it reports
+a reference's presence, not resolution success or external geometry fidelity.
+
+Safe saving compares reference metadata and instances after reading the output.
+AcadRust 0.6.7 does not preserve `is_xref_unloaded` through DXF; conversion of an
+unloaded reference therefore raises `NotVerified`, retains a diagnostic copy
+when possible and leaves the destination untouched. DWG preserves the state.
+This is a data-safety fix, not DXF unload-state support. Do not invent a DXF group
+71 encoding from an AutoLISP `tblsearch` result: native DXF representation and
+independent application interoperability still require investigation.
 
 ## Proposed decision
 
