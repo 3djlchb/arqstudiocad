@@ -100,7 +100,8 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 ## Phase 04 — Associative technical documentation ○
 
 Dimensions, texts and fonts, annotations, hatches, views, scales, sheets,
-title blocks, plotting to PDF; projections, sections and elevations as
+title blocks, drawing templates (title blocks, sheets, scales and styles;
+NEW starting from a template), plotting to PDF; projections, sections and elevations as
 **associative views** that know their source and regenerate keeping manual
 annotations (ADR 0014); the **project container** (models, drawings, views,
 sheets, resources; an ADR first). Module M09.

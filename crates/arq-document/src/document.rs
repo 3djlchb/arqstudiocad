@@ -65,7 +65,7 @@ impl Document {
         doc
     }
 
-    /// Opens a `.dwg` or `.dxf` file; the extension decides the format.
+    /// Opens a `.dwg`, `.dwt` or `.dxf` file; the extension decides the format.
     ///
     /// A damaged file opens only if drawing data can be recovered from it,
     /// and then [`recovery`](Self::recovery) says what was wrong; otherwise

@@ -30,6 +30,19 @@ def icons_dir() -> Path:
     return package_dir().parents[1] / "resources" / "icons"
 
 
+def templates_dir() -> Path:
+    """Folder holding the drawing templates shipped with the application."""
+    if is_frozen():
+        return Path(sys._MEIPASS) / "resources" / "templates"  # type: ignore[attr-defined]
+    return package_dir().parents[1] / "resources" / "templates"
+
+
+def sample_template() -> Path:
+    """The sample template (ADR 0025 D7): simple architectural blocks,
+    public domain (CC0 1.0), made by `tools/make_sample_template.py`."""
+    return templates_dir() / "arqstudiocad-sample.dwt"
+
+
 PORTABLE_MARKER = "portable.txt"
 
 

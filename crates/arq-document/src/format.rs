@@ -12,11 +12,12 @@ pub enum FileFormat {
 }
 
 impl FileFormat {
-    /// The format implied by a file's extension, case-insensitively.
+    /// The format implied by a file's extension, case-insensitively. A
+    /// drawing template (`.dwt`) is a DWG file under another name.
     pub fn from_path(path: &Path) -> Option<Self> {
         let ext = path.extension()?.to_str()?.to_ascii_lowercase();
         match ext.as_str() {
-            "dwg" => Some(Self::Dwg),
+            "dwg" | "dwt" => Some(Self::Dwg),
             "dxf" => Some(Self::Dxf),
             _ => None,
         }
@@ -44,6 +45,11 @@ mod tests {
         assert_eq!(
             FileFormat::from_path(Path::new("C:/x/PLANO.DXF")),
             Some(FileFormat::Dxf)
+        );
+        assert_eq!(
+            FileFormat::from_path(Path::new("plantilla.DWT")),
+            Some(FileFormat::Dwg),
+            "a template is a DWG"
         );
         assert_eq!(FileFormat::from_path(Path::new("plano.pdf")), None);
         assert_eq!(FileFormat::from_path(Path::new("sin_extension")), None);

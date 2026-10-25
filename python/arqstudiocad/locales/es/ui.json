@@ -128,7 +128,7 @@
   "Double-click to edit.": "Doble clic para editar.",
   "Draw": "Dibujo",
   "Drawing": "Dibujo",
-  "Drawings (*.dwg *.dxf);;DWG drawings (*.dwg);;DXF drawings (*.dxf)": "Dibujos (*.dwg *.dxf);;Dibujos DWG (*.dwg);;Dibujos DXF (*.dxf)",
+  "Drawings (*.dwg *.dxf *.dwt);;DWG drawings (*.dwg);;DXF drawings (*.dxf);;Drawing templates (*.dwt)": "Dibujos (*.dwg *.dxf *.dwt);;Dibujos DWG (*.dwg);;Dibujos DXF (*.dxf);;Plantillas de dibujo (*.dwt)",
   "Drawing{number}": "Dibujo{number}",
   "Dynamic block": "Bloque dinámico",
   "Dynamic block · {parameters}": "Bloque dinámico · {parameters}",

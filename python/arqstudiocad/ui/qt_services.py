@@ -14,7 +14,10 @@ from arqstudiocad.ui import text_dialog
 
 
 def drawing_filter() -> str:
-    return tr("Drawings (*.dwg *.dxf);;DWG drawings (*.dwg);;DXF drawings (*.dxf)")
+    return tr(
+        "Drawings (*.dwg *.dxf *.dwt);;DWG drawings (*.dwg);;DXF "
+        "drawings (*.dxf);;Drawing templates (*.dwt)"
+    )
 
 
 class QtUiServices:
