@@ -15,7 +15,7 @@ pub enum DocumentError {
         /// What the operating system reported.
         message: String,
     },
-    /// The file extension is not one we read or write (`.dwg`, `.dxf`).
+    /// The file extension is not one we read or write (`.dwg`, `.dwt`, `.dxf`).
     UnsupportedFormat {
         /// The file involved.
         path: PathBuf,
@@ -123,7 +123,7 @@ impl fmt::Display for DocumentError {
             Self::UnsupportedFormat { path } => {
                 write!(
                     f,
-                    "{}: only .dwg and .dxf files are supported",
+                    "{}: only .dwg, .dwt and .dxf files are supported",
                     path.display()
                 )
             }

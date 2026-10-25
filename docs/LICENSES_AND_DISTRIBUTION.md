@@ -10,6 +10,10 @@ Master plan §11, §12, §14, §16; decisions in
 
 - **Own code:** GPL-3.0-or-later (`LICENSE`).
 - **Documentation:** CC BY-SA 4.0 (`docs/LICENSE`).
+- **Drawing content we ship** (the sample template and its blocks,
+  `resources/templates/`): CC0 1.0, public domain, so anyone may use it in
+  any drawing (ADR 0025 D7). Other applications' templates, such as
+  AutoCAD's, are never copied or shipped.
 - **Dependencies:** each reviewed for license, provenance and obligations
   before it enters; preference MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0,
   then other compatible licenses after review. `cargo deny check` enforces
