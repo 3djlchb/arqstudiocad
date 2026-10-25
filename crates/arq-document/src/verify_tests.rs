@@ -212,3 +212,94 @@ fn unverified_files_keep_their_extension() {
         Path::new("a/plano.v2.unverified.dwg")
     );
 }
+
+fn xref_sample() -> Document {
+    Document::open(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/xrefs/attachment.dxf"),
+    )
+    .unwrap()
+}
+
+#[test]
+fn xref_metadata_changes_are_caught_even_when_counts_match() {
+    let doc = xref_sample();
+    for change in 0..4 {
+        let mut back = doc.snapshot();
+        let block = back.cad_mut().block_records.get_mut("SITE").unwrap();
+        match change {
+            0 => block.xref_path = "other.dxf".into(),
+            1 => block.flags.is_xref_overlay = true,
+            2 => block.flags.is_xref_unloaded = true,
+            _ => {
+                block.xref_path.clear();
+                block.flags.is_xref = false;
+            }
+        }
+        assert!(
+            doc.validate_roundtrip(&back)
+                .iter()
+                .any(|d| d.starts_with("Xref SITE metadata changed"))
+        );
+    }
+}
+
+#[test]
+fn xref_out_of_plane_placement_changes_are_caught() {
+    let doc = xref_sample();
+    let id = doc.cad().entities().next().unwrap().common().handle;
+    for change in 0..3 {
+        let mut back = doc.snapshot();
+        let acadrust::EntityType::Insert(i) = back.cad_mut().get_entity_mut(id).unwrap() else {
+            panic!("expected INSERT")
+        };
+        match change {
+            0 => i.insert_point.z += 1.0,
+            1 => i.set_z_scale(3.0),
+            _ => i.row_spacing += 4.0,
+        }
+        assert!(
+            doc.validate_roundtrip(&back)
+                .iter()
+                .any(|d| d.starts_with("Xref INSERT"))
+        );
+    }
+}
+
+#[test]
+fn unloaded_xref_dxf_is_refused_without_replacing_the_target() {
+    let mut doc = xref_sample();
+    doc.cad_mut()
+        .block_records
+        .get_mut("SITE")
+        .unwrap()
+        .flags
+        .is_xref_unloaded = true;
+    let dir = tempfile::tempdir().unwrap();
+    let dwg = dir.path().join("host.dwg");
+    doc.save(&dwg).unwrap();
+    let back = Document::open(&dwg).unwrap();
+    assert!(
+        back.cad()
+            .block_records
+            .get("SITE")
+            .unwrap()
+            .flags
+            .is_xref_unloaded
+    );
+    let dxf = dir.path().join("host.dxf");
+    fs::write(&dxf, b"previous file").unwrap();
+    let error = doc.save_accepting(&dxf, |_| true).unwrap_err();
+    let DocumentError::NotVerified {
+        differences, kept, ..
+    } = error
+    else {
+        panic!("expected read-back rejection")
+    };
+    assert!(
+        differences
+            .iter()
+            .any(|d| d.starts_with("Xref SITE metadata changed"))
+    );
+    assert!(kept.unwrap().exists());
+    assert_eq!(fs::read(dxf).unwrap(), b"previous file");
+}

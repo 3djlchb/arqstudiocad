@@ -1,6 +1,10 @@
 # ProgeCAD Xref validation: AcadRust 0.6.5 and 0.6.7
 
-Date: 2026-10-24 (America/Bogota). Milestones 03.4 / 03.5 remain open.
+Baseline date: 2026-10-24 (America/Bogota); safeguard follow-up: 2026-10-25.
+Milestones 03.4 / 03.5 remain open.
+
+The baseline observations below are historical. See the [safeguard follow-up](#safeguard-follow-up-2026-10-25)
+for the current filename-marker and safe-save behavior.
 
 ## Scope and provenance
 
@@ -202,3 +206,93 @@ worktree's `target/progecad-xrefs-review/<host>-<format>/` with their dependenci
 | missing / DXF | `79c6d94c018962795c138fbb884e1ce9b71d555c6463e50825dfc1a203757b6b` |
 | unloaded / DWG | `8bf51eed1f793b06f179033c205c17d7425c78e2646f44b1257dfd72cefc5778` |
 | unloaded / DXF | `6a1239103e383e3f7782d20e9927582bafd71411041abbeef924a9a2e125cf23` |
+
+
+## Safeguard follow-up (2026-10-25)
+
+Branch `fix/xref-preservation-marker` started from `fae7de6` (PR #63), then
+integrated `bd66cd1` (PR #64, sample templates) before publication. It keeps
+the same AcadRust 0.6.7 pin. The maintainer authorized a derived filename
+marker and reference-level read-back validation; no external-file loader was
+implemented. The historical outputs and observations above are unchanged.
+
+`drawing.rs::Painter::expand_insert` renders a filename with the built-in stroke
+font at each reference insertion, respecting its transform, array placements,
+visibility and resolved color. The text bounds participate in selection. Empty
+paths fall back to the block name; Windows and POSIX separators are recognized.
+The marker does not load the child or write text entities into the host.
+
+`verify.rs::Document::compare_xrefs` now checks stored paths, reference and overlay
+flags, unloaded state, and all stored reference INSERT placements and ownership.
+A same-count metadata change fails safe-save verification even when inventory
+losses have been accepted. Regression tests verify that the previous destination
+remains byte-for-byte intact and that a diagnostic copy is retained on refusal.
+
+### Integrated measurements
+
+The existing frozen six-DWG corpus was read in place, with no new corpus copy.
+The strict matrix (`tools/compatibility_matrix.py`) reports:
+
+| Source | Clean read | DWG safe save | DXF safe save |
+|---|---|---|---|
+| attachment.dwg | yes | verified | verified |
+| child.dwg | yes | verified | verified |
+| master.dwg | yes | verified | verified |
+| missing.dwg | yes | verified | verified |
+| overlay.dwg | yes | verified | verified |
+| unloaded.dwg | yes | verified | refused: unloaded state changed |
+
+This is six verified DWG saves and five verified DXF saves. The DXF refusal is
+`NotVerified`, reported as `error` by the unchanged matrix tool. AcadRust still
+loses the unloaded flag in DXF; the safeguard prevents that output from replacing
+the destination. It does not add DXF support for the flag or repair an already
+exported DXF that has lost it. Native DXF encoding and independent-application
+interoperability still need investigation; do not infer a raw DXF group 71 from
+an AutoLISP `tblsearch` result.
+
+The unchanged local-corpus test passes attachment, child, master, missing and
+overlay. Its only remaining failed drawing is unloaded, whose DXF saves before
+and after editing are explicitly refused. No `INSERT draws nothing` or INSERT
+placeholder-box failure remains. The complete local-corpus gate therefore still
+fails; no assertion, accepted-loss policy or corpus input was weakened.
+
+The five passing drawings produce 84, 2, 241, 162 and 84 shapes respectively
+(in the order attachment, child, master, missing, overlay), with zero placeholder
+boxes. These counts establish representation, not external geometry fidelity.
+
+SHA-256 checks of all six authored originals and all six frozen inputs still
+match the original authoring manifest. Local ignored evidence is in
+`target/xref-marker-matrix.md` / `.json` and `target/xref-marker-integrity.json`
+in this task's worktree. New independent ProgeCAD reopening, numerical geometry
+measurements and reload checks were not performed for this safeguard.
+
+
+### Follow-up checks
+
+| Check | Result |
+|---|---|
+| `cargo test --quiet` | passed; document crate: 170 passed, one corpus-dependent test ignored |
+| `cargo fmt --all --check` | passed |
+| `cargo clippy --workspace --all-targets -- -D warnings` | passed |
+| `cargo test -p arq-core --test corpus -- --ignored codec` | 4 passed |
+| `cargo test -p arq-document legacy_multileaderstyle_refusals -- --ignored` | 1 passed |
+| `uv run pytest -q` | 449 passed after integrating PR #64 |
+| `uv run ruff check` / `uv run ruff format --check` | passed |
+| `uv run mypy` | passed, 102 source files |
+| `uv run stubtest arqstudiocad._core` | passed |
+| `cargo deny check` | passed; existing duplicate hashbrown and syn warnings |
+| Local six-DWG corpus | 5 drawings pass; unloaded DXF is refused; the overall test fails |
+| Strict six-DWG matrix | 6 clean reads, 6 DWG verified, 5 DXF verified, 1 DXF refused |
+
+Eight new document-layer regressions cover actual filename strokes, path
+separators, layer visibility, transformed and mirrored/nonuniform strokes,
+unloaded/pathless references, array placements, changed reference metadata,
+out-of-plane placements, and safe-save refusal with an intact destination.
+
+The five hosts were also rendered through `CadView` at 1000 by 650 pixels into
+`target/xref-marker-<host>.png`; `master` and `unloaded` images were visually
+inspected. The unloaded host renders 84 shapes, including its filename marker.
+`target/xref-marker-render.json` records all five shape counts and
+`target/xref-marker-corpus.log` retains the failing local-gate result. This CPU
+viewport check is separate from external ProgeCAD validation and proves no
+child geometry was loaded. No new release or cross-platform acceptance is claimed.

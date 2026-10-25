@@ -707,3 +707,133 @@ fn texts_points_and_unknown_ids() {
     assert_eq!(doc.drawing(id).unwrap(), all[..=strokes].to_vec());
     assert!(doc.drawing(999_999).is_none());
 }
+
+#[test]
+fn external_references_draw_filename_strokes_without_loading_or_mutating() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/xrefs");
+    for file in ["attachment.dxf", "overlay.dxf", "missing.dxf", "nested.dxf"] {
+        let doc = Document::open(root.join(file)).unwrap();
+        let before = doc.snapshot();
+        let drawing = shapes(&doc);
+        assert!(
+            drawing.iter().any(|i| matches!(i.shape, Shape::Text(_))),
+            "{file}"
+        );
+        assert!(!lines(&drawing).is_empty(), "{file}");
+        assert!(
+            !drawing
+                .iter()
+                .any(|i| matches!(i.shape, Shape::Placeholder(_)))
+        );
+        assert!(doc.validate_roundtrip(&before).is_empty());
+        assert_eq!(doc.cad().entities().count(), 1);
+    }
+}
+
+#[test]
+fn xref_filename_uses_both_path_separators_and_respects_layer_visibility() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/xrefs/attachment.dxf");
+    let mut doc = Document::open(path).unwrap();
+    let expected = shapes(&doc);
+    for path in ["C:\\site\\child.dxf", "/site/child.dxf"] {
+        doc.cad_mut()
+            .block_records
+            .get_mut("SITE")
+            .unwrap()
+            .xref_path = path.into();
+        assert_eq!(shapes(&doc), expected);
+    }
+    let layer = doc.layer_by_name("0").unwrap().id();
+    doc.set_layer_visible(layer, false).unwrap();
+    assert!(shapes(&doc).is_empty());
+}
+
+#[test]
+fn xref_marker_transforms_strokes_instead_of_replacing_them_with_a_box() {
+    let mut local = Vec::new();
+    xref_marker(
+        "child.dwg",
+        Vector3::new(0.0, 0.0, 0.0),
+        &Transform::identity(),
+        Color::Index(3),
+        &mut local,
+    );
+    let t = Transform::from_scaling(Vector3::new(-2.0, 3.0, 1.0))
+        .then(&Transform::from_rotation(
+            Vector3::new(0.0, 0.0, 1.0),
+            PI / 2.0,
+        ))
+        .then(&Transform::from_translation(Vector3::new(10.0, 20.0, 0.0)));
+    let mut moved = Vec::new();
+    xref_marker(
+        "child.dwg",
+        Vector3::new(0.0, 0.0, 0.0),
+        &t,
+        Color::Index(3),
+        &mut moved,
+    );
+    let (a, b) = (lines(&local), lines(&moved));
+    assert!(!a.is_empty());
+    assert_eq!(a.len(), b.len());
+    for ((a1, a2), (b1, b2)) in a.into_iter().zip(b) {
+        for ((x, y), (xx, yy)) in [(a1, b1), (a2, b2)] {
+            assert!((xx - (10.0 - 3.0 * y)).abs() < 1e-5);
+            assert!((yy - (20.0 - 2.0 * x)).abs() < 1e-5);
+        }
+    }
+    assert!(moved.iter().all(|i| i.color == Color::Index(3)));
+}
+
+#[test]
+fn unloaded_and_pathless_xrefs_still_have_a_marker() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/xrefs/attachment.dxf");
+    let mut doc = Document::open(path).unwrap();
+    let expected = shapes(&doc);
+    doc.cad_mut()
+        .block_records
+        .get_mut("SITE")
+        .unwrap()
+        .flags
+        .is_xref_unloaded = true;
+    assert_eq!(shapes(&doc), expected);
+    doc.cad_mut()
+        .block_records
+        .get_mut("SITE")
+        .unwrap()
+        .xref_path
+        .clear();
+    assert!(
+        !lines(&shapes(&doc)).is_empty(),
+        "the block name is the fallback label"
+    );
+}
+
+#[test]
+fn xref_arrays_place_one_filename_at_each_instance() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/fixtures/xrefs/attachment.dxf");
+    let mut doc = Document::open(path).unwrap();
+    let id = doc.cad().entities().next().unwrap().common().handle;
+    let EntityType::Insert(i) = doc.cad_mut().get_entity_mut(id).unwrap() else {
+        panic!("expected INSERT")
+    };
+    i.row_count = 2;
+    i.column_count = 3;
+    i.row_spacing = 100.0;
+    i.column_spacing = 100.0;
+    let drawing = shapes(&doc);
+    let bounds: Vec<_> = drawing
+        .iter()
+        .filter_map(|item| match item.shape {
+            Shape::Text(b) => Some(b),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(bounds.len(), 6);
+    // The source's 30-degree rotation applies to array offsets, after scaling.
+    assert!((bounds[1].min().x() - bounds[0].min().x() - 100.0 * (PI / 6.0).cos()).abs() < 1e-9);
+    assert!((bounds[1].min().y() - bounds[0].min().y() - 50.0).abs() < 1e-9);
+    assert!((bounds[3].min().x() - bounds[0].min().x() + 50.0).abs() < 1e-9);
+}
