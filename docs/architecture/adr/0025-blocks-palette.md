@@ -146,6 +146,12 @@ asking. If the contents differ, a dialog offers three choices:
 The clash is never resolved silently. Nested blocks that clash are asked
 about in the same dialog.
 
+**Dynamic blocks in a clash** *(maintainer, 2026-10-25)*: until the
+parametric engine (milestone 04.1), a dynamic block that clashes, on
+either side, can only be used as the drawing has it. Redefine and Copy
+with another name are offered disabled, with the reason. A dynamic block
+that does not clash is copied whole, its parameters and actions included.
+
 ### D7 — Reading templates
 
 A `.dwt` is a DWG file with another extension: the core opens it as DWG,
@@ -239,6 +245,23 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - Dropping picks the insertion point where the block lands: one undo step, echoed as INSERT. Dragging away cancels that INSERT and nothing is left.
   - **Explode**, a new insert option, replaces the reference by its contents in the same undo step (ADR 0023 D1 for attributes), from the Insert button and from a drop.
   - The footer says "Drag a block onto the drawing to insert it."
+- **Step 7a (2026-10-25):** copying a definition between documents (D6), in the core.
+  - `Document::copy_block` copies a block from another document, with:
+    - the blocks it nests;
+    - the layers, linetypes, text styles and application names they use that the drawing lacks.
+  - `block_clashes` lists the blocks whose names the drawing uses for other contents; `copy_block` takes a choice for each and refuses to run while one is missing.
+  - A block with the same contents (base point and entities, ignoring handles) is used as the drawing has it. The blocks it nests are not asked about.
+  - Use the drawing's, Redefine (every reference is redrawn) and Copy with another name work as D6 says. References inside the copy follow a renamed block.
+  - A dynamic block keeps its parameters and actions: AcadRust moves the definition's object graph (`export_block_graph` / `import_block_graph`).
+  - A copied layer takes the drawing's material and plot style of the same name. A standard one the drawing does not store (Global, ByLayer, ByBlock; Normal) becomes the drawing's implicit default, so the copy loses nothing.
+  - What a copy cannot carry whole is refused with its reason, and the drawing is left unchanged:
+    - entities other than plain geometry, texts, hatches, attribute definitions and block references (dimensions, multilines, leaders, images…);
+    - links to materials, plot styles, visual styles or color books;
+    - anonymous or external nested blocks;
+    - a material or plot style the drawing does not have;
+    - a dynamic block whose graph AcadRust cannot move.
+  - In the maintainer's drawings, 45 of 51 blocks copy, and every copy saves and reads back. The other six are dynamic blocks whose graph cannot be moved yet.
+  - One undo step, or part of INSERT's group: `CadApplication::copy_block` copies from a snapshot of the source document. The Python API is `CadDocument.copy_block(name, source, keep, redefine, rename)` and `block_clashes(name, source)`.
 
 ## Consequences
 

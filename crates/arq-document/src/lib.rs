@@ -26,6 +26,7 @@
 //! | Errors | [`DocumentError`] |
 
 mod acis;
+mod block_copy;
 mod block_editor;
 mod blocks;
 mod change;
@@ -49,6 +50,7 @@ mod text_layout;
 mod translate;
 mod verify;
 
+pub use block_copy::ClashChoice;
 pub use blocks::BlockInfo;
 pub use change::{Change, ChangeSet};
 pub use document::Document;

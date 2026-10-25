@@ -305,7 +305,7 @@ impl Document {
 
 /// A block name AutoCAD accepts: not empty, at most 255 characters, no
 /// surrounding spaces, none of the characters DWG forbids, not anonymous.
-fn check_block_name(name: &str) -> DocumentResult<()> {
+pub(crate) fn check_block_name(name: &str) -> DocumentResult<()> {
     let bad = name.is_empty()
         || name.chars().count() > 255
         || name.trim() != name

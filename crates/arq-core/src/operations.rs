@@ -5,8 +5,10 @@
 //! Entities on a locked layer cannot be modified or erased; new entities may
 //! still be drawn on a locked current layer, as in AutoCAD.
 
+use std::collections::BTreeMap;
+
 use arq_document::{
-    ChangeSet, Color, Document, DocumentError, Entity, EntityId, LayerId, PlanGeometry,
+    ChangeSet, ClashChoice, Color, Document, DocumentError, Entity, EntityId, LayerId, PlanGeometry,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Transform2, Vector2};
 
@@ -212,6 +214,19 @@ impl CadDocument {
         self.transact("INSERT", |doc| {
             Ok(doc.insert_block(name, point, scale, rotation)?)
         })
+    }
+
+    /// Copies block `name` of `source` here, with what it needs, choosing
+    /// by `choices` for each block whose name this drawing uses for other
+    /// contents (ADR 0025 D6); returns its name here. One undo step, or
+    /// part of INSERT's when grouped with it.
+    pub fn copy_block(
+        &mut self,
+        source: &Document,
+        name: &str,
+        choices: &BTreeMap<String, ClashChoice>,
+    ) -> CadResult<(String, ChangeSet)> {
+        self.transact("INSERT", |doc| Ok(doc.copy_block(source, name, choices)?))
     }
 
     /// Writes a multiline text on the current layer (MTEXT, ADR 0022 D6).

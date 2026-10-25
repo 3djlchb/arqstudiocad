@@ -62,6 +62,68 @@ fn a_block_editor_is_a_document_saved_into_its_drawing() {
 }
 
 #[test]
+fn a_block_is_copied_from_another_document_with_insert_in_one_step() {
+    let app = CadApplication::new();
+    let template = app.create_document("Plantilla");
+    app.edit(template, |cad| {
+        let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0))?;
+        cad.create_block("ESQUINA", p(0.0, 0.0), &[a])
+    })
+    .unwrap();
+    let plan = app.create_document("Plano1");
+    let choices = BTreeMap::new();
+    assert!(
+        app.block_clashes(template, plan, "ESQUINA")
+            .unwrap()
+            .is_empty()
+    );
+    app.edit(plan, |cad| {
+        cad.begin_group("INSERT");
+        Ok(())
+    })
+    .unwrap();
+    let (name, changes) = app.copy_block(template, plan, "esquina", &choices).unwrap();
+    assert_eq!(
+        (name.as_str(), changes.blocks_created()),
+        ("ESQUINA", &["ESQUINA".to_owned()][..])
+    );
+    app.edit(plan, |cad| {
+        cad.insert_block("ESQUINA", p(5.0, 5.0), 1.0, 0.0)?;
+        cad.end_group()
+    })
+    .unwrap();
+    app.edit(plan, CadDocument::undo).unwrap();
+    let (blocks, entities) = app
+        .read(plan, |cad| {
+            (
+                cad.document().block_names(),
+                cad.document().entities().len(),
+            )
+        })
+        .unwrap();
+    assert!(
+        blocks.is_empty() && entities == 0,
+        "one undo takes both away"
+    );
+    assert!(
+        app.read(template, |cad| cad.document().block_names())
+            .unwrap()
+            == ["ESQUINA"],
+        "the source is untouched"
+    );
+    assert!(matches!(
+        app.copy_block(plan, plan, "ESQUINA", &choices),
+        Err(CadError::InvalidOperation(_))
+    ));
+    let gone = app.create_document("x");
+    app.close_document(gone).unwrap();
+    assert_eq!(
+        app.copy_block(gone, plan, "ESQUINA", &choices).unwrap_err(),
+        CadError::DocumentNotFound(gone)
+    );
+}
+
+#[test]
 fn an_unknown_document_is_an_error_everywhere() {
     let app = CadApplication::new();
     let gone = app.create_document("x");

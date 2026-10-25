@@ -6,6 +6,8 @@
 //! writes the file without it, so drawing goes on while a file is written.
 
 use std::collections::{BTreeMap, BTreeSet};
+
+use arq_document::ClashChoice;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -115,6 +117,48 @@ impl CadApplication {
             .cad
             .mark_saved(&snapshot);
         Ok(changes)
+    }
+
+    /// The blocks copying block `name` of document `source` into document
+    /// `id` would bring whose names `id` uses for other contents (ADR 0025
+    /// D6): each needs a choice.
+    pub fn block_clashes(
+        &self,
+        source: DocumentId,
+        id: DocumentId,
+        name: &str,
+    ) -> CadResult<Vec<String>> {
+        let snapshot = self.other_snapshot(source, id)?;
+        Ok(lock(id, &self.shared(id)?)?
+            .cad
+            .document()
+            .block_clashes(snapshot.document(), name)?)
+    }
+
+    /// Copies block `name` of document `source` into document `id`, as one
+    /// undo step there (ADR 0025 D6); returns its name in `id`.
+    pub fn copy_block(
+        &self,
+        source: DocumentId,
+        id: DocumentId,
+        name: &str,
+        choices: &BTreeMap<String, ClashChoice>,
+    ) -> CadResult<(String, ChangeSet)> {
+        let snapshot = self.other_snapshot(source, id)?;
+        lock(id, &self.shared(id)?)?
+            .cad
+            .copy_block(snapshot.document(), name, choices)
+    }
+
+    /// A copy of document `source`, which must not be `id`.
+    fn other_snapshot(&self, source: DocumentId, id: DocumentId) -> CadResult<Snapshot> {
+        if source == id {
+            return Err(CadError::InvalidOperation(
+                "a block is copied from another document".to_owned(),
+            ));
+        }
+        self.shared(id)?;
+        self.snapshot(source)
     }
 
     /// Saves a document as DWG or DXF, by the file extension (refusing to

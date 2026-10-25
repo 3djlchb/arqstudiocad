@@ -61,11 +61,21 @@ impl Document {
         self.touch_structure();
         self.add_missing_layers(editor)?;
         self.add_missing_blocks(editor, &nested)?;
-        let record = self
-            .cad()
-            .block_records
-            .get(&block)
-            .expect("the block was found above");
+        let owner = self.clear_block(&block)?;
+        for entity in contents {
+            self.add_copy(entity, owner)?;
+        }
+        self.redraw_references(&block);
+        Ok(())
+    }
+
+    /// Deletes what block `block` holds, leaving it empty; returns its
+    /// record's handle. The caller has touched the structure.
+    pub(crate) fn clear_block(&mut self, block: &str) -> DocumentResult<Handle> {
+        let record =
+            self.cad().block_records.get(block).ok_or_else(|| {
+                DocumentError::InvalidBlockName(format!("no block named {block:?}"))
+            })?;
         let owner = record.handle();
         let old: Vec<EntityId> = record.entity_handles.iter().map(|h| h.value()).collect();
         for id in old {
@@ -75,20 +85,16 @@ impl Document {
         let cad = self.cad_mut();
         let gone: BTreeSet<Handle> = cad
             .block_records
-            .get(&block)
+            .get(block)
             .map(|r| r.entity_handles.iter().copied())
             .into_iter()
             .flatten()
             .filter(|h| cad.get_entity(*h).is_none())
             .collect();
-        if let Some(record) = cad.block_records.get_mut(&block) {
+        if let Some(record) = cad.block_records.get_mut(block) {
             record.entity_handles.retain(|h| !gone.contains(h));
         }
-        for entity in contents {
-            self.add_copy(entity, owner)?;
-        }
-        self.redraw_references(&block);
-        Ok(())
+        Ok(owner)
     }
 
     /// The name of block `name` as the drawing spells it, if INSERT could
@@ -163,7 +169,7 @@ impl Document {
 
     /// Marks every model-space reference that draws block `name`, directly
     /// or nested, as changed, so it is drawn and indexed again.
-    fn redraw_references(&mut self, name: &str) {
+    pub(crate) fn redraw_references(&mut self, name: &str) {
         let references: Vec<Handle> = self
             .cad()
             .model_space_entities()
@@ -186,7 +192,7 @@ impl Document {
 }
 
 /// The block a reference draws.
-fn block_of(e: &EntityType) -> Option<String> {
+pub(crate) fn block_of(e: &EntityType) -> Option<String> {
     match e {
         EntityType::Insert(i) => Some(i.block_name.clone()),
         _ => None,
