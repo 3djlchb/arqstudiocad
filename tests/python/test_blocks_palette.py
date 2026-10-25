@@ -5,14 +5,24 @@ the palette and is pressed while it is open (D2)."""
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QImage, QPalette
-from PySide6.QtWidgets import QMenu, QToolButton
+from PySide6.QtCore import QEvent, QMimeData, QPointF, QSettings, QSize, Qt
+from PySide6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDragLeaveEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QIcon,
+    QImage,
+    QPalette,
+)
+from PySide6.QtWidgets import QApplication, QMenu, QToolButton, QWidget
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadChangeSet, CadColor, CadDocument
 from arqstudiocad.i18n import set_language
+from arqstudiocad.ui.block_drag import BLOCK_MIME, block_mime, dragged_block
 from arqstudiocad.ui.blocks_panel import (
     TAG_BACKGROUND,
     TAG_IN_ROWS,
@@ -26,6 +36,7 @@ from arqstudiocad.ui.blocks_panel import (
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.panel_style import SELECTION_BACKGROUND, SELECTION_LINE
 from arqstudiocad.ui.ribbon import RibbonGroupWidget
+from arqstudiocad.ui.viewport import Viewport
 
 
 @pytest.fixture
@@ -583,3 +594,131 @@ def test_a_wider_palette_holds_more_columns_of_the_same_cards(
     qtbot.waitUntil(lambda: first_row(panel) > narrow)
     assert panel.grid.iconSize() == QSize(64, 64), "the previews keep their size"
     assert panel.previews.drawn == drawn, "nothing drawn again"
+
+
+# Step 5: drag and drop onto the drawing, and Explode (ADR 0025 D5)
+
+
+def drag_event(kind: str, viewport: QWidget, mime: QMimeData, at: QPointF) -> QEvent:
+    """A Qt drag event over ``viewport`` at ``at`` (logical pixels)."""
+    actions = Qt.DropAction.CopyAction
+    buttons, modifiers = Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier
+    if kind == "enter":
+        return QDragEnterEvent(at.toPoint(), actions, mime, buttons, modifiers)
+    if kind == "move":
+        return QDragMoveEvent(at.toPoint(), actions, mime, buttons, modifiers)
+    return QDropEvent(at, actions, mime, buttons, modifiers)
+
+
+def screen(viewport: Viewport, x: float, y: float) -> QPointF:
+    sx, sy = viewport.view.to_screen(x, y)
+    ratio = viewport.devicePixelRatioF()
+    return QPointF(sx / ratio, sy / ratio)
+
+
+def test_a_dragged_block_carries_its_drawing_and_name(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    card, row = panel.grid.item(0), panel.table.topLevelItem(0)
+    assert row is not None
+    for mime in (panel.grid.mimeData([card]), panel.table.mimeData([row])):
+        assert dragged_block(mime) == (document.id, "Mesa")
+    assert dragged_block(QMimeData()) is None, "not a block"
+    broken = QMimeData()
+    broken.setData(BLOCK_MIME, b"{not json")
+    assert dragged_block(broken) is None
+
+
+def test_dropping_a_block_inserts_it_where_it_lands(window: MainWindow) -> None:
+    opened(window)
+    document = drawing_with_blocks(window, "Mesa")  # a line (0,0)-(0,1)
+    viewport = window.viewports[document.id]
+    viewport.zoom_extents()
+    before = references(document, "Mesa")
+    steps = len(document.undo_history)
+    mime = block_mime(document.id, "Mesa")
+    QApplication.sendEvent(viewport, drag_event("enter", viewport, mime, screen(viewport, 0, 0)))
+    assert window.runner.active == "INSERT", "the block follows the cursor"
+    assert viewport.target is not None
+    passing = screen(viewport, 0.1, 0.1)
+    QApplication.sendEvent(viewport, drag_event("move", viewport, mime, passing))
+    # Dropped elsewhere than the last move: where it is dropped counts.
+    over = screen(viewport, 0.25, 0.5)
+    QApplication.sendEvent(viewport, drag_event("drop", viewport, mime, over))
+    assert window.runner.active is None
+    (new,) = set(references(document, "Mesa")) - set(before)
+    x0, y0, _, _ = box(document, new)
+    assert (round(x0, 2), round(y0, 2)) == (0.25, 0.5), "where it was dropped"
+    assert len(document.undo_history) == steps + 1 and document.undo_name == "INSERT"
+
+
+def test_a_block_dragged_away_inserts_nothing(window: MainWindow) -> None:
+    opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    viewport = window.viewports[document.id]
+    before, steps = references(document, "Mesa"), len(document.undo_history)
+    mime = block_mime(document.id, "Mesa")
+    QApplication.sendEvent(viewport, drag_event("enter", viewport, mime, QPointF(20, 20)))
+    assert window.runner.active == "INSERT"
+    QApplication.sendEvent(viewport, QDragLeaveEvent())
+    assert window.runner.active is None
+    assert references(document, "Mesa") == before and len(document.undo_history) == steps
+
+
+def test_another_drawings_block_is_not_dropped_here(window: MainWindow) -> None:
+    opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    viewport = window.viewports[document.id]
+    mime = block_mime(document.id + 999, "Mesa")  # kept alive: the event points at it
+    event = drag_event("enter", viewport, mime, QPointF(20, 20))
+    QApplication.sendEvent(viewport, event)
+    assert not event.isAccepted() and window.runner.active is None
+
+
+def test_explode_inserts_the_blocks_contents(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    before = references(document, "Mesa")
+    lines = sum(1 for e in document.get_entities() if e.kind == "LINE")
+    steps = len(document.undo_history)
+    panel.select("Mesa")
+    panel.on_screen.setChecked(False)
+    panel.explode.setChecked(True)
+    panel.insert_button.click()
+    assert references(document, "Mesa") == before, "no reference: its contents"
+    assert sum(1 for e in document.get_entities() if e.kind == "LINE") == lines + 1
+    assert len(document.undo_history) == steps + 1 and document.undo_name == "INSERT"
+    document.undo()
+    assert sum(1 for e in document.get_entities() if e.kind == "LINE") == lines
+
+
+def test_the_drag_texts_speak_spanish(window: MainWindow) -> None:
+    panel = opened(window)
+    drawing_with_blocks(window, "Mesa")
+    assert panel.drag_hint.isVisible() and panel.explode.text() == "Explode"
+    set_language("es")
+    try:
+        panel.retranslate()
+        assert panel.explode.text() == "Descomponer"
+        assert panel.drag_hint.text() == "Arrastra un bloque al dibujo para insertarlo."
+    finally:
+        set_language("en")
+
+
+def test_a_dropped_block_with_explode_leaves_its_contents_there(window: MainWindow) -> None:
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")  # a line (0,0)-(0,1)
+    viewport = window.viewports[document.id]
+    viewport.zoom_extents()
+    before = references(document, "Mesa")
+    lines = {e.id for e in document.get_entities() if e.kind == "LINE"}
+    panel.explode.setChecked(True)
+    mime = block_mime(document.id, "Mesa")
+    at = screen(viewport, 0.25, 0.5)
+    QApplication.sendEvent(viewport, drag_event("enter", viewport, mime, at))
+    QApplication.sendEvent(viewport, drag_event("drop", viewport, mime, at))
+    assert window.runner.active is None and references(document, "Mesa") == before
+    (line,) = {e.id for e in document.get_entities() if e.kind == "LINE"} - lines
+    x0, y0, _, _ = box(document, line)
+    assert (round(x0, 2), round(y0, 2)) == (0.25, 0.5), "its contents where it was dropped"
+    assert document.undo_name == "INSERT"

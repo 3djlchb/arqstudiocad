@@ -14,8 +14,9 @@ D9) and say so.
 """
 
 import math
+from collections.abc import Callable, Sequence
 
-from PySide6.QtCore import QPointF, QSettings, QSize, Qt
+from PySide6.QtCore import QMimeData, QPointF, QSettings, QSize, Qt
 from PySide6.QtGui import (
     QColor,
     QIcon,
@@ -27,6 +28,7 @@ from PySide6.QtGui import (
     QShowEvent,
 )
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QApplication,
     QButtonGroup,
     QCheckBox,
@@ -58,6 +60,7 @@ from arqstudiocad.core import CadBlockInfo, CadDocument
 from arqstudiocad.events import DocumentChanged, Event
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
+from arqstudiocad.ui.block_drag import block_mime
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import (
     SELECTION_BACKGROUND,
@@ -177,12 +180,41 @@ class PreviewCache:
         self._icons.clear()
 
 
-class BlockGrid(QListWidget):
-    """The grid view: cards of a preview and a name, all one size; as many
-    columns as the palette's width holds."""
+#: What a drag of a block carries, by its name (None: no drag).
+DragPayload = Callable[[str], QMimeData | None]
+
+
+def no_drag(name: str) -> QMimeData | None:
+    return None
+
+
+def drag_only(view: QListWidget | QTreeWidget) -> None:
+    """Blocks are dragged out onto the drawing, never moved within."""
+    view.setDragEnabled(True)
+    view.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
+    view.setDefaultDropAction(Qt.DropAction.CopyAction)
+
+
+class BlockTable(QTreeWidget):
+    """The list view: a row per block, each draggable onto the drawing."""
 
     def __init__(self) -> None:
         super().__init__()
+        self.payload: DragPayload = no_drag
+        drag_only(self)
+
+    def mimeData(self, items: Sequence[QTreeWidgetItem]) -> QMimeData:  # noqa: N802 (Qt API)
+        mime = self.payload(items[0].text(NAME)) if items else None
+        return mime if mime is not None else QMimeData()
+
+
+class BlockGrid(QListWidget):
+    """The grid view: cards of a preview and a name, all one size; as many
+    columns as the palette's width holds; each draggable onto the drawing."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.payload: DragPayload = no_drag
         self.setViewMode(QListView.ViewMode.IconMode)
         self.setResizeMode(QListView.ResizeMode.Adjust)
         self.setMovement(QListView.Movement.Static)
@@ -193,6 +225,12 @@ class BlockGrid(QListWidget):
         self.setIconSize(QSize(CARD_PREVIEW, CARD_PREVIEW))
         side = CARD_PREVIEW + CARD_MARGIN
         self.setGridSize(QSize(side, side + self.fontMetrics().height() + 4))
+        # IconMode makes items movable within: only out, onto the drawing.
+        drag_only(self)
+
+    def mimeData(self, items: Sequence[QListWidgetItem]) -> QMimeData:  # noqa: N802 (Qt API)
+        mime = self.payload(items[0].text()) if items else None
+        return mime if mime is not None else QMimeData()
 
     def card_size(self) -> int:
         """A card's preview side, in pixels."""
@@ -321,7 +359,7 @@ class BlocksPanel(QDockWidget):
         search_row.addWidget(self.grid_view)
         search_row.addWidget(self.list_view)
 
-        self.table = QTreeWidget()
+        self.table = BlockTable()
         self.table.setColumnCount(2)
         self.table.setRootIsDecorated(False)
         self.table.setUniformRowHeights(True)
@@ -336,6 +374,9 @@ class BlocksPanel(QDockWidget):
         self.grid = BlockGrid()
         self.grid.currentItemChanged.connect(self._on_card_chosen)
         self.grid.itemActivated.connect(self.insert_selected)
+        self.table.payload = self.grid.payload = self._drag_payload
+        #: Whether INSERT runs for a block being dragged over the drawing.
+        self._dropping = False
         self.views = QStackedWidget()
         self.views.addWidget(self.grid)
         self.views.addWidget(self.table)
@@ -352,6 +393,7 @@ class BlocksPanel(QDockWidget):
         legend_row.setSpacing(4)
         legend_row.addWidget(self.legend_tag)
         legend_row.addWidget(self.legend_text, 1)
+        self.drag_hint = QLabel()
         self.details = PropertyGrid()
         self.details.caption.hide()
 
@@ -364,6 +406,7 @@ class BlocksPanel(QDockWidget):
         column.addWidget(self.views, 1)
         column.addWidget(self.footer)
         column.addWidget(self.legend)
+        column.addWidget(self.drag_hint)
         splitter = QSplitter(Qt.Orientation.Vertical)
         splitter.setChildrenCollapsible(False)
         splitter.addWidget(top)
@@ -387,6 +430,7 @@ class BlocksPanel(QDockWidget):
         self.rotation.setSuffix("°")
         self.on_screen = QCheckBox()
         self.on_screen.setChecked(True)
+        self.explode = QCheckBox()
         self.scale_label, self.rotation_label = QLabel(), QLabel()
         self.options = QWidget()
         grid = QGridLayout(self.options)
@@ -395,7 +439,8 @@ class BlocksPanel(QDockWidget):
         grid.addWidget(self.scale, 0, 1)
         grid.addWidget(self.rotation_label, 0, 2)
         grid.addWidget(self.rotation, 0, 3)
-        grid.addWidget(self.on_screen, 1, 0, 1, 4)
+        grid.addWidget(self.on_screen, 1, 0, 1, 2)
+        grid.addWidget(self.explode, 1, 2, 1, 2)
         grid.setColumnStretch(1, 1)
         grid.setColumnStretch(3, 1)
         self.options_band.setChecked(True)
@@ -440,7 +485,7 @@ class BlocksPanel(QDockWidget):
         text = colors.color(QPalette.ColorRole.ButtonText).name()
         mid = colors.color(QPalette.ColorRole.Mid).name()
         highlight = colors.color(QPalette.ColorRole.Highlight).name()
-        for label in (self.source_caption, self.footer, self.legend_text):
+        for label in (self.source_caption, self.footer, self.legend_text, self.drag_hint):
             label.setStyleSheet(f"color: {muted};")
         # A segmented control: the active source on the Button color with a
         # line in Highlight under it, as the mockup.
@@ -492,6 +537,11 @@ class BlocksPanel(QDockWidget):
         self.scale_label.setText(tr("Scale"))
         self.rotation_label.setText(tr("Rotation"))
         self.on_screen.setText(tr("Specify on screen"))
+        self.explode.setText(tr("Explode"))
+        self.explode.setToolTip(
+            tr("Insert the block's contents instead of a reference, as EXPLODE does.")
+        )
+        self.drag_hint.setText(tr("Drag a block onto the drawing to insert it."))
         self.on_screen.setToolTip(
             tr("Pick the insertion point in the drawing; otherwise the block goes at the origin.")
         )
@@ -554,6 +604,7 @@ class BlocksPanel(QDockWidget):
             self.grid.clear()
             if document is None:
                 self.legend.setVisible(False)
+                self.drag_hint.setVisible(False)
                 self.table.setEnabled(False)
                 self.source_caption.setText("")
                 self.footer.setText(tr("No drawing is open."))
@@ -564,6 +615,7 @@ class BlocksPanel(QDockWidget):
                 shown = self.names()
                 dynamic = {name for name in shown if document.is_dynamic_block(name)}
                 self.legend.setVisible(bool(dynamic))
+                self.drag_hint.setVisible(bool(shown))
                 for name in shown:
                     count = references.get(name, 0)
                     item = QTreeWidgetItem([name, str(count)])
@@ -609,8 +661,38 @@ class BlocksPanel(QDockWidget):
                 self.scale.value(),
                 math.radians(self.rotation.value()),
                 self.on_screen.isChecked(),
+                self.explode.isChecked(),
             )
         )
+
+    def start_drop_insert(self, name: str) -> None:
+        """A block dragged from here came over the drawing: INSERT runs on
+        screen with the insert options, so the block follows the cursor
+        until it is dropped (ADR 0025 D5)."""
+        if self._runner is None or self.document() is None:
+            return
+        self._dropping = True
+        self._runner.start(
+            insert_named(
+                name,
+                self.scale.value(),
+                math.radians(self.rotation.value()),
+                True,
+                self.explode.isChecked(),
+            )
+        )
+
+    def end_drop_insert(self, dropped: bool) -> None:
+        """The drag ended: dropped, the block is placed; otherwise the
+        INSERT it started is cancelled and nothing was inserted."""
+        runner = self._runner
+        if self._dropping and not dropped and runner is not None and runner.active == "INSERT":
+            runner.cancel()
+        self._dropping = False
+
+    def _drag_payload(self, name: str) -> QMimeData | None:
+        document = self.document()
+        return None if document is None else block_mime(document.id, name)
 
     def edit_selected(self) -> None:
         """Opens the selected block in the block editor, through BEDIT."""

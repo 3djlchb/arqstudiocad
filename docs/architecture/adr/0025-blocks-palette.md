@@ -233,6 +233,12 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - Edit block is disabled for a dynamic block, with BEDIT's refusal as its tooltip.
   - The Type row lists the parameters the block shows (`BlockInfo::parameters`, from AcadRust's dynamic properties), or says "Dynamic block" alone when none can be read.
   - The legend's "drag onto the drawing to insert" comes with drag and drop in step 5.
+- **Step 5 (2026-10-25):** drag and drop, and Explode.
+  - A card or a row drags `application/x-arqstudiocad-block` carrying its drawing and name. Only the viewport of that drawing accepts it; a template's or a recent block waits for the copy of step 7.
+  - Over the drawing, the palette starts INSERT on screen with its insert options, so the block follows the cursor as INSERT's own preview, snapped and ORTHO as at a click, under a dashed frame and "Drop to insert <name>".
+  - Dropping picks the insertion point where the block lands: one undo step, echoed as INSERT. Dragging away cancels that INSERT and nothing is left.
+  - **Explode**, a new insert option, replaces the reference by its contents in the same undo step (ADR 0023 D1 for attributes), from the Insert button and from a drop.
+  - The footer says "Drag a block onto the drawing to insert it."
 
 ## Consequences
 
