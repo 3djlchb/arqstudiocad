@@ -1,6 +1,6 @@
 # 0023. Blocks in milestone 02.8: create, insert, edit, explode
 
-Date: 2026-10-19 · Status: Accepted · Builds on [0016](0016-editing-workflow.md),
+Date: 2026-10-19 (D2a: 2026-10-26) · Status: Accepted · Builds on [0016](0016-editing-workflow.md),
 [0018](0018-native-format.md), [0022](0022-text-entities.md)
 
 ## Context
@@ -37,6 +37,53 @@ copied into the drawing. The whole explode is one undo step.
   (0), with the options Scale and Rotate before the point, as AutoCAD.
   Anonymous (`*`) and layout blocks are not offered.
 - New attributes (ATTDEF) and Xrefs are phase 04 or later.
+
+### D2a — The Block Definition dialog *(maintainer, 2026-10-25 and 2026-10-26)*
+
+BLOCK gains AutoCAD's and progeCAD's **Block Definition** dialog (Spanish
+*Definición de bloque*), milestone 02.10, brought forward before the
+Blocks palette's steps 8c–8e.
+
+- **Where it opens:** BLOCK opens the dialog, and so does the palette's
+  New…. **-BLOCK** (Spanish `-BLOQUE`) keeps the command-line prompts of
+  D2, as AutoCAD's. Without an interface (scripts), BLOCK prompts as
+  -BLOCK does.
+- **What it holds:**
+  - **Name**, typed or chosen from the drawing's blocks, and a
+    **Description**.
+  - **Base point**: X and Y typed, or **Pick point**, which hides the
+    dialog until the point is picked, with snaps and ORTHO, then shows it
+    again. Z is not shown: blocks are 2D until the 3D document model
+    (ADR 0024).
+  - **Objects**: **Select objects**, which hides the dialog the same way,
+    and whether they are **Retained**, **Converted to block** (replaced
+    by a reference at the base point) or **Deleted**. The choice made last
+    is remembered in the settings; the first time it is Convert, as D2.
+    The dialog says how many objects are selected, and warns while none is.
+  - **Specify on screen**, for the base point and for the objects: when
+    checked, the point or the objects are asked for after OK, as AutoCAD.
+  - **Behavior**: **Scale uniformly**, **Allow exploding** (on by
+    default) and the block's **Units** (DWG's INSUNITS codes; the
+    drawing's units by default). **Annotative** is shown disabled until
+    annotation scales (phase 04).
+  - **Open in block editor**: after OK, the new block opens in BEDIT (D3).
+- **A name the drawing uses** is offered to be **redefined**, confirmed in
+  a dialog that says how many references will change: Yes replaces the
+  definition's contents and base point with the objects selected, and
+  every reference shows them; No returns to the dialog. A dynamic block is
+  never redefined (D3a). This replaces, for the dialog, D2's refusal of a
+  name in use; -BLOCK keeps refusing it.
+- **One undo step** in every case, named BLOCK.
+- **Allow exploding off:** EXPLODE refuses those references and says why,
+  exploding the rest of the selection; the Blocks palette's Explode insert
+  option is disabled for such a block. **Scale uniformly** is written and
+  kept; INSERT already scales uniformly only.
+- **The file:** the description, the units and both flags are written to
+  the block record, as DWG and DXF keep them, and read back.
+
+Order of work: this amendment and the roadmap entry; then the core
+(Retain and Delete, redefining from objects, writing the description,
+units and flags, EXPLODE honoring Allow exploding); then the dialog.
 
 ### D3 — The block editor *(maintainer)*
 
