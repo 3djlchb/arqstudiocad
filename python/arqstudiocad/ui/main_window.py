@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from arqstudiocad import _core
 from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
+from arqstudiocad.commands.blocks import edit_clicked
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry, open_command
 from arqstudiocad.commands.grips import grip_edit, shown_grips
 from arqstudiocad.core import (
@@ -63,7 +64,7 @@ from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
-from arqstudiocad.ui.viewport import Viewport
+from arqstudiocad.ui.viewport import BLOCK_EDITOR_BACKGROUND, Viewport
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
 from arqstudiocad.workspaces import BLOCK_EDITOR, WorkspaceRegistry, builtin_workspaces
 
@@ -438,6 +439,11 @@ class MainWindow(QMainWindow):
         if document is None or event.document_id in self.viewports:
             return
         viewport = Viewport(document, drafting=self.session.drafting)
+        if self.session.block_editor_of(document) is not None:
+            viewport.view.background = BLOCK_EDITOR_BACKGROUND
+        viewport.entity_double_clicked.connect(
+            lambda entity_id: self._edit_double_clicked(document, entity_id)
+        )
         viewport.cursor_moved.connect(self._show_coordinates)
         viewport.point_picked.connect(self.runner.answer_point)
         viewport.key_typed.connect(self.command_window.type_key)
@@ -454,6 +460,17 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()
         self._update_tab_titles()
+
+    def _edit_double_clicked(self, document: CadDocument, entity_id: int) -> None:
+        """A double click on a block reference opens the Edit Block
+        Definition dialog with its block chosen, through BEDIT, as AutoCAD
+        (maintainer, 2026-10-25); never in the middle of a command."""
+        if self.runner.active is not None or self.runner.busy is not None:
+            return
+        # Only a block reference names a block.
+        name = dict(document.get_entity(entity_id).details).get("Block name")
+        if name:
+            self.runner.start(edit_clicked(name))
 
     def _on_active_document_changed(self, event: ActiveDocumentChanged) -> None:
         # The block editor's contextual ribbon tab (ADR 0023 D3).

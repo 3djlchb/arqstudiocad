@@ -5,6 +5,9 @@ drawing, never into a file; a contextual ribbon tab while it is active."""
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 from test_commands import regression_drawing
 from ui_fakes import QuietUi
@@ -17,6 +20,7 @@ from arqstudiocad.events import BlockSaved, CommandMessage, CommandPrompt, Event
 from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
+from arqstudiocad.ui.viewport import BLOCK_EDITOR_BACKGROUND, Viewport
 
 LOOKUP = Path(__file__).resolve().parents[2] / (
     "target/corpus/acadrust/fixtures/dynamic-blocks/lookup.dwg"
@@ -256,3 +260,51 @@ def test_the_palette_starts_bedit_and_insert_with_the_block_chosen() -> None:
     h.session.activate(h.document)
     h.runner.start(edit_named("nada"))
     assert h.messages()[-1] == "There is no such block."
+
+
+def double_click(viewport: Viewport, world: tuple[float, float]) -> None:
+    point = QPointF(*viewport.view.to_screen(*world))
+    event = QMouseEvent(
+        QEvent.Type.MouseButtonDblClick,
+        point,
+        viewport.mapToGlobal(point),
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QApplication.sendEvent(viewport, event)
+
+
+def test_a_double_click_on_a_block_edits_it_in_a_grey_editor(qtbot: QtBot) -> None:
+    """As the maintainer's video (2026-10-25): a double click on a block
+    opens the Edit Block Definition dialog with that block chosen, then the
+    block editor, in a tab of its own on a grey background."""
+    ui = QuietUi(block_answer="MARCO")
+    window = MainWindow(ui=ui)
+    qtbot.addWidget(window)
+    window.resize(900, 600)
+    window.show()
+    qtbot.waitExposed(window)
+    document = window.session.new_document()
+    a, _ = document.add_line((0, 0), (40, 0))
+    b, _ = document.add_line((0, 0), (0, 30))
+    window.session.edit(document, lambda d: d.create_block("MARCO", (0, 0), [a, b])[1])
+    window.session.edit(document, lambda d: d.add_line((80, 80), (100, 100))[1])
+    viewport = window.viewports[document.id]
+    viewport.zoom_extents()
+    asked = len(ui.asked)
+
+    double_click(viewport, (90.0, 90.0))
+    assert len(ui.asked) == asked, "a line: nothing to edit yet"
+    window.runner.execute("BLOCK")  # asks for a name, not a point
+    double_click(viewport, (20.0, 0.0))
+    assert len(ui.asked) == asked and window.runner.active == "BLOCK", "not during a command"
+    window.runner.cancel()
+
+    double_click(viewport, (20.0, 0.0))
+    assert ui.asked[-1] == "Edit block: MARCO" and ui.edit_chosen == "MARCO"
+    editor = window.session.active
+    assert editor is not None and window.session.block_editor_of(editor) == (document, "MARCO")
+    assert editor.path is None, "a temporary tab, never a file"
+    assert window.viewports[editor.id].view.background == BLOCK_EDITOR_BACKGROUND
+    assert viewport.view.background != BLOCK_EDITOR_BACKGROUND, "the drawing keeps its own"

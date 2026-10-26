@@ -168,9 +168,11 @@ def place_block(
             ctx.session.report(document, document.cancel_group())
 
 
-def bedit(ctx: CommandContext) -> CommandScript:
+def bedit(ctx: CommandContext, chosen: str | None = None) -> CommandScript:
     """Opens a block of the drawing in a block editor (ADR 0023 D3): its
-    definition alone, at its own coordinates, where every tool works."""
+    definition alone, at its own coordinates, where every tool works. The
+    block is chosen in the Edit Block Definition dialog, ``chosen`` first
+    (the block double-clicked)."""
     document = ctx.document()
     if ctx.session.block_editor_of(document) is not None:
         raise CommandCancelledError(tr("Close this block editor before editing another block."))
@@ -178,7 +180,7 @@ def bedit(ctx: CommandContext) -> CommandScript:
     if not names:
         raise CommandCancelledError(tr("The drawing has no blocks to edit."))
     if ctx.ui is not None:
-        name = ctx.ui.choose_block(names, tr("Edit block"))
+        name = ctx.ui.choose_block_to_edit(document, chosen)
         if name is None:
             raise CommandCancelledError()
     else:
@@ -196,6 +198,13 @@ def _edit(ctx: CommandContext, document: CadDocument, name: str) -> None:
         )
     ctx.session.open_block_editor(document, name)
     ctx.message(tr("Editing block {name}.", name=name))
+
+
+def edit_clicked(name: str) -> Command:
+    """BEDIT for the block reference double-clicked, as AutoCAD's: the Edit
+    Block Definition dialog opens with block ``name`` chosen (ADR 0023 D3,
+    maintainer, 2026-10-25)."""
+    return Command("BEDIT", lambda ctx: bedit(ctx, name), repeat=False)
 
 
 def insert_named(

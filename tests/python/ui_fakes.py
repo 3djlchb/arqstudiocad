@@ -46,6 +46,8 @@ class QuietUi:
     #: The clash dialog's choices (None: cancelled); the clashes it was shown.
     clash_answer: dict[str, ClashChoice] | None = None
     clashes: list[BlockClash] = field(default_factory=list)
+    #: The block the Edit Block Definition dialog was opened on.
+    edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
     #: ask for another name.
     template_name_answer: bool = True
@@ -87,6 +89,12 @@ class QuietUi:
 
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         self.asked.append(f"{title}: {', '.join(names)}")
+        return self.block_answer
+
+    def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
+        # The Edit Block Definition dialog: what it lists and selects first.
+        self.asked.append(f"Edit block: {', '.join(document.block_names)}")
+        self.edit_chosen = chosen
         return self.block_answer
 
     def report_block_name_taken(self, name: str) -> None:
