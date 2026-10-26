@@ -44,6 +44,7 @@ mod ocs;
 mod pick;
 mod reading;
 mod solid;
+mod table_style_verify;
 #[cfg(test)]
 mod test_dxf;
 mod text_layout;

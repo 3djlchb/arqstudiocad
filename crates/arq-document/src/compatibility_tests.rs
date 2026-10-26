@@ -45,10 +45,22 @@ fn legacy_multileaderstyle_refusals_exceed_the_default_allowance() {
         assert_eq!(allowance.get("object MULTILEADERSTYLE"), Some(&1));
         let target = scratch.path().join(format!("{version}.dwg"));
         std::fs::write(&target, b"original").unwrap();
-        assert!(matches!(
-            doc.save(&target),
-            Err(DocumentError::Lossy { .. })
-        ));
+        let result = doc.save(&target);
+        if version == "2000" {
+            // Verification runs before count-loss prompting: this file also
+            // loses the TABLESTYLE owner of its retained companion map.
+            assert!(
+                doc.losses_in(&back)
+                    .iter()
+                    .any(|l| l.kind() == "object TABLESTYLE")
+            );
+            assert!(
+                matches!(result, Err(DocumentError::NotVerified { differences, .. })
+                if differences == ["Table style Standard companion conversion changed data or links"])
+            );
+        } else {
+            assert!(matches!(result, Err(DocumentError::Lossy { .. })));
+        }
         assert_eq!(std::fs::read(target).unwrap(), b"original");
     }
 }
@@ -106,4 +118,38 @@ fn check_insert(doc: &Document, name: &str) {
         (2.0, 2.0, 1.0)
     );
     assert!((insert.rotation - 30.0_f64.to_radians()).abs() < 1e-12);
+}
+
+#[test]
+#[ignore = "needs a native ProgeCAD unloaded DXF in ARQ_NATIVE_XREF_DXF"]
+fn native_progecad_unloaded_dxf_imports_the_explicit_marker() {
+    let path = std::env::var_os("ARQ_NATIVE_XREF_DXF")
+        .expect("set ARQ_NATIVE_XREF_DXF to the independently exported DXF");
+    let doc = Document::open(Path::new(&path)).unwrap();
+    assert!(
+        doc.recovery().is_none(),
+        "the native file must read cleanly"
+    );
+    let block = doc.cad().block_records.get("child").unwrap();
+    assert!(block.flags.is_xref);
+    assert!(
+        block.flags.is_xref_unloaded,
+        "BLOCK 71=1 must survive the product reader"
+    );
+    assert_eq!(block.xref_path, "child.dwg");
+    let scratch = tempfile::tempdir().unwrap();
+    for extension in ["dwg", "dxf"] {
+        let output = scratch.path().join(format!("native-unloaded.{extension}"));
+        doc.save(&output).unwrap();
+        let back = Document::open(&output).unwrap();
+        assert!(doc.validate_roundtrip(&back).is_empty());
+        assert!(
+            back.cad()
+                .block_records
+                .get("child")
+                .unwrap()
+                .flags
+                .is_xref_unloaded
+        );
+    }
 }

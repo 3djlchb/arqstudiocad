@@ -266,7 +266,7 @@ fn xref_out_of_plane_placement_changes_are_caught() {
 }
 
 #[test]
-fn unloaded_xref_dxf_is_refused_without_replacing_the_target() {
+fn unloaded_xref_survives_safe_save_in_both_formats() {
     let mut doc = xref_sample();
     doc.cad_mut()
         .block_records
@@ -275,20 +275,74 @@ fn unloaded_xref_dxf_is_refused_without_replacing_the_target() {
         .flags
         .is_xref_unloaded = true;
     let dir = tempfile::tempdir().unwrap();
-    let dwg = dir.path().join("host.dwg");
-    doc.save(&dwg).unwrap();
-    let back = Document::open(&dwg).unwrap();
-    assert!(
-        back.cad()
-            .block_records
-            .get("SITE")
-            .unwrap()
-            .flags
-            .is_xref_unloaded
-    );
-    let dxf = dir.path().join("host.dxf");
-    fs::write(&dxf, b"previous file").unwrap();
-    let error = doc.save_accepting(&dxf, |_| true).unwrap_err();
+    for name in ["host.dwg", "host.dxf"] {
+        let path = dir.path().join(name);
+        doc.save(&path).unwrap();
+        let back = Document::open(&path).unwrap();
+        assert!(
+            back.cad()
+                .block_records
+                .get("SITE")
+                .unwrap()
+                .flags
+                .is_xref_unloaded
+        );
+        assert!(doc.validate_roundtrip(&back).is_empty());
+    }
+}
+
+#[test]
+fn a_lost_xref_unload_marker_is_still_refused_without_replacing_the_target() {
+    let mut doc = xref_sample();
+    doc.cad_mut()
+        .block_records
+        .get_mut("SITE")
+        .unwrap()
+        .flags
+        .is_xref_unloaded = true;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("host.dxf");
+    fs::write(&path, b"previous file").unwrap();
+    fault::set(|bytes| {
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        let lines: Vec<_> = text.lines().map(str::trim).collect();
+        let (raw_pairs, remainder) = lines.as_chunks::<2>();
+        assert!(remainder.is_empty());
+        let mut pairs: Vec<_> = raw_pairs
+            .iter()
+            .map(|p| (p[0].to_owned(), p[1].to_owned()))
+            .collect();
+        let mut start = 0;
+        let mut changed = false;
+        while start < pairs.len() {
+            let end = (start + 1..pairs.len())
+                .find(|&i| pairs[i].0 == "0")
+                .unwrap_or(pairs.len());
+            if pairs[start].0 == "0"
+                && pairs[start].1 == "BLOCK"
+                && pairs[start..end]
+                    .iter()
+                    .any(|(c, v)| c == "2" && v == "SITE")
+            {
+                let marker = pairs[start..end]
+                    .iter_mut()
+                    .find(|(c, _)| c == "71")
+                    .expect("the codec writes the native unload marker");
+                assert_eq!(marker.1, "1");
+                marker.1 = "0".to_owned();
+                changed = true;
+            }
+            start = end;
+        }
+        assert!(changed);
+        *bytes = pairs
+            .into_iter()
+            .flat_map(|(c, v)| [c, v])
+            .collect::<Vec<_>>()
+            .join("\n")
+            .into_bytes();
+    });
+    let error = doc.save_accepting(&path, |_| true).unwrap_err();
     let DocumentError::NotVerified {
         differences, kept, ..
     } = error
@@ -301,5 +355,5 @@ fn unloaded_xref_dxf_is_refused_without_replacing_the_target() {
             .any(|d| d.starts_with("Xref SITE metadata changed"))
     );
     assert!(kept.unwrap().exists());
-    assert_eq!(fs::read(dxf).unwrap(), b"previous file");
+    assert_eq!(fs::read(path).unwrap(), b"previous file");
 }
