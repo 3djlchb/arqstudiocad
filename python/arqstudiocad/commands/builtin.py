@@ -302,7 +302,7 @@ def zoom(ctx: CommandContext) -> CommandScript:
 
 
 def id_(ctx: CommandContext) -> CommandScript:
-    """AutoCAD's ID: the coordinates of a point, typed or picked."""
+    """IDPOINT, AutoCAD's ID: the coordinates of a point, typed or picked."""
     ctx.document()
     point = yield ctx.point(tr("Specify point"))
     x, y = point
@@ -310,7 +310,7 @@ def id_(ctx: CommandContext) -> CommandScript:
 
 
 def dist(ctx: CommandContext) -> CommandScript:
-    """AutoCAD's DIST: the distance between two points, typed or picked,
+    """DISTANCE, AutoCAD's DIST: the distance between two points, typed or picked,
     with a rubber band from the first; the angle in the XY plane (degrees,
     ADR 0010) and the deltas, as AutoCAD reports them."""
     ctx.document()
@@ -367,8 +367,8 @@ BUILTIN_COMMANDS = (
     Command("LAYER", layer, ("LA",)),
     Command("BLOCKSPALETTE", blocks_palette),
     Command("PROPERTIES", properties, ("PR",)),
-    Command("ID", id_),
-    Command("DIST", dist, ("DI",)),
+    Command("IDPOINT", id_, ("ID",)),
+    Command("DISTANCE", dist, ("DI", "DIST")),
 )
 
 
