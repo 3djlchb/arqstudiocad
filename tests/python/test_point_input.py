@@ -25,6 +25,7 @@ from arqstudiocad.events import (
     Event,
     EventBus,
 )
+from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.viewport import Viewport
@@ -66,6 +67,51 @@ def test_id_shows_a_typed_point() -> None:
     assert h.runner.active is None
 
 
+def test_dist_measures_between_two_points_with_a_rubber_band() -> None:
+    h = Harness()
+    h.runner.execute("DI")
+    assert h.prompts()[-1].text == "Specify first point:"
+    h.runner.execute("1,2")
+    prompt = h.prompts()[-1]
+    assert (prompt.text, prompt.base) == ("Specify second point:", (1.0, 2.0)), "a rubber band"
+    h.runner.execute("@-8,-6")
+    assert h.messages()[-2:] == [
+        "Distance = 10.0000,  Angle in XY plane = 216.8699°",
+        "Delta X = -8.0000,  Delta Y = -6.0000",
+    ]
+    assert h.runner.active is None
+    h.runner.execute("DIST")  # AutoCAD's name
+    h.runner.execute("0,0")
+    h.runner.execute("0,0")
+    assert h.messages()[-2] == "Distance = 0.0000,  Angle in XY plane = 0.0000°"
+
+
+def test_the_english_names_and_their_aliases() -> None:
+    h = Harness()
+    for typed, name in (
+        ("IDPOINT", "IDPOINT"),
+        ("ID", "IDPOINT"),
+        ("DISTANCE", "DISTANCE"),
+        ("DI", "DISTANCE"),
+        ("DIST", "DISTANCE"),
+    ):
+        h.runner.execute(typed)
+        assert h.runner.active == name, typed
+        h.runner.cancel()
+
+
+def test_id_and_dist_in_spanish() -> None:
+    set_language("es")
+    h = Harness()
+    h.runner.execute("IDPUNTO")
+    h.runner.execute("3,4")
+    assert h.messages()[-1] == "X = 3.0000     Y = 4.0000"
+    h.runner.execute("DISTANCIA")
+    h.runner.execute("0,0")
+    h.runner.execute("3,4")
+    assert h.messages()[-2] == "Distancia = 5.0000,  Ángulo en plano XY = 53.1301°"
+
+
 def test_a_wrong_point_says_why_and_asks_again() -> None:
     h = Harness()
     h.runner.execute("ID")
@@ -73,7 +119,7 @@ def test_a_wrong_point_says_why_and_asks_again() -> None:
     assert h.messages()[-1] == "abc is not a number."
     h.runner.execute("@1,1")
     assert h.messages()[-1] == "There is no last point."
-    assert h.runner.active == "ID" and h.prompts()[-1].text == "Specify point:"
+    assert h.runner.active == "IDPOINT" and h.prompts()[-1].text == "Specify point:"
     h.runner.execute("5,6")
     assert h.messages()[-1] == "X = 5.0000     Y = 6.0000"
 

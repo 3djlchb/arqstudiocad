@@ -168,6 +168,12 @@ letters (`CA` for `CAPA`, but not `B`, `D` or `H`, which are `BLOCK`,
 an English command arrives; names are found with or without accents
 (`CÍRCULO` finds `CIRCULO`) *(maintainer, 2026-10-15)*.
 
+Every command has both names, always *(maintainer, 2026-10-25)*: a command
+the maintainer asks for by its Spanish name gets its English name too, and
+AutoCAD's English name, when it differs, becomes an alias (`IDPOINT` with
+`ID`, `DISTANCE` with `DIST`). A Spanish name that is the English one, as
+`ZOOM`, is left out of the catalog, since the English name already works.
+
 ### D10 — Editing from Properties *(maintainer)*
 
 The property grid shows the selection: its kind as the caption ("Line",
@@ -192,3 +198,13 @@ reported on the command line and the grid shows the drawing as it is.
   the document or the camera changes.
 - Selection by scanning is measured now; if the budget fails on large
   drawings, the spatial index of 2.6 is moved earlier.
+
+## Implementation notes
+
+- **Inquiry commands (2026-10-25, maintainer):** `IDPOINT` (alias `ID`,
+  AutoCAD's name; Spanish `IDPUNTO`) shows a point's coordinates, as `ID`
+  has since step 2.5.4. `DISTANCE` (aliases `DI` and `DIST`, AutoCAD's
+  name; Spanish `DISTANCIA`) asks for two points, with a rubber band from the
+  first, and reports as AutoCAD does: the distance, the angle in the XY
+  plane in degrees from 0 to 360 (ADR 0010), and the X and Y deltas. Both
+  take every way of giving a point (D6), and neither changes the drawing.

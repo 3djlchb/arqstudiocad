@@ -26,13 +26,18 @@
   "COPY": [
     "COPIA"
   ],
+  "DISTANCE": [
+    "DISTANCIA"
+  ],
   "ERASE": [
     "BORRA"
   ],
   "EXPLODE": [
     "DESCOMPONER"
   ],
-  "ID": [],
+  "IDPOINT": [
+    "IDPUNTO"
+  ],
   "INSERT": [
     "INSERTAR"
   ],

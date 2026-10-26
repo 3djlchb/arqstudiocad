@@ -254,7 +254,7 @@ def test_a_grip_edit_is_not_repeated_by_enter() -> None:
     h.runner.execute("1,1")
     h.edit(h.grip(h.line, "MID"), "5,1")
     h.runner.execute("")
-    assert h.runner.active == "ID", "Enter repeats the last command typed"
+    assert h.runner.active == "IDPOINT", "Enter repeats the last command typed"
 
 
 # In the window

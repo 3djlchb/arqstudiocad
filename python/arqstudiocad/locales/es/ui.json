@@ -137,6 +137,7 @@
   "Delta angle": "Ángulo incluido",
   "Description": "Descripción",
   "Diameter": "Diámetro",
+  "Distance = {distance},  Angle in XY plane = {angle}°": "Distancia = {distance},  Ángulo en plano XY = {angle}°",
   "Double-click to edit.": "Doble clic para editar.",
   "Drag a block onto the drawing to insert it.": "Arrastra un bloque al dibujo para insertarlo.",
   "Draw": "Dibujo",
