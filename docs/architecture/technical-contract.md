@@ -254,7 +254,9 @@ The core never calls PySide6. Change sets become Python events, which a
 
 Events (`arqstudiocad.events`, no Qt): `DocumentOpened`, `DocumentSaved`,
 `DocumentClosed`, `ActiveDocumentChanged`, `DocumentChanged` (carrying the
-change set), `SelectionChanged`, `ActiveLayerChanged`, `CommandStarted`,
+change set), `SelectionChanged`, `ActiveLayerChanged`, `BlockSaved` (a block
+editor saved into its block, ADR 0023), `BlockUsed` (a block created or
+inserted, for the Blocks palette's Recent source, ADR 0025), `CommandStarted`,
 `CommandPrompt`, `CommandMessage`, `CommandFinished`, `CommandCancelled`,
 `WorkStarted`, `WorkFinished`, `LanguageChanged`.
 

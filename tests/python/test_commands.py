@@ -13,6 +13,8 @@ from damaged_files import LINES, recovered_dxf
 
 from arqstudiocad.commands import (
     Background,
+    BlockClash,
+    ClashChoice,
     Command,
     CommandCancelledError,
     CommandContext,
@@ -107,6 +109,17 @@ class FakeUi:
     def choose_template_path(self) -> Path | None:
         self.asked.append("template")
         return None
+
+    def resolve_block_clashes(self, clashes: Sequence[BlockClash]) -> dict[str, ClashChoice] | None:
+        self.asked.append("clashes")
+        return None
+
+    def report_block_name_taken(self, name: str) -> None:
+        self.asked.append("name taken")
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        self.asked.append("name in template")
+        return True
 
     def choose_save_path(self, suggested: str) -> Path | None:
         self.asked.append(f"save {suggested}")

@@ -44,6 +44,35 @@ log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
+class BlockClash:
+    """A block of a template whose name the drawing uses for other contents
+    (ADR 0025 D6): what the clash dialog shows of it."""
+
+    #: Its name in the template.
+    name: str
+    #: Where it comes from, and where it would go: the dialog shows both.
+    template: CadDocument
+    drawing: CadDocument
+    #: The drawing's block of that name, as the drawing spells it.
+    drawing_name: str
+    #: Either is dynamic: until the parametric engine only the drawing's
+    #: can be used (maintainer, 2026-10-25).
+    dynamic: bool
+    #: A free name to copy it under, proposed for "Copy with another name".
+    suggested: str
+
+
+@dataclass(frozen=True, slots=True)
+class ClashChoice:
+    """What to do with a clashing block: ``"keep"`` the drawing's,
+    ``"redefine"`` it from the template, or ``"rename"`` the copy to
+    ``name``."""
+
+    action: Literal["keep", "redefine", "rename"]
+    name: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class Option:
     """A prompt option: typed by its English ``key``, shown translated with
     the key visible, as ``Extents(E)``."""
@@ -158,9 +187,24 @@ class UiServices(Protocol):
         """Whether to save ``name`` although it would lose ``losses``."""
         ...
 
+    def report_block_name_taken(self, name: str) -> None:
+        """Says the drawing already has a block called ``name``: BLOCK asks
+        for another name (maintainer, 2026-10-25)."""
+        ...
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        """Whether to go on making block ``name``, which the loaded template
+        ``template`` also has (True), or type another name (False)."""
+        ...
+
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         """One of the drawing's blocks, chosen in a window called ``title``
         (INSERT, BEDIT, ADR 0023); None if it was cancelled."""
+        ...
+
+    def resolve_block_clashes(self, clashes: Sequence[BlockClash]) -> dict[str, ClashChoice] | None:
+        """A choice for each clashing block, by its name, made in the clash
+        dialog (ADR 0025 D6); None if it was cancelled."""
         ...
 
     def edit_text(self, title: str, text: str = "") -> str | None:

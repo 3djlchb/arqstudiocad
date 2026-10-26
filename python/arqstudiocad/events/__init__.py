@@ -25,6 +25,7 @@ __all__ = [
     "ActiveDocumentChanged",
     "ActiveLayerChanged",
     "BlockSaved",
+    "BlockUsed",
     "CommandCancelled",
     "CommandFinished",
     "CommandMessage",
@@ -78,6 +79,20 @@ class BlockSaved(Event):
     editor_id: int
     document_id: int
     name: str
+
+
+@dataclass(frozen=True, slots=True)
+class BlockUsed(Event):
+    """Block ``name`` of document ``source_id``, at ``path`` (None if never
+    saved), was created with BLOCK or inserted with INSERT: ``how`` is
+    ``"created"``, ``"inserted"`` or ``"template"`` (inserted from the
+    Blocks palette's template). The palette's Recent source lists it
+    (ADR 0025 D1)."""
+
+    source_id: int
+    name: str
+    path: Path | None
+    how: str
 
 
 @dataclass(frozen=True, slots=True)

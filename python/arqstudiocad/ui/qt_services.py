@@ -7,10 +7,10 @@ from typing import Literal
 
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
-from arqstudiocad.commands import ViewControl
+from arqstudiocad.commands import BlockClash, ClashChoice, ViewControl
 from arqstudiocad.core import CadDocument
 from arqstudiocad.i18n import tr
-from arqstudiocad.ui import text_dialog
+from arqstudiocad.ui import block_clash_dialog, text_dialog
 
 
 def drawing_filter() -> str:
@@ -115,6 +115,34 @@ class QtUiServices:
             return "overwrite"
         return "cancel"
 
+    def report_block_name_taken(self, name: str) -> None:
+        QMessageBox(
+            QMessageBox.Icon.Warning,
+            tr("Block name in use"),
+            tr("A block named {name} exists in the drawing. Type another name.", name=name),
+            QMessageBox.StandardButton.Ok,
+            self._parent,
+        ).exec()
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Information,
+            tr("Block name in the template"),
+            tr(
+                "The template {template} has a block named {name}. You can make this "
+                "block: inserting {name} from the template will ask what to do.",
+                template=template,
+                name=name,
+            ),
+            QMessageBox.StandardButton.NoButton,
+            self._parent,
+        )
+        go_on = box.addButton(tr("Continue"), QMessageBox.ButtonRole.AcceptRole)
+        box.addButton(tr("Another name"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(go_on)
+        box.exec()
+        return box.clickedButton() == go_on
+
     def ask_accept_losses(self, name: str, losses: Sequence[str]) -> bool:
         box = QMessageBox(
             QMessageBox.Icon.Warning,
@@ -139,6 +167,9 @@ class QtUiServices:
             self._parent, title, tr("Block:"), list(names), 0, False
         )
         return name if chosen and name else None
+
+    def resolve_block_clashes(self, clashes: Sequence[BlockClash]) -> dict[str, ClashChoice] | None:
+        return block_clash_dialog.resolve_block_clashes(clashes, self._parent)
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         return text_dialog.ask_text(self._parent, title, text)

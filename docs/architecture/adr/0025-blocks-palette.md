@@ -37,7 +37,12 @@ INSERT and never replaces it. It shows one source at a time:
   one, newest first, persisted in the settings as recent files are. Each
   entry keeps the path of the file its definition came from. If that file
   is missing or no longer holds the block, the entry is shown but cannot
-  be inserted, and its tooltip says why.
+  be inserted, and its tooltip says why. *(maintainer, 2026-10-25)*:
+  - The list keeps at most 30 blocks.
+  - A block whose file is open in a tab is taken from that drawing, unsaved
+    changes included, not from the file on disk.
+  - A block of a drawing never saved leaves the list when that drawing is
+    closed: no file holds it. Saved later, it comes from its new file.
 
 Anonymous (`*`) and layout blocks are never listed, as INSERT does not
 offer them (ADR 0023 D2). Blocks AutoCAD makes by itself under ordinary
@@ -152,6 +157,21 @@ either side, can only be used as the drawing has it. Redefine and Copy
 with another name are offered disabled, with the reason. A dynamic block
 that does not clash is copied whole, its parameters and actions included.
 
+**The dialog shows both blocks** *(maintainer, 2026-10-25)*: each clashing
+block has two 96 px previews, the template's block on the left and the
+drawing's on the right, so the user sees the difference before choosing.
+
+**BLOCK checks the template too** *(maintainer, 2026-10-25)*: creating a
+block, with BLOCK or the palette's New…, checks the name in two places.
+- A name the drawing uses is refused, and the message says it is in the
+  drawing.
+- A name only the loaded template uses gets a warning, and BLOCK goes on:
+  they are two files with no clash yet, and inserting that block from the
+  template will ask.
+- With the interface, both are dialogs as well as command-line messages
+  *(maintainer, 2026-10-25)*: a warning with OK, after which BLOCK asks for
+  the name again; and a note with **Continue** and **Another name**.
+
 ### D7 — Reading templates
 
 A `.dwt` is a DWG file with another extension: the core opens it as DWG,
@@ -263,7 +283,7 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - In the maintainer's drawings, 45 of 51 blocks copy, and every copy saves and reads back. The other six are dynamic blocks whose graph cannot be moved yet.
   - One undo step, or part of INSERT's group: `CadApplication::copy_block` copies from a snapshot of the source document. The Python API is `CadDocument.copy_block(name, source, keep, redefine, rename)` and `block_clashes(name, source)`.
 - **Step 7b (2026-10-25):** the Template source.
-  - The Template segment works; Recent still says "Not available yet."
+  - The Template segment works; Recent still says "Not available yet." (until step 6).
   - Its source row has:
     - a combo of the templates used last, newest first, with the sample template always offered;
     - a folder button, "Load template…".
@@ -283,6 +303,26 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - Edit block is disabled for a template's blocks, with the reason as its tooltip.
   - Insert, Enter, a double click or a drop onto the drawing copies the block (D6) and inserts it, in one INSERT undo step.
   - A block whose name clashes with a different block of the drawing is not inserted yet: INSERT stops and names the clashing blocks. The clash dialog comes with step 7c.
+- **Step 6 (2026-10-25):** the Recent source, built on step 7's copy.
+  - BLOCK and INSERT (typed or from the palette) publish a new event, `BlockUsed`: the block, the document its definition came from, that document's file, and how it was used (created, inserted, or inserted from the template). Contract §7 lists it.
+  - The palette keeps the list (`RecentBlocks`, no Qt) in the settings as JSON, with a session number counted at each start: blocks of the session before the previous one are dropped on reading.
+  - Each row shows its preview, its name and when it was used ("2 min ago"); the list's second column is Used instead of In drawing. The tooltip and the Selected block section say how, as the brief: "Created here", "Created in Planta_alta.dwg", "From the template …", "Inserted from …".
+  - A block is found in the open drawing it came from, else in the open drawing or template of its file, else in its file read for the palette. Those files are read in the background when Recent is shown, as a template is, and only while no command is at work. They are never in a tab nor written, and are read again when they change on disk.
+  - A file not read yet is read by INSERT itself, in the same command; a drop waits for the drag to end, as a clash does.
+  - A block that cannot be had is greyed, without preview, and cannot be inserted nor dragged. The tooltip, the Insert button and the Selected block section say why: the file was not found, cannot be read, or no longer has the block. A file that cannot be read is tried again when Recent is chosen again.
+  - Inserting a recent block from another file copies it, with the clash dialog of step 7c; one of the active drawing is inserted as it is.
+  - Recent may list two blocks of one name from different files: the grid and the list follow each other by row, and drags carry the row.
+- **Step 7c (2026-10-25):** the clash dialog.
+  - INSERT from a template asks about every clashing block, nested ones included, before copying. Cancel changes nothing.
+  - Each clash shows, as the maintainer asked:
+    - the template's block on the left and the drawing's on the right, 96 px each, framed as the palette's cards;
+    - the three choices: **Use the drawing's** (the default), **Redefine from the template**, and **Copy with another name**, which proposes `Name_2`.
+  - A new name must be valid, free in the drawing, and not chosen twice. Until it is, Insert is disabled and the dialog says why.
+  - A dynamic block, on either side, can only be used as the drawing has it. The other two choices are disabled, with the reason.
+  - Without a dialog, the command line asks the same questions.
+  - A template's block that clashes cannot be asked about during a drag. INSERT starts when the block is dropped, and places it at the drop point after the dialog, found as a click finds a point (object snaps, ORTHO).
+  - BLOCK checks the name against the drawing and the loaded template, as decided in D6. The session knows the palette's template (`Session.template`).
+  - The UI service `resolve_block_clashes` takes the `BlockClash` records and returns a `ClashChoice` for each.
 
 ## Consequences
 

@@ -2,6 +2,8 @@
 mockup, the selected block's details, and a View-tab button that toggles
 the palette and is pressed while it is open (D2)."""
 
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -20,11 +22,14 @@ from PySide6.QtWidgets import QApplication, QMenu, QPushButton, QToolButton, QWi
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
+from arqstudiocad.commands import ClashChoice
 from arqstudiocad.core import CadChangeSet, CadColor, CadDocument
 from arqstudiocad.i18n import set_language
 from arqstudiocad.paths import sample_template
 from arqstudiocad.ui.block_drag import BLOCK_MIME, block_mime, dragged_block
 from arqstudiocad.ui.blocks_panel import (
+    RECENT_SETTING,
+    SESSION_SETTING,
     TAG_BACKGROUND,
     TAG_IN_ROWS,
     TAG_ON_CARDS,
@@ -158,11 +163,9 @@ def test_the_palette_is_laid_out_as_the_mockup(window: MainWindow) -> None:
     sources = [(b.text(), b.isEnabled(), b.isChecked()) for b in panel.sources.values()]
     assert sources == [
         ("Template", True, False),
-        ("Recent", False, False),
+        ("Recent", True, False),
         ("Drawing", True, True),
-    ], "the drawing's blocks first; Recent waits for its step"
-    assert panel.sources["recent"].toolTip() == "Not available yet."
-    assert panel.sources["template"].toolTip() == ""
+    ], "the drawing's blocks first"
     assert panel.source_caption.text() == f"Definitions in {document.name}"
     assert panel.grid_view.isChecked() and panel.view() == "grid", "cards first, as the mockup"
     header = panel.table.headerItem()
@@ -794,6 +797,7 @@ def test_a_template_loads_in_the_background_and_shows_its_blocks(
     wait_idle(qtbot, window)
     template = panel.template
     assert template is not None and template not in window.session.documents, "never a tab"
+    assert window.session.template is template, "BLOCK checks its names"
     assert sorted(panel.shown(), key=str.lower) == sorted(template.block_names, key=str.lower)
     assert len(panel.shown()) == 10 and panel.views.currentWidget() is panel.grid
     assert panel.template_combo.currentText() == "Sample template"
@@ -847,7 +851,7 @@ def test_a_template_block_dropped_on_the_drawing_lands_there(
     }
 
 
-def test_a_clashing_template_block_is_not_inserted_silently(
+def test_a_clashing_template_block_is_asked_about_and_cancel_changes_nothing(
     qtbot: QtBot, window: MainWindow
 ) -> None:
     document = drawing_with_blocks(window, "wc")  # its own WC: one line
@@ -857,10 +861,13 @@ def test_a_clashing_template_block_is_not_inserted_silently(
     # The drawing's own wc, counted whatever its case.
     assert dict(panel.details.sections()[0][1])["In drawing"] == "1 reference"
     panel.on_screen.setChecked(False)
-    panel.insert_button.click()
-    assert history(window)[-1] == (
-        "The drawing has other blocks named WC: WC cannot be inserted from the template yet."
-    )
+    panel.insert_button.click()  # the dialog is cancelled
+    assert isinstance(window.ui, QuietUi) and window.ui.asked[-1] == "clashes WC"
+    (clash,) = window.ui.clashes
+    assert (clash.name, clash.drawing_name, clash.suggested) == ("WC", "wc", "WC_2")
+    assert clash.template is panel.template and clash.drawing is document
+    assert not clash.dynamic
+    assert "Inserting block WC." not in history(window), "cancelled before copying"
     assert len(document.undo_history) == steps and references(document, "WC") == []
     assert len(references(document, "wc")) == 1, "the drawing's own, untouched"
 
@@ -947,3 +954,381 @@ def test_the_template_source_speaks_spanish(qtbot: QtBot, window: MainWindow) ->
         assert panel.load_button.toolTip() == "Cargar plantilla…"
     finally:
         set_language("en")
+
+
+# Step 7c: the clash dialog (ADR 0025 D6)
+
+
+def clash_answered(qtbot: QtBot, window: MainWindow, answer: ClashChoice) -> CadDocument:
+    """A drawing with its own wc and the sample template loaded; the clash
+    dialog will answer ``answer`` for WC."""
+    document = drawing_with_blocks(window, "wc")
+    with_template(qtbot, window)
+    assert isinstance(window.ui, QuietUi)
+    window.ui.clash_answer = {"WC": answer}
+    return document
+
+
+def insert_wc(window: MainWindow) -> None:
+    panel = window.blocks_panel
+    panel.select("WC")
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+
+
+def test_copy_with_another_name_inserts_the_renamed_copy(qtbot: QtBot, window: MainWindow) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("rename", "WC_2"))
+    steps = len(document.undo_history)
+    insert_wc(window)
+    assert sorted(document.block_names, key=str.lower) == ["wc", "WC_2"]
+    assert len(references(document, "WC_2")) == 1 and len(references(document, "wc")) == 1
+    assert len(document.undo_history) == steps + 1 and document.undo_name == "INSERT"
+    document.undo()
+    assert document.block_names == ["wc"], "one undo takes the copy away too"
+
+
+def test_redefine_replaces_the_drawings_block(qtbot: QtBot, window: MainWindow) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("redefine"))
+    template = window.blocks_panel.template
+    assert template is not None
+    insert_wc(window)
+    assert document.block_clashes("WC", template) == [], "now the template's"
+    assert document.block_names == ["wc"] and len(references(document, "wc")) == 2
+    document.undo()
+    assert document.block_clashes("WC", template) == ["WC"], "undone in one step"
+
+
+def test_use_the_drawings_inserts_its_own_block(qtbot: QtBot, window: MainWindow) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("keep"))
+    template = window.blocks_panel.template
+    assert template is not None
+    insert_wc(window)
+    assert document.block_clashes("WC", template) == ["WC"], "the drawing's, unchanged"
+    assert len(references(document, "wc")) == 2
+
+
+def test_a_clashing_block_dropped_is_asked_about_then_placed_there(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    document = clash_answered(qtbot, window, ClashChoice("rename", "WC_2"))
+    panel = window.blocks_panel
+    viewport = window.viewports[document.id]
+    viewport.zoom_extents()
+    panel.select("WC")
+    mime = panel.grid.mimeData([panel.grid.currentItem()])
+    at = screen(viewport, 0.25, 0.5)
+    QApplication.sendEvent(viewport, drag_event("enter", viewport, mime, at))
+    assert window.runner.active is None, "no dialog during the drag: asked once dropped"
+    QApplication.sendEvent(viewport, drag_event("drop", viewport, mime, at))
+    qtbot.waitUntil(lambda: bool(references(document, "WC_2")))
+    assert isinstance(window.ui, QuietUi) and window.ui.asked[-1] == "clashes WC"
+    (placed,) = references(document, "WC_2")
+    x0, y0, x1, y1 = box(document, placed)
+    assert x0 <= 0.25 <= x1 and y0 <= 0.5 <= y1, "where it was dropped"
+    assert document.undo_name == "INSERT"
+
+
+def test_a_clashing_dynamic_block_can_only_use_the_drawings(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    from test_block_editor import LOOKUP
+    from test_commands import regression_drawing
+
+    path = regression_drawing(LOOKUP)
+    template = window.session.app.open_document(path)
+    name = next(n for n in template.block_names if template.is_dynamic_block(n))
+    drawing_with_blocks(window, name)
+    panel = with_template(qtbot, window, path)
+    assert isinstance(window.ui, QuietUi)
+    panel.select(name)
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+    (clash,) = window.ui.clashes
+    assert clash.dynamic and clash.name == name
+
+
+# The Recent source (ADR 0025 D1, step 6)
+
+
+def shown_window(qtbot: QtBot, settings: QSettings) -> MainWindow:
+    w = MainWindow(ui=QuietUi(), settings=settings)
+    qtbot.addWidget(w)
+    w.resize(1100, 700)
+    w.show()
+    qtbot.waitExposed(w)
+    return w
+
+
+def recent_rows(panel: BlocksPanel) -> list[tuple[str, str]]:
+    """Each Recent row's name and how it was used, as its tooltip says."""
+    return [
+        (panel._row(i).text(0), panel._row(i).toolTip(0).splitlines()[1].split(" · ")[0])
+        for i in range(panel.table.topLevelItemCount())
+    ]
+
+
+def details(panel: BlocksPanel) -> dict[str, str]:
+    return dict(panel.details.sections()[0][1])
+
+
+def block_made(window: MainWindow, document: CadDocument, name: str) -> None:
+    """BLOCK typed: a line made into block ``name``."""
+    line, _ = document.add_line((0, 0), (2, 3))
+    window.session.select(document, [line])
+    for typed in ("BLOCK", name, "0,0"):
+        window.runner.execute(typed)
+
+
+def insert_at_origin(panel: BlocksPanel) -> None:
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+
+
+def test_recent_lists_the_blocks_created_and_inserted_newest_first(
+    qtbot: QtBot, window: MainWindow
+) -> None:
+    panel = opened(window)
+    first = drawing_with_blocks(window, "Mesa")
+    block_made(window, first, "Silla")
+    panel.select("Mesa")
+    insert_at_origin(panel)
+    panel.set_source("recent")
+    assert panel.sources["recent"].isChecked() and panel.source() == "recent"
+    assert recent_rows(panel) == [("Mesa", "Inserted here"), ("Silla", "Created here")]
+    assert panel.table.headerItem().text(1) == "Used" and panel._row(0).text(1) == "Just now"
+    assert panel.footer.text() == "2 blocks"
+    assert panel.source_caption.text() == (
+        "Blocks created or inserted in this session and the last."
+    )
+    assert not panel.template_row.isVisibleTo(panel)
+    assert not panel._row(0).icon(0).isNull(), "its preview"
+    panel.select("Silla")
+    assert details(panel)["Used"] == "Created here · Just now"
+    steps = len(first.undo_history)
+    insert_at_origin(panel)
+    assert first.undo_history[steps:] == ["INSERT"] and len(references(first, "Silla")) == 2, (
+        "the drawing's own block: inserted, not copied"
+    )
+
+    second = window.session.new_document()
+    assert recent_rows(panel) == [
+        ("Silla", f"Inserted from {first.name}"),
+        ("Mesa", f"Inserted from {first.name}"),
+    ]
+    panel.select("Silla")
+    assert panel.insert_button.isEnabled() and not panel.edit_button.isEnabled()
+    assert details(panel)["Used"] == f"Inserted from {first.name} · Just now"
+    steps = len(second.undo_history)
+    insert_at_origin(panel)
+    assert "Silla" in second.block_names, "copied from the drawing it was made in"
+    assert second.undo_history[steps:] == ["INSERT"], "one undo step"
+    assert recent_rows(panel)[0] == ("Silla", f"Inserted from {first.name}")
+    assert len(recent_rows(panel)) == 2, "the same block of the same drawing, once"
+    panel.search.setText("mes")
+    assert panel.shown() == ["Mesa"] and panel.footer.text() == "1 block"
+    assert panel.names() == ["Mesa"], "the recent blocks, not the drawing's"
+    panel.search.setText("ventana")
+    assert panel.footer.text() == "No block matches the search."
+    panel.search.clear()
+    panel.set_source("drawing")
+    assert panel.table.headerItem().text(1) == "In drawing"
+
+
+def test_recent_starts_empty_and_says_so(window: MainWindow) -> None:
+    panel = opened(window)
+    panel.set_source("recent")
+    assert panel.shown() == []
+    assert panel.footer.text() == "No block was created or inserted lately."
+
+
+def test_recent_blocks_are_kept_for_this_session_and_the_next(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    first = shown_window(qtbot, settings)
+    assert first.show_panel("blocks")
+    planta = first.session.new_document()
+    block_made(first, planta, "Mesa")
+    first.session.save(planta, tmp_path / "planta.dwg")
+    unsaved = first.session.new_document()
+    block_made(first, unsaved, "Boceto")
+    first.blocks_panel.set_source("recent")
+    assert first.blocks_panel.shown() == ["Boceto", "Mesa"]
+    (mesa,) = [b for b in first.blocks_panel.recent.blocks if b.name == "Mesa"]
+    assert mesa.path == tmp_path / "planta.dwg"
+    assert first.blocks_panel.recent_source(mesa) == planta, "the open drawing, not its file"
+    first.session.close(unsaved)
+    assert first.blocks_panel.shown() == ["Mesa"], "no file holds Boceto: it leaves"
+    assert int(str(settings.value(SESSION_SETTING))) == 1
+
+    second = shown_window(qtbot, settings)
+    panel = second.blocks_panel
+    assert second.show_panel("blocks")
+    target = second.session.new_document()
+    panel.set_source("recent")
+    assert second.runner.busy == "Reading the recent blocks' files…", "in the background"
+    wait_idle(qtbot, second)
+    (mesa,) = panel.recent.blocks
+    source = panel.recent_source(mesa)
+    assert source is not None and source.path == tmp_path / "planta.dwg"
+    assert source not in second.session.documents, "read, never in a tab"
+    assert not panel._row(0).icon(0).isNull(), "its preview"
+    assert recent_rows(panel) == [("Mesa", "Created in planta.dwg")]
+    panel.select("Mesa")
+    insert_at_origin(panel)
+    assert "Mesa" in target.block_names
+    assert recent_rows(panel)[0] == ("Mesa", "Inserted from planta.dwg")
+    assert not source.is_modified, "the file read is never written"
+    opened_tab = second.session.open_document(tmp_path / "planta.dwg")
+    assert panel.recent_source(panel.recent.blocks[0]) == opened_tab, "open now: the tab's"
+
+    third = shown_window(qtbot, settings)
+    assert [b.name for b in third.blocks_panel.recent.blocks] == ["Mesa"], "the previous session's"
+    fourth = shown_window(qtbot, settings)
+    assert fourth.blocks_panel.recent.blocks == [], "two sessions ago: forgotten"
+    assert int(str(settings.value(SESSION_SETTING))) == 4
+
+
+def stored_recent(settings: QSettings, *blocks: tuple[str, Path]) -> None:
+    """The settings as the previous session left them, the newest first."""
+    settings.setValue(SESSION_SETTING, 1)
+    settings.setValue(
+        RECENT_SETTING,
+        json.dumps(
+            [
+                {"name": n, "path": str(p), "how": "inserted", "when": 1.0, "session": 1}
+                for n, p in blocks
+            ]
+        ),
+    )
+
+
+def test_a_recent_block_that_cannot_be_had_is_shown_and_says_why(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    mine = tmp_path / "mine.dwt"
+    mine.write_bytes(sample_template().read_bytes())
+    gone = tmp_path / "gone.dwg"
+    stored_recent(settings, ("Tree", mine), ("Nada", mine), ("Mesa", gone))
+    window = shown_window(qtbot, settings)
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Mesa")
+    panel.set_source("recent")
+    wait_idle(qtbot, window)
+    assert panel.shown() == ["Tree", "Nada", "Mesa"], "every one shown"
+    reasons = {}
+    for name in ("Tree", "Nada", "Mesa"):
+        assert panel.select(name)
+        reasons[name] = panel.insert_button.toolTip()
+        assert panel.insert_button.isEnabled() == (name == "Tree")
+    assert reasons == {
+        "Tree": "",
+        "Nada": "mine.dwt no longer has a block named Nada.",
+        "Mesa": f"{gone} was not found.",
+    }
+    muted = panel.palette().color(QPalette.ColorRole.PlaceholderText)
+    assert panel._row(2).foreground(0).color() == muted, "greyed"
+    assert panel._row(0).foreground(0).color() != muted
+    assert panel._row(2).toolTip(0).endswith(f"{gone} was not found.")
+    assert panel._row(2).icon(0).isNull(), "no preview to draw"
+    assert details(panel)["Cannot be inserted"] == f"{gone} was not found."
+    assert not panel.grid.mimeData([panel.grid.item(2)]).hasFormat(BLOCK_MIME), "no drag"
+    panel.insert_button.setEnabled(True)
+    steps = len(document.undo_history)
+    panel.insert_selected()
+    assert len(document.undo_history) == steps, "refused, not the drawing's own Mesa"
+
+    read = panel.recent_source(panel.recent.blocks[0])
+    assert read is not None
+    stat = mine.stat()
+    os.utime(mine, (stat.st_atime, stat.st_mtime + 10))
+    panel.refresh()
+    wait_idle(qtbot, window)
+    again = panel.recent_source(panel.recent.blocks[0])
+    assert again is not None and again != read and not read.is_open, "changed: read again"
+
+
+def test_a_file_that_cannot_be_read_says_so_and_is_tried_again(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    broken = tmp_path / "broken.dwg"
+    broken.write_bytes(b"not a drawing")
+    stored_recent(settings, ("Mesa", broken))
+    window = shown_window(qtbot, settings)
+    panel = opened(window)
+    window.session.new_document()
+    panel.set_source("recent")
+    wait_idle(qtbot, window)
+    assert panel.select("Mesa") and not panel.insert_button.isEnabled()
+    assert panel.insert_button.toolTip().startswith("broken.dwg cannot be read: ")
+    panel.refresh()
+    assert window.runner.busy is None, "not read again at each refresh"
+    broken.write_bytes(sample_template().read_bytes())
+    panel.set_source("recent")
+    wait_idle(qtbot, window)
+    assert panel.select("Mesa")
+    assert panel.insert_button.toolTip() == "broken.dwg no longer has a block named Mesa."
+
+
+def test_a_recent_block_whose_file_is_not_read_yet_is_read_when_used(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    other = tmp_path / "other.dwt"
+    other.write_bytes(sample_template().read_bytes())
+    stored_recent(settings, ("Tree", sample_template()), ("Column_30x30", other))
+    window = shown_window(qtbot, settings)
+    panel = opened(window)
+    document = window.session.new_document()
+    window.runner.execute("LINE")  # at work: no file is read in its way
+    panel.set_source("recent")
+    assert window.runner.active == "LINE" and window.runner.busy is None
+    assert panel.recent_source(panel.recent.blocks[0]) is None
+    assert panel.select("Tree") and panel.insert_button.isEnabled(), "read on insert"
+    steps = len(document.undo_history)
+    insert_at_origin(panel)
+    wait_idle(qtbot, window)
+    assert "Tree" in document.block_names and document.undo_history[steps:] == ["INSERT"]
+    assert panel.recent_source(panel.recent.blocks[0]) is not None, "kept for its preview"
+
+    window.runner.execute("LINE")
+    panel.refresh()
+    (column,) = [b for b in panel.recent.blocks if b.name == "Column_30x30"]
+    assert panel.recent_source(column) is None, "not read yet"
+    assert panel.select("Column_30x30")
+    mime = panel.grid.mimeData([panel.grid.currentItem()])
+    assert dragged_block(mime) == (document.id, "Column_30x30")
+    panel.start_drop_insert("Column_30x30")
+    assert window.runner.active == "LINE", "nothing is read during the drag"
+    panel.drop_insert_at((50.0, 60.0))
+    panel.end_drop_insert(True)
+    qtbot.waitUntil(lambda: len(references(document, "Column_30x30")) == 1, timeout=30_000)
+    wait_idle(qtbot, window)
+    (placed,) = references(document, "Column_30x30")
+    x0, y0, x1, y1 = box(document, placed)
+    assert x0 <= 50 <= x1 and y0 <= 60 <= y1, "where it was dropped"
+
+
+def test_two_recent_blocks_of_one_name_are_told_apart(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    other = tmp_path / "other.dwt"
+    other.write_bytes(sample_template().read_bytes())
+    stored_recent(settings, ("WC", sample_template()), ("WC", other))
+    window = shown_window(qtbot, settings)
+    panel = opened(window)
+    window.session.new_document()
+    panel.set_source("recent")
+    wait_idle(qtbot, window)
+    assert panel.shown() == ["WC", "WC"]
+    panel.grid.setCurrentRow(1)
+    chosen = panel.selected_recent()
+    assert chosen is not None and chosen.path == other, "the card's own row"
+    assert panel.table.currentItem() is panel._row(1)
+    panel.table.setCurrentItem(panel._row(0))
+    assert panel.grid.currentRow() == 0, "the grid follows the list"
+    panel.table.setCurrentItem(panel._row(1))
+    panel.refresh()
+    chosen = panel.selected_recent()
+    assert chosen is not None and chosen.path == other, "kept across a refresh"
+    assert details(panel)["Source"] == "other.dwt"
+    assert details(panel)["Used"].startswith("Inserted from other.dwt")

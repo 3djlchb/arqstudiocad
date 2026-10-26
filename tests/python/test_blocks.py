@@ -5,16 +5,20 @@ import math
 from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QMessageBox, QWidget
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
 from arqstudiocad.commands import CommandContext, CommandRunner
+from arqstudiocad.commands.blocks import insert_named
 from arqstudiocad.commands.builtin import builtin_registry
 from arqstudiocad.core import CadApplication, CadDocument, InvalidOperationError
-from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
+from arqstudiocad.events import BlockUsed, CommandMessage, CommandPrompt, Event, EventBus
 from arqstudiocad.i18n import set_language
+from arqstudiocad.paths import sample_template
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
+from arqstudiocad.ui.qt_services import QtUiServices
 
 
 def ends(document: CadDocument, entity_id: int) -> list[tuple[float, float]]:
@@ -92,7 +96,7 @@ def test_block_asks_for_objects_and_refuses_names_in_use_or_invalid() -> None:
     h.run("")
     assert h.document.block_names == ["MARCO"]
     h.run("BLOCK", "marco")
-    assert h.messages()[-1] == "A block named marco exists."
+    assert h.messages()[-1] == "A block named marco exists in the drawing."
     assert h.prompt().text == "Block name:", "asked again"
     h.runner.cancel()
     h.session.select(h.document, [h.b])
@@ -207,3 +211,159 @@ def test_a_drag_without_band_draws_no_rubber_band(window: MainWindow, tmp_path: 
     shown = document.get_entities()[0].id
     assert band_pixels(Drag("move", (shown,))) > 10, "a band joins the base to the cursor"
     assert band_pixels(Drag("move", (shown,), band=False)) == 0
+
+
+# The template's names (ADR 0025 D6, step 7c)
+
+
+def test_block_warns_of_a_name_the_template_uses_and_goes_on() -> None:
+    h = Harness()
+    h.session.template = h.session.app.open_document(sample_template())
+    h.run("BLOCK", "wc")
+    assert h.messages()[-1] == (
+        "The template arqstudiocad-sample.dwt has a block named WC: inserting it "
+        "from the template will ask what to do."
+    )
+    assert h.prompt().text.startswith("Specify base point"), "not refused: two files"
+    h.run("10,10")
+    h.session.select(h.document, [h.a])
+    h.run("")
+    assert h.document.block_names == ["wc"]
+
+
+def clashing(h: Harness) -> CadDocument:
+    """The harness drawing with its own wc (one line), and the sample
+    template, whose WC differs."""
+    reference, _ = h.document.create_block("wc", (10, 10), [h.a])
+    h.document.delete_entities([reference])
+    return h.session.app.open_document(sample_template())
+
+
+def test_insert_asks_about_a_clash_at_the_command_line() -> None:
+    h = Harness()
+    template = clashing(h)
+    steps = len(h.document.undo_history)
+    h.runner.start(insert_named("WC", 1.0, 0.0, False, source=template))
+    assert h.prompt().text.startswith("The drawing has another block named wc")
+    h.run("C")
+    assert h.prompt().text.startswith("New block name") and "WC_2" in h.prompt().text
+    h.run("")
+    assert sorted(h.document.block_names, key=str.lower) == ["wc", "WC_2"]
+    assert len(h.document.undo_history) == steps + 1 and h.document.undo_name == "INSERT"
+    h.runner.start(insert_named("WC", 1.0, 0.0, False, source=template))
+    h.run("R")
+    assert h.document.block_clashes("WC", template) == [], "redefined from the template"
+    h.runner.start(insert_named("WC", 1.0, 0.0, False, source=template))
+    assert h.runner.active is None, "nothing left to ask: the same block now"
+
+
+def test_a_point_given_first_places_the_block_there_without_asking() -> None:
+    h = Harness()
+    template = h.session.app.open_document(sample_template())
+    h.runner.start(insert_named("Tree", 1.0, 0.0, True, source=template, at=(50.0, 60.0)))
+    assert h.runner.active is None, "dropped first: no point is asked"
+    (placed,) = [e.id for e in h.document.get_entities() if e.kind == "INSERT"]
+    (x0, y0), (x1, y1) = ends(h.document, placed)
+    assert x0 < 50 < x1 and y0 < 60 < y1, "around the point given"
+
+
+def used(h: Harness) -> list[BlockUsed]:
+    return [e for e in h.events if isinstance(e, BlockUsed)]
+
+
+def test_block_and_insert_say_which_block_was_used(tmp_path: Path) -> None:
+    """For the Blocks palette's Recent source (ADR 0025 D1)."""
+    h = Harness()
+    h.session.select(h.document, [h.a])
+    h.run("BLOCK", "MARCO", "10,10")
+    assert used(h) == [BlockUsed(h.document.id, "MARCO", None, "created")]
+    h.run("INSERT", "marco", "S", "2")
+    h.runner.cancel()
+    assert len(used(h)) == 1, "cancelled: nothing was inserted"
+    h.run("INSERT", "marco", "5,5")
+    assert used(h)[-1] == BlockUsed(h.document.id, "MARCO", None, "inserted"), (
+        "as the drawing spells it"
+    )
+    h.runner.start(insert_named("MARCO", 1.0, 0.0, False))
+    assert len(used(h)) == 3
+    template = h.session.app.open_document(sample_template())
+    h.runner.start(insert_named("Tree", 1.0, 0.0, False, source=template))
+    assert used(h)[-1] == BlockUsed(template.id, "Tree", sample_template(), "inserted")
+    h.session.template = template
+    h.runner.start(insert_named("Tree", 1.0, 0.0, True, source=template))
+    h.run("0,0")
+    assert used(h)[-1] == BlockUsed(template.id, "Tree", sample_template(), "template")
+
+
+def test_insert_reads_a_recent_blocks_file_first(tmp_path: Path) -> None:
+    h = Harness()
+    loaded: list[CadDocument] = []
+    steps = len(h.document.undo_history)
+    h.runner.start(
+        insert_named("Tree", 1.0, 0.0, False, load=sample_template(), loaded=loaded.append)
+    )
+    (read,) = loaded
+    assert read.path == sample_template() and read not in h.session.documents, "never a tab"
+    assert "Tree" in h.document.block_names and h.document.undo_history[steps:] == ["INSERT"]
+    assert used(h)[-1] == BlockUsed(read.id, "Tree", sample_template(), "inserted")
+    missing = tmp_path / "gone.dwg"
+    h.runner.start(insert_named("Tree", 1.0, 0.0, False, load=missing, loaded=loaded.append))
+    assert h.messages()[-1].startswith("gone.dwg cannot be read: ")
+    assert len(loaded) == 1 and len(h.document.undo_history) == steps + 1
+
+
+def test_block_says_a_name_in_use_in_a_dialog_too() -> None:
+    """The maintainer's request (2026-10-25): with an interface, BLOCK's
+    refusal and the template's warning are dialogs as well."""
+    ui = QuietUi(template_name_answer=False)
+    h = Harness(ui)
+    h.document.create_block("MARCO", (10, 10), [h.a])
+    h.session.template = h.session.app.open_document(sample_template())
+    h.run("BLOCK", "marco")
+    assert ui.asked[-1] == "name taken MARCO" and h.prompt().text == "Block name:"
+    h.run("wc")
+    assert ui.asked[-1] == "name in template WC arqstudiocad-sample.dwt"
+    assert h.prompt().text == "Block name:", "Another name: asked again"
+    ui.template_name_answer = True
+    h.run("wc")
+    assert h.prompt().text.startswith("Specify base point"), "Continue: BLOCK goes on"
+    h.run("0,0")
+    h.session.select(h.document, [h.b])
+    h.run("")
+    assert sorted(h.document.block_names) == ["MARCO", "wc"]
+
+
+def answer_box(
+    monkeypatch: pytest.MonkeyPatch, button: str | QMessageBox.StandardButton
+) -> list[str]:
+    """The next message box shown is answered with ``button``, a standard
+    button (its text varies with the platform's style) or one of ours by
+    its text; the box's text."""
+    seen: list[str] = []
+
+    def answer(box: QMessageBox) -> int:
+        seen.append(box.text())
+        if isinstance(button, QMessageBox.StandardButton):
+            chosen = box.button(button)
+        else:
+            (chosen,) = [b for b in box.buttons() if b.text() == button]
+        assert chosen is not None, "the box has the button"
+        chosen.click()
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", answer)
+    return seen
+
+
+def test_the_block_name_dialogs(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    parent = QWidget()
+    qtbot.addWidget(parent)
+    services = QtUiServices(parent)
+    seen = answer_box(monkeypatch, QMessageBox.StandardButton.Ok)
+    services.report_block_name_taken("MARCO")
+    assert seen == ["A block named MARCO exists in the drawing. Type another name."]
+    seen = answer_box(monkeypatch, "Continue")
+    assert services.ask_block_name_in_template("WC", "plantilla.dwt")
+    assert seen[0].startswith("The template plantilla.dwt has a block named WC.")
+    answer_box(monkeypatch, "Another name")
+    assert not services.ask_block_name_in_template("WC", "plantilla.dwt")

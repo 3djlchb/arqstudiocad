@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from arqstudiocad.commands import ViewControl
+from arqstudiocad.commands import BlockClash, ClashChoice, ViewControl
 from arqstudiocad.core import CadDocument
 
 
@@ -43,6 +43,12 @@ class QuietUi:
     text_answer: str | None = None
     #: The block INSERT's window chooses (None: cancelled).
     block_answer: str | None = None
+    #: The clash dialog's choices (None: cancelled); the clashes it was shown.
+    clash_answer: dict[str, ClashChoice] | None = None
+    clashes: list[BlockClash] = field(default_factory=list)
+    #: BLOCK's answer when the loaded template has the name: go on, or
+    #: ask for another name.
+    template_name_answer: bool = True
     zooms: Zooms = field(default_factory=Zooms)
     view_for: Callable[[CadDocument], ViewControl | None] | None = None
     panel_for: Callable[[str], bool] | None = None
@@ -82,6 +88,18 @@ class QuietUi:
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         self.asked.append(f"{title}: {', '.join(names)}")
         return self.block_answer
+
+    def report_block_name_taken(self, name: str) -> None:
+        self.asked.append(f"name taken {name}")
+
+    def ask_block_name_in_template(self, name: str, template: str) -> bool:
+        self.asked.append(f"name in template {name} {template}")
+        return self.template_name_answer
+
+    def resolve_block_clashes(self, clashes: Sequence[BlockClash]) -> dict[str, ClashChoice] | None:
+        self.asked.append(f"clashes {', '.join(c.name for c in clashes)}")
+        self.clashes = list(clashes)
+        return self.clash_answer
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         self.asked.append(f"text {title}: {text}")

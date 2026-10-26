@@ -12,6 +12,7 @@ from arqstudiocad.events import (
     ActiveDocumentChanged,
     ActiveLayerChanged,
     BlockSaved,
+    BlockUsed,
     CommandCancelled,
     CommandFinished,
     CommandMessage,
@@ -38,6 +39,7 @@ class QtEventBridge(QObject):
     document_opened = Signal(object)
     document_saved = Signal(object)
     block_saved = Signal(object)
+    block_used = Signal(object)
     document_closed = Signal(object)
     active_document_changed = Signal(object)
     document_changed = Signal(object)
@@ -59,6 +61,7 @@ class QtEventBridge(QObject):
             DocumentOpened: self.document_opened,
             DocumentSaved: self.document_saved,
             BlockSaved: self.block_saved,
+            BlockUsed: self.block_used,
             DocumentClosed: self.document_closed,
             ActiveDocumentChanged: self.active_document_changed,
             DocumentChanged: self.document_changed,

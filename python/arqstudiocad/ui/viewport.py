@@ -139,6 +139,9 @@ class Viewport(QWidget):
     #: That drag ended: dropped (True), its point already picked, or left
     #: the drawing (False), so the INSERT it started should be cancelled.
     block_drag_ended = Signal(bool)
+    #: That drag was dropped with no INSERT running yet (its clashes are
+    #: asked about first): where, found as a click finds a point.
+    block_dropped = Signal(object)
 
     def __init__(
         self,
@@ -434,10 +437,16 @@ class Viewport(QWidget):
         event.acceptProposedAction()
         self._follow_drop(event.position())
         target = self._target if self._asking else None
+        dropped = None
+        if not self._asking:
+            self._aim(event.position())
+            dropped, self._target, self._snap = self._target, None, None
         self._drop_name = None
         self.update()
         if target is not None:
             self.point_picked.emit(target)  # where INSERT puts the block
+        elif dropped is not None:
+            self.block_dropped.emit(dropped)
         self.block_drag_ended.emit(True)
 
     def _follow_drop(self, position: QPointF) -> None:
