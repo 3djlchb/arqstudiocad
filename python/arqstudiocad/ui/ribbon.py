@@ -2,21 +2,23 @@
 
 Qt has no ribbon, so this is a tab widget whose pages are rows of groups,
 each group its buttons with its title underneath. Buttons show command icons
-when available and their names underneath, stacked in columns of up to
-:data:`ROWS`, as AutoCAD stacks a panel's small buttons, so a tab stays
-narrow enough for small screens. Double-clicking a tab
+when available, :data:`RIBBON_ICON` pixels, and their names underneath,
+in columns of :data:`ROWS` buttons: one for now, so they stand side by side
+as AutoCAD's large buttons (maintainer, 2026-10-25). A tab wider than the
+window scrolls sideways rather than widen the window. Double-clicking a tab
 folds the ribbon to its tab bar, and again unfolds it.
 """
 
 from collections.abc import Mapping
 
 from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QTabWidget,
@@ -25,11 +27,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from arqstudiocad.ui.command_icons import RIBBON_ICON
 from arqstudiocad.ui.panel_style import toggle_focus_style
 from arqstudiocad.workspaces import Discipline, RibbonGroup
 
-#: Buttons stacked in one column of a group.
-ROWS = 3
+#: Buttons stacked in one column of a group: one, for now (maintainer,
+#: 2026-10-25).
+ROWS = 1
 
 
 class RibbonGroupWidget(QFrame):
@@ -46,7 +50,7 @@ class RibbonGroupWidget(QFrame):
             button.setDefaultAction(actions[name])
             if not actions[name].icon().isNull():
                 button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
-                button.setIconSize(QSize(24, 24))
+                button.setIconSize(QSize(RIBBON_ICON, RIBBON_ICON))
             else:
                 button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setAutoRaise(True)
@@ -66,6 +70,40 @@ class RibbonGroupWidget(QFrame):
 
     def retranslate(self) -> None:
         self.title.setText(self.group.title())
+
+
+class RibbonPage(QScrollArea):
+    """A tab's groups, scrolled sideways when the window is narrower than
+    they are, so the ribbon never sets the window's width (small screens,
+    ADR 0013 D5.8)."""
+
+    def __init__(self, page: QWidget) -> None:
+        super().__init__()
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setWidgetResizable(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.setWidget(page)
+
+    def _height(self) -> int:
+        """The groups' height, and the scroll bar's while it shows."""
+        page = self.widget()
+        height = page.sizeHint().height() if page is not None else 0
+        if page is not None and page.sizeHint().width() > self.viewport().width():
+            height += self.horizontalScrollBar().sizeHint().height()
+        return height
+
+    def sizeHint(self) -> QSize:  # noqa: N802 (Qt API)
+        page = self.widget()
+        return QSize(page.sizeHint().width() if page is not None else 0, self._height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt API)
+        return QSize(0, self._height())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
+        super().resizeEvent(event)
+        # The scroll bar comes or goes: the ribbon's height follows.
+        self.updateGeometry()
 
 
 class Ribbon(QTabWidget):
@@ -92,7 +130,7 @@ class Ribbon(QTabWidget):
                 row.addWidget(widget)
                 self.groups.append(widget)
             row.addStretch(1)
-            self.addTab(page, "")
+            self.addTab(RibbonPage(page), "")
         self._folded = False
         self.tabBar().tabBarDoubleClicked.connect(self._on_double_click)
         self.set_context(None)

@@ -49,6 +49,14 @@ override this data, not a second mechanism.
   AutoCAD stacks a panel's small buttons. Double-clicking a tab folds the ribbon to
   its tab bar, and again unfolds it, for small screens such as the
   reference machine's.
+  *Changed (maintainer, 2026-10-25):* one button per row for now, as
+  AutoCAD's large buttons, with 54 px icons where the theme has them (the
+  draw commands, in the dark theme; the light theme scales its 48 px
+  drawings until its own arrive). A tab wider than the window scrolls
+  sideways, so the ribbon never sets the window's width.
+- **Status bar:** ORTHO shows its icon alone, as AutoCAD's, where the theme
+  has one (the dark theme, for now), and its name otherwise; the name stays
+  its tooltip and accessible name *(maintainer, 2026-10-25)*.
 - **Classic** shows the discipline's toolbars.
 - The **menu bar stays in both** for now (File, Edit, View, Tools, Help);
   a ribbon application menu may replace it later.
