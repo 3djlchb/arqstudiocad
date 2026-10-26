@@ -163,6 +163,31 @@ class ViewControl(Protocol):
     def zoom(self, factor: float) -> None: ...
 
 
+#: What the Block Definition dialog does with the objects (ADR 0023 D2a).
+type BlockObjectsChoice = Literal["retain", "convert", "delete"]
+#: Why the Block Definition dialog closed: OK, or to pick on screen.
+type BlockDialogAction = Literal["ok", "pick_point", "select_objects"]
+
+
+@dataclass(frozen=True, slots=True)
+class BlockDefinitionState:
+    """What the Block Definition dialog holds (ADR 0023 D2a), kept while it
+    closes to pick the base point or select objects and opens again.
+    ``objects`` None is the choice the interface remembers."""
+
+    name: str = ""
+    description: str = ""
+    base: tuple[float, float] = (0.0, 0.0)
+    base_on_screen: bool = False
+    ids: tuple[int, ...] = ()
+    objects_on_screen: bool = False
+    objects: BlockObjectsChoice | None = None
+    scale_uniformly: bool = False
+    explodable: bool = True
+    units: int = 0
+    open_editor: bool = False
+
+
 class UiServices(Protocol):
     """Dialogs and views the interface provides; commands never build them."""
 
@@ -201,6 +226,19 @@ class UiServices(Protocol):
         """A block of ``document`` to open in the block editor, chosen in the
         Edit Block Definition dialog with ``chosen`` selected first (BEDIT,
         a double click on a block); None if it was cancelled."""
+        ...
+
+    def define_block(
+        self, document: CadDocument, state: BlockDefinitionState
+    ) -> tuple[BlockDialogAction, BlockDefinitionState] | None:
+        """The Block Definition dialog over ``document``, filled from
+        ``state`` (BLOCK, ADR 0023 D2a): why it closed and what it holds
+        then; None if it was cancelled."""
+        ...
+
+    def ask_redefine_block(self, name: str, references: int) -> bool:
+        """Whether to redefine block ``name`` of the drawing, whose
+        ``references`` will change (BLOCK's dialog, ADR 0023 D2a)."""
         ...
 
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
@@ -346,7 +384,9 @@ class CommandRegistry:
         for key in keys:
             if key.upper() in self._lookup:
                 raise ValueError(f"{key!r} is already a command name or alias")
-            if not key.isascii() or not key.replace("_", "").isalnum() or key.startswith("_"):
+            # A leading hyphen marks a command-line version, as AutoCAD's -BLOCK.
+            bare = key.removeprefix("-")
+            if not bare.isascii() or not bare.replace("_", "").isalnum() or bare.startswith("_"):
                 raise ValueError(f"{key!r} is not a valid command name")
         self._commands[command.name.upper()] = command
         for key in keys:

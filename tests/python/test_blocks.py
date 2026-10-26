@@ -320,7 +320,7 @@ def test_block_says_a_name_in_use_in_a_dialog_too() -> None:
     h = Harness(ui)
     h.document.create_block("MARCO", (10, 10), [h.a])
     h.session.template = h.session.app.open_document(sample_template())
-    h.run("BLOCK", "marco")
+    h.run("-BLOCK", "marco")
     assert ui.asked[-1] == "name taken MARCO" and h.prompt().text == "Block name:"
     h.run("wc")
     assert ui.asked[-1] == "name in template WC arqstudiocad-sample.dwt"
@@ -450,3 +450,133 @@ def test_explode_leaves_a_block_that_does_not_allow_it() -> None:
     assert len(h.document.undo_history) == steps, "nothing exploded: no undo step"
     assert h.session.selection(h.document) == (fixed,), "cancelled: the selection stays"
     assert sorted(e.kind for e in h.document.get_entities()) == ["INSERT", "LINE"]
+
+
+# BLOCK's Block Definition dialog (ADR 0023 D2a)
+
+
+def dialog_harness(*answers: tuple[str, dict[str, object]] | None) -> tuple[Harness, QuietUi]:
+    ui = QuietUi(block_dialog=list(answers))  # type: ignore[arg-type]
+    return Harness(ui), ui
+
+
+def test_block_opens_the_dialog_with_the_selection_and_makes_the_block() -> None:
+    h, ui = dialog_harness(
+        (
+            "ok",
+            {
+                "name": "MARCO",
+                "description": "A frame",
+                "base": (10.0, 10.0),
+                "objects": "retain",
+                "units": 4,
+                "explodable": False,
+            },
+        )
+    )
+    h.session.select(h.document, [h.a, h.b])
+    h.run("BLOCK")
+    (shown,) = ui.block_dialog_shown
+    assert shown.ids == (h.a, h.b) and shown.units == h.document.insertion_units
+    assert shown.objects is None, "the interface's remembered choice"
+    info = h.document.block_info("MARCO")
+    assert info is not None and info.description == "A frame" and info.units == 4
+    assert not info.is_explodable
+    assert h.kinds() == ["LINE", "LINE"], "retained"
+    assert h.new_steps() == ["BLOCK"] and h.runner.active is None
+    assert h.messages()[-1] == "Block MARCO made from 2 objects."
+    assert h.session.selection(h.document) == ()
+
+
+def test_the_dialog_closes_to_pick_the_point_and_the_objects() -> None:
+    h, ui = dialog_harness(
+        ("pick_point", {"name": "MARCO"}),
+        ("select_objects", {}),
+        ("ok", {}),
+    )
+    h.run("BLOCK")
+    assert h.prompt().text == "Specify insertion base point:"
+    h.run("10,10")
+    assert ui.block_dialog_shown[-1].base == (10.0, 10.0), "shown again with the point"
+    assert h.prompt().text.startswith("Select objects")
+    h.session.select(h.document, [h.a])
+    h.run("")
+    assert ui.block_dialog_shown[-1].ids == (h.a,) and ui.block_dialog_shown[-1].name == "MARCO"
+    assert h.document.block_names == ["MARCO"] and h.kinds() == ["LINE", "INSERT"], "converted"
+
+
+def test_on_screen_asks_after_ok() -> None:
+    h, _ = dialog_harness(
+        ("ok", {"name": "MARCO", "base_on_screen": True, "objects_on_screen": True})
+    )
+    h.run("BLOCK")
+    assert h.prompt().text == "Specify insertion base point:"
+    h.run("10,10")
+    h.session.select(h.document, [h.a, h.b])
+    h.run("")
+    assert h.document.block_names == ["MARCO"] and h.kinds() == ["INSERT"]
+
+
+def test_without_objects_or_cancelled_nothing_is_made() -> None:
+    h, ui = dialog_harness(("ok", {"name": "MARCO"}), None)
+    h.run("BLOCK")
+    assert "No objects are selected." in h.messages()
+    assert len(ui.block_dialog_shown) == 2, "the dialog again, then cancelled"
+    assert h.document.block_names == [] and h.new_steps() == [] and h.runner.active is None
+
+
+def test_a_name_in_use_is_redefined_once_confirmed() -> None:
+    h, ui = dialog_harness(
+        ("ok", {"name": "marco", "base": (10.0, 10.0)}),
+        ("ok", {"name": "marco", "base": (10.0, 10.0)}),
+    )
+    reference, _ = h.document.create_block("MARCO", (10, 10), [h.a])
+    steps = len(h.document.undo_history)
+    ui.redefine_answer = False
+    ui.block_dialog.insert(1, None)  # No: the dialog again, then cancel
+    h.session.select(h.document, [h.b])
+    h.run("BLOCK")
+    assert ui.asked[-1] == "redefine MARCO: 1"
+    assert len(h.document.undo_history) == steps, "not redefined"
+    ui.redefine_answer = True
+    h.session.select(h.document, [h.b])
+    h.run("BLOCK")
+    assert h.document.block_names == ["MARCO"] and h.document.undo_history[steps:] == ["BLOCK"]
+    assert h.messages()[-1] == "Block MARCO redefined from 1 objects."
+    assert ends(h.document, reference) == [(10.0, 10.0), (10.0, 13.0)], "the new contents"
+
+
+def test_the_templates_name_and_open_in_block_editor() -> None:
+    h, ui = dialog_harness(("ok", {"name": "wc"}), ("ok", {"name": "wc", "open_editor": True}))
+    h.session.template = h.session.app.open_document(sample_template())
+    ui.template_name_answer = False
+    ui.block_dialog.insert(1, None)
+    h.session.select(h.document, [h.a])
+    h.run("BLOCK")
+    assert ui.asked[-1] == "name in template WC arqstudiocad-sample.dwt"
+    assert h.document.block_names == [], "Another name: the dialog again"
+    ui.template_name_answer = True
+    h.session.select(h.document, [h.a])
+    h.run("BLOCK")
+    editor = h.session.active
+    assert editor is not None and h.session.block_editor_of(editor) == (h.document, "wc")
+
+
+def test_a_name_the_core_refuses_returns_to_the_dialog() -> None:
+    h, ui = dialog_harness(("ok", {"name": "A/B"}), None)
+    h.session.select(h.document, [h.a])
+    h.run("BLOCK")
+    assert h.messages()[-1].startswith("A/B cannot be made: ")
+    assert len(ui.block_dialog_shown) == 2 and h.document.block_names == []
+
+
+def test_dash_block_keeps_the_prompts_in_both_languages() -> None:
+    h, ui = dialog_harness()
+    for typed in ("-BLOCK", "-B"):
+        h.run(typed)
+        assert h.prompt().text == "Block name:" and h.runner.active == "-BLOCK", typed
+        h.runner.cancel()
+    set_language("es")
+    h.run("-BLOQUE")
+    assert h.runner.active == "-BLOCK"
+    assert ui.block_dialog_shown == [], "no dialog"

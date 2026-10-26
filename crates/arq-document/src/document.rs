@@ -251,6 +251,13 @@ impl Document {
         }
     }
 
+    /// The drawing's insertion units, as DWG's INSUNITS code (0
+    /// unitless, 4 millimeters, 6 meters…): a new block's units by default
+    /// (ADR 0023 D2a).
+    pub fn insertion_units(&self) -> i16 {
+        self.cad.header.insertion_units
+    }
+
     /// File-format version code of the drawing, e.g. `"AC1032"` (R2018).
     pub fn version_code(&self) -> String {
         format!("{:?}", self.cad.version)

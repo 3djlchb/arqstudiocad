@@ -319,8 +319,10 @@ def test_edit_and_new_start_bedit_and_block(window: MainWindow) -> None:
     document = drawing_with_blocks(window, "Mesa")
     panel.select("Mesa")
     panel.new_button.click()
-    assert window.runner.active == "BLOCK"
-    window.runner.cancel()
+    assert isinstance(window.ui, QuietUi)
+    (shown,) = window.ui.block_dialog_shown
+    assert shown.ids == () and shown.units == document.insertion_units, "BLOCK's dialog"
+    assert window.runner.active is None, "cancelled in the dialog"
     panel.edit_button.click()
     editor = window.session.active
     assert editor is not None and window.session.block_editor_of(editor) == (document, "Mesa")
@@ -1075,7 +1077,7 @@ def block_made(window: MainWindow, document: CadDocument, name: str) -> None:
     """BLOCK typed: a line made into block ``name``."""
     line, _ = document.add_line((0, 0), (2, 3))
     window.session.select(document, [line])
-    for typed in ("BLOCK", name, "0,0"):
+    for typed in ("-BLOCK", name, "0,0"):
         window.runner.execute(typed)
 
 

@@ -180,6 +180,16 @@ stage 2) is decided when the block editor shows what it needs from it.
   - Python: `CadDocument.define_block(name, base, entity_ids, objects,
     description, units, scale_uniformly, explodable, redefine)`;
     `CadBlockInfo.is_explodable` and `scales_uniformly`.
+- **D2a, the dialog (2026-10-27):** BLOCK opens the Block Definition
+  dialog through the UI service `define_block(document, state)`, which
+  gives back why it closed (OK, Pick point, Select objects) and a
+  `BlockDefinitionState`; BLOCK picks on screen and opens it again with
+  what it held. `ask_redefine_block` confirms a name in use, with the
+  references that will change. The choice of objects made last is kept in
+  the settings (`block_definition/objects`). **-BLOCK** (alias `-B`;
+  Spanish `-BLOQUE`) keeps the prompts; command names and language packs
+  accept a leading hyphen, as AutoCAD's. The drawing's insertion units
+  (`CadDocument.insertion_units`) are a new block's by default.
 
 ## Consequences
 
