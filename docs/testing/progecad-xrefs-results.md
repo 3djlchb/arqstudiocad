@@ -3,8 +3,10 @@
 Baseline date: 2026-10-24 (America/Bogota); safeguard follow-up: 2026-10-25.
 Milestones 03.4 / 03.5 remain open.
 
-The baseline observations below are historical. See the [safeguard follow-up](#safeguard-follow-up-2026-10-25)
-for the current filename-marker and safe-save behavior.
+The baseline and safeguard observations below are historical. For current DXF
+unloaded-state support, see the [native DXF investigation](progecad-dxf-unloaded.md).
+The [safeguard follow-up](#safeguard-follow-up-2026-10-25) records the preceding
+filename-marker and refusal-only stage.
 
 ## Scope and provenance
 
@@ -296,3 +298,25 @@ inspected. The unloaded host renders 84 shapes, including its filename marker.
 `target/xref-marker-corpus.log` retains the failing local-gate result. This CPU
 viewport check is separate from external ProgeCAD validation and proves no
 child geometry was loaded. No new release or cross-platform acceptance is claimed.
+
+
+## Unloaded-state correction follow-up (2026-10-25)
+
+Native ProgeCAD exports establish the explicit BLOCK 71=1 unload marker in the
+DXF file itself. Fork `1ca0ae2` preserves it in DXF reading and writing, with the
+existing reference-level safe-save comparison retained. The six-DWG local
+corpus now passes, including its edit/save/reopen/undo checks; the strict matrix
+verifies six DWG and six DXF saves. No corpus assertion or accepted-loss policy
+was weakened. The loaded control and unloaded output also retain their distinct
+states when reopened in ProgeCAD.
+
+The complete native unloaded DXF initially safe-saved to DXF but refused DWG
+because the DATAOBJECT inventory could not prove companion-map conversion.
+The final fork `59aaf4c` and product semantic proof resolve this specific modern
+conversion. Both strict outputs reopen in ProgeCAD with unloaded state and all
+90 compared table-style properties intact, including margins 1.5. The original
+unloaded-state correction remains enabled. Two R2000 fixtures that actually
+lose the TABLESTYLE owner remain safely refused; their corpus cases assert an
+unchanged destination. See the [investigation](progecad-dxf-unloaded.md) for
+historical candidates, exact build, raw records, hashes, tests and limitations.
+Broad milestone 03.4/03.5 exit criteria remain open.

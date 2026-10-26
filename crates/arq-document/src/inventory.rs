@@ -96,6 +96,13 @@ impl Document {
             *before.entry(POLYLINE.to_owned()).or_default() -= converted;
             *found.entry(LWPOLYLINE.to_owned()).or_default() -= converted;
         }
+        // A retired legacy map is a representation change only after every
+        // cell property and its table-style ownership have been proved intact.
+        let converted_maps = self.converted_table_style_maps(written);
+        if converted_maps > 0 {
+            let maps = before.entry("object DATAOBJECT".to_owned()).or_default();
+            *maps = maps.saturating_sub(converted_maps);
+        }
         before
             .into_iter()
             .filter_map(|(kind, before)| {

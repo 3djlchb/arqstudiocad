@@ -56,12 +56,18 @@ Both loaded and unloaded references receive this provisional marker; it reports
 a reference's presence, not resolution success or external geometry fidelity.
 
 Safe saving compares reference metadata and instances after reading the output.
-AcadRust 0.6.7 does not preserve `is_xref_unloaded` through DXF; conversion of an
-unloaded reference therefore raises `NotVerified`, retains a diagnostic copy
-when possible and leaves the destination untouched. DWG preserves the state.
-This is a data-safety fix, not DXF unload-state support. Do not invent a DXF group
-71 encoding from an AutoLISP `tblsearch` result: native DXF representation and
-independent application interoperability still require investigation.
+The original AcadRust 0.6.7 pin (`955bdd8`) lost `is_xref_unloaded` in DXF, so
+the safeguard refused that conversion. Native ProgeCAD 2026 exports and reopening
+subsequently established that BLOCK group 71=1 is present in the file itself.
+Fork `59aaf4c` retains the `1ca0ae2` explicit-marker correction; the six-DWG local corpus
+and all twelve strict DWG/DXF saves now pass. The reference-level comparison
+remains enabled and still refuses deliberate corruption of the marker. The
+[focused investigation](../../testing/progecad-dxf-unloaded.md) records the
+encoding, native observations and regression scope. The full native DXF now
+converts to DWG after proving complete CELLSTYLEMAP conversion; both final formats
+reopen with margins 1.5 and unloaded state intact. Legacy R2000 drawings that
+lose the companion owner remain safely refused. Other applications and broader
+DXF fidelity remain independent acceptance work; this does not enable loading.
 
 ## Proposed decision
 

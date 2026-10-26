@@ -50,7 +50,9 @@ codegen-units = 1
 # our fork (ADR 0017 D2): class objects that fail to decode kept verbatim;
 # inline surfaces' binary extra modeler block; TOLERANCE text and box in
 # DXF; R11/R12 current layer, style and linetype names (the original now
-# writes DXF hatch elliptic edge angles in degrees itself). Branch
-# arqstudiocad/on-c5555a5 of our fork, on the original's c5555a5 (0.6.7);
-# THIRD_PARTY.md lists them.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "955bdd8e68d554be1db681541bd1e53140a79ebc" }
+# writes DXF hatch elliptic edge angles in degrees itself). Also preserves
+# the DXF unloaded Xref marker verified in ProgeCAD and converts companion
+# table-style maps only when all cells are represented. Immutable fork tag:
+# arqstudiocad/on-c5555a5-xref-table-conversion, on c5555a5 (0.6.7).
+# THIRD_PARTY.md lists the patches and provenance.
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "59aaf4cddee5a1a7c86a640c1246225be1bfe2bc" }
