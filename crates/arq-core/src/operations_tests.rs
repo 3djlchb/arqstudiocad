@@ -234,6 +234,71 @@ fn block_and_insert_undo_and_redo_whole() {
 }
 
 #[test]
+fn defining_a_block_is_one_undo_step_in_every_way() {
+    let definition = BlockDefinition {
+        description: "Esquina".to_owned(),
+        units: 6,
+        scale_uniformly: false,
+        explodable: true,
+    };
+    for objects in [
+        BlockObjects::Retain,
+        BlockObjects::Convert,
+        BlockObjects::Delete,
+    ] {
+        let mut cad = CadDocument::new();
+        let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+        let (placed, made) = cad
+            .define_block("ESQUINA", p(0.0, 0.0), &[a, a], objects, &definition, false)
+            .unwrap();
+        assert_eq!(cad.undo_name(), Some("BLOCK"), "{objects:?}");
+        assert_eq!(
+            placed.is_some(),
+            objects == BlockObjects::Convert,
+            "{objects:?}"
+        );
+        assert_eq!(
+            made.deleted().contains(&a),
+            objects != BlockObjects::Retain,
+            "{objects:?}"
+        );
+        cad.undo().unwrap();
+        assert!(
+            cad.document().block_names().is_empty(),
+            "{objects:?}: the block is gone"
+        );
+        assert!(
+            cad.document().entity(a).is_some(),
+            "{objects:?}: the line is back"
+        );
+    }
+    // Redefining is one step too, undone to the block as it was.
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (reference, _) = cad.create_block("ESQUINA", p(0.0, 0.0), &[a]).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 0.0), p(0.0, 5.0)).unwrap();
+    let box_of = |c: &CadDocument| c.document().entity(reference).unwrap().bounds().unwrap();
+    let before = box_of(&cad);
+    cad.define_block(
+        "ESQUINA",
+        p(0.0, 0.0),
+        &[b],
+        BlockObjects::Delete,
+        &definition,
+        true,
+    )
+    .unwrap();
+    assert_eq!(cad.undo_name(), Some("BLOCK"));
+    assert_ne!(box_of(&cad), before, "the reference shows the new contents");
+    cad.undo().unwrap();
+    assert_eq!(box_of(&cad), before);
+    assert_eq!(
+        cad.document().block_info("ESQUINA").unwrap().description,
+        ""
+    );
+}
+
+#[test]
 fn saving_a_block_editor_is_one_step_that_redraws_the_references() {
     let mut cad = CadDocument::new();
     let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();

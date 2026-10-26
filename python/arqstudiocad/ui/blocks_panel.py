@@ -784,9 +784,6 @@ class BlocksPanel(QDockWidget):
         self.rotation_label.setText(tr("Rotation"))
         self.on_screen.setText(tr("Specify on screen"))
         self.explode.setText(tr("Explode"))
-        self.explode.setToolTip(
-            tr("Insert the block's contents instead of a reference, as EXPLODE does.")
-        )
         self.drag_hint.setText(tr("Drag a block onto the drawing to insert it."))
         self.on_screen.setToolTip(
             tr("Pick the insertion point in the drawing; otherwise the block goes at the origin.")
@@ -1281,7 +1278,8 @@ class BlocksPanel(QDockWidget):
             self.scale.value(),
             self.rotation.value(),
             self.on_screen.isChecked(),
-            self.explode.isChecked(),
+            # Unchecked in effect for a block that does not allow exploding.
+            self.explode.isChecked() and self.explode.isEnabled(),
         )
 
     # The context menu (ADR 0025 step 8b, maintainer 2026-10-25)
@@ -1510,6 +1508,15 @@ class BlocksPanel(QDockWidget):
             chosen = document is not None and problem is None
             self.insert_button.setEnabled(chosen)
         self.insert_button.setToolTip(problem or "")
+        # Allow exploding off (ADR 0023 D2a): the Explode option cannot apply.
+        info = source.block_info(name) if source is not None and name is not None else None
+        explodable = info is None or info.is_explodable
+        self.explode.setEnabled(explodable)
+        self.explode.setToolTip(
+            tr("Insert the block's contents instead of a reference, as EXPLODE does.")
+            if explodable
+            else tr("{name} does not allow exploding.", name=name)
+        )
         dynamic = source is not None and name is not None and source.is_dynamic_block(name)
         if self._source != "drawing":
             # A template is never written (ADR 0025 D7).

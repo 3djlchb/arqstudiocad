@@ -161,6 +161,25 @@ stage 2) is decided when the block editor shows what it needs from it.
   itself, and marks every reference to the block as changed, so it is
   drawn and indexed again. One editor per block; BEDIT inside an editor is
   refused.
+- **D2a, the core (2026-10-26):** `Document::define_block` makes or
+  redefines a block from objects, all or nothing, as one undo step named
+  BLOCK in `CadDocument::define_block`:
+  - `BlockObjects` says what happens to the objects: Retain, Convert (a
+    reference at the base point, returned) or Delete.
+  - `BlockDefinition` holds the record's description, units (INSUNITS),
+    Scale uniformly and Allow exploding, written to the block record and
+    read back from DWG and DXF. `create_block` is define_block's Convert
+    with the defaults, as BLOCK made blocks before.
+  - Redefining replaces an existing block's contents, base point and
+    record, and redraws its references; a dynamic block, a missing one, or
+    one that would hold itself is refused.
+  - `BlockInfo` tells both flags. The core refuses to explode a reference
+    of a block that does not allow it; EXPLODE leaves those and says so,
+    exploding the rest, and the Blocks palette's Explode option is
+    disabled for such a block.
+  - Python: `CadDocument.define_block(name, base, entity_ids, objects,
+    description, units, scale_uniformly, explodable, redefine)`;
+    `CadBlockInfo.is_explodable` and `scales_uniformly`.
 
 ## Consequences
 

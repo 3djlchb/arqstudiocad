@@ -71,7 +71,9 @@ def erase(ctx: CommandContext) -> CommandScript:
 
 
 def explode(ctx: CommandContext) -> CommandScript:
-    """Replaces selected block references with their transformed contents."""
+    """Replaces selected block references with their transformed contents;
+    those of a block that does not allow exploding are left, said so
+    (ADR 0023 D2a)."""
     document = ctx.document()
     ids = yield from select_objects(ctx, document)
     if not ids:
@@ -79,6 +81,21 @@ def explode(ctx: CommandContext) -> CommandScript:
     selected = document.get_entities(ids)
     if any(entity.kind != "INSERT" for entity in selected):
         raise CommandCancelledError(tr("Only block references can be exploded."))
+    kept: set[str] = set()
+    for entity in selected:
+        name = dict(entity.details).get("Block name", "")
+        info = document.block_info(name) if name else None
+        if info is not None and not info.is_explodable:
+            kept.add(info.name)
+    for name in sorted(kept, key=str.casefold):
+        ctx.message(tr("{name} does not allow exploding.", name=name))
+    ids = tuple(
+        entity.id
+        for entity in selected
+        if dict(entity.details).get("Block name", "").casefold() not in {n.casefold() for n in kept}
+    )
+    if not ids:
+        raise CommandCancelledError()
     try:
         _, changes = document.explode_entities(ids)
     except InvalidOperationError as error:

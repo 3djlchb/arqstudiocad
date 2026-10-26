@@ -99,7 +99,7 @@ impl Document {
 
     /// The name of block `name` as the drawing spells it, if INSERT could
     /// place it and it is not dynamic.
-    fn editable_block(&self, name: &str) -> DocumentResult<String> {
+    pub(crate) fn editable_block(&self, name: &str) -> DocumentResult<String> {
         let block = self
             .block_names()
             .into_iter()
@@ -115,7 +115,7 @@ impl Document {
 
     /// Every block `entities` reference, directly or through other blocks
     /// of this drawing, by name.
-    fn blocks_used(&self, entities: &[EntityType]) -> BTreeSet<String> {
+    pub(crate) fn blocks_used(&self, entities: &[EntityType]) -> BTreeSet<String> {
         let mut found = BTreeSet::new();
         let mut pending: Vec<String> = entities.iter().filter_map(block_of).collect();
         while let Some(name) = pending.pop() {

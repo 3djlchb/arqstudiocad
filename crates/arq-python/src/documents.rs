@@ -16,11 +16,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arq_core::{
-    CadApplication as CoreApplication, CadChangeSet as ChangeSet, CadDocument as CoreDocument,
-    CadError, ClashChoice, DocumentId, EntityId, LayerId,
+    BlockDefinition, BlockObjects, CadApplication as CoreApplication, CadChangeSet as ChangeSet,
+    CadDocument as CoreDocument, CadError, ClashChoice, DocumentId, EntityId, LayerId,
 };
 use arq_geometry::{Geometry2, Line};
-use pyo3::exceptions::PyTypeError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
 use crate::changes::{CadChangeSet, CadGroup};
@@ -434,6 +434,48 @@ impl CadDocument {
         entity_ids: Vec<EntityId>,
     ) -> PyResult<(EntityId, CadChangeSet)> {
         self.create(|cad| cad.create_block(name, base.0, &entity_ids))
+    }
+
+    /// Makes block `name` from `entity_ids` as the Block Definition dialog
+    /// says (BLOCK, ADR 0023 D2a): `objects` is "retain", "convert" or
+    /// "delete"; the description, units (INSUNITS code) and flags go to the
+    /// block's record; with `redefine` an existing block's contents are
+    /// replaced. Returns the reference placed by "convert", else None.
+    #[pyo3(signature = (
+        name, base, entity_ids, objects = "convert", description = "", units = 0,
+        scale_uniformly = false, explodable = true, redefine = false
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn define_block(
+        &self,
+        name: &str,
+        base: PyPoint,
+        entity_ids: Vec<EntityId>,
+        objects: &str,
+        description: &str,
+        units: i16,
+        scale_uniformly: bool,
+        explodable: bool,
+        redefine: bool,
+    ) -> PyResult<(Option<EntityId>, CadChangeSet)> {
+        let objects = match objects {
+            "retain" => BlockObjects::Retain,
+            "convert" => BlockObjects::Convert,
+            "delete" => BlockObjects::Delete,
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "objects must be \"retain\", \"convert\" or \"delete\", not {other:?}"
+                )));
+            }
+        };
+        let definition = BlockDefinition {
+            description: description.to_owned(),
+            units,
+            scale_uniformly,
+            explodable,
+        };
+        self.edit(|cad| cad.define_block(name, base.0, &entity_ids, objects, &definition, redefine))
+            .map(|(id, changes)| (id, CadChangeSet(changes)))
     }
 
     /// Places block `name` at `point`, scaled and turned (radians), on the

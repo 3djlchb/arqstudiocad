@@ -1332,3 +1332,26 @@ def test_two_recent_blocks_of_one_name_are_told_apart(qtbot: QtBot, tmp_path: Pa
     assert chosen is not None and chosen.path == other, "kept across a refresh"
     assert details(panel)["Source"] == "other.dwt"
     assert details(panel)["Used"].startswith("Inserted from other.dwt")
+
+
+def test_the_explode_option_is_off_for_a_block_that_does_not_allow_it(
+    window: MainWindow,
+) -> None:
+    """ADR 0023 D2a: Allow exploding off."""
+    panel = opened(window)
+    document = drawing_with_blocks(window, "Libre")
+    line, _ = document.add_line((0, 0), (3, 0))
+    window.session.edit(
+        document, lambda d: d.define_block("Fijo", (0, 0), [line], explodable=False)[1]
+    )
+    panel.explode.setChecked(True)
+    panel.select("Fijo")
+    assert not panel.explode.isEnabled()
+    assert panel.explode.toolTip() == "Fijo does not allow exploding."
+    assert panel.insert_options().explode is False, "checked, but not for this block"
+    panel.on_screen.setChecked(False)
+    panel.insert_button.click()
+    # define_block placed one where the line was; this is the second.
+    assert len(references(document, "Fijo")) == 2, "inserted as a reference"
+    panel.select("Libre")
+    assert panel.explode.isEnabled() and panel.insert_options().explode is True
