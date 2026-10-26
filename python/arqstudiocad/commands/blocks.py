@@ -232,17 +232,7 @@ def insert_named(
         document = ctx.document()
         origin = source
         if load is not None:
-            app, file = ctx.session.app, load
-            try:
-                origin = yield ctx.background(
-                    lambda: app.open_document(file), tr("Reading {name}…", name=file.name)
-                )
-            except CadError as error:
-                raise CommandCancelledError(
-                    tr("{name} cannot be read: {reason}", name=file.name, reason=error)
-                ) from None
-            if loaded is not None:
-                loaded(origin)
+            origin = yield from _read(ctx, load, loaded)
         found = _named(origin if origin is not None else document, name)
         if found is None:
             raise CommandCancelledError(tr("There is no such block."))
@@ -266,6 +256,97 @@ def insert_named(
         )
 
     return Command("INSERT", run, repeat=False)
+
+
+def copyblock(ctx: CommandContext) -> CommandScript:
+    """COPYBLOCK: copies a block of the Blocks palette's template into the
+    drawing without inserting it, with the blocks, layers and styles it
+    needs (ADR 0025 D6, step 8b). One undo step."""
+    document = ctx.document()
+    template = ctx.session.template
+    if template is None or not template.is_open:
+        raise CommandCancelledError(tr("No template is loaded."))
+    while (name := _named(template, (yield ctx.ask(tr("Block name"))).strip())) is None:
+        ctx.message(tr("There is no such block."))
+    yield from copy_into(ctx, document, template, name)
+
+
+def copy_named(
+    name: str,
+    source: CadDocument | None,
+    load: Path | None = None,
+    loaded: Callable[[CadDocument], None] | None = None,
+    redefine: bool = False,
+) -> Command:
+    """COPYBLOCK with block ``name`` of ``source`` already chosen, as the
+    Blocks palette's context menu starts it (Copy to drawing, Redefine from
+    template with ``redefine``); with ``load``, the source is that file,
+    read first, as for a recent block whose file is not open."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        origin = source
+        if load is not None:
+            origin = yield from _read(ctx, load, loaded)
+        found = _named(origin, name) if origin is not None else None
+        if origin is None or found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        yield from copy_into(ctx, document, origin, found, redefine)
+
+    return Command("COPYBLOCK", run, repeat=False)
+
+
+def copy_into(
+    ctx: CommandContext,
+    document: CadDocument,
+    source: CadDocument,
+    name: str,
+    redefine: bool = False,
+) -> CommandScript:
+    """Copies block ``name`` of ``source`` into ``document``, asking about
+    the clashes, or redefining the drawing's block of that name with
+    ``redefine`` (the other clashes still asked); one undo step."""
+    clashes = block_clashes(document, source, name)
+    if _named(document, name) is not None and all(c.name != name for c in clashes):
+        # The same block: the drawing's is used, nothing to copy (D6).
+        ctx.message(tr("The drawing already has block {name}.", name=name))
+        return
+    choices: dict[str, ClashChoice] = {}
+    if redefine:
+        choices = {c.name: ClashChoice("redefine") for c in clashes if c.name == name}
+    asked = [c for c in clashes if c.name not in choices]
+    if asked:
+        choices.update((yield from _resolve(ctx, asked)))
+    document.begin_group("COPYBLOCK")
+    try:
+        copied = _copied(ctx, document, name, source, choices)
+    except BaseException:
+        ctx.session.report(document, document.cancel_group())
+        raise
+    document.end_group()
+    if redefine:
+        ctx.message(tr("Block {name} redefined from {source}.", name=copied, source=source.name))
+    else:
+        ctx.message(tr("Block {name} copied to the drawing.", name=copied))
+
+
+def _read(
+    ctx: CommandContext, path: Path, loaded: Callable[[CadDocument], None] | None
+) -> Generator[Prompt | Background, Any, CadDocument]:
+    """The file at ``path``, read in the background for the Blocks palette
+    and given to ``loaded``; never in a tab nor written."""
+    app = ctx.session.app
+    try:
+        document: CadDocument = yield ctx.background(
+            lambda: app.open_document(path), tr("Reading {name}…", name=path.name)
+        )
+    except CadError as error:
+        raise CommandCancelledError(
+            tr("{name} cannot be read: {reason}", name=path.name, reason=error)
+        ) from None
+    if loaded is not None:
+        loaded(document)
+    return document
 
 
 def block_clashes(document: CadDocument, source: CadDocument, name: str) -> list[BlockClash]:
@@ -525,4 +606,5 @@ BLOCK_COMMANDS = (
     Command("BEDIT", bedit, ("BE",)),
     Command("BSAVE", bsave),
     Command("BCLOSE", bclose),
+    Command("COPYBLOCK", copyblock),
 )

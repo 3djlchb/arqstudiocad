@@ -331,6 +331,12 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - BLOCK checks the name against the drawing and the loaded template, as decided in D6. The session knows the palette's template (`Session.template`).
   - The UI service `resolve_block_clashes` takes the `BlockClash` records and returns a `ClashChoice` for each.
 - **Step 8a (2026-10-25):** a double click on a block reference opens the Edit Block Definition dialog with that block chosen, then the block editor on its grey background (ADR 0023 D3). The new UI service `choose_block_to_edit` replaces BEDIT's plain list; INSERT keeps its own.
+- **Step 8b (2026-10-25):** the context menu, opened by a right click on a block, the Menu key or Shift+F10, in the grid and the list; off the blocks nothing opens. It shows what the source allows *(maintainer, 2026-10-25)*:
+  - **Insert** and **Insert with options…** always. The latter opens a small dialog with Scale, Rotation, Specify on screen and Explode, filled with the palette's options, and inserts once with its own, leaving the palette's as they are.
+  - **Copy to drawing** for a block of another file (the template, or a recent block not of the active drawing). It copies the definition without inserting it, through a new command, **COPYBLOCK** (Spanish `COPIARBLOQUE`): one undo step, clashes asked about as for INSERT, and nothing copied when the drawing already has the same block. Typed, COPYBLOCK copies a block of the palette's template.
+  - **Edit block** for the drawing's blocks, as the button.
+  - **Redefine from template** when the drawing's block of that name differs, neither of them dynamic. A dialog shows both blocks, the template's on the left, and how many references will change; Redefine runs COPYBLOCK with that choice, one undo step.
+  - Without a drawing, or for a recent block that cannot be had, the items that need one are disabled.
 
 ## Consequences
 
