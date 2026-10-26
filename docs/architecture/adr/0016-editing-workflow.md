@@ -208,3 +208,11 @@ reported on the command line and the grid shows the drawing as it is.
   first, and reports as AutoCAD does: the distance, the angle in the XY
   plane in degrees from 0 to 360 (ADR 0010), and the X and Y deltas. Both
   take every way of giving a point (D6), and neither changes the drawing.
+- **The status bar's switches (2026-10-25, maintainer):** OSNAP and ORTHO
+  show their icons alone where the theme has them (the dark theme, for
+  now) and their names otherwise. While on, each carries the panels'
+  selection focus, as the ribbon's toggles. Their tooltips name them with
+  their shortcuts (F3, F8). A right click on OSNAP chooses the running
+  snaps; a click switches it. Under ORTHO a distance typed alone goes
+  horizontally or vertically toward the cursor, as AutoCAD's direct
+  distance entry; typed coordinates are kept as typed.

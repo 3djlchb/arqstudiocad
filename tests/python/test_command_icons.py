@@ -34,10 +34,11 @@ def test_the_draw_commands_have_54_px_artwork_in_the_dark_theme(qtbot: QtBot, co
     assert draw_icon_files("ERASE", "dark") == {} and command_icon("ERASE", "dark").isNull()
 
 
-def test_ortho_has_an_icon_in_the_dark_theme_only() -> None:
-    assert not drafting_icon("ORTHO", "dark").isNull()
-    assert drafting_icon("ORTHO", "light").isNull()
-    assert drafting_icon("OSNAP", "dark").isNull(), "no artwork yet"
+@pytest.mark.parametrize("switch", ["ORTHO", "OSNAP"])
+def test_the_drafting_switches_have_icons_in_the_dark_theme_only(switch: str) -> None:
+    assert not drafting_icon(switch, "dark").isNull()
+    assert drafting_icon(switch, "light").isNull()
+    assert drafting_icon("POLAR", "dark").isNull(), "no artwork yet"
 
 
 @pytest.fixture
@@ -63,19 +64,33 @@ def test_the_ribbon_has_one_button_per_row_at_54_px(window: MainWindow) -> None:
     assert line.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextUnderIcon
 
 
-def test_ortho_shows_its_icon_alone_and_its_name_without_artwork(window: MainWindow) -> None:
+def test_the_switches_show_their_icon_alone_and_their_name_without_artwork(
+    window: MainWindow,
+) -> None:
     bar = window.drafting_bar
+    switches = [
+        (bar.ortho_action, bar.ortho_button, "ORTHO", "Orthogonal mode (F8)"),
+        (
+            bar.osnap_action,
+            bar.osnap_button,
+            "OSNAP",
+            "Object snaps (F3). Right-click to choose them.",
+        ),
+    ]
     assert window.theme == "dark"
-    assert bar.ortho_button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
-    assert not bar.ortho_action.icon().isNull() and bar.ortho_button.iconSize() == QSize(18, 18)
-    assert bar.ortho_action.text() == "ORTHO" and bar.ortho_action.toolTip() == (
-        "Orthogonal mode (F8)"
-    ), "the name stays for tooltips and screen readers"
+    for action, button, name, tip in switches:
+        assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly, name
+        assert not action.icon().isNull() and button.iconSize() == QSize(18, 18)
+        assert action.text() == name and action.toolTip() == tip, (
+            "the name stays for tooltips and screen readers"
+        )
     window.change_theme("light")
-    assert bar.ortho_button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextOnly
-    assert bar.ortho_action.icon().isNull()
+    for action, button, name, _ in switches:
+        assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonTextOnly, name
+        assert action.icon().isNull()
     window.change_theme("dark")
-    assert bar.ortho_button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly
+    for _, button, name, _ in switches:
+        assert button.toolButtonStyle() == Qt.ToolButtonStyle.ToolButtonIconOnly, name
 
 
 def test_a_ribbon_wider_than_the_window_scrolls_sideways(qtbot: QtBot, window: MainWindow) -> None:

@@ -277,7 +277,7 @@
   "OK": "Aceptar",
   "ORTHO": "ORTO",
   "OSNAP": "REFENT",
-  "Object snaps (F3)": "Referencias a objetos (F3)",
+  "Object snaps (F3). Right-click to choose them.": "Referencias a objetos (F3). Clic derecho para elegirlas.",
   "Oblique angle": "Ángulo de oblicuidad",
   "On": "Activada",
   "Only block references can be exploded.": "Solo se pueden descomponer referencias a bloques.",

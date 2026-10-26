@@ -37,7 +37,7 @@ from arqstudiocad.events import (
     WorkStarted,
 )
 from arqstudiocad.i18n import fold_name, localized_commands, tr
-from arqstudiocad.points import PointSyntaxError, parse_point, snap_key
+from arqstudiocad.points import PointSyntaxError, ortho, parse_point, snap_key
 from arqstudiocad.session import Session
 
 log = logging.getLogger(__name__)
@@ -516,7 +516,12 @@ class CommandRunner:
                     self._send_angle(prompt, math.radians(number))
                 return
         try:
-            point = parse_point(typed, last=prompt.base, toward=drafting.cursor)
+            # A distance alone goes where the cursor points, kept
+            # horizontal or vertical under ORTHO, as AutoCAD's.
+            toward = drafting.cursor
+            if drafting.ortho and prompt.base is not None and toward is not None:
+                toward = ortho(prompt.base, toward)
+            point = parse_point(typed, last=prompt.base, toward=toward)
         except PointSyntaxError as error:
             self.context.message(str(error))
             self._show(prompt)

@@ -1,6 +1,8 @@
 """The status bar's drafting switches (ADR 0016 D5): running object snaps
-(F3, with a menu to choose which) and ORTHO (F8), shown and changed as the
-session's :class:`~arqstudiocad.drafting.Drafting` says."""
+(F3; a right click chooses which) and ORTHO (F8), shown and changed as the
+session's :class:`~arqstudiocad.drafting.Drafting` says. Each shows its
+icon where the theme has one, and while on, the panels' selection focus,
+as the ribbon's toggles (maintainer, 2026-10-25)."""
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QKeySequence
@@ -12,6 +14,7 @@ from arqstudiocad.i18n import tr
 from arqstudiocad.points import SNAP_KEYS
 from arqstudiocad.ui.command_icons import drafting_icon
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.panel_style import toggle_focus_style
 from arqstudiocad.ui.theme import Theme
 from arqstudiocad.ui.viewport import snap_name
 
@@ -39,7 +42,7 @@ class DraftingBar(QWidget):
         self.ortho_action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         self.ortho_action.toggled.connect(drafting.set_ortho)
 
-        # Which running snaps: a menu on the OSNAP button.
+        # Which running snaps: a menu on the OSNAP button's right click.
         self.snaps_menu = QMenu(self)
         self.snap_actions: dict[str, QAction] = {}
         for key in SNAP_KEYS:
@@ -50,11 +53,16 @@ class DraftingBar(QWidget):
 
         self.osnap_button = QToolButton()
         self.osnap_button.setDefaultAction(self.osnap_action)
-        self.osnap_button.setMenu(self.snaps_menu)
-        self.osnap_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.osnap_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.osnap_button.customContextMenuRequested.connect(
+            lambda at: self.snaps_menu.popup(self.osnap_button.mapToGlobal(at))
+        )
         self.ortho_button = QToolButton()
         self.ortho_button.setDefaultAction(self.ortho_action)
-        self.ortho_button.setIconSize(QSize(18, 18))
+        for button in (self.osnap_button, self.ortho_button):
+            button.setIconSize(QSize(18, 18))
+            # On: the selection focus, as a ribbon toggle's (ADR 0025 D2).
+            button.setStyleSheet(toggle_focus_style())
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -67,20 +75,24 @@ class DraftingBar(QWidget):
         self.retranslate()
 
     def set_theme(self, theme: Theme) -> None:
-        """ORTHO shows its icon alone, as AutoCAD's status bar, where the
-        theme has one (maintainer, 2026-10-25); its name otherwise. The
+        """Each switch shows its icon alone, as AutoCAD's status bar, where
+        the theme has one (maintainer, 2026-10-25); its name otherwise. The
         name stays the tooltip's and the accessible one."""
-        icon = drafting_icon("ORTHO", theme)
-        self.ortho_action.setIcon(icon)
-        self.ortho_button.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-            if icon.isNull()
-            else Qt.ToolButtonStyle.ToolButtonIconOnly
-        )
+        for switch, action, button in (
+            ("OSNAP", self.osnap_action, self.osnap_button),
+            ("ORTHO", self.ortho_action, self.ortho_button),
+        ):
+            icon = drafting_icon(switch, theme)
+            action.setIcon(icon)
+            button.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextOnly
+                if icon.isNull()
+                else Qt.ToolButtonStyle.ToolButtonIconOnly
+            )
 
     def retranslate(self) -> None:
         self.osnap_action.setText(tr("OSNAP"))
-        self.osnap_action.setToolTip(tr("Object snaps (F3)"))
+        self.osnap_action.setToolTip(tr("Object snaps (F3). Right-click to choose them."))
         self.ortho_action.setText(tr("ORTHO"))
         self.ortho_action.setToolTip(tr("Orthogonal mode (F8)"))
         for key, action in self.snap_actions.items():

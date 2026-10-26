@@ -4,9 +4,9 @@ the viewport with running snaps and ORTHO; the status bar's switches."""
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMenu
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
@@ -28,6 +28,7 @@ from arqstudiocad.events import (
 from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
+from arqstudiocad.ui.panel_style import SELECTION_BACKGROUND
 from arqstudiocad.ui.viewport import Viewport
 
 # The command system, no Qt
@@ -134,6 +135,24 @@ def test_relative_points_and_direct_distance_use_the_base() -> None:
     h.runner.execute("FROMORIGIN")
     h.runner.execute("10")
     assert h.messages()[-1] == "got 6,8"
+
+
+def test_under_ortho_a_typed_distance_goes_straight() -> None:
+    """As AutoCAD's: the cursor shows the direction, kept horizontal or
+    vertical (maintainer, 2026-10-25)."""
+    h = Harness()
+    h.session.drafting.set_ortho(True)
+    h.session.drafting.cursor = (10.0, 3.0)
+    h.runner.execute("FROMORIGIN")
+    h.runner.execute("5")
+    assert h.messages()[-1] == "got 5,0", "nearer horizontal"
+    h.session.drafting.cursor = (-2.0, -9.0)
+    h.runner.execute("FROMORIGIN")
+    h.runner.execute("4")
+    assert h.messages()[-1] == "got 0,-4", "nearer vertical"
+    h.runner.execute("FROMORIGIN")
+    h.runner.execute("3,4")
+    assert h.messages()[-1] == "got 3,4", "typed coordinates are kept as typed"
 
 
 def test_a_typed_snap_applies_to_the_next_point_only() -> None:
@@ -303,6 +322,29 @@ def test_the_status_bar_shows_and_changes_the_drafting_state(
     assert drafting.snaps == ("END", "MID", "CEN", "QUA", "INT")
     assert [k for k, a in bar.snap_actions.items() if a.isChecked()] == list(drafting.snaps)
     assert bar.osnap_action.text() == "OSNAP" and bar.snap_actions["END"].text() == "Endpoint"
+
+
+def test_the_switches_show_their_state_name_and_shortcut(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """While on, a switch carries the selection focus, as the ribbon's
+    toggles; its tooltip names it with its shortcut; a right click on
+    OSNAP chooses the snaps (maintainer, 2026-10-25)."""
+    bar = window.drafting_bar
+    for button in (bar.osnap_button, bar.ortho_button):
+        assert SELECTION_BACKGROUND in button.styleSheet() and ":checked" in button.styleSheet()
+    assert bar.ortho_button.toolTip() == "Orthogonal mode (F8)"
+    assert bar.osnap_button.toolTip() == "Object snaps (F3). Right-click to choose them."
+    assert bar.osnap_button.menu() is None, "no arrow: the menu is on the right click"
+    assert bar.osnap_button.isChecked() and not bar.ortho_button.isChecked()
+    bar.ortho_button.click()
+    assert window.session.drafting.ortho and bar.ortho_button.isChecked()
+    shown: list[QMenu] = []
+    monkeypatch.setattr(QMenu, "popup", lambda menu, at, action=None: shown.append(menu))
+    bar.osnap_button.customContextMenuRequested.emit(QPoint(2, 2))
+    assert shown == [bar.snaps_menu] and window.session.drafting.osnap, "a right click: no toggle"
+    bar.osnap_button.click()
+    assert not window.session.drafting.osnap, "a left click switches it"
 
 
 def test_esc_ends_the_point_prompt(window: MainWindow, tmp_path: Path) -> None:
