@@ -333,13 +333,21 @@ def test_block_says_a_name_in_use_in_a_dialog_too() -> None:
     assert sorted(h.document.block_names) == ["MARCO", "wc"]
 
 
-def answer_box(monkeypatch: pytest.MonkeyPatch, button: str) -> list[str]:
-    """The next message box shown is answered with ``button``; its text."""
+def answer_box(
+    monkeypatch: pytest.MonkeyPatch, button: str | QMessageBox.StandardButton
+) -> list[str]:
+    """The next message box shown is answered with ``button``, a standard
+    button (its text varies with the platform's style) or one of ours by
+    its text; the box's text."""
     seen: list[str] = []
 
     def answer(box: QMessageBox) -> int:
         seen.append(box.text())
-        (chosen,) = [b for b in box.buttons() if b.text() == button]
+        if isinstance(button, QMessageBox.StandardButton):
+            chosen = box.button(button)
+        else:
+            (chosen,) = [b for b in box.buttons() if b.text() == button]
+        assert chosen is not None, "the box has the button"
         chosen.click()
         return 0
 
@@ -351,7 +359,7 @@ def test_the_block_name_dialogs(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -
     parent = QWidget()
     qtbot.addWidget(parent)
     services = QtUiServices(parent)
-    seen = answer_box(monkeypatch, "OK")
+    seen = answer_box(monkeypatch, QMessageBox.StandardButton.Ok)
     services.report_block_name_taken("MARCO")
     assert seen == ["A block named MARCO exists in the drawing. Type another name."]
     seen = answer_box(monkeypatch, "Continue")
