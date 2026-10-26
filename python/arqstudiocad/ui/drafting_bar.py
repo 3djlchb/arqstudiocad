@@ -2,7 +2,7 @@
 (F3, with a menu to choose which) and ORTHO (F8), shown and changed as the
 session's :class:`~arqstudiocad.drafting.Drafting` says."""
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QToolButton, QWidget
 
@@ -10,7 +10,9 @@ from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import DraftingChanged
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import SNAP_KEYS
+from arqstudiocad.ui.command_icons import drafting_icon
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.theme import Theme
 from arqstudiocad.ui.viewport import snap_name
 
 
@@ -52,6 +54,7 @@ class DraftingBar(QWidget):
         self.osnap_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self.ortho_button = QToolButton()
         self.ortho_button.setDefaultAction(self.ortho_action)
+        self.ortho_button.setIconSize(QSize(18, 18))
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -62,6 +65,18 @@ class DraftingBar(QWidget):
         self._show(DraftingChanged(drafting.osnap, drafting.snaps, drafting.ortho))
         events.drafting_changed.connect(self._show)
         self.retranslate()
+
+    def set_theme(self, theme: Theme) -> None:
+        """ORTHO shows its icon alone, as AutoCAD's status bar, where the
+        theme has one (maintainer, 2026-10-25); its name otherwise. The
+        name stays the tooltip's and the accessible one."""
+        icon = drafting_icon("ORTHO", theme)
+        self.ortho_action.setIcon(icon)
+        self.ortho_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+            if icon.isNull()
+            else Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
 
     def retranslate(self) -> None:
         self.osnap_action.setText(tr("OSNAP"))
