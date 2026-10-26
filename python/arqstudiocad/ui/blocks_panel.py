@@ -22,11 +22,13 @@ import math
 import os
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import QMimeData, QPointF, QRectF, QSettings, QSize, Qt, QTimer
+from PySide6.QtCore import QMimeData, QPoint, QPointF, QRectF, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
+    QContextMenuEvent,
     QDragEnterEvent,
     QDropEvent,
     QIcon,
@@ -54,6 +56,7 @@ from PySide6.QtWidgets import (
     QListView,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -67,7 +70,13 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad.commands import Command, CommandRunner
-from arqstudiocad.commands.blocks import edit_named, insert_named, load_template, read_files
+from arqstudiocad.commands.blocks import (
+    copy_named,
+    edit_named,
+    insert_named,
+    load_template,
+    read_files,
+)
 from arqstudiocad.core import CadBlockInfo, CadDocument, CadError
 from arqstudiocad.events import BlockUsed, DocumentChanged, DocumentClosed, DocumentSaved, Event
 from arqstudiocad.i18n import tr
@@ -116,6 +125,16 @@ TAG_BACKGROUND = "#ffa64d"
 TAG_STAR = "#004b4e"
 #: The tag's side in pixels: on cards, and in the list's small previews.
 TAG_ON_CARDS, TAG_IN_ROWS = 13, 10
+
+
+@dataclass(frozen=True, slots=True)
+class InsertOptions:
+    """How to insert a block: ``rotation`` in degrees, as shown."""
+
+    scale: float
+    rotation: float
+    on_screen: bool
+    explode: bool
 
 
 def tag_side(size: int) -> int:
@@ -249,6 +268,22 @@ class PreviewCache:
 
 #: What a drag of a block carries, by its row (None: no drag).
 DragPayload = Callable[[int], QMimeData | None]
+#: Shows a block's context menu: the item it is for (None: off the
+#: blocks) and where, in global coordinates.
+MenuRequest = Callable[[object, QPoint], None]
+
+
+def no_menu(item: object, at: QPoint) -> None:
+    return None
+
+
+def menu_target(view: QListWidget | QTreeWidget, event: QContextMenuEvent) -> tuple[object, QPoint]:
+    """The item a context menu is for and where to show it: under the
+    mouse, or the current item for the Menu key and Shift+F10."""
+    if event.reason() == QContextMenuEvent.Reason.Keyboard:
+        rect = view.visualRect(view.currentIndex())
+        return view.currentItem(), view.viewport().mapToGlobal(rect.center())
+    return view.itemAt(event.pos()), event.globalPos()
 
 
 def no_drag(row: int) -> QMimeData | None:
@@ -268,7 +303,12 @@ class BlockTable(QTreeWidget):
     def __init__(self) -> None:
         super().__init__()
         self.payload: DragPayload = no_drag
+        self.menu: MenuRequest = no_menu
         drag_only(self)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802 (Qt API)
+        self.menu(*menu_target(self, event))
+        event.accept()
 
     def mimeData(self, items: Sequence[QTreeWidgetItem]) -> QMimeData:  # noqa: N802 (Qt API)
         mime = self.payload(self.indexOfTopLevelItem(items[0])) if items else None
@@ -282,6 +322,7 @@ class BlockGrid(QListWidget):
     def __init__(self) -> None:
         super().__init__()
         self.payload: DragPayload = no_drag
+        self.menu: MenuRequest = no_menu
         self.setViewMode(QListView.ViewMode.IconMode)
         self.setResizeMode(QListView.ResizeMode.Adjust)
         self.setMovement(QListView.Movement.Static)
@@ -294,6 +335,10 @@ class BlockGrid(QListWidget):
         self.setGridSize(QSize(side, side + self.fontMetrics().height() + 4))
         # IconMode makes items movable within: only out, onto the drawing.
         drag_only(self)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802 (Qt API)
+        self.menu(*menu_target(self, event))
+        event.accept()
 
     def mimeData(self, items: Sequence[QListWidgetItem]) -> QMimeData:  # noqa: N802 (Qt API)
         mime = self.payload(self.row(items[0])) if items else None
@@ -513,6 +558,9 @@ class BlocksPanel(QDockWidget):
         self.grid = BlockGrid()
         self.grid.currentItemChanged.connect(self._on_card_chosen)
         self.grid.itemActivated.connect(self.insert_selected)
+        # The context menu (ADR 0025 step 8b): a right click, the Menu key
+        # or Shift+F10, on either view.
+        self.table.menu = self.grid.menu = self._show_menu
         self.table.payload = self.grid.payload = self._drag_payload
         #: Whether INSERT runs for a block being dragged over the drawing.
         self._dropping = False
@@ -1210,19 +1258,158 @@ class BlocksPanel(QDockWidget):
         source: CadDocument | None,
         load: Path | None,
         at: tuple[float, float] | None = None,
+        options: InsertOptions | None = None,
     ) -> Command:
-        """INSERT for block ``name`` with the insert options."""
+        """INSERT for block ``name`` with the insert options, or with
+        ``options`` for this insertion only."""
+        chosen = options if options is not None else self.insert_options()
         return insert_named(
             name,
-            self.scale.value(),
-            math.radians(self.rotation.value()),
+            chosen.scale,
+            math.radians(chosen.rotation),
             on_screen,
-            self.explode.isChecked(),
+            chosen.explode,
             source,
             at,
             load,
             self._recent_file_read if load is not None else None,
         )
+
+    def insert_options(self) -> InsertOptions:
+        """The palette's insert options; rotation in degrees."""
+        return InsertOptions(
+            self.scale.value(),
+            self.rotation.value(),
+            self.on_screen.isChecked(),
+            self.explode.isChecked(),
+        )
+
+    # The context menu (ADR 0025 step 8b, maintainer 2026-10-25)
+
+    def block_menu(self) -> QMenu | None:
+        """The selected block's context menu, as the source allows: Insert
+        and Insert with options always; Copy to drawing for a block of
+        another file; Edit block for the drawing's; Redefine from template
+        when the drawing's block of that name differs. None with nothing
+        selected."""
+        row = self._current_row()
+        if row is None:
+            return None
+        name = self._row(row).text(NAME)
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            f"QMenu::item:selected {{ background-color: {SELECTION_BACKGROUND}; "
+            f"border-top: 1px solid {SELECTION_LINE}; "
+            f"border-bottom: 1px solid {SELECTION_LINE}; color: palette(text); }}"
+        )
+        insertable = self.insert_button.isEnabled()
+        insert = menu.addAction(tr("Insert"), self.insert_selected)
+        insert.setObjectName("insert")
+        options = menu.addAction(tr("Insert with options…"), self.insert_with_options)
+        options.setObjectName("insert_options")
+        for action in (insert, options):
+            action.setEnabled(insertable)
+        if self._copyable(row):
+            copy = menu.addAction(tr("Copy to drawing"), self.copy_selected)
+            copy.setObjectName("copy")
+            copy.setEnabled(insertable)
+        if self._source == "drawing":
+            menu.addSeparator()
+            edit = menu.addAction(tr("Edit block"), self.edit_selected)
+            edit.setObjectName("edit")
+            edit.setEnabled(self.edit_button.isEnabled())
+        if self._redefinable(name):
+            menu.addSeparator()
+            redefine = menu.addAction(tr("Redefine from template"), self.redefine_selected)
+            redefine.setObjectName("redefine")
+        return menu
+
+    def _show_menu(self, item: object, at: QPoint) -> None:
+        """Selects the block under the click, then shows its menu; nothing
+        off the blocks."""
+        if isinstance(item, QListWidgetItem):
+            self.grid.setCurrentItem(item)
+        elif isinstance(item, QTreeWidgetItem):
+            self.table.setCurrentItem(item)
+        else:
+            return
+        menu = self.block_menu()
+        if menu is not None:
+            menu.popup(at)
+
+    def _copyable(self, row: int) -> bool:
+        """Whether the block at ``row`` comes from another file than the
+        active drawing, so it can be copied into it."""
+        if self._source == "template":
+            return True
+        # The drawing's own blocks come from nowhere else.
+        source, load = self._inserting_from(row)
+        return source is not None or load is not None
+
+    def _redefinable(self, name: str) -> bool:
+        """Whether the template's block ``name`` differs from the drawing's
+        of that name, neither of them dynamic."""
+        template, drawing = self.template, self.document()
+        if self._source != "template" or template is None or drawing is None:
+            return False
+        here = block_named(drawing, name)
+        if here is None or template.is_dynamic_block(name) or drawing.is_dynamic_block(here):
+            return False
+        return name in drawing.block_clashes(name, template)
+
+    def insert_with_options(self) -> None:
+        """Inserts the selected block once with options chosen in a small
+        dialog, leaving the palette's as they are."""
+        from arqstudiocad.ui import block_dialogs  # imports this module
+
+        name = self.selected()
+        row = self._current_row()
+        if (
+            name is None
+            or row is None
+            or self._runner is None
+            or not self.insert_button.isEnabled()
+        ):
+            return
+        chosen = block_dialogs.ask_insert_options(name, self.insert_options(), self)
+        if chosen is None:
+            return
+        source, load = self._inserting_from(row)
+        self._runner.start(self._insert(name, chosen.on_screen, source, load, options=chosen))
+
+    def copy_selected(self) -> None:
+        """Copies the selected block of another file into the drawing
+        without inserting it, through COPYBLOCK."""
+        name = self.selected()
+        row = self._current_row()
+        if (
+            name is None
+            or row is None
+            or self._runner is None
+            or not self.insert_button.isEnabled()
+        ):
+            return
+        source, load = self._inserting_from(row)
+        if source is None and load is None:
+            return
+        loaded = self._recent_file_read if load is not None else None
+        self._runner.start(copy_named(name, source, load, loaded))
+
+    def redefine_selected(self) -> None:
+        """Redefines the drawing's block of the selected name from the
+        template, once confirmed seeing both (maintainer, 2026-10-25)."""
+        from arqstudiocad.ui import block_dialogs  # imports this module
+
+        name = self.selected()
+        template, drawing = self.template, self.document()
+        if name is None or template is None or drawing is None or self._runner is None:
+            return
+        here = block_named(drawing, name)
+        if here is None or not self._redefinable(name):
+            return
+        references = self._references.get(here.upper(), 0)
+        if block_dialogs.confirm_redefine(template, drawing, name, here, references, self):
+            self._runner.start(copy_named(name, template, redefine=True))
 
     def _current_row(self) -> int | None:
         item = self.table.currentItem()

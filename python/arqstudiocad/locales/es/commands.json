@@ -26,6 +26,9 @@
   "COPY": [
     "COPIA"
   ],
+  "COPYBLOCK": [
+    "COPIARBLOQUE"
+  ],
   "DISTANCE": [
     "DISTANCIA"
   ],
