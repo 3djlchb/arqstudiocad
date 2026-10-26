@@ -168,6 +168,12 @@ letters (`CA` for `CAPA`, but not `B`, `D` or `H`, which are `BLOCK`,
 an English command arrives; names are found with or without accents
 (`CÍRCULO` finds `CIRCULO`) *(maintainer, 2026-10-15)*.
 
+Every command has both names, always *(maintainer, 2026-10-25)*: a command
+the maintainer asks for by its Spanish name gets its English name too, and
+AutoCAD's English name, when it differs, becomes an alias (`IDPOINT` with
+`ID`, `DISTANCE` with `DIST`). A Spanish name that is the English one, as
+`ZOOM`, is left out of the catalog, since the English name already works.
+
 ### D10 — Editing from Properties *(maintainer)*
 
 The property grid shows the selection: its kind as the caption ("Line",
