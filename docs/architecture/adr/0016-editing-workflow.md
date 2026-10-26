@@ -192,3 +192,12 @@ reported on the command line and the grid shows the drawing as it is.
   the document or the camera changes.
 - Selection by scanning is measured now; if the budget fails on large
   drawings, the spatial index of 2.6 is moved earlier.
+
+## Implementation notes
+
+- **Inquiry commands (2026-10-25, maintainer):** `ID` (Spanish `IDPUNTO`)
+  shows a point's coordinates, as since step 2.5.4. `DIST` (alias `DI`;
+  Spanish `DISTANCIA`) asks for two points, with a rubber band from the
+  first, and reports as AutoCAD does: the distance, the angle in the XY
+  plane in degrees from 0 to 360 (ADR 0010), and the X and Y deltas. Both
+  take every way of giving a point (D6), and neither changes the drawing.

@@ -8,6 +8,7 @@ a point's coordinates. The registry also holds the drawing commands of
 as AutoCAD does with FILEDIA=0.
 """
 
+import math
 from collections.abc import Generator, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -308,6 +309,25 @@ def id_(ctx: CommandContext) -> CommandScript:
     ctx.message(f"X = {x:.4f}     Y = {y:.4f}")
 
 
+def dist(ctx: CommandContext) -> CommandScript:
+    """AutoCAD's DIST: the distance between two points, typed or picked,
+    with a rubber band from the first; the angle in the XY plane (degrees,
+    ADR 0010) and the deltas, as AutoCAD reports them."""
+    ctx.document()
+    first = yield ctx.point(tr("Specify first point"))
+    second = yield ctx.point(tr("Specify second point"), base=first)
+    dx, dy = second[0] - first[0], second[1] - first[1]
+    angle = math.degrees(math.atan2(dy, dx)) % 360.0
+    ctx.message(
+        tr(
+            "Distance = {distance},  Angle in XY plane = {angle}°",
+            distance=f"{math.hypot(dx, dy):.4f}",
+            angle=f"{angle:.4f}",
+        )
+    )
+    ctx.message(f"Delta X = {dx:.4f},  Delta Y = {dy:.4f}")
+
+
 def layer(ctx: CommandContext) -> CommandScript:
     """Opens the layers panel, as AutoCAD's LAYER opens its palette."""
     ctx.document()
@@ -348,6 +368,7 @@ BUILTIN_COMMANDS = (
     Command("BLOCKSPALETTE", blocks_palette),
     Command("PROPERTIES", properties, ("PR",)),
     Command("ID", id_),
+    Command("DIST", dist, ("DI",)),
 )
 
 
