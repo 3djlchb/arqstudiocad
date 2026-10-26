@@ -422,6 +422,17 @@ def test_define_block_redefines_a_block_in_use() -> None:
         doc.define_block("MARCO", (0, 0), [reference], redefine=True)
 
 
+def test_define_block_never_redefines_a_dynamic_block() -> None:
+    from test_block_editor import LOOKUP
+    from test_commands import regression_drawing
+
+    doc = CadApplication().open_document(regression_drawing(LOOKUP))
+    a, _ = doc.add_line((0, 0), (1, 0))
+    with pytest.raises(InvalidOperationError, match="dynamic"):
+        doc.define_block("My_Look_Block", (0, 0), [a], redefine=True)
+    assert doc.is_dynamic_block("My_Look_Block") and a in [e.id for e in doc.get_entities()]
+
+
 def test_explode_leaves_a_block_that_does_not_allow_it() -> None:
     h = Harness()
     fixed, _ = h.document.define_block("FIJO", (10, 10), [h.a], explodable=False)
@@ -433,6 +444,9 @@ def test_explode_leaves_a_block_that_does_not_allow_it() -> None:
     kinds = sorted(e.kind for e in h.document.get_entities())
     assert kinds == ["INSERT", "LINE"], "LIBRE exploded, FIJO left"
     h.session.select(h.document, [fixed])
+    steps = len(h.document.undo_history)
     h.run("EXPLODE")
     assert h.messages()[-1] == "FIJO does not allow exploding." and h.runner.active is None
+    assert len(h.document.undo_history) == steps, "nothing exploded: no undo step"
+    assert h.session.selection(h.document) == (fixed,), "cancelled: the selection stays"
     assert sorted(e.kind for e in h.document.get_entities()) == ["INSERT", "LINE"]

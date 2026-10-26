@@ -279,16 +279,21 @@ fn defining_a_block_is_one_undo_step_in_every_way() {
     let (b, _) = cad.add_line(p(0.0, 0.0), p(0.0, 5.0)).unwrap();
     let box_of = |c: &CadDocument| c.document().entity(reference).unwrap().bounds().unwrap();
     let before = box_of(&cad);
-    cad.define_block(
-        "ESQUINA",
-        p(0.0, 0.0),
-        &[b],
-        BlockObjects::Delete,
-        &definition,
-        true,
-    )
-    .unwrap();
+    let (_, redefined) = cad
+        .define_block(
+            "ESQUINA",
+            p(0.0, 0.0),
+            &[b],
+            BlockObjects::Delete,
+            &definition,
+            true,
+        )
+        .unwrap();
     assert_eq!(cad.undo_name(), Some("BLOCK"));
+    assert!(
+        redefined.modified().contains(&reference),
+        "the reference is drawn and indexed again"
+    );
     assert_ne!(box_of(&cad), before, "the reference shows the new contents");
     cad.undo().unwrap();
     assert_eq!(box_of(&cad), before);
