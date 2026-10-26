@@ -22,7 +22,7 @@ _DRAW_ICONS = {"LINE": "line", "PLINE": "polyline", "CIRCLE": "circle", "ARC": "
 #: scales its 48 px drawing.
 _DRAW_SIZES = {"dark": (18, 24, 32, 48, 54), "light": (24, 32, 48)}
 #: The drafting switches' icons, by switch; dark theme only for now.
-_DRAFTING_ICONS = {"ORTHO": "orthogonal-18.svg"}
+_DRAFTING_ICONS = {"ORTHO": "orthogonal-18.svg", "OSNAP": "snap-reference-18.svg"}
 #: The side of the icons on ribbon buttons, one per row (maintainer,
 #: 2026-10-25).
 RIBBON_ICON = 54
