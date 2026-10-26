@@ -315,6 +315,18 @@ impl CadBlockInfo {
         self.0.parameters.clone()
     }
 
+    /// Whether its references may be exploded (ADR 0023 D2a).
+    #[getter]
+    fn is_explodable(&self) -> bool {
+        self.0.explodable
+    }
+
+    /// Whether its references must be scaled the same in X and Y.
+    #[getter]
+    fn scales_uniformly(&self) -> bool {
+        self.0.scale_uniformly
+    }
+
     fn __repr__(&self) -> String {
         format!("CadBlockInfo(name={:?})", self.0.name)
     }

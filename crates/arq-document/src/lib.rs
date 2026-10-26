@@ -52,7 +52,7 @@ mod translate;
 mod verify;
 
 pub use block_copy::ClashChoice;
-pub use blocks::BlockInfo;
+pub use blocks::{BlockDefinition, BlockInfo, BlockObjects};
 pub use change::{Change, ChangeSet};
 pub use document::Document;
 pub use drawing::{DrawItem, Shape};

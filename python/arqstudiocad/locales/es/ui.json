@@ -465,6 +465,7 @@
   "{name} cannot be loaded as a template: {reason}": "{name} no se puede cargar como plantilla: {reason}",
   "{name} cannot be read: {reason}": "{name} no se puede leer: {reason}",
   "{name} cannot hold a reference to itself.": "{name} no puede contener una referencia a sí mismo.",
+  "{name} does not allow exploding.": "{name} no permite descomponerse.",
   "{name} is a dynamic block: it cannot be edited yet.": "{name} es un bloque dinámico: todavía no se puede editar.",
   "{name} is a dynamic block: the drawing's is used.": "{name} es un bloque dinámico: se usa el del dibujo.",
   "{name} is a dynamic block: until the parametric engine, only the drawing's can be used.": "{name} es un bloque dinámico: hasta que llegue el motor paramétrico, solo se puede usar el del dibujo.",

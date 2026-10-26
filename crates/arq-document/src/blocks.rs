@@ -34,6 +34,50 @@ pub struct BlockInfo {
     /// A dynamic block's parameters the user sees, by name, in the file's
     /// order; empty for a static block or when the engine cannot read them.
     pub parameters: Vec<String>,
+    /// Whether its references may be exploded (ADR 0023 D2a).
+    pub explodable: bool,
+    /// Whether its references must be scaled the same in X and Y.
+    pub scale_uniformly: bool,
+}
+
+/// What BLOCK does with the objects it makes a block from (ADR 0023 D2a):
+/// leaves them as they are, replaces them by a reference to the block at
+/// its base point, or deletes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockObjects {
+    /// The objects stay as they are.
+    Retain,
+    /// A reference to the block takes their place.
+    Convert,
+    /// The objects are deleted.
+    Delete,
+}
+
+/// What a block's record holds besides its contents (ADR 0023 D2a): its
+/// description, insertion units (DWG's INSUNITS code) and two flags.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockDefinition {
+    /// Its description; empty for none.
+    pub description: String,
+    /// Its insertion units, as DWG's INSUNITS code (0 unitless).
+    pub units: i16,
+    /// Whether its references must be scaled the same in X and Y.
+    pub scale_uniformly: bool,
+    /// Whether its references may be exploded.
+    pub explodable: bool,
+}
+
+impl Default for BlockDefinition {
+    /// No description, unitless, scaled freely, explodable: what BLOCK
+    /// made before the Block Definition dialog.
+    fn default() -> Self {
+        Self {
+            description: String::new(),
+            units: 0,
+            scale_uniformly: false,
+            explodable: true,
+        }
+    }
 }
 
 /// Characters a DWG block name cannot hold.
@@ -95,6 +139,8 @@ impl Document {
             attributes,
             dynamic,
             parameters,
+            explodable: record.explodable,
+            scale_uniformly: record.scale_uniformly,
         })
     }
 
@@ -136,8 +182,32 @@ impl Document {
         base: Point2,
         ids: &[EntityId],
     ) -> DocumentResult<EntityId> {
-        // A name in use is refused by the block table itself ("… exists").
-        check_block_name(name)?;
+        let placed = self.define_block(
+            name,
+            base,
+            ids,
+            BlockObjects::Convert,
+            &BlockDefinition::default(),
+            false,
+        )?;
+        placed.ok_or_else(|| DocumentError::UnsupportedOperation("no reference placed".to_owned()))
+    }
+
+    /// Makes block `name` from `ids`, based at `base`, with `definition`'s
+    /// description, units and flags, and does with the objects what
+    /// `objects` says (BLOCK's dialog, ADR 0023 D2a). With `redefine`, block
+    /// `name` exists and its contents, base point and record are replaced,
+    /// every reference redrawn; a dynamic block, or one that would hold
+    /// itself, is refused. Returns the reference placed by Convert.
+    pub fn define_block(
+        &mut self,
+        name: &str,
+        base: Point2,
+        ids: &[EntityId],
+        objects: BlockObjects,
+        definition: &BlockDefinition,
+        redefine: bool,
+    ) -> DocumentResult<Option<EntityId>> {
         // In drawing order, each once.
         let chosen: Vec<EntityId> = self
             .entities()
@@ -152,13 +222,60 @@ impl Document {
                 None => DocumentError::InvalidBlockName("a block needs objects".to_owned()),
             });
         }
-        self.touch_structure();
-        let h = self.add_block_record(name, Vector3::new(base.x(), base.y(), 0.0))?;
-        for id in chosen {
-            self.clone_entity(id, h)?;
-            self.delete_entity(id)?;
+        let point = Vector3::new(base.x(), base.y(), 0.0);
+        let block = if redefine {
+            let block = self.editable_block(name)?;
+            let contents: Vec<EntityType> = chosen
+                .iter()
+                .filter_map(|&id| self.cad().get_entity(handle(id)).cloned())
+                .collect();
+            if self
+                .blocks_used(&contents)
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(&block))
+            {
+                return Err(DocumentError::InvalidBlockName(format!(
+                    "block {block} cannot hold itself"
+                )));
+            }
+            self.touch_structure();
+            self.clear_block(&block)?;
+            block
+        } else {
+            // A name in use is refused by the block table itself ("… exists").
+            check_block_name(name)?;
+            self.touch_structure();
+            self.add_block_record(name, point)?;
+            name.to_owned()
+        };
+        let owner = {
+            let record = self
+                .cad_mut()
+                .block_records
+                .get_mut(&block)
+                .ok_or_else(|| {
+                    DocumentError::InvalidBlockName(format!("no block named {block:?}"))
+                })?;
+            record.base_point = point;
+            record.description = definition.description.clone();
+            record.units = definition.units;
+            record.scale_uniformly = definition.scale_uniformly;
+            record.explodable = definition.explodable;
+            record.handle()
+        };
+        for &id in &chosen {
+            self.clone_entity(id, owner)?;
+            if objects != BlockObjects::Retain {
+                self.delete_entity(id)?;
+            }
         }
-        self.insert_block(name, base, 1.0, 0.0)
+        if redefine {
+            self.redraw_references(&block);
+        }
+        match objects {
+            BlockObjects::Convert => self.insert_block(&block, base, 1.0, 0.0).map(Some),
+            BlockObjects::Retain | BlockObjects::Delete => Ok(None),
+        }
     }
 
     /// Places block `name` at `point`, scaled by `scale` and turned

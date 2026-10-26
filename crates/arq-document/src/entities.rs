@@ -40,6 +40,13 @@ impl Document {
             .ok_or_else(|| {
                 DocumentError::UnsupportedOperation("the block definition is missing".to_owned())
             })?;
+        if !record.explodable {
+            // Allow exploding is off in the block's definition (ADR 0023 D2a).
+            return Err(DocumentError::UnsupportedOperation(format!(
+                "{} cannot be exploded",
+                insert.block_name
+            )));
+        }
         // INSERT transforms contents around the block's base point. The codec's
         // explode helper omits this adjustment, so normalize the cloned source
         // entities first to match the document's drawing transform.

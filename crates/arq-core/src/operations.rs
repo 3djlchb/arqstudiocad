@@ -8,7 +8,8 @@
 use std::collections::BTreeMap;
 
 use arq_document::{
-    ChangeSet, ClashChoice, Color, Document, DocumentError, Entity, EntityId, LayerId, PlanGeometry,
+    BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Document, DocumentError, Entity,
+    EntityId, LayerId, PlanGeometry,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Transform2, Vector2};
 
@@ -178,6 +179,29 @@ impl CadDocument {
                 check_unlocked(doc, &e)?;
             }
             Ok(doc.create_block(name, base, &ids)?)
+        })
+    }
+
+    /// Makes or redefines block `name` from `ids` as the Block Definition
+    /// dialog says (BLOCK, ADR 0023 D2a): the objects retained, converted
+    /// or deleted, the record's description, units and flags written. One
+    /// undo step; returns the reference placed by Convert.
+    pub fn define_block(
+        &mut self,
+        name: &str,
+        base: Point2,
+        ids: &[EntityId],
+        objects: BlockObjects,
+        definition: &BlockDefinition,
+        redefine: bool,
+    ) -> CadResult<(Option<EntityId>, ChangeSet)> {
+        let ids = distinct(ids);
+        self.transact("BLOCK", |doc| {
+            for &id in &ids {
+                let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &e)?;
+            }
+            Ok(doc.define_block(name, base, &ids, objects, definition, redefine)?)
         })
     }
 

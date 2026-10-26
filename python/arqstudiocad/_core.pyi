@@ -295,6 +295,18 @@ class CadDocument:
     def create_block(
         self, name: str, base: _PointLike, entity_ids: _Ids
     ) -> tuple[int, CadChangeSet]: ...
+    def define_block(
+        self,
+        name: str,
+        base: _PointLike,
+        entity_ids: _Ids,
+        objects: Literal["retain", "convert", "delete"] = "convert",
+        description: str = "",
+        units: int = 0,
+        scale_uniformly: bool = False,
+        explodable: bool = True,
+        redefine: bool = False,
+    ) -> tuple[int | None, CadChangeSet]: ...
     def insert_block(
         self, name: str, point: _PointLike, scale: float = 1.0, rotation: float = 0.0
     ) -> tuple[int, CadChangeSet]: ...
@@ -497,6 +509,10 @@ class CadBlockInfo:
     def is_dynamic(self) -> bool: ...
     @property
     def parameters(self) -> list[str]: ...
+    @property
+    def is_explodable(self) -> bool: ...
+    @property
+    def scales_uniformly(self) -> bool: ...
     def __eq__(self, value: object, /) -> bool: ...
     __hash__: ClassVar[None]  # type: ignore[assignment]
 

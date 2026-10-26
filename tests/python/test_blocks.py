@@ -3,6 +3,7 @@ place in the interface (the Insert ribbon tab, D4)."""
 
 import math
 from pathlib import Path
+from typing import Literal
 
 import pytest
 from PySide6.QtWidgets import QMessageBox, QWidget
@@ -367,3 +368,85 @@ def test_the_block_name_dialogs(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -
     assert seen[0].startswith("The template plantilla.dwt has a block named WC.")
     answer_box(monkeypatch, "Another name")
     assert not services.ask_block_name_in_template("WC", "plantilla.dwt")
+
+
+# The Block Definition dialog's core (ADR 0023 D2a)
+
+
+def test_define_block_retains_converts_or_deletes_with_its_record() -> None:
+    doc = CadApplication().create_document("a")
+    ways: tuple[tuple[Literal["retain", "convert", "delete"], bool], ...] = (
+        ("retain", True),
+        ("convert", False),
+        ("delete", False),
+    )
+    for objects, kept in ways:
+        a, _ = doc.add_line((0, 0), (4, 0))
+        name = f"B_{objects}"
+        placed, changes = doc.define_block(
+            name,
+            (0, 0),
+            [a],
+            objects=objects,
+            description="A bar",
+            units=4,
+            scale_uniformly=True,
+            explodable=False,
+        )
+        assert (placed is not None) == (objects == "convert"), objects
+        assert (a in [e.id for e in doc.get_entities()]) == kept, objects
+        assert doc.undo_name == "BLOCK" and not changes.is_empty
+        info = doc.block_info(name)
+        assert info is not None
+        assert (info.description, info.units, info.scales_uniformly, info.is_explodable) == (
+            "A bar",
+            4,
+            True,
+            False,
+        )
+    with pytest.raises(ValueError, match="objects must be"):
+        doc.define_block("X", (0, 0), [1], objects="keep")  # type: ignore[arg-type]
+
+
+def test_define_block_redefines_a_block_in_use() -> None:
+    doc = CadApplication().create_document("a")
+    a, _ = doc.add_line((0, 0), (2, 0))
+    reference, _ = doc.create_block("MARCO", (0, 0), [a])
+    b, _ = doc.add_line((0, 0), (0, 5))
+    placed, _ = doc.define_block("marco", (0, 0), [b], objects="delete", redefine=True)
+    assert placed is None and doc.block_names == ["MARCO"]
+    assert ends(doc, reference) == [(0.0, 0.0), (0.0, 5.0)], "the reference shows the new contents"
+    with pytest.raises(InvalidOperationError, match="exists"):
+        doc.define_block("MARCO", (0, 0), [reference])
+    with pytest.raises(InvalidOperationError, match="itself"):
+        doc.define_block("MARCO", (0, 0), [reference], redefine=True)
+
+
+def test_define_block_never_redefines_a_dynamic_block() -> None:
+    from test_block_editor import LOOKUP
+    from test_commands import regression_drawing
+
+    doc = CadApplication().open_document(regression_drawing(LOOKUP))
+    a, _ = doc.add_line((0, 0), (1, 0))
+    with pytest.raises(InvalidOperationError, match="dynamic"):
+        doc.define_block("My_Look_Block", (0, 0), [a], redefine=True)
+    assert doc.is_dynamic_block("My_Look_Block") and a in [e.id for e in doc.get_entities()]
+
+
+def test_explode_leaves_a_block_that_does_not_allow_it() -> None:
+    h = Harness()
+    fixed, _ = h.document.define_block("FIJO", (10, 10), [h.a], explodable=False)
+    free, _ = h.document.define_block("LIBRE", (10, 10), [h.b])
+    assert fixed is not None and free is not None
+    h.session.select(h.document, [fixed, free])
+    h.run("EXPLODE")
+    assert "FIJO does not allow exploding." in h.messages()
+    kinds = sorted(e.kind for e in h.document.get_entities())
+    assert kinds == ["INSERT", "LINE"], "LIBRE exploded, FIJO left"
+    h.session.select(h.document, [fixed])
+    steps = len(h.document.undo_history)
+    h.run("EXPLODE")
+    assert h.messages()[-1] == "FIJO does not allow exploding." and h.runner.active is None
+    assert len(h.document.undo_history) == steps, "nothing exploded: no undo step"
+    assert h.session.selection(h.document) == (fixed,), "cancelled: the selection stays"
+    assert sorted(e.kind for e in h.document.get_entities()) == ["INSERT", "LINE"]
