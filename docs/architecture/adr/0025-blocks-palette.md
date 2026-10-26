@@ -215,7 +215,14 @@ Each step is its own pull request with tests, as ADR 0023 D5:
 6. The Recent source.
 7. The Template source: reading `.dwt`, copying definitions (D6), the
    clash dialog, the empty state, dropping a file.
-8. The context menu's operations, as their core operations land.
+8. The context menu's operations, as their core operations land. The
+   maintainer split it on 2026-10-25:
+   - 8a: editing a block by a double click on it in the drawing, through
+     the Edit Block Definition dialog (ADR 0023 D3);
+   - 8b: the context menu with the operations that exist (Insert, Insert
+     with options, Copy to drawing, Edit block, Redefine from template);
+   - 8c, 8d, 8e: Rename, Select references and Purge, each with its new
+     core operation.
 
 ## Implementation notes
 
@@ -323,6 +330,7 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - A template's block that clashes cannot be asked about during a drag. INSERT starts when the block is dropped, and places it at the drop point after the dialog, found as a click finds a point (object snaps, ORTHO).
   - BLOCK checks the name against the drawing and the loaded template, as decided in D6. The session knows the palette's template (`Session.template`).
   - The UI service `resolve_block_clashes` takes the `BlockClash` records and returns a `ClashChoice` for each.
+- **Step 8a (2026-10-25):** a double click on a block reference opens the Edit Block Definition dialog with that block chosen, then the block editor on its grey background (ADR 0023 D3). The new UI service `choose_block_to_edit` replaces BEDIT's plain list; INSERT keeps its own.
 
 ## Consequences
 

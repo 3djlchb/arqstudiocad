@@ -4,7 +4,8 @@ The core rasterizes the drawing into an image (``CadView``); this widget only
 puts that image on screen, so no Python runs per entity. It renders at the
 screen's physical resolution (high DPI) and again only when something
 changed. Middle-button drag pans, the wheel zooms about the cursor, a
-middle-button double click zooms to the extents, as in AutoCAD.
+middle-button double click zooms to the extents, as in AutoCAD; a left
+double click on an entity asks to edit it (a block: BEDIT, ADR 0023 D3).
 
 Selection, as AutoCAD (ADR 0016 D3, D4): a click adds the entity under the
 cursor and Shift+click removes it; dragging left to right is a window (blue,
@@ -114,6 +115,13 @@ def snap_name(kind: str) -> str:
     return names.get(kind, kind)
 
 
+#: The block editor's background, so it is never mistaken for the drawing:
+#: a mid grey, as AutoCAD's and progeCAD's, the same in both themes; ACI 7
+#: stays white on it (maintainer, 2026-10-25). One value, which the Options
+#: dialog will let the user change.
+BLOCK_EDITOR_BACKGROUND = (96, 96, 96)
+
+
 class Viewport(QWidget):
     """Shows one document; also the :class:`~arqstudiocad.commands.ViewControl`
     the ZOOM command acts on."""
@@ -142,6 +150,9 @@ class Viewport(QWidget):
     #: That drag was dropped with no INSERT running yet (its clashes are
     #: asked about first): where, found as a click finds a point.
     block_dropped = Signal(object)
+    #: An entity was double-clicked with the left button (its id), with no
+    #: point asked for: it should be edited.
+    entity_double_clicked = Signal(int)
 
     def __init__(
         self,
@@ -385,6 +396,12 @@ class Viewport(QWidget):
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.MouseButton.MiddleButton:
             self.zoom_extents()
+            event.accept()
+            return
+        if event.button() == Qt.MouseButton.LeftButton and not self._asking:
+            picked = self.pick_at(event.position())
+            if picked is not None:
+                self.entity_double_clicked.emit(picked)
             event.accept()
             return
         super().mouseDoubleClickEvent(event)

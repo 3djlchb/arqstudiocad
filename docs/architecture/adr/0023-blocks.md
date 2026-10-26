@@ -59,6 +59,21 @@ Saving and closing *(maintainer, 2026-10-20)*:
   closing its tab, is BCLOSE. Closing a drawing closes its block editors
   first, asking about each.
 
+Editing by a double click *(maintainer, 2026-10-25, after a video of
+progeCAD's workflow)*:
+
+- A left double click on a block reference in the drawing starts BEDIT
+  with that block chosen. Nothing happens while a command is running.
+- BEDIT, typed or so started, chooses the block in an **Edit Block
+  Definition** dialog (Spanish *Editar definición de bloque*), as
+  AutoCAD's and progeCAD's: the block's name, the drawing's blocks, the
+  chosen block's preview and its description, OK and Cancel. A dynamic
+  block is shown with its preview, but OK is disabled, with the reason
+  (D3a). The dialog does not offer `<Current drawing>` yet.
+- The block editor is drawn on a **grey background**, the same in both
+  themes, so it is never mistaken for the drawing. It is one value, which
+  the Options dialog will let the user change.
+
 ### D3a — Dynamic blocks wait for the parametric engine *(maintainer, 2026-10-20)*
 
 Dynamic blocks are kept and shown in their current state (ADR 0017 D6);

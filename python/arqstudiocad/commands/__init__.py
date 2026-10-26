@@ -197,6 +197,12 @@ class UiServices(Protocol):
         ``template`` also has (True), or type another name (False)."""
         ...
 
+    def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
+        """A block of ``document`` to open in the block editor, chosen in the
+        Edit Block Definition dialog with ``chosen`` selected first (BEDIT,
+        a double click on a block); None if it was cancelled."""
+        ...
+
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         """One of the drawing's blocks, chosen in a window called ``title``
         (INSERT, BEDIT, ADR 0023); None if it was cancelled."""

@@ -145,6 +145,9 @@ class FakeUi:
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         return None
 
+    def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
+        return None
+
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None
 
