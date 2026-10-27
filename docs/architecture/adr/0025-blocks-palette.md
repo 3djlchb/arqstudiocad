@@ -1,6 +1,6 @@
 # 0025. The Blocks palette
 
-Date: 2026-10-22 · Status: Proposed · Builds on [0006](0006-i18n.md),
+Date: 2026-10-22 (accepted 2026-10-27) · Status: Accepted · Builds on [0006](0006-i18n.md),
 [0013](0013-application-shell.md), [0015](0015-workspaces.md),
 [0016](0016-editing-workflow.md), [0023](0023-blocks.md)
 
@@ -374,7 +374,7 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - **-PURGE** (alias `-PU`; Spanish `-LIMPIA`) asks at the command line for the object type (Blocks), the names (wildcards, `*` for all) and whether to purge nested items.
   - A block open in a block editor is not purged, and the command says so.
   - The palette's context menu gains **Purge…** for the drawing's blocks. It is enabled only for an unused block that is not dynamic, and asks first through `ask_purge_block`.
-  - With this step, every step of D9 is done.
+  - With this step, every step of D9 is done, and the maintainer accepted the ADR (2026-10-27).
 
 ## Consequences
 
