@@ -367,6 +367,53 @@ def _renamed(ctx: CommandContext, document: CadDocument, old: str, new: str) -> 
     return None
 
 
+def selectblock(ctx: CommandContext) -> CommandScript:
+    """SELECTBLOCK: selects the references to a block placed in the
+    drawing, replacing the selection; the view stays where it is (ADR 0025
+    step 8d, maintainer 2026-10-26). Asks the block's name."""
+    document = ctx.document()
+    if not document.block_names:
+        raise CommandCancelledError(tr("The drawing has no blocks."))
+    while (name := _named(document, (yield ctx.ask(tr("Block name"))).strip())) is None:
+        ctx.message(tr("There is no such block."))
+    _select_references(ctx, document, name)
+
+
+def select_named(name: str) -> Command:
+    """SELECTBLOCK with block ``name`` already chosen, as the Blocks
+    palette's context menu starts it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        _select_references(ctx, document, found)
+        return
+        yield
+
+    return Command("SELECTBLOCK", run, repeat=False)
+
+
+def _select_references(ctx: CommandContext, document: CadDocument, name: str) -> None:
+    """Selects block ``name``'s references in model space, alone, and says
+    how many others could not be: those that draw nothing, those inside
+    other blocks (selected as a whole) and those in layouts."""
+    shown, hidden, nested, in_layouts = document.find_block_references(name)
+    ctx.session.clear_selection(document)
+    ctx.session.select(document, shown)
+    if len(shown) == 1:
+        ctx.message(tr("1 reference to {name} selected.", name=name))
+    else:
+        ctx.message(tr("{count} references to {name} selected.", count=len(shown), name=name))
+    if hidden:
+        ctx.message(tr("Not selected: {count} on frozen or off layers.", count=hidden))
+    if nested:
+        ctx.message(tr("Not selected: {count} inside other blocks.", count=nested))
+    if in_layouts:
+        ctx.message(tr("Not selected: {count} in layouts.", count=in_layouts))
+
+
 def insert_named(
     name: str,
     scale: float,
@@ -770,4 +817,5 @@ BLOCK_COMMANDS = (
     Command("COPYBLOCK", copyblock),
     Command("RENAME", rename, ("REN",)),
     Command("-RENAME", rename_prompts, ("-REN",)),
+    Command("SELECTBLOCK", selectblock),
 )

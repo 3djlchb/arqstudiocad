@@ -140,14 +140,20 @@ impl Document {
     /// palette (ADR 0025 D3). `None` unless INSERT can place it.
     pub fn block_drawing(&self, name: &str) -> Option<Vec<DrawItem>> {
         let info = self.block_info(name)?;
-        let reference = EntityType::Insert(Insert::new(info.name, Vector3::new(0.0, 0.0, 0.0)));
+        Some(self.contents_drawing(&info.name))
+    }
+
+    /// What block record `name` draws, anonymous ones included, as a
+    /// reference at the origin would draw it, every layer shown.
+    pub(crate) fn contents_drawing(&self, name: &str) -> Vec<DrawItem> {
+        let reference = EntityType::Insert(Insert::new(name, Vector3::new(0.0, 0.0, 0.0)));
         let painter = Painter {
             every_layer: true,
             ..Painter::new(self)
         };
         let mut out = Vec::new();
         painter.emit(&reference, &Context::top(), &mut out);
-        Some(out)
+        out
     }
 
     /// What to draw for every entity in model space, in drawing order.
