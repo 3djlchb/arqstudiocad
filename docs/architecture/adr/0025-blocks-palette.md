@@ -365,6 +365,16 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - **SELECTBLOCK** (Spanish `SELECBLOQUE`) asks for the block's name. It replaces the selection with the references, without moving the view, and says how many were selected and how many could not be.
   - The palette's context menu gains **Select in drawing** for the drawing's blocks, dynamic ones included. It runs SELECTBLOCK with the block chosen.
   - The maintainer intends these selections to feed budget tables; the block data they need is milestone 02.11.
+- **Step 8e (2026-10-26):** purging unused blocks *(maintainer, 2026-10-26)*:
+  - The core operation `Document::purge_blocks(names, nested)` removes each block's contents, its BLOCK and ENDBLK, every object owned by any of them or by its record (extension dictionaries and what they hold), and the record itself. One undo step, named PURGE.
+  - `Document::unused_blocks` lists the blocks INSERT can place that nothing references, anywhere, including through anonymous copies (step 8d). Dynamic blocks are listed, but `purge_blocks` refuses them until milestone 04.1. It also refuses a block in use. Python: `CadDocument.unused_blocks` and `purge_blocks(names, nested=True)`.
+  - With **Purge nested items**, as AutoCAD's, the blocks a purged block held also go once nothing else uses them, and so on down.
+  - A purged drawing passes the codec's audit with no new issue in memory on the test drawings. Saved and read back, the maintainer's real drawings keep exactly the issues they had. The codec still keeps index entries for removed records and entities, so an audit in memory flags them after purging a block from a real drawing. Clearing those entries needs an API in the codec fork.
+  - **PURGE** (alias `PU`; Spanish `LIMPIA`) opens a Purge dialog through the new UI service `purge_blocks`. It lists the unused blocks with a box and a preview, and holds Purge nested items (checked by default), **Purge**, **Purge All** and **Close**. A dynamic block is listed without a box, saying why. Only blocks are purged for now; layers, styles and linetypes can join later.
+  - **-PURGE** (alias `-PU`; Spanish `-LIMPIA`) asks at the command line for the object type (Blocks), the names (wildcards, `*` for all) and whether to purge nested items.
+  - A block open in a block editor is not purged, and the command says so.
+  - The palette's context menu gains **Purge…** for the drawing's blocks. It is enabled only for an unused block that is not dynamic, and asks first through `ask_purge_block`.
+  - With this step, every step of D9 is done.
 
 ## Consequences
 

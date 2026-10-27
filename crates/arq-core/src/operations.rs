@@ -213,6 +213,17 @@ impl CadDocument {
             .1)
     }
 
+    /// Purges unused blocks `names`, and with `nested` the blocks they held
+    /// that nothing else uses (PURGE, ADR 0025 step 8e). One undo step;
+    /// returns the blocks purged.
+    pub fn purge_blocks(
+        &mut self,
+        names: &[String],
+        nested: bool,
+    ) -> CadResult<(Vec<String>, ChangeSet)> {
+        self.transact("PURGE", |doc| Ok(doc.purge_blocks(names, nested)?))
+    }
+
     /// A new drawing holding block `name`'s contents alone, for the block
     /// editor (BEDIT, ADR 0023 D3); this drawing is unchanged.
     pub fn block_editor(&self, name: &str) -> CadResult<CadDocument> {

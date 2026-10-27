@@ -5,6 +5,7 @@ editor of its own, and save it back into the drawing. The Blocks palette
 starts INSERT and BEDIT with the block already chosen (ADR 0025 D5), loads
 templates and inserts their blocks, copying each first (D6, D7)."""
 
+import fnmatch
 import math
 from collections.abc import Callable, Generator, Sequence
 from dataclasses import replace
@@ -414,6 +415,101 @@ def _select_references(ctx: CommandContext, document: CadDocument, name: str) ->
         ctx.message(tr("Not selected: {count} in layouts.", count=in_layouts))
 
 
+def purge(ctx: CommandContext) -> CommandScript:
+    """PURGE: unused blocks chosen in the Purge dialog are purged, nested
+    items too when asked (ADR 0025 step 8e, maintainer 2026-10-26). Only
+    blocks for now."""
+    if ctx.ui is None:
+        yield from purge_prompts(ctx)
+        return
+    document = ctx.document()
+    if not document.unused_blocks:
+        raise CommandCancelledError(tr("No unused blocks to purge."))
+    answer = ctx.ui.purge_blocks(document)
+    if answer is None:
+        raise CommandCancelledError()
+    names, nested = answer
+    _purge(ctx, document, names, nested)
+
+
+def purge_prompts(ctx: CommandContext) -> CommandScript:
+    """-PURGE: the kind of objects, the names (wildcards allowed, ``*``
+    every one) and whether to purge nested items, asked at the command line
+    as AutoCAD's; only blocks for now."""
+    document = ctx.document()
+    yield ctx.choose(
+        tr("Type of unused objects to purge"), [Option("B", tr("Blocks"))], default="B"
+    )
+    typed = (yield ctx.ask(tr("Names to purge"), default="*")).strip() or "*"
+    nested = yield ctx.choose(
+        tr("Purge nested items?"), [Option("Y", tr("Yes")), Option("N", tr("No"))], default="Y"
+    )
+    patterns = [p.strip().casefold() for p in typed.split(",") if p.strip()]
+    found = [
+        n
+        for n in document.unused_blocks
+        if any(fnmatch.fnmatchcase(n.casefold(), p) for p in patterns)
+    ]
+    dynamic = [n for n in found if document.is_dynamic_block(n)]
+    if dynamic:
+        ctx.message(tr("Not purged: {names} (dynamic blocks).", names=", ".join(dynamic)))
+    names = [n for n in found if n not in dynamic]
+    if not names:
+        raise CommandCancelledError(tr("No unused blocks to purge."))
+    _purge(ctx, document, names, nested == "Y")
+
+
+def purge_named(name: str) -> Command:
+    """PURGE of block ``name`` alone, nested items included, once confirmed,
+    as the Blocks palette's context menu starts it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        if document.is_dynamic_block(found):
+            raise CommandCancelledError(
+                tr("{name} is a dynamic block: it cannot be purged yet.", name=found)
+            )
+        if found not in document.unused_blocks:
+            raise CommandCancelledError(tr("{name} is in use: it cannot be purged.", name=found))
+        if ctx.ui is not None and not ctx.ui.ask_purge_block(found):
+            raise CommandCancelledError()
+        _purge(ctx, document, [found], nested=True)
+        return
+        yield
+
+    return Command("PURGE", run, repeat=False)
+
+
+def _purge(ctx: CommandContext, document: CadDocument, names: list[str], nested: bool) -> None:
+    """Purges blocks ``names`` of ``document`` in one undo step, saying which
+    went; a block open in a block editor stays."""
+    edited = {
+        found[1].lower()
+        for editor in ctx.session.block_editors(document)
+        if (found := ctx.session.block_editor_of(editor)) is not None
+    }
+    kept = [n for n in names if n.lower() in edited]
+    if kept:
+        ctx.message(tr("Not purged: {names} (open in a block editor).", names=", ".join(kept)))
+    names = [n for n in names if n.lower() not in edited]
+    if not names:
+        raise CommandCancelledError()
+    try:
+        purged, changes = document.purge_blocks(names, nested)
+    except InvalidOperationError as error:
+        raise CommandCancelledError(tr("Nothing was purged: {reason}", reason=error)) from None
+    ctx.session.report(document, changes)
+    if len(purged) == 1:
+        ctx.message(tr("1 block purged: {names}.", names=purged[0]))
+    else:
+        ctx.message(
+            tr("{count} blocks purged: {names}.", count=len(purged), names=", ".join(purged))
+        )
+
+
 def insert_named(
     name: str,
     scale: float,
@@ -818,4 +914,6 @@ BLOCK_COMMANDS = (
     Command("RENAME", rename, ("REN",)),
     Command("-RENAME", rename_prompts, ("-REN",)),
     Command("SELECTBLOCK", selectblock),
+    Command("PURGE", purge, ("PU",)),
+    Command("-PURGE", purge_prompts, ("-PU",)),
 )

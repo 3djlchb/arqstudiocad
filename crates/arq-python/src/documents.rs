@@ -540,6 +540,25 @@ impl CadDocument {
         Ok((found.shown, found.hidden, found.nested, found.in_layouts))
     }
 
+    /// The blocks INSERT can place that nothing references, dynamic ones
+    /// included (PURGE, ADR 0025 step 8e).
+    #[getter]
+    fn unused_blocks(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.document().unused_blocks())
+    }
+
+    /// Purges unused blocks `names`, and with `nested` the blocks they held
+    /// that nothing else uses: one undo step. Returns the blocks purged.
+    #[pyo3(signature = (names, nested = true))]
+    fn purge_blocks(
+        &self,
+        names: Vec<String>,
+        nested: bool,
+    ) -> PyResult<(Vec<String>, CadChangeSet)> {
+        self.edit(|cad| cad.purge_blocks(&names, nested))
+            .map(|(purged, changes)| (purged, CadChangeSet(changes)))
+    }
+
     /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a
     /// `size` × `size` RGBA image (premultiplied, rows top to bottom), its
     /// drawing fitted in on transparency, in its own colors as seen over

@@ -161,6 +161,12 @@ class FakeUi:
     def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
         return None
 
+    def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
+        return None
+
+    def ask_purge_block(self, name: str) -> bool:
+        return False
+
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None
 
