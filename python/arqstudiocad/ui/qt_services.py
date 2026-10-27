@@ -22,6 +22,7 @@ from arqstudiocad.ui import (
     block_clash_dialog,
     block_definition_dialog,
     edit_block_dialog,
+    purge_dialog,
     rename_block_dialog,
     text_dialog,
 )
@@ -205,6 +206,20 @@ class QtUiServices:
 
     def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
         return rename_block_dialog.rename_block(document, chosen, self._parent)
+
+    def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
+        return purge_dialog.purge_blocks(document, self._parent)
+
+    def ask_purge_block(self, name: str) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            tr("Purge"),
+            tr("Purge block {name} from the drawing?", name=name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            self._parent,
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
 
     def ask_redefine_block(self, name: str, references: int) -> bool:
         if references == 1:

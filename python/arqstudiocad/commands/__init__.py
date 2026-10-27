@@ -247,6 +247,17 @@ class UiServices(Protocol):
         None if it was cancelled."""
         ...
 
+    def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
+        """The unused blocks of ``document`` to purge, and whether to purge
+        nested items, chosen in the Purge dialog (PURGE, ADR 0025 step 8e);
+        None if it was closed."""
+        ...
+
+    def ask_purge_block(self, name: str) -> bool:
+        """Whether to purge block ``name`` from the drawing (the Blocks
+        palette's Purge)."""
+        ...
+
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         """One of the drawing's blocks, chosen in a window called ``title``
         (INSERT, BEDIT, ADR 0023); None if it was cancelled."""

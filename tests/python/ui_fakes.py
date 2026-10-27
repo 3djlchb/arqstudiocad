@@ -64,6 +64,11 @@ class QuietUi:
     #: (None: cancelled); the blocks it was opened on.
     rename_answers: list[tuple[str, str] | None] = field(default_factory=list)
     rename_chosen: list[str | None] = field(default_factory=list)
+    #: The Purge dialog's answer (None: closed), whether it was shown, and
+    #: the answer to the palette's "Purge block X?".
+    purge_answer: tuple[list[str], bool] | None = None
+    purge_shown: int = 0
+    purge_confirm: bool = True
     #: The block the Edit Block Definition dialog was opened on.
     edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
@@ -122,6 +127,14 @@ class QuietUi:
     def ask_redefine_block(self, name: str, references: int) -> bool:
         self.asked.append(f"redefine {name}: {references}")
         return self.redefine_answer
+
+    def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
+        self.purge_shown += 1
+        return self.purge_answer
+
+    def ask_purge_block(self, name: str) -> bool:
+        self.asked.append(f"purge {name}")
+        return self.purge_confirm
 
     def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
         self.rename_chosen.append(chosen)

@@ -2,6 +2,9 @@
   "-BLOCK": [
     "-BLOQUE"
   ],
+  "-PURGE": [
+    "-LIMPIA"
+  ],
   "-RENAME": [
     "-CAMBIANOM"
   ],
@@ -78,6 +81,9 @@
   ],
   "PROPERTIES": [
     "PROPIEDADES"
+  ],
+  "PURGE": [
+    "LIMPIA"
   ],
   "REDO": [
     "REHACER"
