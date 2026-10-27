@@ -532,3 +532,142 @@ fn a_block_that_does_not_allow_exploding_is_not_exploded() {
     let free = doc.create_block("LIBRE", p(10.0, 10.0), &other).unwrap();
     assert_eq!(doc.explode_insert(free).unwrap().len(), 2);
 }
+
+// RENAME (ADR 0025 step 8c)
+
+/// PUERTA placed twice (one spelled in lower case) and once inside MURO,
+/// which is placed too.
+fn doors() -> Document {
+    let door = door_block();
+    let wall: Vec<&str> = vec![
+        "0", "BLOCK", "8", "0", "2", "MURO", "70", "0", "10", "0", "20", "0", "30", "0", "3",
+        "MURO", //
+        "0", "INSERT", "8", "0", "2", "PUERTA", "10", "5", "20", "0", "30", "0", //
+        "0", "ENDBLK", "8", "0",
+    ];
+    dxf(
+        LAYERS,
+        &[&door, &wall],
+        &[
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "puerta", "10", "9", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "MURO", "10", "0", "20", "5", "30", "0",
+            ],
+        ],
+    )
+}
+
+/// What every reference in model space draws, in order.
+fn everything_drawn(doc: &Document) -> Vec<Vec<(i64, i64)>> {
+    doc.entities().iter().map(|e| drawn(doc, e.id())).collect()
+}
+
+#[test]
+fn renaming_a_block_renames_every_reference_to_it() {
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    assert_eq!(doc.rename_block("puerta", "Door").unwrap(), "PUERTA");
+    assert_eq!(doc.block_names(), ["Door", "MURO"]);
+    assert!(doc.block_info("PUERTA").is_none());
+    assert_eq!(references(&doc, "Door"), 3, "two placed, one inside MURO");
+    assert_eq!(everything_drawn(&doc), before, "drawn as before");
+    // Only the case changed: allowed, and spelled as typed.
+    doc.rename_block("DOOR", "door").unwrap();
+    assert_eq!(doc.block_names(), ["door", "MURO"]);
+    assert_eq!(references(&doc, "door"), 3);
+    // The same name: nothing to do.
+    assert_eq!(doc.rename_block("door", "door").unwrap(), "door");
+}
+
+#[test]
+fn a_renamed_block_is_saved_and_read_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    doc.rename_block("PUERTA", "Puerta de paso").unwrap();
+    for name in ["doors.dwg", "doors.dxf"] {
+        let path = dir.path().join(name);
+        doc.save(&path).unwrap();
+        let back = Document::open(&path).unwrap();
+        assert_eq!(back.block_names(), ["MURO", "Puerta de paso"], "{name}");
+        assert_eq!(references(&back, "Puerta de paso"), 3, "{name}");
+        assert_eq!(everything_drawn(&back), before, "{name}");
+    }
+}
+
+#[test]
+fn what_cannot_be_renamed_is_refused_and_nothing_changes() {
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    for (name, new, why) in [
+        ("PUERTA", "muro", "a block named \"muro\" exists"),
+        ("PUERTA", "A/B", "not a valid block name"),
+        ("PUERTA", "*U9", "not a valid block name"),
+        ("PUERTA", " PUERTA", "not a valid block name"),
+        ("PUERTA", "", "not a valid block name"),
+        ("NADA", "OTRA", "no block named"),
+        ("*Model_Space", "OTRA", "no block named"),
+    ] {
+        assert!(
+            matches!(
+                doc.rename_block(name, new),
+                Err(DocumentError::InvalidBlockName(m)) if m.contains(why)
+            ),
+            "{name:?} to {new:?}"
+        );
+    }
+    assert_eq!(doc.block_names(), ["MURO", "PUERTA"]);
+    assert_eq!(everything_drawn(&doc), before);
+}
+
+#[test]
+fn undo_gives_a_renamed_block_its_name_back() {
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    doc.begin_change().unwrap();
+    doc.rename_block("PUERTA", "Door").unwrap();
+    let mut change = doc.commit_change().unwrap();
+    let summary = change.summary().clone();
+    assert_eq!(summary.blocks_created(), ["Door"]);
+    assert_eq!(summary.blocks_deleted(), ["PUERTA"]);
+    assert_eq!(
+        summary.modified().len(),
+        2,
+        "the two placed doors; MURO's reference draws the same"
+    );
+    let undone = doc.undo_change(&mut change).unwrap();
+    assert_eq!(undone.blocks_created(), ["PUERTA"]);
+    assert_eq!(doc.block_names(), ["MURO", "PUERTA"]);
+    assert_eq!(references(&doc, "PUERTA"), 3);
+    assert_eq!(everything_drawn(&doc), before);
+    doc.redo_change(&mut change).unwrap();
+    assert_eq!(references(&doc, "Door"), 3);
+    // Its own name again: nothing changes.
+    doc.begin_change().unwrap();
+    doc.rename_block("door", "Door").unwrap();
+    assert!(doc.commit_change().unwrap().summary().is_empty());
+}
+
+#[test]
+#[ignore = "needs tools/fetch_codec_samples.py"]
+fn a_dynamic_block_is_not_renamed() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/corpus/acadrust/fixtures/dynamic-blocks/lookup.dwg");
+    let mut doc = Document::open(path).unwrap();
+    let names = doc.block_names();
+    let name = names
+        .iter()
+        .find(|n| doc.is_dynamic_block(n))
+        .expect("the sample's dynamic block")
+        .clone();
+    assert!(matches!(
+        doc.rename_block(&name, "OTRO"),
+        Err(DocumentError::InvalidBlockName(m)) if m.contains("dynamic")
+    ));
+    assert_eq!(doc.block_names(), names);
+}

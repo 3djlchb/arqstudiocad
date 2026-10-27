@@ -12,6 +12,7 @@ use acadrust::types::{Transform, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::Point2;
 
+use crate::block_editor::block_of;
 use crate::document::Document;
 use crate::entity::EntityId;
 use crate::error::{DocumentError, DocumentResult};
@@ -276,6 +277,41 @@ impl Document {
             BlockObjects::Convert => self.insert_block(&block, base, 1.0, 0.0).map(Some),
             BlockObjects::Retain | BlockObjects::Delete => Ok(None),
         }
+    }
+
+    /// Renames block `name`, found ignoring case, to `new_name`; every
+    /// reference follows, in model and paper space and inside other blocks
+    /// (RENAME, ADR 0025 step 8c). Changing only the case is allowed. A
+    /// name in use, a dynamic block, or one INSERT cannot place is refused.
+    /// Returns the old name as the drawing spelled it.
+    pub fn rename_block(&mut self, name: &str, new_name: &str) -> DocumentResult<String> {
+        let block = self.editable_block(name)?;
+        check_block_name(new_name)?;
+        if block == new_name {
+            return Ok(block);
+        }
+        if !block.eq_ignore_ascii_case(new_name) && self.cad().block_records.contains(new_name) {
+            return Err(DocumentError::InvalidBlockName(format!(
+                "a block named {new_name:?} exists"
+            )));
+        }
+        let references: Vec<Handle> = self
+            .cad()
+            .entities()
+            .filter(|e| block_of(e).is_some_and(|b| b.eq_ignore_ascii_case(&block)))
+            .map(|e| e.as_entity().handle())
+            .collect();
+        self.touch_structure();
+        self.cad_mut()
+            .block_records
+            .rename(&block, new_name)
+            .map_err(|e| DocumentError::InvalidBlockName(e.to_string()))?;
+        for h in references {
+            if let Some(EntityType::Insert(insert)) = self.cad_mut().get_entity_mut(h) {
+                insert.block_name = new_name.to_owned();
+            }
+        }
+        Ok(block)
     }
 
     /// Places block `name` at `point`, scaled by `scale` and turned

@@ -60,6 +60,10 @@ class QuietUi:
     block_dialog_shown: list[BlockDefinitionState] = field(default_factory=list)
     #: Whether to redefine a block whose name is in use.
     redefine_answer: bool = True
+    #: The Rename dialog's answers, in turn: the block and its new name
+    #: (None: cancelled); the blocks it was opened on.
+    rename_answers: list[tuple[str, str] | None] = field(default_factory=list)
+    rename_chosen: list[str | None] = field(default_factory=list)
     #: The block the Edit Block Definition dialog was opened on.
     edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
@@ -118,6 +122,10 @@ class QuietUi:
     def ask_redefine_block(self, name: str, references: int) -> bool:
         self.asked.append(f"redefine {name}: {references}")
         return self.redefine_answer
+
+    def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
+        self.rename_chosen.append(chosen)
+        return self.rename_answers.pop(0) if self.rename_answers else None
 
     def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
         # The Edit Block Definition dialog: what it lists and selects first.

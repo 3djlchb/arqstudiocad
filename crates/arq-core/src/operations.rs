@@ -205,6 +205,14 @@ impl CadDocument {
         })
     }
 
+    /// Renames block `name` to `new_name`; every reference follows (RENAME,
+    /// ADR 0025 step 8c). One undo step.
+    pub fn rename_block(&mut self, name: &str, new_name: &str) -> CadResult<ChangeSet> {
+        Ok(self
+            .transact("RENAME", |doc| Ok(doc.rename_block(name, new_name)?))?
+            .1)
+    }
+
     /// A new drawing holding block `name`'s contents alone, for the block
     /// editor (BEDIT, ADR 0023 D3); this drawing is unchanged.
     pub fn block_editor(&self, name: &str) -> CadResult<CadDocument> {

@@ -24,6 +24,7 @@ from arqstudiocad.core import CadChangeSet
 __all__ = [
     "ActiveDocumentChanged",
     "ActiveLayerChanged",
+    "BlockRenamed",
     "BlockSaved",
     "BlockUsed",
     "CommandCancelled",
@@ -79,6 +80,16 @@ class BlockSaved(Event):
     editor_id: int
     document_id: int
     name: str
+
+
+@dataclass(frozen=True, slots=True)
+class BlockRenamed(Event):
+    """Block ``old`` of document ``document_id`` is called ``new`` now
+    (RENAME, ADR 0025 step 8c): the Blocks palette follows it."""
+
+    document_id: int
+    old: str
+    new: str
 
 
 @dataclass(frozen=True, slots=True)

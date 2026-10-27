@@ -14,6 +14,7 @@ from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     ActiveLayerChanged,
+    BlockRenamed,
     BlockSaved,
     BlockUsed,
     DocumentChanged,
@@ -111,6 +112,13 @@ class Session:
         document, name = self._editors[editor.id]
         changes = self.report(document, document.save_block(name, editor))
         self.bus.publish(BlockSaved(editor.id, document.id, name))
+        return changes
+
+    def rename_block(self, document: CadDocument, old: str, new: str) -> CadChangeSet:
+        """Renames block ``old`` of ``document`` to ``new``: one undo step,
+        published, then ``BlockRenamed``."""
+        changes = self.report(document, document.rename_block(old, new))
+        self.bus.publish(BlockRenamed(document.id, old, new))
         return changes
 
     def block_used(self, source: CadDocument, name: str, how: str) -> None:

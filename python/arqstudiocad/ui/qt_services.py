@@ -22,6 +22,7 @@ from arqstudiocad.ui import (
     block_clash_dialog,
     block_definition_dialog,
     edit_block_dialog,
+    rename_block_dialog,
     text_dialog,
 )
 
@@ -201,6 +202,9 @@ class QtUiServices:
             # The choice made last is the next one's (ADR 0023 D2a).
             self._settings.setValue(BLOCK_OBJECTS_SETTING, answer[1].objects)
         return answer
+
+    def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
+        return rename_block_dialog.rename_block(document, chosen, self._parent)
 
     def ask_redefine_block(self, name: str, references: int) -> bool:
         if references == 1:
