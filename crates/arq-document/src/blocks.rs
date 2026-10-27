@@ -6,9 +6,13 @@
 
 use std::collections::{HashMap, HashSet};
 
+use acadrust::document::{
+    SemanticNodeV1, SemanticPartV1, SemanticReferenceV1, SemanticTableRecordV1,
+};
 use acadrust::entities::{AttributeEntity, Insert};
 use acadrust::tables::{BlockRecord, TableEntry};
 use acadrust::types::{Transform, Vector3};
+use acadrust::xdata::XDataValue;
 use acadrust::{EntityType, Handle};
 use arq_geometry::Point2;
 
@@ -169,10 +173,11 @@ impl Document {
             .iter()
             .map(|b| (b.handle(), b.name.as_str()))
             .collect();
+        let copies = self.anonymous_copies();
         let mut counts = HashMap::new();
         for e in cad.entities() {
             if let EntityType::Insert(insert) = e {
-                let definition = self.definition_of(insert.common.handle);
+                let definition = self.definition_of(insert.common.handle, &copies);
                 if let Some(name) = definition.and_then(|h| names.get(&h)) {
                     *counts.entry((*name).to_owned()).or_insert(0) += 1;
                 }
@@ -182,13 +187,85 @@ impl Document {
     }
 
     /// The block record reference `insert` stands for: its block's, or the
-    /// dynamic block's when it draws through an anonymous copy (`*U…`).
-    fn definition_of(&self, insert: Handle) -> Option<Handle> {
+    /// dynamic block's when it draws through an anonymous copy (`*U…`),
+    /// `copies` linking those the codec cannot (`anonymous_copies`).
+    fn definition_of(&self, insert: Handle, copies: &HashMap<Handle, Handle>) -> Option<Handle> {
         let cad = self.cad();
         // The reference's own link to its dynamic block, else the anonymous
         // block's (AcadRust reads both kinds of file).
         cad.dynamic_definition_for_insert(insert)
             .map(|h| cad.dynamic_block_definition(h).unwrap_or(h))
+            .map(|h| copies.get(&h).copied().unwrap_or(h))
+    }
+
+    /// Anonymous copies (`*U…`) of a dynamic block that lost their link to
+    /// it, by the block they copy (ADR 0025 step 8d, maintainer
+    /// 2026-10-26). An application that drops dynamic-block data when it
+    /// saves keeps the copies its references draw, and AutoCAD's extended
+    /// data on them: a copy is linked when its true name
+    /// (`AcDbDynamicBlockTrueName`) names a block INSERT can place, or when
+    /// exactly one such block has the same edit tag (`AcDbBlockRepETag`)
+    /// and draws the same.
+    fn anonymous_copies(&self) -> HashMap<Handle, Handle> {
+        let cad = self.cad();
+        let mut true_names: HashMap<Handle, String> = HashMap::new();
+        let mut tags: HashMap<Handle, Vec<XDataValue>> = HashMap::new();
+        cad.semantic_inventory_v1().visit(|part| {
+            let SemanticPartV1::NonEntityExtendedData {
+                owner:
+                    SemanticReferenceV1::Resolved(SemanticNodeV1::TableRecord(
+                        SemanticTableRecordV1::BlockRecord(record),
+                    )),
+                application: Some(application),
+                values: Some(values),
+            } = part
+            else {
+                return;
+            };
+            match application.name.as_str() {
+                "AcDbDynamicBlockTrueName" => {
+                    let name = values.into_iter().find_map(|v| match v {
+                        XDataValue::String(s) => Some(s),
+                        _ => None,
+                    });
+                    if let Some(name) = name {
+                        true_names.insert(record.handle(), name);
+                    }
+                }
+                "AcDbBlockRepETag" => {
+                    tags.insert(record.handle(), values);
+                }
+                _ => {}
+            }
+        });
+        let named: Vec<(String, Handle)> = self
+            .block_names()
+            .into_iter()
+            .filter_map(|n| cad.block_records.get(&n).map(|r| (n.clone(), r.handle())))
+            .collect();
+        let mut copies = HashMap::new();
+        // Only anonymous ones: a named block is never another's copy. Those
+        // the codec links are mapped before these (`definition_of`).
+        for record in cad.block_records.iter().filter(|b| b.is_anonymous()) {
+            let h = record.handle();
+            let by_name = true_names
+                .get(&h)
+                .and_then(|t| named.iter().find(|(n, _)| n.eq_ignore_ascii_case(t)))
+                .map(|(_, d)| *d);
+            let by_contents = || {
+                let tag = tags.get(&h)?;
+                let drawn = self.contents_drawing(&record.name);
+                let mut same = named
+                    .iter()
+                    .filter(|(n, d)| tags.get(d) == Some(tag) && self.contents_drawing(n) == drawn);
+                let first = same.next()?.1;
+                same.next().is_none().then_some(first)
+            };
+            if let Some(definition) = by_name.or_else(by_contents) {
+                copies.insert(h, definition);
+            }
+        }
+        copies
     }
 
     /// Where block `name`'s references are, found ignoring case, for
@@ -204,12 +281,14 @@ impl Document {
             .and_then(|n| cad.block_records.get(&n))
             .ok_or_else(|| DocumentError::InvalidBlockName(format!("no block named {name:?}")))?
             .handle();
+        let copies = self.anonymous_copies();
         let mut found = BlockReferences::default();
         let mut placed: HashSet<Handle> = HashSet::new();
         // Model space first, in the order drawn, as a window selects.
         for e in cad.model_space_entities() {
             let h = e.as_entity().handle();
-            if !matches!(e, EntityType::Insert(_)) || self.definition_of(h) != Some(block) {
+            if !matches!(e, EntityType::Insert(_)) || self.definition_of(h, &copies) != Some(block)
+            {
                 continue;
             }
             placed.insert(h);
@@ -225,7 +304,7 @@ impl Document {
                 continue;
             };
             let h = insert.common.handle;
-            if placed.contains(&h) || self.definition_of(h) != Some(block) {
+            if placed.contains(&h) || self.definition_of(h, &copies) != Some(block) {
                 continue;
             }
             let owner = cad

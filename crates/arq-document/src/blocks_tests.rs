@@ -4,12 +4,19 @@ use std::f64::consts::FRAC_PI_2;
 
 use arq_geometry::{Line, Point2};
 
+use acadrust::entities::Insert;
+use acadrust::tables::AppId;
+use acadrust::types::Vector3;
+use acadrust::xdata::{ExtendedDataRecord, XDataValue};
+use acadrust::{EntityType, tables::TableEntry};
+
 use crate::blocks::{BlockDefinition, BlockObjects, BlockReferences};
 use crate::document::Document;
 use crate::drawing::Shape;
 use crate::entity::{EntityId, PlanGeometry};
 use crate::error::DocumentError;
 use crate::test_dxf::{LAYERS, door_block, dxf};
+use crate::translate::handle;
 
 fn p(x: f64, y: f64) -> Point2 {
     Point2::new(x, y).unwrap()
@@ -755,4 +762,153 @@ fn a_dynamic_blocks_references_are_found_through_their_anonymous_copies() {
     for id in &found.shown {
         assert_eq!(doc.entity(*id).unwrap().kind(), "INSERT");
     }
+}
+
+// Anonymous copies that lost their link (maintainer, 2026-10-26)
+
+/// Registers application `app` and gives block record `block` its
+/// extended data, as AutoCAD writes it on a dynamic block's copies.
+fn tag(doc: &mut Document, block: &str, app: &str, values: Vec<XDataValue>) {
+    let cad = doc.cad_mut();
+    if !cad.app_ids.contains(app) {
+        let mut id = AppId::new(app);
+        id.handle = cad.allocate_handle();
+        cad.app_ids.add(id).unwrap();
+    }
+    let h = cad.block_records.get(block).unwrap().handle();
+    let mut record = ExtendedDataRecord::new(app);
+    record.values = values;
+    cad.object_xdata.entry(h).or_default().add_record(record);
+}
+
+fn edit_tag(n: i32) -> Vec<XDataValue> {
+    vec![XDataValue::Integer16(1), XDataValue::Integer32(n)]
+}
+
+/// A reference to block record `name`, anonymous ones included, at `at`.
+fn place(doc: &mut Document, name: &str, at: (f64, f64)) -> EntityId {
+    let insert = Insert::new(name, Vector3::new(at.0, at.1, 0.0));
+    let h = doc
+        .cad_mut()
+        .add_entity(EntityType::Insert(insert))
+        .unwrap();
+    doc.sync_entity(h.value());
+    h.value()
+}
+
+/// Anonymous block `name` holding a copy of what block `of` holds, or of
+/// `other` when given, placed once at `at`.
+fn copy_of(
+    doc: &mut Document,
+    name: &str,
+    of: &str,
+    other: Option<EntityId>,
+    at: (f64, f64),
+) -> EntityId {
+    let owner = doc
+        .add_block_record(name, Vector3::new(0.0, 0.0, 0.0))
+        .unwrap();
+    let contents: Vec<EntityType> = match other {
+        Some(id) => vec![doc.cad().get_entity(handle(id)).unwrap().clone()],
+        None => doc.cad().entities_in_block(of).cloned().collect(),
+    };
+    for entity in contents {
+        doc.add_copy(entity, owner).unwrap();
+    }
+    place(doc, name, at)
+}
+
+/// COLUMNA from a line, placed once where the line was.
+fn column() -> (Document, EntityId) {
+    let mut doc = Document::new();
+    let a = line(&mut doc, (0.0, 0.0), (0.0, 3.0));
+    let placed = doc.create_block("COLUMNA", p(0.0, 0.0), &[a]).unwrap();
+    (doc, placed)
+}
+
+#[test]
+fn a_copy_with_the_same_edit_tag_and_contents_counts_for_its_block() {
+    let (mut doc, placed) = column();
+    let copy = copy_of(&mut doc, "*U52", "COLUMNA", None, (5.0, 0.0));
+    let again = place(&mut doc, "*U52", (10.0, 0.0));
+    assert_eq!(references(&doc, "COLUMNA"), 1, "no link yet");
+    tag(&mut doc, "COLUMNA", "AcDbBlockRepETag", edit_tag(4));
+    tag(&mut doc, "*U52", "AcDbBlockRepETag", edit_tag(4));
+    assert_eq!(references(&doc, "COLUMNA"), 3);
+    let found = doc.find_block_references("columna").unwrap();
+    assert_eq!(found.shown, [placed, copy, again]);
+    assert!(
+        !doc.block_names().contains(&"*U52".to_owned()),
+        "still anonymous"
+    );
+}
+
+#[test]
+fn a_copy_that_differs_or_matches_twice_stays_apart() {
+    let (mut doc, _) = column();
+    let other = line(&mut doc, (0.0, 0.0), (0.0, 5.0));
+    copy_of(&mut doc, "*U1", "", Some(other), (5.0, 0.0));
+    copy_of(&mut doc, "*U2", "COLUMNA", None, (9.0, 0.0));
+    for block in ["COLUMNA", "*U1", "*U2"] {
+        tag(&mut doc, block, "AcDbBlockRepETag", edit_tag(4));
+    }
+    // *U1 draws a longer line; *U2 has another tag.
+    tag(&mut doc, "*U2", "AcDbBlockRepETag", edit_tag(5));
+    assert_eq!(references(&doc, "COLUMNA"), 1);
+    // A second block with the same tag and contents: which one is unknown.
+    let b = line(&mut doc, (20.0, 0.0), (20.0, 3.0));
+    doc.create_block("PILAR", p(20.0, 0.0), &[b]).unwrap();
+    tag(&mut doc, "PILAR", "AcDbBlockRepETag", edit_tag(5));
+    assert_eq!(references(&doc, "PILAR"), 2, "*U2 is PILAR's");
+    tag(&mut doc, "COLUMNA", "AcDbBlockRepETag", edit_tag(5));
+    assert_eq!(
+        (references(&doc, "PILAR"), references(&doc, "COLUMNA")),
+        (1, 1),
+        "two candidates: none chosen"
+    );
+}
+
+#[test]
+fn a_copy_names_its_block_by_its_true_name() {
+    let (mut doc, _) = column();
+    // A stretched variant: it draws something else, but says whose it is.
+    let longer = line(&mut doc, (0.0, 0.0), (0.0, 6.0));
+    copy_of(&mut doc, "*U7", "", Some(longer), (5.0, 0.0));
+    tag(
+        &mut doc,
+        "*U7",
+        "AcDbDynamicBlockTrueName",
+        vec![XDataValue::String("columna".to_owned())],
+    );
+    assert_eq!(references(&doc, "COLUMNA"), 2);
+    // A true name no block has links nothing.
+    copy_of(&mut doc, "*U8", "", Some(longer), (9.0, 0.0));
+    tag(
+        &mut doc,
+        "*U8",
+        "AcDbDynamicBlockTrueName",
+        vec![XDataValue::String("VIGA".to_owned())],
+    );
+    assert_eq!(references(&doc, "COLUMNA"), 2);
+}
+
+#[test]
+fn a_named_block_is_never_another_blocks_copy() {
+    let (mut doc, _) = column();
+    // The same drawing, edit tag and even true name, but a name of its own.
+    let b = line(&mut doc, (20.0, 0.0), (20.0, 3.0));
+    doc.create_block("PILAR", p(20.0, 0.0), &[b]).unwrap();
+    for block in ["COLUMNA", "PILAR"] {
+        tag(&mut doc, block, "AcDbBlockRepETag", edit_tag(4));
+    }
+    tag(
+        &mut doc,
+        "PILAR",
+        "AcDbDynamicBlockTrueName",
+        vec![XDataValue::String("COLUMNA".to_owned())],
+    );
+    assert_eq!(
+        (references(&doc, "COLUMNA"), references(&doc, "PILAR")),
+        (1, 1)
+    );
 }
