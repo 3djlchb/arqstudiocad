@@ -4,7 +4,7 @@
 //! values. The Blocks palette reads what it shows of each block here
 //! (ADR 0025).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use acadrust::entities::{AttributeEntity, Insert};
 use acadrust::tables::{BlockRecord, TableEntry};
@@ -39,6 +39,19 @@ pub struct BlockInfo {
     pub explodable: bool,
     /// Whether its references must be scaled the same in X and Y.
     pub scale_uniformly: bool,
+}
+
+/// Where a block's references are (SELECTBLOCK, ADR 0025 step 8d).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockReferences {
+    /// Those in model space that can be selected, in the order drawn.
+    pub shown: Vec<EntityId>,
+    /// Those in model space that draw nothing: on an off or frozen layer.
+    pub hidden: usize,
+    /// Those inside other blocks, which are selected as a whole.
+    pub nested: usize,
+    /// Those in paper space or a layout.
+    pub in_layouts: usize,
 }
 
 /// What BLOCK does with the objects it makes a block from (ADR 0023 D2a):
@@ -159,17 +172,73 @@ impl Document {
         let mut counts = HashMap::new();
         for e in cad.entities() {
             if let EntityType::Insert(insert) = e {
-                // The reference's own link to its dynamic block, else the
-                // anonymous block's (AcadRust reads both kinds of file).
-                let definition = cad
-                    .dynamic_definition_for_insert(insert.common.handle)
-                    .map(|h| cad.dynamic_block_definition(h).unwrap_or(h));
+                let definition = self.definition_of(insert.common.handle);
                 if let Some(name) = definition.and_then(|h| names.get(&h)) {
                     *counts.entry((*name).to_owned()).or_insert(0) += 1;
                 }
             }
         }
         counts
+    }
+
+    /// The block record reference `insert` stands for: its block's, or the
+    /// dynamic block's when it draws through an anonymous copy (`*U…`).
+    fn definition_of(&self, insert: Handle) -> Option<Handle> {
+        let cad = self.cad();
+        // The reference's own link to its dynamic block, else the anonymous
+        // block's (AcadRust reads both kinds of file).
+        cad.dynamic_definition_for_insert(insert)
+            .map(|h| cad.dynamic_block_definition(h).unwrap_or(h))
+    }
+
+    /// Where block `name`'s references are, found ignoring case, for
+    /// SELECTBLOCK (ADR 0025 step 8d): those placed in model space that can
+    /// be selected, and how many cannot. A dynamic block's anonymous
+    /// references count for it, as in `block_references`.
+    pub fn find_block_references(&self, name: &str) -> DocumentResult<BlockReferences> {
+        let cad = self.cad();
+        let block = self
+            .block_names()
+            .into_iter()
+            .find(|n| n.eq_ignore_ascii_case(name))
+            .and_then(|n| cad.block_records.get(&n))
+            .ok_or_else(|| DocumentError::InvalidBlockName(format!("no block named {name:?}")))?
+            .handle();
+        let mut found = BlockReferences::default();
+        let mut placed: HashSet<Handle> = HashSet::new();
+        // Model space first, in the order drawn, as a window selects.
+        for e in cad.model_space_entities() {
+            let h = e.as_entity().handle();
+            if !matches!(e, EntityType::Insert(_)) || self.definition_of(h) != Some(block) {
+                continue;
+            }
+            placed.insert(h);
+            // Selectable as a click finds it: when it draws something.
+            if self.drawing(h.value()).is_some_and(|d| !d.is_empty()) {
+                found.shown.push(h.value());
+            } else {
+                found.hidden += 1;
+            }
+        }
+        for e in cad.entities() {
+            let EntityType::Insert(insert) = e else {
+                continue;
+            };
+            let h = insert.common.handle;
+            if placed.contains(&h) || self.definition_of(h) != Some(block) {
+                continue;
+            }
+            let owner = cad
+                .block_records
+                .iter()
+                .find(|b| b.handle() == insert.common.owner_handle);
+            if owner.is_some_and(|b| b.is_layout() || b.is_paper_space()) {
+                found.in_layouts += 1;
+            } else {
+                found.nested += 1;
+            }
+        }
+        Ok(found)
     }
 
     /// Makes block `name` from `ids` with its base point at `base`, and

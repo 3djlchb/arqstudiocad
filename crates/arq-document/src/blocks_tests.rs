@@ -4,7 +4,7 @@ use std::f64::consts::FRAC_PI_2;
 
 use arq_geometry::{Line, Point2};
 
-use crate::blocks::{BlockDefinition, BlockObjects};
+use crate::blocks::{BlockDefinition, BlockObjects, BlockReferences};
 use crate::document::Document;
 use crate::drawing::Shape;
 use crate::entity::{EntityId, PlanGeometry};
@@ -670,4 +670,89 @@ fn a_dynamic_block_is_not_renamed() {
         Err(DocumentError::InvalidBlockName(m)) if m.contains("dynamic")
     ));
     assert_eq!(doc.block_names(), names);
+}
+
+// SELECTBLOCK (ADR 0025 step 8d)
+
+#[test]
+fn the_references_found_are_those_that_can_be_selected() {
+    let door = door_block();
+    let wall: Vec<&str> = vec![
+        "0", "BLOCK", "8", "0", "2", "MURO", "70", "0", "10", "0", "20", "0", "30", "0", "3",
+        "MURO", //
+        "0", "INSERT", "8", "0", "2", "PUERTA", "10", "5", "20", "0", "30", "0", //
+        "0", "ENDBLK", "8", "0",
+    ];
+    let mut doc = dxf(
+        LAYERS,
+        &[&door, &wall],
+        &[
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "MURO", "10", "0", "20", "5", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "puerta", "10", "9", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "20", "20", "0", "30", "0",
+            ],
+            // In paper space.
+            &[
+                "0", "INSERT", "8", "0", "67", "1", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+        ],
+    );
+    let ids: Vec<EntityId> = doc.entities().iter().map(|e| e.id()).collect();
+    assert_eq!(ids.len(), 4, "model space only");
+    let found = doc.find_block_references("puerta").unwrap();
+    assert_eq!(found.shown, [ids[0], ids[2], ids[3]], "in the order drawn");
+    assert_eq!((found.hidden, found.nested, found.in_layouts), (0, 1, 1));
+    // On a frozen layer it draws nothing; on an off layer its line on
+    // MUROS still shows, so a click finds it (as AutoCAD).
+    let frozen = doc.layer_by_name("CONGELADA").unwrap().id();
+    let off = doc.layer_by_name("APAGADA").unwrap().id();
+    doc.set_entity_layer(ids[2], frozen).unwrap();
+    doc.set_entity_layer(ids[3], off).unwrap();
+    let found = doc.find_block_references("PUERTA").unwrap();
+    assert_eq!(found.shown, [ids[0], ids[3]]);
+    assert_eq!((found.hidden, found.nested), (1, 1));
+    let wall = doc.find_block_references("MURO").unwrap();
+    assert_eq!(
+        wall,
+        BlockReferences {
+            shown: vec![ids[1]],
+            ..BlockReferences::default()
+        }
+    );
+    assert!(matches!(
+        doc.find_block_references("NADA"),
+        Err(DocumentError::InvalidBlockName(m)) if m.contains("no block named")
+    ));
+}
+
+#[test]
+#[ignore = "needs tools/fetch_codec_samples.py"]
+fn a_dynamic_blocks_references_are_found_through_their_anonymous_copies() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/corpus/acadrust/fixtures/dynamic-blocks/lookup.dwg");
+    let doc = Document::open(path).unwrap();
+    let name = doc
+        .block_names()
+        .into_iter()
+        .find(|n| doc.is_dynamic_block(n))
+        .expect("the sample's dynamic block");
+    let found = doc.find_block_references(&name).unwrap();
+    let total = found.shown.len() + found.hidden + found.nested + found.in_layouts;
+    assert_eq!(
+        Some(&total),
+        doc.block_references().get(&name),
+        "as the palette counts"
+    );
+    assert!(!found.shown.is_empty());
+    for id in &found.shown {
+        assert_eq!(doc.entity(*id).unwrap().kind(), "INSERT");
+    }
 }

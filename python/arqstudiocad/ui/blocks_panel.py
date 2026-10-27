@@ -77,6 +77,7 @@ from arqstudiocad.commands.blocks import (
     load_template,
     read_files,
     rename_named,
+    select_named,
 )
 from arqstudiocad.core import CadBlockInfo, CadDocument, CadError
 from arqstudiocad.events import (
@@ -1306,7 +1307,8 @@ class BlocksPanel(QDockWidget):
     def block_menu(self) -> QMenu | None:
         """The selected block's context menu, as the source allows: Insert
         and Insert with options always; Copy to drawing for a block of
-        another file; Edit block and Rename for the drawing's; Redefine from template
+        another file; Edit block, Rename and Select in drawing for the drawing's;
+        Redefine from template
         when the drawing's block of that name differs. None with nothing
         selected."""
         row = self._current_row()
@@ -1339,6 +1341,8 @@ class BlocksPanel(QDockWidget):
             rename.setObjectName("rename")
             # As Edit block: not a dynamic block (ADR 0025 step 8c).
             rename.setEnabled(self.edit_button.isEnabled())
+            select = menu.addAction(tr("Select in drawing"), self.select_references)
+            select.setObjectName("select")
         if self._redefinable(name):
             menu.addSeparator()
             redefine = menu.addAction(tr("Redefine from template"), self.redefine_selected)
@@ -1514,6 +1518,15 @@ class BlocksPanel(QDockWidget):
             return
         if name is not None and self._runner is not None and self.document() is not None:
             self._runner.start(rename_named(name))
+
+    def select_references(self) -> None:
+        """Selects the selected block's references in the drawing, through
+        SELECTBLOCK."""
+        name = self.selected()
+        if self._source != "drawing":
+            return
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(select_named(name))
 
     def new_block(self) -> None:
         """Makes a new block from objects, through BLOCK."""

@@ -525,6 +525,21 @@ impl CadDocument {
         self.read(|cad| cad.document().block_references())
     }
 
+    /// Where block `name`'s references are (SELECTBLOCK, ADR 0025 step
+    /// 8d): the ids of those in model space that can be selected, in the
+    /// order drawn, then how many are on off or frozen layers, inside other
+    /// blocks, and in layouts.
+    fn find_block_references(&self, name: &str) -> PyResult<(Vec<EntityId>, usize, usize, usize)> {
+        let found = self
+            .read(|cad| {
+                cad.document()
+                    .find_block_references(name)
+                    .map_err(arq_core::CadError::from)
+            })?
+            .py()?;
+        Ok((found.shown, found.hidden, found.nested, found.in_layouts))
+    }
+
     /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a
     /// `size` × `size` RGBA image (premultiplied, rows top to bottom), its
     /// drawing fitted in on transparency, in its own colors as seen over

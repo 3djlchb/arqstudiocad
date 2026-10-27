@@ -348,6 +348,16 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - **-RENAME** (alias `-REN`; Spanish `-CAMBIANOM`) asks at the command line: the object type (Block), the old name, then the new name.
   - The palette's context menu gains **Rename…** for the drawing's blocks. It is disabled for a dynamic block, as Edit block.
   - After a rename, the session publishes `BlockRenamed`. The palette keeps the block selected under its new name, and the Recent source renames that drawing's entries.
+- **Step 8d (2026-10-26):** selecting a block's references *(maintainer, 2026-10-26)*:
+  - The core query `Document::find_block_references` finds a block's references in model space that can be selected, in the order drawn, as a click finds them: those that draw something. A reference on an off layer still shows what its block holds on other layers, so it counts as selectable.
+  - It also counts the references that cannot be selected:
+    - those that draw nothing (frozen or off layers);
+    - those inside other blocks, which are selected as a whole;
+    - those in layouts.
+  - A dynamic block's anonymous references count for it, as in the palette's count. Python: `CadDocument.find_block_references(name)`.
+  - **SELECTBLOCK** (Spanish `SELECBLOQUE`) asks for the block's name. It replaces the selection with the references, without moving the view, and says how many were selected and how many could not be.
+  - The palette's context menu gains **Select in drawing** for the drawing's blocks, dynamic ones included. It runs SELECTBLOCK with the block chosen.
+  - The maintainer intends these selections to feed budget tables; the block data they need is milestone 02.11.
 
 ## Consequences
 
