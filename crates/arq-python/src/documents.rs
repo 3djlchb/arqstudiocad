@@ -478,6 +478,12 @@ impl CadDocument {
             .map(|(id, changes)| (id, CadChangeSet(changes)))
     }
 
+    /// Renames block `name` to `new_name`, every reference following
+    /// (RENAME): one undo step.
+    fn rename_block(&self, name: &str, new_name: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.rename_block(name, new_name))
+    }
+
     /// Places block `name` at `point`, scaled and turned (radians), on the
     /// current layer; its attributes take their default values (INSERT).
     #[pyo3(signature = (name, point, scale = 1.0, rotation = 0.0))]

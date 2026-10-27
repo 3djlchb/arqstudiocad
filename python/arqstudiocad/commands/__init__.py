@@ -241,6 +241,12 @@ class UiServices(Protocol):
         ``references`` will change (BLOCK's dialog, ADR 0023 D2a)."""
         ...
 
+    def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
+        """A block of ``document`` and its new name, chosen in the Rename
+        dialog with ``chosen`` selected first (RENAME, ADR 0025 step 8c);
+        None if it was cancelled."""
+        ...
+
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         """One of the drawing's blocks, chosen in a window called ``title``
         (INSERT, BEDIT, ADR 0023); None if it was cancelled."""

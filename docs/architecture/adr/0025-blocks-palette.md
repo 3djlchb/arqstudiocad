@@ -337,6 +337,17 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - **Edit block** for the drawing's blocks, as the button.
   - **Redefine from template** when the drawing's block of that name differs, neither of them dynamic. A dialog shows both blocks, the template's on the left, and how many references will change; Redefine runs COPYBLOCK with that choice, one undo step.
   - Without a drawing, or for a recent block that cannot be had, the items that need one are disabled.
+- **Step 8c (2026-10-26):** renaming a block *(maintainer, 2026-10-26)*:
+  - The core operation `Document::rename_block` renames the block record and every reference to it: in model and paper space, and inside other blocks. Changing only the case is allowed. One undo step, named RENAME. The change set names the old block deleted and the new one created, as D3 says. Python: `CadDocument.rename_block(name, new_name)`.
+  - It refuses:
+    - a name in use or invalid;
+    - a block INSERT cannot place;
+    - a dynamic block, whose anonymous references wait for milestone 04.1.
+  - The command is **RENAME** (alias `REN`; Spanish `CAMBIANOM`), as AutoCAD's. For now it renames blocks only; other named objects can join it later.
+  - RENAME opens a small Rename dialog through the new UI service `rename_block`: the block and its new name. OK stays disabled, with the reason, while the name cannot be taken. A block open in a block editor is refused until that editor is closed.
+  - **-RENAME** (alias `-REN`; Spanish `-CAMBIANOM`) asks at the command line: the object type (Block), the old name, then the new name.
+  - The palette's context menu gains **Rename…** for the drawing's blocks. It is disabled for a dynamic block, as Edit block.
+  - After a rename, the session publishes `BlockRenamed`. The palette keeps the block selected under its new name, and the Recent source renames that drawing's entries.
 
 ## Consequences
 

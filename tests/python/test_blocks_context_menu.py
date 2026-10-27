@@ -53,8 +53,13 @@ def test_the_drawings_blocks_can_be_inserted_and_edited(window: MainWindow) -> N
     assert panel.block_menu() is None, "nothing selected"
     panel.select("Mesa")
     found = actions(panel)
-    assert list(found) == ["insert", "insert_options", "edit"], "nothing to copy or redefine"
-    assert [a.text() for a in found.values()] == ["Insert", "Insert with options…", "Edit block"]
+    assert list(found) == ["insert", "insert_options", "edit", "rename"], "nothing to copy"
+    assert [a.text() for a in found.values()] == [
+        "Insert",
+        "Insert with options…",
+        "Edit block",
+        "Rename…",
+    ]
     assert all(a.isEnabled() for a in found.values())
     found["edit"].trigger()
     editor = window.session.active

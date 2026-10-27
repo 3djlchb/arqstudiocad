@@ -158,6 +158,9 @@ class FakeUi:
     def ask_redefine_block(self, name: str, references: int) -> bool:
         return False
 
+    def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
+        return None
+
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None
 

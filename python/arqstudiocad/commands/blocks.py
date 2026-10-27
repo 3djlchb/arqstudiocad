@@ -285,6 +285,88 @@ def edit_clicked(name: str) -> Command:
     return Command("BEDIT", lambda ctx: bedit(ctx, name), repeat=False)
 
 
+def rename(ctx: CommandContext, chosen: str | None = None) -> CommandScript:
+    """RENAME: a block of the drawing gets another name, every reference
+    following (ADR 0025 step 8c), as chosen in the Rename dialog with
+    ``chosen`` selected first. Only blocks are renamed for now."""
+    if ctx.ui is None:
+        yield from rename_prompts(ctx)
+        return
+    document = ctx.document()
+    if not document.block_names:
+        raise CommandCancelledError(tr("The drawing has no blocks to rename."))
+    while True:
+        answer = ctx.ui.rename_block(document, chosen)
+        if answer is None:
+            raise CommandCancelledError()
+        old, new = answer
+        problem = _renamed(ctx, document, old, new)
+        if problem is None:
+            return
+        # Said, then the dialog again with that block.
+        ctx.message(problem)
+        chosen = old
+
+
+def rename_prompts(ctx: CommandContext) -> CommandScript:
+    """-RENAME: the kind of object, its name and the new one, asked at the
+    command line as AutoCAD's; only blocks for now."""
+    document = ctx.document()
+    yield ctx.choose(tr("Object type to rename"), [Option("B", tr("Block"))], default="B")
+    while (old := _named(document, (yield ctx.ask(tr("Old block name"))).strip())) is None:
+        ctx.message(tr("There is no such block."))
+    problem = _not_renamable(ctx, document, old)
+    if problem is not None:
+        raise CommandCancelledError(problem)
+    while True:
+        new = (yield ctx.ask(tr("New block name"))).strip()
+        problem = _renamed(ctx, document, old, new)
+        if problem is None:
+            return
+        ctx.message(problem)
+
+
+def rename_named(name: str) -> Command:
+    """RENAME with block ``name`` chosen first, as the Blocks palette's
+    context menu starts it."""
+    return Command("RENAME", lambda ctx: rename(ctx, name), repeat=False)
+
+
+def _not_renamable(ctx: CommandContext, document: CadDocument, name: str) -> str | None:
+    """Why block ``name`` of ``document`` cannot be renamed now; None if it
+    can."""
+    if document.is_dynamic_block(name):
+        # Its anonymous references wait for the parametric engine (04.1).
+        return tr("{name} is a dynamic block: it cannot be renamed yet.", name=name)
+    for editor in ctx.session.block_editors(document):
+        edited = ctx.session.block_editor_of(editor)
+        if edited is not None and edited[1].lower() == name.lower():
+            return tr("Close the block editor of {name} before renaming it.", name=name)
+    return None
+
+
+def _renamed(ctx: CommandContext, document: CadDocument, old: str, new: str) -> str | None:
+    """Renames block ``old`` of ``document`` to ``new``, saying so; why not,
+    if it cannot be."""
+    found = _named(document, old)
+    if found is None:
+        return tr("There is no such block.")
+    problem = _not_renamable(ctx, document, found)
+    if problem is not None:
+        return problem
+    taken = _named(document, new)
+    if taken is not None and taken.lower() != found.lower():
+        return tr("A block named {name} exists in the drawing.", name=taken)
+    if new == found:
+        return tr("{name} is already called so.", name=found)
+    try:
+        ctx.session.rename_block(document, found, new)
+    except InvalidOperationError:
+        return tr("{name} is not a valid block name.", name=new)
+    ctx.message(tr("Block {old} renamed to {new}.", old=found, new=new))
+    return None
+
+
 def insert_named(
     name: str,
     scale: float,
@@ -686,4 +768,6 @@ BLOCK_COMMANDS = (
     Command("BSAVE", bsave),
     Command("BCLOSE", bclose),
     Command("COPYBLOCK", copyblock),
+    Command("RENAME", rename, ("REN",)),
+    Command("-RENAME", rename_prompts, ("-REN",)),
 )

@@ -2,6 +2,9 @@
   "-BLOCK": [
     "-BLOQUE"
   ],
+  "-RENAME": [
+    "-CAMBIANOM"
+  ],
   "ARC": [
     "ARCO"
   ],
@@ -78,6 +81,9 @@
   ],
   "REDO": [
     "REHACER"
+  ],
+  "RENAME": [
+    "CAMBIANOM"
   ],
   "ROTATE": [
     "GIRA",
