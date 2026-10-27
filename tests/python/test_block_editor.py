@@ -296,9 +296,9 @@ def test_a_double_click_on_a_block_edits_it_in_a_grey_editor(qtbot: QtBot) -> No
 
     double_click(viewport, (90.0, 90.0))
     assert len(ui.asked) == asked, "a line: nothing to edit yet"
-    window.runner.execute("BLOCK")  # asks for a name, not a point
+    window.runner.execute("-BLOCK")  # asks for a name, not a point
     double_click(viewport, (20.0, 0.0))
-    assert len(ui.asked) == asked and window.runner.active == "BLOCK", "not during a command"
+    assert len(ui.asked) == asked and window.runner.active == "-BLOCK", "not during a command"
     window.runner.cancel()
 
     double_click(viewport, (20.0, 0.0))

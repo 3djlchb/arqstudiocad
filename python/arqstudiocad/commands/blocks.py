@@ -7,12 +7,14 @@ templates and inserts their blocks, copying each first (D6, D7)."""
 
 import math
 from collections.abc import Callable, Generator, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from arqstudiocad.commands import (
     Background,
     BlockClash,
+    BlockDefinitionState,
     ClashChoice,
     Command,
     CommandCancelledError,
@@ -32,8 +34,84 @@ ORIGIN = (0.0, 0.0)
 
 
 def block(ctx: CommandContext) -> CommandScript:
-    """A block named and based at a point, made from objects selected; a
-    reference to it takes their place (AutoCAD's "Convert to block")."""
+    """BLOCK: the Block Definition dialog (ADR 0023 D2a), as AutoCAD's;
+    without an interface, -BLOCK's prompts. The dialog closes to pick the
+    base point or select objects and opens again; a name the drawing uses
+    is offered to be redefined. One undo step."""
+    if ctx.ui is None:
+        yield from block_prompts(ctx)
+        return
+    document = ctx.document()
+    template = ctx.session.template
+    state = BlockDefinitionState(
+        ids=ctx.session.selection(document), units=document.insertion_units
+    )
+    while True:
+        answer = ctx.ui.define_block(document, state)
+        if answer is None:
+            raise CommandCancelledError()
+        action, state = answer
+        if action == "pick_point":
+            state = replace(state, base=(yield ctx.point(tr("Specify insertion base point"))))
+            continue
+        if action == "select_objects":
+            ctx.session.clear_selection(document)
+            state = replace(state, ids=(yield from select_objects(ctx, document)))
+            continue
+        if state.base_on_screen:
+            state = replace(state, base=(yield ctx.point(tr("Specify insertion base point"))))
+        if state.objects_on_screen:
+            ctx.session.clear_selection(document)
+            state = replace(state, ids=(yield from select_objects(ctx, document)))
+        if not state.ids:
+            ctx.message(tr("No objects are selected."))
+            continue
+        name = state.name.strip()
+        taken = _named(document, name)
+        if taken is not None:
+            references = document.block_references.get(taken, 0)
+            if not ctx.ui.ask_redefine_block(taken, references):
+                continue
+            name = taken
+        elif template is not None and template.is_open:
+            found = _named(template, name)
+            if found is not None and not ctx.ui.ask_block_name_in_template(found, template.name):
+                continue
+        try:
+            _, changes = document.define_block(
+                name,
+                state.base,
+                state.ids,
+                objects=state.objects or "convert",
+                description=state.description.strip(),
+                units=state.units,
+                scale_uniformly=state.scale_uniformly,
+                explodable=state.explodable,
+                redefine=taken is not None,
+            )
+        except InvalidOperationError as error:
+            ctx.message(tr("{name} cannot be made: {reason}", name=name, reason=error))
+            continue
+        ctx.session.report(document, changes)
+        ctx.session.clear_selection(document)
+        ctx.session.block_used(document, name, CREATED)
+        if taken is not None:
+            ctx.message(
+                tr("Block {name} redefined from {count} objects.", name=name, count=len(state.ids))
+            )
+        else:
+            ctx.message(
+                tr("Block {name} made from {count} objects.", name=name, count=len(state.ids))
+            )
+        if state.open_editor:
+            _edit(ctx, document, name)
+        return
+
+
+def block_prompts(ctx: CommandContext) -> CommandScript:
+    """-BLOCK: a block named and based at a point, made from objects
+    selected, asked at the command line; a reference to it takes their
+    place (AutoCAD's "Convert to block"). A name in use is refused."""
     document = ctx.document()
     template = ctx.session.template
     while True:
@@ -602,6 +680,7 @@ def _number(
 #: Block commands, with AutoCAD's aliases.
 BLOCK_COMMANDS = (
     Command("BLOCK", block, ("B",)),
+    Command("-BLOCK", block_prompts, ("-B",)),
     Command("INSERT", insert, ("I",)),
     Command("BEDIT", bedit, ("BE",)),
     Command("BSAVE", bsave),

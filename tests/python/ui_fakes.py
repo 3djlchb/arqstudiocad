@@ -2,11 +2,17 @@
 dialog (a modal dialog in a test would wait forever)."""
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from arqstudiocad.commands import BlockClash, ClashChoice, ViewControl
+from arqstudiocad.commands import (
+    BlockClash,
+    BlockDefinitionState,
+    BlockDialogAction,
+    ClashChoice,
+    ViewControl,
+)
 from arqstudiocad.core import CadDocument
 
 
@@ -46,6 +52,14 @@ class QuietUi:
     #: The clash dialog's choices (None: cancelled); the clashes it was shown.
     clash_answer: dict[str, ClashChoice] | None = None
     clashes: list[BlockClash] = field(default_factory=list)
+    #: The Block Definition dialog's answers, in turn: why it closes and
+    #: the fields it changes (None: cancelled); the states it showed.
+    block_dialog: list[tuple[BlockDialogAction, dict[str, object]] | None] = field(
+        default_factory=list
+    )
+    block_dialog_shown: list[BlockDefinitionState] = field(default_factory=list)
+    #: Whether to redefine a block whose name is in use.
+    redefine_answer: bool = True
     #: The block the Edit Block Definition dialog was opened on.
     edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
@@ -90,6 +104,20 @@ class QuietUi:
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         self.asked.append(f"{title}: {', '.join(names)}")
         return self.block_answer
+
+    def define_block(
+        self, document: CadDocument, state: BlockDefinitionState
+    ) -> tuple[BlockDialogAction, BlockDefinitionState] | None:
+        self.block_dialog_shown.append(state)
+        answer = self.block_dialog.pop(0) if self.block_dialog else None
+        if answer is None:
+            return None
+        action, changes = answer
+        return action, replace(state, **changes)  # type: ignore[arg-type]
+
+    def ask_redefine_block(self, name: str, references: int) -> bool:
+        self.asked.append(f"redefine {name}: {references}")
+        return self.redefine_answer
 
     def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
         # The Edit Block Definition dialog: what it lists and selects first.

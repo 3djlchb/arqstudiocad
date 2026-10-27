@@ -491,6 +491,13 @@ impl CadDocument {
         self.create(|cad| cad.insert_block(name, point.0, scale, rotation))
     }
 
+    /// The drawing's insertion units, as DWG's INSUNITS code: a new
+    /// block's units by default (ADR 0023 D2a).
+    #[getter]
+    fn insertion_units(&self) -> PyResult<i16> {
+        self.read(|cad| cad.document().insertion_units())
+    }
+
     /// The blocks INSERT can place, sorted: not anonymous, layouts or
     /// external references.
     #[getter]

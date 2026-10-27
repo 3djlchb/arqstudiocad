@@ -99,7 +99,7 @@ def load_pack(folder: Path) -> LanguagePack:
             if not isinstance(names, list) or not all(_valid_name(n) for n in names):
                 raise LanguagePackError(
                     f"{commands_path}: names of {command!r} must be a list of "
-                    "upper-case ASCII names (letters and digits)"
+                    "upper-case ASCII names (letters and digits, a leading hyphen allowed)"
                 )
             commands[command.upper()] = tuple(names)
 
@@ -114,8 +114,12 @@ def load_pack(folder: Path) -> LanguagePack:
 
 
 def _valid_name(name: object) -> bool:
-    """A pack writes command names as AutoCAD does: upper case, no accents."""
-    return isinstance(name, str) and name.isascii() and name.isalnum() and name == name.upper()
+    """A pack writes command names as AutoCAD does: upper case, no accents;
+    a leading hyphen marks a command's command-line version (-BLOQUE)."""
+    if not isinstance(name, str):
+        return False
+    bare = name.removeprefix("-")
+    return bare.isascii() and bare.isalnum() and bare == bare.upper()
 
 
 def discover(root: Path | None = None, *, strict: bool = False) -> dict[str, LanguagePack]:

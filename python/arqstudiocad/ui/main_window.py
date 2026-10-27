@@ -89,7 +89,11 @@ class MainWindow(QMainWindow):
         self.events.language_changed.connect(self._on_language_changed)
         self.session = Session(self.bus)
         self.viewports: dict[int, Viewport] = {}
-        self.ui = ui if ui is not None else QtUiServices(self, self.viewport_for, self.show_panel)
+        self.ui = (
+            ui
+            if ui is not None
+            else QtUiServices(self, self.viewport_for, self.show_panel, settings)
+        )
         self.worker = worker if worker is not None else QtWorker(self)
         self.runner = CommandRunner(
             builtin_registry(), CommandContext(self.session, self.ui, self.worker)
