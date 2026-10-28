@@ -315,6 +315,40 @@ Each step is its own pull request with tests:
       register's currency from it.
     - **The dialog:** a Format column lists General (with the drawing's
       example), then 1,250.50, 1.250,50, 1 250,50 and 1 250.50.
+- **Step 4a, the block data editors (2026-10-28)** *(maintainer, 2026-10-27:
+  a cost is typed in its currency's format; the block is the one of the
+  references selected, one picked, or one named; two pull requests)*:
+  - **The Block Data dialog** (`ui/block_data_dialog.py`) holds:
+    - Category and Type, editable lists suggesting the values the
+      drawing's blocks use (each once ignoring case, as the first block by
+      name spells it);
+    - Material and Supplier;
+    - Cost: an amount typed in the format of the chosen currency, and the
+      active currencies, the principal one first.
+  - **How the dialog behaves:**
+    - changing the currency writes the amount again in the new currency's
+      format;
+    - an amount in another format, or with more decimals than its
+      currency has, keeps OK disabled and says why;
+    - a cost in a currency that is not active (a drawing edited
+      elsewhere) is shown as such and must be moved to another currency.
+  - **BLOCKDATA** (Spanish `DATOSBLOQUE`) edits the block of the selected
+    references when they are all of one block. Otherwise it asks to
+    select a reference, or **Name** to type one. It opens the dialog
+    through the new UI service `edit_block_data`, and writes the data in
+    one undo step; it says nothing when the data is the same.
+  - **-BLOCKDATA** (`-DATOSBLOQUE`) asks each field at the command line:
+    Enter keeps a value and a point clears it. The currency comes before
+    the cost, so the cost is read in its format. Without an interface,
+    BLOCKDATA asks the same way.
+  - **The Blocks palette:**
+    - the context menu gains **Block data…** for the drawing's blocks,
+      dynamic ones included;
+    - a **Budget data** section below Selected block shows the fields the
+      block has, and its cost with its currency's symbol, in that
+      currency's format (`S/ 1.250,50`).
+  - `arqstudiocad.currencies` gains `register_of(document)`, and
+    `CurrencyRegister.get` and `cost_text`.
 
 ## Consequences
 

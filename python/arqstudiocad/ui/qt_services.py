@@ -16,11 +16,12 @@ from arqstudiocad.commands import (
     ClashChoice,
     ViewControl,
 )
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import CadBlockData, CadDocument
 from arqstudiocad.currencies import CurrencyRegister
 from arqstudiocad.i18n import tr
 from arqstudiocad.ui import (
     block_clash_dialog,
+    block_data_dialog,
     block_definition_dialog,
     currencies_dialog,
     edit_block_dialog,
@@ -214,6 +215,9 @@ class QtUiServices:
 
     def edit_currencies(self, document: CadDocument) -> CurrencyRegister | None:
         return currencies_dialog.edit_currencies(document, self._parent)
+
+    def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
+        return block_data_dialog.edit_block_data(document, name, self._parent)
 
     def ask_purge_block(self, name: str) -> bool:
         box = QMessageBox(

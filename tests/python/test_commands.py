@@ -30,6 +30,7 @@ from arqstudiocad.commands import (
 )
 from arqstudiocad.commands.builtin import _write, builtin_registry
 from arqstudiocad.core import (
+    CadBlockData,
     CadDocument,
     LossyConversionError,
     SaveNotVerifiedError,
@@ -173,6 +174,9 @@ class FakeUi:
         return False
 
     def edit_currencies(self, document: CadDocument) -> CurrencyRegister | None:
+        return None
+
+    def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
         return None
 
     def edit_text(self, title: str, text: str = "") -> str | None:

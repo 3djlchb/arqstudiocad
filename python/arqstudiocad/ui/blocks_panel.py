@@ -80,7 +80,9 @@ from arqstudiocad.commands.blocks import (
     rename_named,
     select_named,
 )
+from arqstudiocad.commands.budget import block_data_named
 from arqstudiocad.core import CadBlockInfo, CadDocument, CadError
+from arqstudiocad.currencies import register_of
 from arqstudiocad.events import (
     BlockRenamed,
     BlockUsed,
@@ -1345,6 +1347,9 @@ class BlocksPanel(QDockWidget):
             rename.setEnabled(self.edit_button.isEnabled())
             select = menu.addAction(tr("Select in drawing"), self.select_references)
             select.setObjectName("select")
+            # Its data for budgets (ADR 0027 step 4a); dynamic blocks too.
+            data = menu.addAction(tr("Block data…"), self.edit_block_data)
+            data.setObjectName("block_data")
             purge = menu.addAction(tr("Purge…"), self.purge_selected)
             purge.setObjectName("purge")
             # Only a block nothing uses, not dynamic (ADR 0025 step 8e).
@@ -1539,6 +1544,14 @@ class BlocksPanel(QDockWidget):
         if name is not None and self._runner is not None and self.document() is not None:
             self._runner.start(select_named(name))
 
+    def edit_block_data(self) -> None:
+        """Edits the selected block's data for budgets, through BLOCKDATA."""
+        name = self.selected()
+        if self._source != "drawing":
+            return
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(block_data_named(name))
+
     def purge_selected(self) -> None:
         """Purges the selected block of the drawing, once confirmed,
         through PURGE."""
@@ -1654,7 +1667,11 @@ class BlocksPanel(QDockWidget):
             self.details.show_sections("", [])
             return
         count = self._references.get(info.name.upper(), 0)
-        self.details.show_sections("", [self._section(document, info, count)])
+        sections = [self._section(document, info, count)]
+        budget = budget_section(document, info.name)
+        if budget is not None:
+            sections.append(budget)
+        self.details.show_sections("", sections)
 
     def _recent_section(self, block: RecentBlock) -> Section:
         """A recent block's details: as any block's when its file is at hand,
@@ -1694,6 +1711,30 @@ class BlocksPanel(QDockWidget):
         super().showEvent(event)
         if self._stale:
             self.refresh()
+
+
+def budget_section(document: CadDocument, name: str) -> Section | None:
+    """Block ``name``'s data for budgets, the fields it has, its cost with
+    its currency's symbol and format (ADR 0027); None without data."""
+    try:
+        data = document.block_data(name)
+    except CadError:
+        return Section("budget_data", tr("Budget data"), [(tr("Data"), tr("Cannot be read"))])
+    if data is None:
+        return None
+    rows = [
+        (label, value)
+        for label, value in (
+            (tr("Category"), data.category),
+            (tr("Type"), data.type),
+            (tr("Material"), data.material),
+            (tr("Supplier"), data.supplier),
+        )
+        if value
+    ]
+    if data.cost is not None and data.currency is not None:
+        rows.append((tr("Cost"), register_of(document).cost_text(data.cost, data.currency)))
+    return Section("budget_data", tr("Budget data"), rows)
 
 
 def block_named(document: CadDocument, name: str) -> str | None:
