@@ -13,7 +13,7 @@ from arqstudiocad.commands import (
     ClashChoice,
     ViewControl,
 )
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import CadCurrency, CadDocument
 
 
 @dataclass
@@ -69,6 +69,10 @@ class QuietUi:
     purge_answer: tuple[list[str], bool] | None = None
     purge_shown: int = 0
     purge_confirm: bool = True
+    #: The Currencies dialog's answer (None: cancelled), and the registers
+    #: it was shown.
+    currencies_answer: tuple[list[CadCurrency], str] | None = None
+    currencies_shown: list[tuple[list[CadCurrency], str]] = field(default_factory=list)
     #: The block the Edit Block Definition dialog was opened on.
     edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
@@ -135,6 +139,10 @@ class QuietUi:
     def ask_purge_block(self, name: str) -> bool:
         self.asked.append(f"purge {name}")
         return self.purge_confirm
+
+    def edit_currencies(self, document: CadDocument) -> tuple[list[CadCurrency], str] | None:
+        self.currencies_shown.append(document.currencies)
+        return self.currencies_answer
 
     def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
         self.rename_chosen.append(chosen)

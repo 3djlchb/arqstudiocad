@@ -29,7 +29,12 @@ from arqstudiocad.commands import (
     ViewControl,
 )
 from arqstudiocad.commands.builtin import _write, builtin_registry
-from arqstudiocad.core import CadDocument, LossyConversionError, SaveNotVerifiedError
+from arqstudiocad.core import (
+    CadCurrency,
+    CadDocument,
+    LossyConversionError,
+    SaveNotVerifiedError,
+)
 from arqstudiocad.events import (
     ActiveDocumentChanged,
     CommandCancelled,
@@ -166,6 +171,9 @@ class FakeUi:
 
     def ask_purge_block(self, name: str) -> bool:
         return False
+
+    def edit_currencies(self, document: CadDocument) -> tuple[list[CadCurrency], str] | None:
+        return None
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None

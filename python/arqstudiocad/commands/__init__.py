@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from arqstudiocad.core import CadDocument, CadError
+from arqstudiocad.core import CadCurrency, CadDocument, CadError
 from arqstudiocad.events import (
     CommandCancelled,
     CommandFinished,
@@ -256,6 +256,12 @@ class UiServices(Protocol):
     def ask_purge_block(self, name: str) -> bool:
         """Whether to purge block ``name`` from the drawing (the Blocks
         palette's Purge)."""
+        ...
+
+    def edit_currencies(self, document: CadDocument) -> tuple[list[CadCurrency], str] | None:
+        """``document``'s currency register as edited in the Currencies
+        dialog, and its principal currency's code (CURRENCIES, ADR 0027
+        D3); None if it was cancelled."""
         ...
 
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
