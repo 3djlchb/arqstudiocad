@@ -60,6 +60,7 @@ def test_the_drawings_blocks_can_be_inserted_and_edited(window: MainWindow) -> N
         "rename",
         "select",
         "block_data",
+        "clear_block_data",
         "purge",
     ]
     assert [a.text() for a in found.values()] == [
@@ -69,11 +70,14 @@ def test_the_drawings_blocks_can_be_inserted_and_edited(window: MainWindow) -> N
         "Rename…",
         "Select in drawing",
         "Block data…",
+        "Clear block data",
         "Purge…",
     ]
     purge = found.pop("purge")
+    clear = found.pop("clear_block_data")
     assert all(a.isEnabled() for a in found.values())
     assert not purge.isEnabled(), "Mesa is in use"
+    assert not clear.isEnabled(), "Mesa has no budget data"
     found["edit"].trigger()
     editor = window.session.active
     assert editor is not None and window.session.block_editor_of(editor) is not None

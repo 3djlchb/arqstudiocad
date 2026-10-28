@@ -109,6 +109,14 @@ class BlockDataFields(QWidget):
             currency=self.currency.currentData() if amount is not None else None,
         )
 
+    def clear(self) -> None:
+        """Empties every field: OK then writes no data, which clears the
+        block's (maintainer, 2026-10-28)."""
+        for box in (self.category, self.kind):
+            box.setCurrentText("")
+        for field in (self.material, self.supplier, self.cost):
+            field.clear()
+
     def problem(self) -> str:
         """Why the fields cannot be written, or empty."""
         try:
@@ -195,6 +203,13 @@ class BlockDataDialog(QDialog):
         self.problem = QLabel()
         self.problem.setWordWrap(True)
         self.buttons = ok_cancel(self)
+        # Empties the fields; OK confirms, Cancel keeps the data.
+        self.clear_button = self.buttons.addButton(
+            tr("Clear data"), QDialogButtonBox.ButtonRole.ResetRole
+        )
+        self.clear_button.setObjectName("clear_data")
+        self.clear_button.setToolTip(tr("Empties every field; OK then clears the block's data."))
+        self.clear_button.clicked.connect(fields.clear)
         layout = QVBoxLayout(self)
         layout.addWidget(self.note)
         layout.addWidget(fields)

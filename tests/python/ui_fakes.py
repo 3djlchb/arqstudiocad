@@ -78,6 +78,8 @@ class QuietUi:
     #: was opened on.
     block_data_answer: CadBlockData | None = None
     block_data_shown: list[str] = field(default_factory=list)
+    #: The answer to the palette's "Clear the budget data of block X?".
+    clear_data_confirm: bool = True
     #: The block the Edit Block Definition dialog was opened on.
     edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
@@ -154,6 +156,10 @@ class QuietUi:
     def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
         self.block_data_shown.append(name)
         return self.block_data_answer
+
+    def ask_clear_block_data(self, name: str) -> bool:
+        self.asked.append(f"clear data {name}")
+        return self.clear_data_confirm
 
     def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
         self.rename_chosen.append(chosen)

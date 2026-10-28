@@ -290,7 +290,12 @@ impl Document {
                 )));
             }
         }
-        if self.block_data(&block).ok().flatten().unwrap_or_default() == *data {
+        // Unchanged: nothing to write. Data that does not read is replaced,
+        // even by empty data, which clears it.
+        if self
+            .block_data(&block)
+            .is_ok_and(|now| now.unwrap_or_default() == *data)
+        {
             return Ok(block);
         }
         self.touch_structure();

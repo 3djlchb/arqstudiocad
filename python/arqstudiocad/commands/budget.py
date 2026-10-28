@@ -103,6 +103,33 @@ def block_data_named(name: str) -> Command:
     return Command("BLOCKDATA", run, repeat=False)
 
 
+def clear_data_named(name: str) -> Command:
+    """Clears block ``name``'s budget data, once confirmed, in one undo
+    step, as the Blocks palette's Clear block data starts it (maintainer,
+    2026-10-28)."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        if ctx.ui is not None and not ctx.ui.ask_clear_block_data(found):
+            raise CommandCancelledError()
+        try:
+            changes = document.set_block_data(found, CadBlockData())
+        except InvalidOperationError as error:
+            raise CommandCancelledError(
+                tr("The block data was not changed: {reason}", reason=error)
+            ) from None
+        if not changes.blocks_modified:
+            raise CommandCancelledError(tr("{name} has no block data.", name=found))
+        ctx.session.report(document, changes)
+        ctx.message(tr("Block data of {name} cleared.", name=found))
+        yield from ()
+
+    return Command("BLOCKDATA", run, repeat=False)
+
+
 def _block(ctx: CommandContext, document: CadDocument) -> Generator[Prompt, Any, str]:
     """The block whose data to edit: that of the references selected, when
     they are all of one block; else one picked, or named with N."""

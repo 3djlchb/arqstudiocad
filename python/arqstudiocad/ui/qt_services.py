@@ -219,6 +219,17 @@ class QtUiServices:
     def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
         return block_data_dialog.edit_block_data(document, name, self._parent)
 
+    def ask_clear_block_data(self, name: str) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            tr("Clear block data"),
+            tr("Clear the budget data of block {name}?", name=name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            self._parent,
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
+
     def ask_purge_block(self, name: str) -> bool:
         box = QMessageBox(
             QMessageBox.Icon.Question,
