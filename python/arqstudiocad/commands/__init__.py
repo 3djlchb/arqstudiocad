@@ -276,6 +276,11 @@ class UiServices(Protocol):
         dialog (BLOCKDATA, ADR 0027 step 4a); None if it was cancelled."""
         ...
 
+    def ask_clear_block_data(self, name: str) -> bool:
+        """Whether to clear block ``name``'s budget data (the Blocks
+        palette's Clear block data)."""
+        ...
+
     def choose_block(self, names: Sequence[str], title: str) -> str | None:
         """One of the drawing's blocks, chosen in a window called ``title``
         (INSERT, BEDIT, ADR 0023); None if it was cancelled."""

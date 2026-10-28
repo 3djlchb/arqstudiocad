@@ -805,3 +805,27 @@ fn a_currency_may_write_amounts_its_own_way() {
         );
     }
 }
+
+#[test]
+fn data_that_does_not_read_can_be_cleared_or_replaced() {
+    let mut doc = drawing();
+    doc.set_block_data("MESA", &table_data()).unwrap();
+    let record = doc.cad().block_records.get("MESA").unwrap().handle();
+    let xrecord = doc.cad_mut().xrecord_mut(record, DATA_KEY).unwrap();
+    xrecord.add_string(NAME_CODE, "dangling");
+    invalid(doc.block_data("MESA"), "could not be read");
+    doc.begin_change().unwrap();
+    doc.set_block_data("MESA", &BlockData::default()).unwrap();
+    let change = doc.commit_change().unwrap();
+    assert_eq!(
+        change.summary().blocks_modified(),
+        ["MESA"],
+        "written, not skipped"
+    );
+    assert_eq!(doc.block_data("MESA").unwrap(), None, "cleared");
+    assert!(doc.cad().xrecord(record, DATA_KEY).is_none());
+    // Empty data on a block without data still writes nothing.
+    doc.begin_change().unwrap();
+    doc.set_block_data("SILLA", &BlockData::default()).unwrap();
+    assert!(doc.commit_change().unwrap().summary().is_empty());
+}

@@ -397,6 +397,20 @@ Each step is its own pull request with tests:
   - **A redefinition:** empty data leaves the block's data as it is; data
     given replaces it. Clearing a block's data is BLOCKDATA's.
   - **-BLOCK** asks no budget data: -BLOCKDATA does.
+- **Clearing a block's data at once (2026-10-28)** *(maintainer: editing
+  and clearing must both be at hand; a small pull request of its own)*:
+  - **The Block Data dialog** gains **Clear data**: it empties every
+    field. OK then clears the block's data, and Cancel keeps it.
+  - **The Blocks palette's context menu** gains **Clear block data**.
+    - It is enabled only for a block with data, including data that does
+      not read.
+    - It asks first, No being the default, through the new UI service
+      `ask_clear_block_data`.
+    - It clears the data in one undo step (BLOCKDATA), saying so.
+    - `clear_data_named` starts it.
+  - **The core:** `set_block_data` skipped data that did not read when
+    given empty data, taking it for "no data". Now data that does not
+    read is always replaced, so it can be cleared.
 
 ## Consequences
 

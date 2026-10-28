@@ -80,7 +80,7 @@ from arqstudiocad.commands.blocks import (
     rename_named,
     select_named,
 )
-from arqstudiocad.commands.budget import block_data_named
+from arqstudiocad.commands.budget import block_data_named, clear_data_named
 from arqstudiocad.core import CadBlockInfo, CadDocument, CadError
 from arqstudiocad.currencies import register_of
 from arqstudiocad.events import (
@@ -1347,13 +1347,17 @@ class BlocksPanel(QDockWidget):
             rename.setEnabled(self.edit_button.isEnabled())
             select = menu.addAction(tr("Select in drawing"), self.select_references)
             select.setObjectName("select")
+            document = self.document()
             # Its data for budgets (ADR 0027 step 4a); dynamic blocks too.
             data = menu.addAction(tr("Block data…"), self.edit_block_data)
             data.setObjectName("block_data")
+            clear = menu.addAction(tr("Clear block data"), self.clear_block_data)
+            clear.setObjectName("clear_block_data")
+            # Only a block with data; data that does not read can go too.
+            clear.setEnabled(document is not None and has_block_data(document, name))
             purge = menu.addAction(tr("Purge…"), self.purge_selected)
             purge.setObjectName("purge")
             # Only a block nothing uses, not dynamic (ADR 0025 step 8e).
-            document = self.document()
             purge.setEnabled(
                 document is not None
                 and name in document.unused_blocks
@@ -1544,6 +1548,14 @@ class BlocksPanel(QDockWidget):
         if name is not None and self._runner is not None and self.document() is not None:
             self._runner.start(select_named(name))
 
+    def clear_block_data(self) -> None:
+        """Clears the selected block's budget data, once confirmed."""
+        name = self.selected()
+        if self._source != "drawing":
+            return
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(clear_data_named(name))
+
     def edit_block_data(self) -> None:
         """Edits the selected block's data for budgets, through BLOCKDATA."""
         name = self.selected()
@@ -1711,6 +1723,15 @@ class BlocksPanel(QDockWidget):
         super().showEvent(event)
         if self._stale:
             self.refresh()
+
+
+def has_block_data(document: CadDocument, name: str) -> bool:
+    """Whether block ``name`` carries budget data, even data that does not
+    read."""
+    try:
+        return document.block_data(name) is not None
+    except CadError:
+        return True
 
 
 def budget_section(document: CadDocument, name: str) -> Section | None:

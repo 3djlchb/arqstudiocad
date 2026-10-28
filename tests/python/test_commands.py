@@ -179,6 +179,9 @@ class FakeUi:
     def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
         return None
 
+    def ask_clear_block_data(self, name: str) -> bool:
+        return False
+
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None
 
