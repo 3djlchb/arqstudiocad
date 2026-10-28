@@ -302,6 +302,36 @@ The future inventory/resolver/display/reload design is
 [ADR 0026](architecture/adr/0026-external-reference-loading.md)
 (proposed, implementation in phase 04 or later).
 
+### Native table corpus (2026-10-26)
+
+[Exercise](testing/progecad-tables.md), [measured results](testing/progecad-tables-results.md)
+and [hash/status manifest](testing/progecad-tables-results.json), at application
+`3d4459c` with codec fork `59aaf4c`. Three independently authored inputs each
+contain four 5-row / 3-column tables: native DWG 2007/2018 and DXF 2010.
+Two read cleanly; the 2007 border-table record is reported as recovered, with
+three tables instead of four. ProgeCAD independently reopens all four and
+matches the native 2018 control's 249 measured properties.
+
+Three strict product saves pass core validation. DWG 2018 -> DXF is refused
+for MAPRESOURCEMANAGEROBJECT loss. Independent ProgeCAD reopening distinguishes
+the three verified files: the DWG 2018 round trip matches all 249 measurements;
+DXF -> DWG changes four margin values, twelve table-level text-height values
+and cell records including right-border overrides; DXF -> DXF matches scalar
+measurements/texts but differs in five border records, still under representation
+review. The tools report these differences without accepting losses or
+normalizing unproved equivalences. A verified core save is not full external
+fidelity. These are the historical `59aaf4c` baseline measurements.
+
+The [table-instance follow-up](testing/progecad-table-instance-formatting.md)
+fixes the proven DXF -> DWG loss in fork `0d438b6`: owned TABLECONTENT supplies
+missing instance formatting, and serialized right/inside grid indexes are
+translated correctly. Independent ProgeCAD reopening now matches all 249
+native DWG measurements, including the custom margins, text heights and red
+0.50 mm right borders. The recovered 2007 read, resource-manager refusal and
+same-format DXF border investigation remain open. No full table-format
+exemption was added to safe saving. This extends 03.4/03.5 evidence and does
+not close either milestone.
+
 ### Historical library comparison
 
 `tools/dwg-bench` (a workspace of its own) reads, writes and re-reads a

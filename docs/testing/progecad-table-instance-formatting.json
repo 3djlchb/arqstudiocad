@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "application_base": "3d4459c",
+  "baseline_codec": "59aaf4cddee5a1a7c86a640c1246225be1bfe2bc",
+  "corrected_codec": "0d438b632c7d81d5aab347cd2b1b46e6a27200b1",
+  "immutable_tag": "arqstudiocad/on-c5555a5-table-instance-format",
+  "progecad_build": "13.1.508.P.VC17.x64.26.0.12.5",
+  "sources": [
+    {
+      "name": "tables-native-ac1021.dwg",
+      "sha256": "1e15a2a0946da5d6f07c9ee10005a2b77d3d8db7e89968b3bd7a34cddf6b59be"
+    },
+    {
+      "name": "tables-native-ac1024.dxf",
+      "sha256": "ea1133894888fbb2416db2eed44a4375d56d2fd6531e0405d6f7f61cbae47ebe"
+    },
+    {
+      "name": "tables-native-ac1032.dwg",
+      "sha256": "6f4050e24aaa4413e46e290cc4a3fdcd4f39f1c8783c566c8002a00fe5705678"
+    }
+  ],
+  "codec_candidate": {
+    "name": "table-format-candidate.dwg",
+    "sha256": "bd71ee5b7d45a8cc59b139f535d38c1ae4ed9b885e9f085f69cc35f543caa3d0",
+    "source": "tables-native-ac1024.dxf",
+    "generator": "tests/table_instance_format.rs::native_dxf_to_dwg_preserves_instance_margins_rows_and_right_border"
+  },
+  "independent_measurement": {
+    "control": "control-ac1032.tsv",
+    "control_sha256": "b3f208bc49999a7a06321b3c2a123b968fb4f1ca27ce52193462c6e5a9cea2ff",
+    "candidate": "table-format-candidate.tsv",
+    "candidate_sha256": "d2d432c80c5c4a46535d02695e6484645611dcd67a87e82e72a69287b1b163d4",
+    "properties": 249,
+    "differences_vs_native_dwg": 0,
+    "differences_vs_native_dxf": 52,
+    "dxf_difference_scope": "CELL_VALUE group 93 flags only, 0 to 6; also present in native DXF/DWG controls"
+  },
+  "checks": {
+    "fork_full": {
+      "passed": 2288,
+      "failed": 0,
+      "ignored": 83
+    },
+    "fork_focused_including_native": {
+      "passed": 6,
+      "failed": 0,
+      "ignored": 0
+    },
+    "benchmark": {
+      "drawings": 34,
+      "jobs": 464,
+      "pairs": 232,
+      "new_status_or_summary_differences": 0,
+      "known_write_refusals_per_library": 3
+    }
+  },
+  "remaining": [
+    "AC1021 recovered BORDERS table read at handle 0x2FA",
+    "AC1032 DWG to DXF MAPRESOURCEMANAGEROBJECT loss refusal",
+    "Five same-format DXF raw border differences under investigation",
+    "Two older R2000 TABLESTYLE-owner losses refused",
+    "Complete ACAD_TABLE format validation is not part of the generic save verifier"
+  ],
+  "integrated_product_capture": {
+    "name": "table-format-product-candidate.tsv",
+    "sha256": "164fc957e3e4ca8359651788398a19343346a7ce23c1693dabae933a6f2b9406",
+    "properties": 249,
+    "differences_vs_native_dwg": 0,
+    "output_sha256": "bd71ee5b7d45a8cc59b139f535d38c1ae4ed9b885e9f085f69cc35f543caa3d0",
+    "codec": "0d438b632c7d81d5aab347cd2b1b46e6a27200b1",
+    "note": "Captured on 2026-10-27 from the already retained integrated-core output"
+  }
+}

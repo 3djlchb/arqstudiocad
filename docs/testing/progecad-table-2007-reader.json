@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-27",
+  "baseline_codec": "0d438b632c7d81d5aab347cd2b1b46e6a27200b1",
+  "branch": "fix/table-2007-reader",
+  "source": {
+    "name": "tables-native-ac1021.dwg",
+    "sha256": "1e15a2a0946da5d6f07c9ee10005a2b77d3d8db7e89968b3bd7a34cddf6b59be",
+    "version": "AC1021",
+    "native_tables": 4,
+    "rows_per_table": 5,
+    "columns_per_table": 3
+  },
+  "before": {
+    "strict_read": "refused",
+    "recovered_tables": 3,
+    "error_handle": "0x2FA",
+    "error": "Truncated DWG stream at bit 63057: requested 8 bits, 7 remain"
+  },
+  "after": {
+    "strict_read": "ok",
+    "recovery": false,
+    "tables": 4,
+    "cell_texts_checked": 60,
+    "rewrite_strict_read": "ok",
+    "native_reopening": {
+      "application": "ProgeCAD 2026",
+      "output": "table-2007-fixed.dwg",
+      "output_sha256": "d5f7d6305c9f964e1ad77d159192610ce16c1cc68cbb48eb2c7452c7997deec3",
+      "control": "control-ac1021.tsv",
+      "control_sha256": "a2378b07dfb1ee67651aa223235a93ce5e2a4fec7399a1b25ff125be2d69c51b",
+      "capture": "table-2007-fixed.tsv",
+      "capture_sha256": "983c791c72c30e60c07a71a539ba0a62361c870cd42dc925894019dd07dd1979",
+      "properties": 249,
+      "differences": 0
+    }
+  },
+  "cause": [
+    "Legacy flat cells gated visibility reads on lineweight presence bits instead of independent visibility bits",
+    "Virtual shared edges have no local border payload even when the override mask contains border bits"
+  ],
+  "regressions": [
+    "28 independent binary property combinations (four edges, seven nonempty color/weight/visibility combinations)",
+    "Independent binary virtual-edge layout with following-value sentinel",
+    "Flat DWG border presence rewriting in AC1015, AC1018 and AC1021",
+    "Optional native AC1021 strict read, all 60 texts, dimensions, merge spans, right borders and strict rewrite"
+  ]
+}

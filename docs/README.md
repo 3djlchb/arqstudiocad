@@ -14,7 +14,8 @@ its reasons.
 | [AI agent workflow](AI_AGENT_WORKFLOW.md) | Shared scan, implementation and handoff process for any coding agent |
 | [Data and formats](DATA_AND_FORMATS.md) | Document model, working format, exchange formats, conversion rule |
 | [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md) | The engine decision, protections, capability matrix |
-| [ProgeCAD Xref exercise](testing/progecad-xrefs.md) | Author an independent reference set and record external reopening results (not yet executed) |
+| [ProgeCAD Xref exercise](testing/progecad-xrefs.md) | Independent reference set; [executed results](testing/progecad-xrefs-results.md) and [unloaded-state correction](testing/progecad-dxf-unloaded.md) |
+| [ProgeCAD table corpus](testing/progecad-tables.md) | Reproducible native table measurements, [baseline defects](testing/progecad-tables-results.md) and [instance-format correction](testing/progecad-table-instance-formatting.md) and [DWG 2007 reader correction](testing/progecad-table-2007-reader.md) |
 | [Testing and performance](TESTING_AND_PERFORMANCE.md) | Test pyramid, measurements, benchmark rules |
 | [Licenses and distribution](LICENSES_AND_DISTRIBUTION.md) | Licenses, obligations, new-technology rule, platforms, release criteria |
 | [CONTRIBUTING](../CONTRIBUTING.md) ([español](../CONTRIBUTING.es.md)) | Workflow and contributions |
