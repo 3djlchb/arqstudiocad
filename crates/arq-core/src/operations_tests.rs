@@ -358,6 +358,7 @@ fn block_data_and_currencies_are_one_undo_step_each() {
         symbol: "S/".to_owned(),
         decimals: 2,
         active: true,
+        format: None,
     });
     let changes = cad.set_currencies(&register).unwrap();
     assert_eq!(cad.undo_name(), Some("CURRENCIES"));

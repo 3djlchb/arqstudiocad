@@ -121,10 +121,14 @@ pub struct Currency {
     pub decimals: u8,
     /// Whether a block's cost may use it.
     pub active: bool,
+    /// Its own thousands and decimal separators, as its country writes
+    /// amounts (maintainer, 2026-10-27); `None` follows the drawing's.
+    pub format: Option<(char, char)>,
 }
 
 impl Currency {
-    /// The US dollar, every drawing's currency until it says otherwise.
+    /// The US dollar, every drawing's currency until it says otherwise,
+    /// in the drawing's format.
     pub fn us_dollar() -> Self {
         Self {
             code: "USD".to_owned(),
@@ -132,6 +136,7 @@ impl Currency {
             symbol: "$".to_owned(),
             decimals: 2,
             active: true,
+            format: None,
         }
     }
 }
@@ -187,6 +192,20 @@ impl Currencies {
     pub fn get(&self, code: &str) -> Option<&Currency> {
         self.list.iter().find(|c| c.code == code)
     }
+
+    /// How amounts in currency `code` are written: its own separators, or
+    /// the drawing's when it has none or is not in the register.
+    pub fn format_of(&self, code: &str) -> (char, char) {
+        self.get(code)
+            .and_then(|c| c.format)
+            .unwrap_or((self.thousands, self.decimal))
+    }
+}
+
+/// Whether thousands and decimal separators may go together: thousands a
+/// comma, a point or a space; decimals a point or a comma; never the same.
+fn valid_format((thousands, decimal): (char, char)) -> bool {
+    matches!(thousands, ',' | '.' | ' ') && matches!(decimal, ',' | '.') && thousands != decimal
 }
 
 impl Document {
@@ -294,18 +313,32 @@ impl Document {
             thousands: defaults.thousands,
             decimal: defaults.decimal,
         };
+        // Separators before the first currency are the drawing's; after a
+        // code, that currency's own. A currency given one alone is invalid.
+        const MISSING: char = '\0';
         for (key, value) in pairs {
             let current = register.list.last_mut();
             match (key.as_str(), current) {
                 ("principal", _) => register.principal = value,
-                ("thousands", _) => register.thousands = separator_named(&value).ok_or_else(bad)?,
-                ("decimal", _) => register.decimal = separator_named(&value).ok_or_else(bad)?,
+                ("thousands", None) => {
+                    register.thousands = separator_named(&value).ok_or_else(bad)?;
+                }
+                ("decimal", None) => register.decimal = separator_named(&value).ok_or_else(bad)?,
+                ("thousands", Some(c)) => {
+                    let decimal = c.format.map_or(MISSING, |f| f.1);
+                    c.format = Some((separator_named(&value).ok_or_else(bad)?, decimal));
+                }
+                ("decimal", Some(c)) => {
+                    let thousands = c.format.map_or(MISSING, |f| f.0);
+                    c.format = Some((thousands, separator_named(&value).ok_or_else(bad)?));
+                }
                 ("code", _) => register.list.push(Currency {
                     code: value,
                     name: String::new(),
                     symbol: String::new(),
                     decimals: 0,
                     active: false,
+                    format: None,
                 }),
                 ("name", Some(c)) => c.name = value,
                 ("symbol", Some(c)) => c.symbol = value,
@@ -452,6 +485,12 @@ impl Document {
                     if c.active { "1" } else { "0" }.to_owned(),
                 ),
             ]);
+            if let Some((thousands, decimal)) = c.format {
+                pairs.extend([
+                    ("thousands".to_owned(), separator_name(thousands).to_owned()),
+                    ("decimal".to_owned(), separator_name(decimal).to_owned()),
+                ]);
+            }
         }
         let handle = self.ensure_register();
         let known = [
@@ -548,6 +587,7 @@ impl Document {
                 symbol: String::new(),
                 decimals,
                 active: true,
+                format: None,
             })
     }
 }
@@ -590,6 +630,9 @@ fn check_register(currencies: &Currencies) -> DocumentResult<()> {
         if c.decimals > MAX_DECIMALS {
             return invalid(format!("{} has more than {MAX_DECIMALS} decimals", c.code));
         }
+        if c.format.is_some_and(|f| !valid_format(f)) {
+            return invalid(format!("{}: {SEPARATORS}", c.code));
+        }
     }
     if !currencies
         .get(&currencies.principal)
@@ -597,19 +640,15 @@ fn check_register(currencies: &Currencies) -> DocumentResult<()> {
     {
         return invalid("the principal currency is one of the register, active".to_owned());
     }
-    let separators = (currencies.thousands, currencies.decimal);
-    if !matches!(separators.0, ',' | '.' | ' ')
-        || !matches!(separators.1, ',' | '.')
-        || separators.0 == separators.1
-    {
-        return invalid(
-            "thousands are separated by a comma, a point or a space, and decimals by \
-             the other of a point or a comma"
-                .to_owned(),
-        );
+    if !valid_format((currencies.thousands, currencies.decimal)) {
+        return invalid(SEPARATORS.to_owned());
     }
     Ok(())
 }
+
+/// Why separators were refused.
+const SEPARATORS: &str = "thousands are separated by a comma, a point or a space, and \
+                          decimals by the other of a point or a comma";
 
 /// An XRECORD's version and name–value pairs; `None` unless it is a
 /// version followed by pairs.

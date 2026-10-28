@@ -448,15 +448,46 @@ pub struct CadCurrency(pub Currency);
 #[pymethods]
 impl CadCurrency {
     #[new]
-    #[pyo3(signature = (code, name, symbol="", decimals=2, active=true))]
-    fn new(code: &str, name: &str, symbol: &str, decimals: u8, active: bool) -> Self {
-        Self(Currency {
+    #[pyo3(signature = (code, name, symbol="", decimals=2, active=true, thousands=None, decimal=None))]
+    fn new(
+        code: &str,
+        name: &str,
+        symbol: &str,
+        decimals: u8,
+        active: bool,
+        thousands: Option<char>,
+        decimal: Option<char>,
+    ) -> PyResult<Self> {
+        let format = match (thousands, decimal) {
+            (Some(t), Some(d)) => Some((t, d)),
+            (None, None) => None,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "a currency's thousands and decimal separators go together",
+                ));
+            }
+        };
+        Ok(Self(Currency {
             code: code.to_owned(),
             name: name.to_owned(),
             symbol: symbol.to_owned(),
             decimals,
             active,
-        })
+            format,
+        }))
+    }
+
+    /// Its own thousands separator; None when it follows the drawing's
+    /// number format.
+    #[getter]
+    fn thousands(&self) -> Option<char> {
+        self.0.format.map(|f| f.0)
+    }
+
+    /// Its own decimal separator; None when it follows the drawing's.
+    #[getter]
+    fn decimal(&self) -> Option<char> {
+        self.0.format.map(|f| f.1)
     }
 
     /// Its code: ISO 4217 (`"USD"`) or the user's own.

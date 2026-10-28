@@ -48,7 +48,10 @@ from arqstudiocad.currencies import (
 from arqstudiocad.i18n import tr
 
 #: The table's columns.
-ACTIVE, PRINCIPAL, CODE, NAME, SYMBOL, DECIMALS, USES = range(7)
+ACTIVE, PRINCIPAL, CODE, NAME, SYMBOL, DECIMALS, FORMAT, USES = range(8)
+#: A currency's own formats, after General (the drawing's): every pair of
+#: separators the core accepts.
+FORMATS = ((",", "."), (".", ","), (" ", ","), (" ", "."))
 #: A code of the user's own: 3 to 10 capital letters or digits, as the core
 #: accepts.
 OWN_CODE = re.compile(r"[A-Z0-9]{3,10}")
@@ -129,7 +132,8 @@ class CurrenciesDialog(QDialog):
         self.setWindowTitle(tr("Currencies"))
         self.uses = document.currency_uses
         currencies, principal = document.currencies
-        self.table = QTableWidget(0, 7)
+        self.general = document.number_format
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             [
                 tr("Active"),
@@ -138,6 +142,7 @@ class CurrenciesDialog(QDialog):
                 tr("Name"),
                 tr("Symbol"),
                 tr("Decimals"),
+                tr("Format"),
                 tr("Blocks"),
             ]
         )
@@ -186,7 +191,7 @@ class CurrenciesDialog(QDialog):
         self.example = QLabel()
         self.thousands.currentIndexChanged.connect(lambda _i: self._separators(self.thousands))
         self.decimal.currentIndexChanged.connect(lambda _i: self._separators(self.decimal))
-        numbers = QGroupBox(tr("Number format"))
+        numbers = QGroupBox(tr("General number format"))
         form = QFormLayout(numbers)
         form.addRow(tr("Thousands separator"), self.thousands)
         form.addRow(tr("Decimal separator"), self.decimal)
@@ -199,7 +204,7 @@ class CurrenciesDialog(QDialog):
         layout.addWidget(self.note)
         layout.addWidget(numbers)
         layout.addWidget(self.buttons)
-        self.resize(640, 460)
+        self.resize(720, 460)
         self._separators(self.decimal)
         self._show()
 
@@ -218,7 +223,19 @@ class CurrenciesDialog(QDialog):
             other.blockSignals(True)
             other.setCurrentIndex(next(i for i, s in enumerate(choices) if s != taken))
             other.blockSignals(False)
-        self.example.setText(format_amount("1234567.89", *self.number_format()))
+        self.general = self.number_format()
+        self.example.setText(format_amount("1234567.89", *self.general))
+        for row in range(self.table.rowCount()):
+            self.format_list(row).setItemText(0, self._general_text())
+
+    def format_list(self, row: int) -> QComboBox:
+        """Row ``row``'s list of formats: General, then its own."""
+        widget = self.table.cellWidget(row, FORMAT)
+        assert isinstance(widget, QComboBox)
+        return widget
+
+    def _general_text(self) -> str:
+        return tr("General ({example})", example=format_amount("1250.50", *self.general))
 
     # The register the dialog proposes
 
@@ -257,6 +274,8 @@ class CurrenciesDialog(QDialog):
             name = name_item.text().strip()
             if name == shown_name(stored):
                 name = stored
+            own: tuple[str, str] | None = self.format_list(row).currentData()
+            thousands, decimal = own if own is not None else (None, None)
             currencies.append(
                 CadCurrency(
                     self._item(row, CODE).text(),
@@ -264,6 +283,8 @@ class CurrenciesDialog(QDialog):
                     self._item(row, SYMBOL).text().strip(),
                     int(self._item(row, DECIMALS).text()),
                     self._item(row, ACTIVE).checkState() == Qt.CheckState.Checked,
+                    thousands,
+                    decimal,
                 )
             )
         return CurrencyRegister(
@@ -294,10 +315,19 @@ class CurrenciesDialog(QDialog):
             (NAME, name, editable),
             (SYMBOL, QTableWidgetItem(currency.symbol), editable),
             (DECIMALS, QTableWidgetItem(str(currency.decimals)), fixed),
+            (FORMAT, QTableWidgetItem(), fixed),
             (USES, QTableWidgetItem(str(uses)), fixed),
         ):
             item.setFlags(flags)
             self.table.setItem(row, column, item)
+        # Its own way of writing amounts, or the drawing's (General).
+        formats = QComboBox()
+        formats.addItem(self._general_text(), None)
+        for pair in FORMATS:
+            formats.addItem(format_amount("1250.50", *pair), pair)
+        own = (currency.thousands, currency.decimal)
+        formats.setCurrentIndex(FORMATS.index(own) + 1 if own in FORMATS else 0)
+        self.table.setCellWidget(row, FORMAT, formats)
 
     def _item(self, row: int, column: int) -> QTableWidgetItem:
         item = self.table.item(row, column)
@@ -340,7 +370,7 @@ class CurrenciesDialog(QDialog):
     def _from_catalog(self) -> None:
         dialog = CatalogDialog(set(self.codes()), self)
         if dialog.exec() == QDialog.DialogCode.Accepted and (chosen := dialog.chosen()):
-            self._append(CadCurrency(chosen.code, chosen.name, chosen.symbol, chosen.decimals))
+            self._append(chosen.currency())
 
     def _own(self) -> None:
         dialog = OwnCurrencyDialog(set(self.codes()), self)

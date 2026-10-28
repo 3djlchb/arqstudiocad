@@ -31,6 +31,8 @@ from arqstudiocad.ui import currencies_dialog
 from arqstudiocad.ui.currencies_dialog import (
     ACTIVE,
     CODE,
+    FORMAT,
+    FORMATS,
     NAME,
     PRINCIPAL,
     SYMBOL,
@@ -66,7 +68,11 @@ def test_the_catalog_lists_iso_currencies_once_with_their_decimals() -> None:
     assert len(CATALOG) >= 150
     assert all(len(c.code) == 3 and c.code.isupper() and c.name for c in CATALOG)
     assert {c.decimals for c in CATALOG} <= {0, 2, 3}
-    assert catalog_currency("USD") == ("USD", "US dollar", "$", 2), "the core's default"
+    assert catalog_currency("USD") == ("USD", "US dollar", "$", 2, ",", "."), "the core's default"
+    assert catalog_currency("EUR")[4:] == (".", ",")  # type: ignore[index]
+    assert catalog_currency("RUB")[4:] == (" ", ",")  # type: ignore[index]
+    assert catalog_currency("CHF")[4:] == (" ", ".")  # type: ignore[index]
+    assert all((c.thousands, c.decimal) in FORMATS for c in CATALOG)
     assert catalog_currency("JPY").decimals == 0  # type: ignore[union-attr]
     assert catalog_currency("KWD").decimals == 3  # type: ignore[union-attr]
     assert catalog_currency("BGN") is None, "the euro since 2026"
@@ -274,7 +280,8 @@ def test_adding_from_the_catalog(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(CatalogDialog, "exec", pick)
     shown.add_catalog.click()
     assert shown.codes() == ["USD", "PEN", "EUR", "JPY"]
-    assert shown.register()[0][3] == CadCurrency("JPY", "Japanese yen", "¥", 0, True)
+    jpy = CadCurrency("JPY", "Japanese yen", "¥", 0, True, ",", ".")
+    assert shown.register()[0][3] == jpy, "in its usual format"
 
 
 def test_an_own_currency(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -410,3 +417,54 @@ def test_the_dialog_opens_on_the_drawings_format(qtbot: QtBot) -> None:
     document.set_currencies([USD, PEN, EUR], "USD", " ", ",")
     shown = dialog(qtbot, document)
     assert shown.number_format() == (" ", ",") and shown.example.text() == "1 234 567,89"
+
+
+# A currency's own format (maintainer, 2026-10-27)
+
+
+def test_a_currency_carries_its_own_format() -> None:
+    own = CadCurrency("EUR", "Euro", "€", 2, True, ".", ",")
+    assert (own.thousands, own.decimal) == (".", ",")
+    assert (USD.thousands, USD.decimal) == (None, None), "the drawing's"
+    with pytest.raises(ValueError, match="go together"):
+        CadCurrency("EUR", "Euro", thousands=".")
+    document = drawing()
+    document.set_currencies([USD, PEN, own], "USD", " ", ",")
+    register = CurrencyRegister(*document.currencies, *document.number_format)
+    assert register.currencies[2] == own
+    assert register.format_of("EUR") == (".", ",")
+    assert register.format_of("USD") == (" ", ","), "General"
+    assert register.format_of("BOB") == (" ", ","), "not in the register"
+    with pytest.raises(InvalidOperationError, match="EUR: thousands are separated"):
+        document.set_currencies([USD, CadCurrency("EUR", "Euro", "€", 2, True, ",", ",")], "USD")
+
+
+def test_the_format_column_chooses_general_or_its_own(qtbot: QtBot) -> None:
+    document = drawing()
+    euro = CadCurrency("EUR", "Euro", "€", 2, False, ".", ",")
+    document.set_currencies([USD, PEN, euro], "USD")
+    shown = dialog(qtbot, document)
+    lists = [shown.format_list(r) for r in range(3)]
+    assert [shown.format_list(0).itemText(i) for i in range(5)] == [
+        "General (1,250.50)",
+        "1,250.50",
+        "1.250,50",
+        "1 250,50",
+        "1 250.50",
+    ]
+    assert [f.currentIndex() for f in lists] == [0, 0, 2]
+    lists[1].setCurrentIndex(3)
+    currencies = shown.register().currencies
+    assert (currencies[1].thousands, currencies[1].decimal) == (" ", ",")
+    assert (currencies[0].thousands, currencies[0].decimal) == (None, None)
+    assert (currencies[2].thousands, currencies[2].decimal) == (".", ",")
+    lists[2].setCurrentIndex(0)
+    assert shown.register().currencies[2].thousands is None, "back to General"
+    # General follows the drawing's format chosen below.
+    shown.thousands.setCurrentIndex(1)
+    assert lists[0].itemText(0) == "General (1.250,50)"
+    set_language("es")
+    spanish = dialog(qtbot, document)
+    assert spanish.format_list(0).itemText(0) == "General (1,250.50)"
+    header = spanish.table.horizontalHeaderItem(FORMAT)
+    assert header is not None and header.text() == "Formato"

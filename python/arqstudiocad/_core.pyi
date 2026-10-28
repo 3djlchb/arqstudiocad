@@ -582,7 +582,13 @@ class CadCurrency:
         symbol: str = "",
         decimals: int = 2,
         active: bool = True,
+        thousands: str | None = None,
+        decimal: str | None = None,
     ) -> CadCurrency: ...
+    @property
+    def thousands(self) -> str | None: ...
+    @property
+    def decimal(self) -> str | None: ...
     @property
     def code(self) -> str: ...
     @property
