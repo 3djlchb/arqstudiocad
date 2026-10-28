@@ -166,15 +166,19 @@ class ViewControl(Protocol):
 
 #: What the Block Definition dialog does with the objects (ADR 0023 D2a).
 type BlockObjectsChoice = Literal["retain", "convert", "delete"]
-#: Why the Block Definition dialog closed: OK, or to pick on screen.
-type BlockDialogAction = Literal["ok", "pick_point", "select_objects"]
+#: Why the Block Definition dialog closed: OK, to pick on screen, or to
+#: edit the drawing's currencies (ADR 0027 step 4b).
+type BlockDialogAction = Literal["ok", "pick_point", "select_objects", "currencies"]
 
 
 @dataclass(frozen=True, slots=True)
 class BlockDefinitionState:
     """What the Block Definition dialog holds (ADR 0023 D2a), kept while it
-    closes to pick the base point or select objects and opens again.
-    ``objects`` None is the choice the interface remembers."""
+    closes to pick the base point, select objects or edit the currencies,
+    and opens again. ``objects`` None is the choice the interface
+    remembers. ``data`` is the Budget data section's (ADR 0027 step 4b):
+    empty data leaves a redefined block's data as it is; ``data_shown``
+    whether the section is unfolded."""
 
     name: str = ""
     description: str = ""
@@ -187,6 +191,8 @@ class BlockDefinitionState:
     explodable: bool = True
     units: int = 0
     open_editor: bool = False
+    data: CadBlockData = field(default_factory=CadBlockData)
+    data_shown: bool = False
 
 
 class UiServices(Protocol):
