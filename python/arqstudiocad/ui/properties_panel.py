@@ -1,13 +1,16 @@
-"""The drawing and selected-entity properties panel (ADR 0016, D10)."""
+"""The drawing and selected-entity properties panel (ADR 0016, D10). With
+references of one block selected, its Block data group shows and edits
+the block definition's budget data (ADR 0027 step 5)."""
 
 import math
 from collections.abc import Sequence
 
 from PySide6.QtCore import QLocale
-from PySide6.QtWidgets import QDockWidget, QWidget
+from PySide6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
 from arqstudiocad.core import (
     CadArc,
+    CadBlockData,
     CadCircle,
     CadColor,
     CadDocument,
@@ -16,6 +19,7 @@ from arqstudiocad.core import (
     CadLine,
     CadText,
 )
+from arqstudiocad.currencies import format_amount, parse_amount, register_of
 from arqstudiocad.events import CommandMessage, DocumentChanged, Event, SelectionChanged
 from arqstudiocad.i18n import tr
 from arqstudiocad.session import Session
@@ -82,9 +86,12 @@ def drawing_properties(document: CadDocument) -> list[Section]:
 
 
 def selection_properties(
-    document: CadDocument, entity_ids: Sequence[int]
+    document: CadDocument,
+    entity_ids: Sequence[int],
+    currency: str | None = None,
 ) -> tuple[str, list[Section]]:
-    """Builds editable properties for the selected entities."""
+    """Builds editable properties for the selected entities; ``currency``
+    is the one a block's new cost will use, as chosen before it is typed."""
     entities = document.get_entities(entity_ids)
     if not entities:
         return tr("Drawing"), drawing_properties(document)
@@ -155,6 +162,9 @@ def selection_properties(
         general.append((detail_labels.get(name, name), _metadata_text(value)))
 
     sections = [Section("general", tr("General"), general)]
+    block = selected_block(document, entities)
+    if block is not None:
+        sections.append(block_data_section(document, block, currency))
     texts = [entity.text for entity in entities]
     if all(text is not None for text in texts):
         sections.append(_text_section([text for text in texts if text is not None]))
@@ -169,6 +179,68 @@ def selection_properties(
     else:
         sections.append(_extent_section(entities))
     return caption, sections
+
+
+def selected_block(document: CadDocument, entities: Sequence[CadEntityInfo]) -> str | None:
+    """The block every entity is a reference of, as the drawing spells it,
+    when there is one and INSERT can place it."""
+    blocks = {dict(e.details).get("Block name") for e in entities}
+    if len(blocks) != 1:
+        return None
+    (block,) = blocks
+    if not isinstance(block, str):
+        return None
+    return next((n for n in document.block_names if n.casefold() == block.casefold()), None)
+
+
+def _clear_row() -> Property:
+    """Clears the block's data on a double click, confirmed first."""
+    return Property(
+        "block_data.clear", tr("Clear block data"), tr("Double-click to clear."), dialog=True
+    )
+
+
+def block_data_section(document: CadDocument, name: str, currency: str | None = None) -> Section:
+    """Block ``name``'s budget data, every field editable and optional
+    (ADR 0027 step 5): it belongs to the definition, so a change applies to
+    every reference. The cost is shown and typed in its currency's format;
+    ``currency`` is the one a new cost will use (the principal by default)."""
+    applies = (tr("Applies to"), tr("Every reference of {name}", name=name))
+    try:
+        data = document.block_data(name) or CadBlockData()
+    except CadError:
+        return Section(
+            "block_data",
+            tr("Block data"),
+            [
+                applies,
+                (tr("Data"), tr("Cannot be read")),
+                _clear_row(),
+            ],
+        )
+    register = register_of(document)
+    code = data.currency or currency or register.principal
+    choices = [
+        Choice(f"{c.code} ({c.symbol})" if c.symbol else c.code, c.code)
+        for c in register.currencies
+        if c.is_active
+    ]
+    if all(choice.value != code for choice in choices):
+        choices.append(Choice(tr("{code} (not active)", code=code), code))
+    shown = next(choice.label for choice in choices if choice.value == code)
+    cost = format_amount(data.cost, *register.format_of(code)) if data.cost is not None else ""
+    rows: list[tuple[str, str] | Property] = [
+        applies,
+        Property("block_data.category", tr("Category"), data.category, editable=True),
+        Property("block_data.type", tr("Type"), data.type, editable=True),
+        Property("block_data.material", tr("Material"), data.material, editable=True),
+        Property("block_data.supplier", tr("Supplier"), data.supplier, editable=True),
+        Property("block_data.cost", tr("Cost"), cost, editable=True),
+        Property("block_data.currency", tr("Currency"), shown, choices=choices, choice_value=code),
+    ]
+    if data != CadBlockData():
+        rows.append(_clear_row())
+    return Section("block_data", tr("Block data"), rows)
 
 
 def _geometry_section(entities: Sequence[CadEntityInfo], geometries: Sequence[object]) -> Section:
@@ -488,6 +560,9 @@ class PropertiesPanel(QDockWidget):
         ):
             signal.connect(self.refresh)
         self.grid.property_edited.connect(self._edit_property)
+        #: The currency a block's new cost will use, by block, chosen
+        #: before the cost is typed.
+        self._currency: dict[str, str] = {}
         self.retranslate()
 
     def retranslate(self) -> None:
@@ -506,7 +581,9 @@ class PropertiesPanel(QDockWidget):
                 deleted = set(event.changes.deleted)
                 selection = tuple(entity_id for entity_id in selection if entity_id not in deleted)
             if selection:
-                caption, sections = selection_properties(document, selection)
+                block = selected_block(document, document.get_entities(selection))
+                currency = self._currency.get(block) if block is not None else None
+                caption, sections = selection_properties(document, selection, currency)
                 self.grid.show_sections(caption, sections)
             else:
                 self.grid.show_sections(tr("Drawing"), drawing_properties(document))
@@ -538,6 +615,8 @@ class PropertiesPanel(QDockWidget):
                 self._edit_geometry(document, ids, key, str(value))
             elif key.startswith("text."):
                 self._edit_text(document, ids, key, str(value))
+            elif key.startswith("block_data."):
+                self._edit_block_data(document, ids, key, value)
         except (CadError, ValueError, OverflowError) as error:
             message = (
                 str(error)
@@ -583,6 +662,64 @@ class PropertiesPanel(QDockWidget):
         else:
             angle = math.radians(value)
             self._session.edit(document, lambda doc: doc.set_text(ids, rotation=angle))
+
+    def _edit_block_data(
+        self, document: CadDocument, ids: Sequence[int], key: str, value: object
+    ) -> None:
+        """One field of the selected references' block's data, one undo step
+        (BLOCKDATA); every field is optional. A cost typed wrong is said and
+        changes nothing."""
+        name = selected_block(document, document.get_entities(ids))
+        if name is None:
+            return
+        field = key.removeprefix("block_data.")
+        if field == "clear":
+            box = QMessageBox(
+                QMessageBox.Icon.Question,
+                tr("Clear block data"),
+                tr("Clear the budget data of block {name}?", name=name),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                self,
+            )
+            box.setDefaultButton(QMessageBox.StandardButton.No)
+            if box.exec() == QMessageBox.StandardButton.Yes:
+                self._session.edit(document, lambda doc: doc.set_block_data(name, CadBlockData()))
+            self.refresh()
+            return
+        data = document.block_data(name) or CadBlockData()
+        fields = {
+            "category": data.category,
+            "type": data.type,
+            "material": data.material,
+            "supplier": data.supplier,
+        }
+        register = register_of(document)
+        code = data.currency or self._currency.get(name) or register.principal
+        amount = data.cost
+        if field in fields:
+            fields[field] = str(value).strip()
+        elif field == "currency":
+            chosen = str(value)
+            if amount is None:
+                # No cost yet: the currency waits for one.
+                self._currency[name] = chosen
+                self.refresh()
+                return
+            code = chosen
+        elif field == "cost":
+            typed = str(value).strip()
+            try:
+                amount = parse_amount(typed, *register.format_of(code)) if typed else None
+            except ValueError as error:
+                self._session.bus.publish(CommandMessage(str(error)))
+                self.refresh()
+                return
+        new = CadBlockData(
+            **fields,
+            cost=amount,
+            currency=code if amount is not None else None,
+        )
+        self._session.edit(document, lambda doc: doc.set_block_data(name, new))
 
     def rows(self) -> list[tuple[str, str]]:
         """Every (name, value) the panel shows, for tests."""

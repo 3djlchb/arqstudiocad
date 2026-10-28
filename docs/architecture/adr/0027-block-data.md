@@ -411,6 +411,24 @@ Each step is its own pull request with tests:
   - **The core:** `set_block_data` skipped data that did not read when
     given empty data, taking it for "no data". Now data that does not
     read is always replaced, so it can be cleared.
+- **Step 5, the Properties panel (2026-10-28):**
+  - With references of **one** block selected (`selected_block`), the
+    panel gains a **Block data** group after General
+    (`block_data_section`).
+    - It shows "Applies to: every reference of X", because the data
+      belongs to the definition.
+    - Category, Type, Material and Supplier are edited in place.
+    - Cost is typed in its currency's format.
+    - Currency lists the active currencies.
+    - **Clear block data** works on a double click, asks first (No by
+      default), and shows only when the block has data.
+  - **Every field is optional.** Each edit is one undo step (BLOCKDATA).
+    A cost typed wrong is said in the command line and changes nothing.
+  - **Choosing a currency:** when the block has a cost, choosing another
+    currency moves the cost to it. Without a cost, the currency chosen
+    waits, by block, until a cost is typed.
+  - Two blocks, or anything that is not a reference, show no group.
+  - With this step every step of D8 is done.
 
 ## Consequences
 
