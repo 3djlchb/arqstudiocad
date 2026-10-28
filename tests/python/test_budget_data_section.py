@@ -187,3 +187,22 @@ def test_currencies_cancelled_is_a_cancelled_command() -> None:
     assert any(isinstance(e, CommandFinished) for e in h.events)
     assert not any(isinstance(e, CommandCancelled) for e in h.events)
     assert h.document.currencies[1] == "PEN"
+
+
+def test_budget_data_is_never_required(qtbot: QtBot) -> None:
+    # Optional (maintainer, 2026-10-28): folded or open, empty data makes the block.
+    shown = dialog(qtbot, BlockDefinitionState(name="MESA", ids=(1,)))
+    assert shown.ok_button.isEnabled() and shown.problem() is None
+    shown.data_toggle.click()
+    assert shown.ok_button.isEnabled(), "open and empty"
+    shown.data_fields.category.setCurrentText("Mobiliario")
+    shown.data_fields.category.setCurrentText("")
+    assert shown.ok_button.isEnabled(), "typed and erased"
+    # Only data typed wrong holds OK back, and the section never hides why.
+    shown.data_fields.cost.setText("doce")  # not an amount
+    assert not shown.ok_button.isEnabled()
+    shown.data_toggle.click()
+    assert shown.data_toggle.isChecked() and not shown.data_box.isHidden(), "stays open"
+    shown.data_fields.cost.setText("")
+    shown.data_toggle.click()
+    assert shown.data_box.isHidden() and shown.ok_button.isEnabled()

@@ -228,8 +228,14 @@ class BlockDefinitionDialog(QDialog):
         )
 
     def _fold(self) -> None:
-        """Shows or hides the Budget data section, its arrow following."""
+        """Shows or hides the Budget data section, its arrow following. The
+        data is optional (maintainer, 2026-10-28): only data typed wrong
+        holds OK back, so the section stays open while it does, never
+        hiding why."""
         shown = self.data_toggle.isChecked()
+        if not shown and self.data_fields.problem():
+            self.data_toggle.setChecked(True)
+            return
         self.data_box.setVisible(shown)
         self.data_toggle.setArrowType(Qt.ArrowType.DownArrow if shown else Qt.ArrowType.RightArrow)
         self.adjustSize()

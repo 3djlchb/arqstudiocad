@@ -383,8 +383,10 @@ Each step is its own pull request with tests:
   - **The section:** an optional Budget data section below the groups.
     - It is folded by default, and unfolded when it holds data or was
       unfolded before the dialog closed to pick.
-    - Data that cannot be written keeps OK disabled, saying "Budget
-      data: …".
+    - The data is **optional** *(maintainer, 2026-10-28)*: folded or
+      open, an empty section makes the block. Only data typed wrong
+      holds OK back, saying "Budget data: …", and the section stays open
+      while it does, so it never hides why.
     - It has a **Currencies…** button: the dialog closes with the new
       action `currencies`, BLOCK edits the currencies as CURRENCIES does
       (its own undo step), then opens the dialog again.
