@@ -16,7 +16,8 @@ from arqstudiocad.commands import (
     ClashChoice,
     ViewControl,
 )
-from arqstudiocad.core import CadCurrency, CadDocument
+from arqstudiocad.core import CadDocument
+from arqstudiocad.currencies import CurrencyRegister
 from arqstudiocad.i18n import tr
 from arqstudiocad.ui import (
     block_clash_dialog,
@@ -211,7 +212,7 @@ class QtUiServices:
     def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
         return purge_dialog.purge_blocks(document, self._parent)
 
-    def edit_currencies(self, document: CadDocument) -> tuple[list[CadCurrency], str] | None:
+    def edit_currencies(self, document: CadDocument) -> CurrencyRegister | None:
         return currencies_dialog.edit_currencies(document, self._parent)
 
     def ask_purge_block(self, name: str) -> bool:

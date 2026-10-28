@@ -100,6 +100,20 @@ The rules:
 Exchange rates are not part of this ADR: they come with the budget table,
 which will subtotal by currency.
 
+### D3a — How amounts are written *(maintainer, 2026-10-27)*
+
+As accounting standards allow, the drawing's register also says how its
+amounts are written:
+
+- **thousands** separated by a comma, a point or a space;
+- **decimals** separated by a point or a comma, never the thousands one.
+
+A drawing starts with 1,250.50. The Currencies dialog chooses both in two
+lists, with an example. Amounts are shown in this format and typed in it:
+thousands are optional when typed, but in groups of three when written. The
+core always stores an amount as decimal text with a point (D4), so changing
+the format changes no cost.
+
 ### D4 — Stored as XRECORDs, in the DWG and the DXF
 
 - **Block data:** an XRECORD in the block record's extension dictionary.
@@ -262,6 +276,22 @@ Each step is its own pull request with tests:
     translation.
   - Opening it from the Budget data section comes in step 4, and from
     the Options dialog later.
+- **The number format, D3a (2026-10-27):**
+  - **Core:** `Currencies` gains `thousands` and `decimal`, checked as
+    D3a says. The register writes them as the pairs `thousands` and
+    `decimal`, named `comma`, `point` or `space`, because a value that is
+    only a space would not survive every reader. A register without them
+    reads as 1,250.50.
+  - **Python:** `CadDocument.number_format`; `set_currencies` takes
+    `thousands` and `decimal`, None keeping them.
+    `arqstudiocad.currencies` adds:
+    - `format_amount` and `parse_amount`, the latter accepting the
+      no-break spaces too when thousands are spaced;
+    - `CurrencyRegister`, the register, its principal currency and the
+      format: what the UI service `edit_currencies` now returns.
+  - **The Currencies dialog** gains a Number format group with the two
+    lists and a live example. Choosing a separator the other list has
+    moves that list to its other choice.
 
 ## Consequences
 

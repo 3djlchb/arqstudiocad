@@ -630,19 +630,51 @@ impl CadDocument {
         self.read(|cad| cad.document().currency_uses())
     }
 
+    /// How the drawing writes amounts: its thousands separator (`","`,
+    /// `"."` or `" "`) and its decimal one (`"."` or `","`).
+    #[getter]
+    fn number_format(&self) -> PyResult<(String, String)> {
+        let register = self
+            .read(|cad| cad.document().currencies().map_err(CadError::from))?
+            .py()?;
+        Ok((register.thousands.to_string(), register.decimal.to_string()))
+    }
+
     /// Replaces the currency register (CURRENCIES): `principal` is the code
     /// of one of `currencies`, active. A currency a block's cost uses stays,
-    /// active, with its decimals. One undo step.
+    /// active, with its decimals. `thousands` and `decimal` change how
+    /// amounts are written; None keeps them. One undo step.
+    #[pyo3(signature = (currencies, principal, thousands = None, decimal = None))]
     fn set_currencies(
         &self,
         currencies: Vec<CadCurrency>,
         principal: &str,
+        thousands: Option<&str>,
+        decimal: Option<&str>,
     ) -> PyResult<CadChangeSet> {
-        let register = Currencies {
-            list: currencies.into_iter().map(|c| c.0).collect(),
-            principal: principal.to_owned(),
+        let one = |text: Option<&str>| -> PyResult<Option<char>> {
+            text.map(|t| {
+                let mut chars = t.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(c), None) => Ok(c),
+                    _ => Err(PyValueError::new_err("a separator is one character")),
+                }
+            })
+            .transpose()
         };
-        self.change(|cad| cad.set_currencies(&register))
+        let (thousands, decimal) = (one(thousands)?, one(decimal)?);
+        let list: Vec<_> = currencies.into_iter().map(|c| c.0).collect();
+        let principal = principal.to_owned();
+        self.change(|cad| {
+            let now = cad.document().currencies()?;
+            let register = Currencies {
+                list,
+                principal,
+                thousands: thousands.unwrap_or(now.thousands),
+                decimal: decimal.unwrap_or(now.decimal),
+            };
+            cad.set_currencies(&register)
+        })
     }
 
     /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a

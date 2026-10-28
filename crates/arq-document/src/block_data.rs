@@ -136,23 +136,49 @@ impl Currency {
     }
 }
 
-/// The drawing's currencies, in the register's order, and its principal
-/// one, which a new cost proposes first.
+/// The drawing's currencies, in the register's order, its principal one,
+/// which a new cost proposes first, and how its amounts are written
+/// (maintainer, 2026-10-27, as accounting standards allow).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Currencies {
     /// The currencies.
     pub list: Vec<Currency>,
     /// The principal currency's code: one of `list`, active.
     pub principal: String,
+    /// The thousands separator: `,`, `.` or a space.
+    pub thousands: char,
+    /// The decimal separator: `.` or `,`, not the thousands one.
+    pub decimal: char,
 }
 
 impl Default for Currencies {
-    /// US dollars alone, principal.
+    /// US dollars alone, principal, written 1,250.50.
     fn default() -> Self {
         Self {
             list: vec![Currency::us_dollar()],
             principal: "USD".to_owned(),
+            thousands: ',',
+            decimal: '.',
         }
+    }
+}
+
+/// A separator as the register names it: a lone space would not survive
+/// every reader.
+fn separator_name(separator: char) -> &'static str {
+    match separator {
+        '.' => "point",
+        ',' => "comma",
+        _ => "space",
+    }
+}
+
+fn separator_named(name: &str) -> Option<char> {
+    match name {
+        "point" => Some('.'),
+        "comma" => Some(','),
+        "space" => Some(' '),
+        _ => None,
     }
 }
 
@@ -261,14 +287,19 @@ impl Document {
         };
         let bad = || unreadable("the drawing's currencies".to_owned());
         let (_, pairs) = read_pairs(xrecord).ok_or_else(bad)?;
+        let defaults = Currencies::default();
         let mut register = Currencies {
             list: Vec::new(),
             principal: String::new(),
+            thousands: defaults.thousands,
+            decimal: defaults.decimal,
         };
         for (key, value) in pairs {
             let current = register.list.last_mut();
             match (key.as_str(), current) {
                 ("principal", _) => register.principal = value,
+                ("thousands", _) => register.thousands = separator_named(&value).ok_or_else(bad)?,
+                ("decimal", _) => register.decimal = separator_named(&value).ok_or_else(bad)?,
                 ("code", _) => register.list.push(Currency {
                     code: value,
                     name: String::new(),
@@ -399,7 +430,17 @@ impl Document {
     }
 
     fn write_currencies(&mut self, currencies: &Currencies) {
-        let mut pairs = vec![("principal".to_owned(), currencies.principal.clone())];
+        let mut pairs = vec![
+            ("principal".to_owned(), currencies.principal.clone()),
+            (
+                "thousands".to_owned(),
+                separator_name(currencies.thousands).to_owned(),
+            ),
+            (
+                "decimal".to_owned(),
+                separator_name(currencies.decimal).to_owned(),
+            ),
+        ];
         for c in &currencies.list {
             pairs.extend([
                 ("code".to_owned(), c.code.clone()),
@@ -413,7 +454,16 @@ impl Document {
             ]);
         }
         let handle = self.ensure_register();
-        let known = ["principal", "code", "name", "symbol", "decimals", "active"];
+        let known = [
+            "principal",
+            "thousands",
+            "decimal",
+            "code",
+            "name",
+            "symbol",
+            "decimals",
+            "active",
+        ];
         if let Some(ObjectType::XRecord(xrecord)) = self.cad_mut().objects.get_mut(&handle) {
             let kept = keep_unknown(xrecord, &known);
             write_pairs(xrecord, pairs.into_iter().chain(kept));
@@ -546,6 +596,17 @@ fn check_register(currencies: &Currencies) -> DocumentResult<()> {
         .is_some_and(|c| c.active)
     {
         return invalid("the principal currency is one of the register, active".to_owned());
+    }
+    let separators = (currencies.thousands, currencies.decimal);
+    if !matches!(separators.0, ',' | '.' | ' ')
+        || !matches!(separators.1, ',' | '.')
+        || separators.0 == separators.1
+    {
+        return invalid(
+            "thousands are separated by a comma, a point or a space, and decimals by \
+             the other of a point or a comma"
+                .to_owned(),
+        );
     }
     Ok(())
 }

@@ -692,3 +692,51 @@ fn a_copied_block_brings_its_data_and_its_currency() {
     doc.copy_block(&source, "SILLA", &redefine).unwrap();
     assert_eq!(doc.block_data("SILLA").unwrap(), Some(in_soles));
 }
+
+#[test]
+fn the_register_keeps_how_amounts_are_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut doc = drawing();
+    let register = doc.currencies().unwrap();
+    assert_eq!(
+        (register.thousands, register.decimal),
+        (',', '.'),
+        "1,250.50"
+    );
+    for (thousands, decimal) in [('.', ','), (' ', ','), (' ', '.'), (',', '.')] {
+        let mut format = with_pen();
+        format.thousands = thousands;
+        format.decimal = decimal;
+        doc.set_currencies(&format).unwrap();
+        assert_eq!(doc.currencies().unwrap(), format);
+        for name in ["format.dwg", "format.dxf"] {
+            let path = dir.path().join(name);
+            doc.save(&path).unwrap();
+            let back = Document::open(&path).unwrap();
+            assert_eq!(back.currencies().unwrap(), format, "{name}: {thousands:?}");
+        }
+    }
+    for (thousands, decimal) in [('.', '.'), (',', ','), ('.', ' '), ('_', '.'), (',', ';')] {
+        let mut format = with_pen();
+        format.thousands = thousands;
+        format.decimal = decimal;
+        invalid(
+            doc.set_currencies(&format),
+            "thousands are separated by a comma, a point or a space",
+        );
+    }
+    // A name the register does not know does not read.
+    let handle = doc.register().unwrap().handle;
+    if let Some(ObjectType::XRecord(x)) = doc.cad_mut().objects.get_mut(&handle) {
+        let at = x
+            .entries
+            .iter()
+            .position(|e| e.value.as_string() == Some("decimal"))
+            .unwrap();
+        x.entries[at + 1].value = XRecordValue::String("tab".to_owned());
+    }
+    invalid(
+        doc.currencies(),
+        "the drawing's currencies could not be read",
+    );
+}

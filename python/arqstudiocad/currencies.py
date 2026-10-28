@@ -1,4 +1,6 @@
-"""The ISO 4217 catalog the Currencies dialog adds from (ADR 0027 D3).
+"""The ISO 4217 catalog the Currencies dialog adds from (ADR 0027 D3), and
+how a drawing writes amounts: shown with its separators, read back from
+what the user types.
 
 The currencies in use today, without funds, precious metals or testing
 codes: each one's code, its English name, a common symbol and its minor
@@ -7,8 +9,10 @@ this project. A currency added from here keeps its English name in the
 drawing, so the name is shown in the reader's language through ``tr()``.
 """
 
+import re
 from typing import NamedTuple
 
+from arqstudiocad.core import CadCurrency
 from arqstudiocad.i18n import tr
 
 
@@ -189,3 +193,66 @@ def shown_name(name: str) -> str:
     """A register's currency name in the reader's language: a catalog name
     is translated; a name the user wrote is shown as written."""
     return tr(name)
+
+
+# How a drawing writes amounts (maintainer, 2026-10-27, as accounting
+# standards allow): its thousands and decimal separators.
+
+#: The thousands separators offered: comma, point, space.
+THOUSANDS = (",", ".", " ")
+#: The decimal separators offered: point, comma.
+DECIMAL = (".", ",")
+#: Spaces a typed amount may group thousands with when the format's is a space.
+SPACES = (" ", "\u00a0", "\u202f")
+#: Digits, the ASCII ones only.
+DIGITS = re.compile(r"[0-9]+")
+
+
+class CurrencyRegister(NamedTuple):
+    """A drawing's currencies, its principal one's code and how it writes
+    amounts, as the Currencies dialog proposes them."""
+
+    currencies: list[CadCurrency]
+    principal: str
+    thousands: str
+    decimal: str
+
+
+def format_amount(amount: str, thousands: str, decimal: str) -> str:
+    """``amount`` as the core writes it (``"1250.50"``) with the drawing's
+    separators: ``"1,250.50"``, ``"1.250,50"``, ``"1 250,50"``…"""
+    whole, _, fraction = amount.partition(".")
+    groups: list[str] = []
+    while len(whole) > 3:
+        groups.insert(0, whole[-3:])
+        whole = whole[:-3]
+    groups.insert(0, whole)
+    text = thousands.join(groups)
+    return f"{text}{decimal}{fraction}" if fraction else text
+
+
+def parse_amount(typed: str, thousands: str, decimal: str) -> str:
+    """An amount typed with the drawing's separators, as the core reads it
+    (``"1.250,5"`` → ``"1250.5"``). Thousands are optional but, when
+    written, in groups of three. Raises ValueError, its message for the
+    user, when it is not such an amount; the core checks the decimals."""
+    text = typed.strip()
+    if thousands == " ":
+        for space in SPACES:
+            text = text.replace(space, " ")
+    whole, point, fraction = text.partition(decimal)
+    groups = whole.split(thousands)
+    grouped = len(groups) == 1 or (
+        1 <= len(groups[0]) <= 3 and all(len(g) == 3 for g in groups[1:])
+    )
+    whole = "".join(groups)
+    if not grouped or not DIGITS.fullmatch(whole) or (point and not DIGITS.fullmatch(fraction)):
+        example = format_amount("1250.50", thousands, decimal)
+        raise ValueError(
+            tr(
+                "{typed} is not an amount: write it as {example}.",
+                typed=typed.strip(),
+                example=example,
+            )
+        )
+    return f"{whole}.{fraction}" if point else whole
