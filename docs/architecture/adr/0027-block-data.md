@@ -235,6 +235,33 @@ Each step is its own pull request with tests:
     - in Rust, amounts, refusals, undo, unknown pairs, unreadable data,
       round trips in DWG and DXF, and D6;
     - in Python, the API.
+- **Step 3, the Currencies dialog (2026-10-27)** *(maintainer: a table
+  with boxes, the whole ISO catalog with a search, the command alone for
+  now)*:
+  - **CURRENCIES** (Spanish `MONEDAS`) opens the Currencies dialog
+    through the new UI service `edit_currencies`. It writes what the
+    dialog proposes in one undo step, and says why when the core refuses.
+    Without an interface, it lists the register.
+  - **The dialog** (`ui/currencies_dialog.py`) shows one row per currency:
+    - an Active box, and a Principal choice drawn as a radio button (the
+      style's own radio is faint over a table in the dark theme);
+    - the code, the name and the symbol (the last two edited in place),
+      the decimals, and how many blocks' costs use it.
+  - **What stays:** a currency a cost uses, or the principal one, stays
+    active and cannot be removed; only an active one can be principal.
+  - **Adding:** **Add from catalog…** opens the catalog with a search by
+    code or name; **Own currency…** asks for a code (3 to 10 capital
+    letters or digits, not taken), a name, a symbol and the decimals.
+  - **The catalog** (`arqstudiocad/currencies.py`) holds ISO 4217's 154
+    current currencies, without funds, metals or testing codes; BGN left
+    with Bulgaria's euro (2026). These are facts compiled for the project,
+    not copied from another data set, so `THIRD_PARTY.md` does not change.
+  - **Names:** a catalog name is kept in English in the drawing and shown
+    through `tr()`, so each reader sees it in their language; a name the
+    user writes is shown as written. Every catalog name has its Spanish
+    translation.
+  - Opening it from the Budget data section comes in step 4, and from
+    the Options dialog later.
 
 ## Consequences
 

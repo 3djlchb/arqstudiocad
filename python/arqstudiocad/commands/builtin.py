@@ -24,6 +24,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.blocks import BLOCK_COMMANDS, close_block_editor, save_block
+from arqstudiocad.commands.budget import BUDGET_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.core import (
@@ -374,4 +375,6 @@ BUILTIN_COMMANDS = (
 
 def builtin_registry() -> CommandRegistry:
     """A registry with every built-in command."""
-    return CommandRegistry((*BUILTIN_COMMANDS, *DRAW_COMMANDS, *MODIFY_COMMANDS, *BLOCK_COMMANDS))
+    return CommandRegistry(
+        (*BUILTIN_COMMANDS, *DRAW_COMMANDS, *MODIFY_COMMANDS, *BLOCK_COMMANDS, *BUDGET_COMMANDS)
+    )
