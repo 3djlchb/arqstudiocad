@@ -96,6 +96,14 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 | 03.5 External validation | Outputs opened in independent CAD applications; Xref and BIM drawings in the corpus | ◐ [ProgeCAD exercise](testing/progecad-xrefs.md): six real source DWGs, ten retained host outputs reopened per engine run (0.6.5 and 0.6.7); unloaded-DXF state preservation is corrected and independently checked; the full native DXF-to-DWG companion conversion preserves margins 1.5 and unloaded state (fork 59aaf4c); native table measurements validate the AC1032 DWG round trip and the corrected DXF-to-DWG instance format in fork 0d438b6 ([correction](testing/progecad-table-instance-formatting.md)); the AC1021 border-table reader is corrected in fork 179aaeb and verified by native reopening ([reader correction](testing/progecad-table-2007-reader.md)); same-format DXF border encodings remain under investigation ([table baseline](testing/progecad-tables-results.md)); reload and broader coverage remain open ([results](testing/progecad-xrefs-results.md)). Loading design is [proposed in ADR 0026](architecture/adr/0026-external-reference-loading.md), for phase 04 or later per ADR 0023 |
 | 03.6 Fidelity across versions | DWG as the default save format once the corpus allows it (contract §10); linetypes, lineweights, layouts | ○ |
 
+The [Map resource proxy correction](testing/progecad-map-resource-preservation.md)
+is locally validated on main `76d2cc0`: all six native table safe saves and
+all twelve Xref safe saves verify, with no other integrated status change.
+Fork commit `c05e7be` is published under its immutable tag and the task branch
+pins that exact Git revision; its repeated matrix and Python checks pass.
+Product adoption awaits PR review and merge. The measured DWG-to-DXF table-format
+limits remain open, so milestones 03.4 and 03.5 remain in progress.
+
 ## Phase 04 — Associative technical documentation ○
 
 Dimensions, texts and fonts, annotations, hatches, views, scales, sheets,
