@@ -304,6 +304,48 @@ fn defining_a_block_is_one_undo_step_in_every_way() {
 }
 
 #[test]
+fn renaming_a_block_is_one_undo_step() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (reference, _) = cad.create_block("ESQUINA", p(0.0, 0.0), &[a]).unwrap();
+    let renamed = cad.rename_block("esquina", "Rincón").unwrap();
+    assert_eq!(cad.undo_name(), Some("RENAME"));
+    assert_eq!(renamed.blocks_created(), ["Rincón"]);
+    assert_eq!(renamed.blocks_deleted(), ["ESQUINA"]);
+    assert!(renamed.modified().contains(&reference));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().block_names(), ["ESQUINA"]);
+    assert_eq!(cad.undo_name(), Some("BLOCK"));
+    // A refused name changes nothing and records no step.
+    assert!(matches!(
+        cad.rename_block("ESQUINA", "A/B"),
+        Err(CadError::InvalidOperation(_))
+    ));
+    assert_eq!(cad.undo_name(), Some("BLOCK"));
+}
+
+#[test]
+fn purging_blocks_is_one_undo_step() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (reference, _) = cad.create_block("ESQUINA", p(0.0, 0.0), &[a]).unwrap();
+    cad.delete_entities(&[reference]).unwrap();
+    let (purged, changes) = cad.purge_blocks(&["esquina".to_owned()], true).unwrap();
+    assert_eq!(purged, ["ESQUINA"]);
+    assert_eq!(cad.undo_name(), Some("PURGE"));
+    assert_eq!(changes.blocks_deleted(), ["ESQUINA"]);
+    assert!(cad.document().block_names().is_empty());
+    cad.undo().unwrap();
+    assert_eq!(cad.document().block_names(), ["ESQUINA"]);
+    // A block in use is refused and records no step.
+    assert!(matches!(
+        cad.purge_blocks(&["NADA".to_owned()], true),
+        Err(CadError::InvalidOperation(_))
+    ));
+    assert_eq!(cad.undo_name(), Some("ERASE"));
+}
+
+#[test]
 fn saving_a_block_editor_is_one_step_that_redraws_the_references() {
     let mut cad = CadDocument::new();
     let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();

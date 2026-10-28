@@ -112,6 +112,15 @@ class RecentBlocks:
             if not any(block.same(b) for b in self._blocks):
                 self._blocks.append(block)
 
+    def renamed(self, document_id: int, old: str, new: str) -> None:
+        """Block ``old`` of document ``document_id`` is called ``new`` now."""
+        self._blocks = [
+            replace(b, name=new)
+            if b.document_id == document_id and b.name.casefold() == old.casefold()
+            else b
+            for b in self._blocks
+        ]
+
     def closed(self, document_id: int) -> None:
         """Document ``document_id`` was closed: the blocks of a drawing
         never saved leave the list, since no file holds them (maintainer,

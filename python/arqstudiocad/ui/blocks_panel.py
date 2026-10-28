@@ -75,10 +75,20 @@ from arqstudiocad.commands.blocks import (
     edit_named,
     insert_named,
     load_template,
+    purge_named,
     read_files,
+    rename_named,
+    select_named,
 )
 from arqstudiocad.core import CadBlockInfo, CadDocument, CadError
-from arqstudiocad.events import BlockUsed, DocumentChanged, DocumentClosed, DocumentSaved, Event
+from arqstudiocad.events import (
+    BlockRenamed,
+    BlockUsed,
+    DocumentChanged,
+    DocumentClosed,
+    DocumentSaved,
+    Event,
+)
 from arqstudiocad.i18n import tr
 from arqstudiocad.paths import sample_template
 from arqstudiocad.recent_blocks import CREATED, FROM_TEMPLATE, RecentBlock, RecentBlocks, used_text
@@ -687,6 +697,7 @@ class BlocksPanel(QDockWidget):
         for signal in (events.active_document_changed, events.document_changed):
             signal.connect(self.refresh)
         events.block_used.connect(self._block_used)
+        events.block_renamed.connect(self._block_renamed)
         events.document_saved.connect(self._document_saved)
         events.document_closed.connect(self._document_closed)
         self.restyle()
@@ -878,6 +889,16 @@ class BlocksPanel(QDockWidget):
         self._save_recent()
         if self._source == "recent":
             self.refresh()
+
+    def _block_renamed(self, event: BlockRenamed) -> None:
+        """A block was renamed: the recent list and the selection follow it."""
+        self.recent.renamed(event.document_id, event.old, event.new)
+        self._save_recent()
+        drawing = self.document()
+        if drawing is not None and drawing.id == event.document_id:
+            self.refresh()
+            if self._source == "drawing":
+                self.select(event.new)
 
     def _document_saved(self, event: DocumentSaved) -> None:
         self.recent.saved(event.document_id, event.path)
@@ -1287,7 +1308,9 @@ class BlocksPanel(QDockWidget):
     def block_menu(self) -> QMenu | None:
         """The selected block's context menu, as the source allows: Insert
         and Insert with options always; Copy to drawing for a block of
-        another file; Edit block for the drawing's; Redefine from template
+        another file; Edit block, Rename, Select in drawing and Purge for the
+        drawing's;
+        Redefine from template
         when the drawing's block of that name differs. None with nothing
         selected."""
         row = self._current_row()
@@ -1316,6 +1339,21 @@ class BlocksPanel(QDockWidget):
             edit = menu.addAction(tr("Edit block"), self.edit_selected)
             edit.setObjectName("edit")
             edit.setEnabled(self.edit_button.isEnabled())
+            rename = menu.addAction(tr("Rename…"), self.rename_selected)
+            rename.setObjectName("rename")
+            # As Edit block: not a dynamic block (ADR 0025 step 8c).
+            rename.setEnabled(self.edit_button.isEnabled())
+            select = menu.addAction(tr("Select in drawing"), self.select_references)
+            select.setObjectName("select")
+            purge = menu.addAction(tr("Purge…"), self.purge_selected)
+            purge.setObjectName("purge")
+            # Only a block nothing uses, not dynamic (ADR 0025 step 8e).
+            document = self.document()
+            purge.setEnabled(
+                document is not None
+                and name in document.unused_blocks
+                and not document.is_dynamic_block(name)
+            )
         if self._redefinable(name):
             menu.addSeparator()
             redefine = menu.addAction(tr("Redefine from template"), self.redefine_selected)
@@ -1483,6 +1521,32 @@ class BlocksPanel(QDockWidget):
             return
         if name is not None and self._runner is not None and self.document() is not None:
             self._runner.start(edit_named(name))
+
+    def rename_selected(self) -> None:
+        """Renames the selected block of the drawing, through RENAME."""
+        name = self.selected()
+        if self._source != "drawing":
+            return
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(rename_named(name))
+
+    def select_references(self) -> None:
+        """Selects the selected block's references in the drawing, through
+        SELECTBLOCK."""
+        name = self.selected()
+        if self._source != "drawing":
+            return
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(select_named(name))
+
+    def purge_selected(self) -> None:
+        """Purges the selected block of the drawing, once confirmed,
+        through PURGE."""
+        name = self.selected()
+        if self._source != "drawing":
+            return
+        if name is not None and self._runner is not None and self.document() is not None:
+            self._runner.start(purge_named(name))
 
     def new_block(self) -> None:
         """Makes a new block from objects, through BLOCK."""

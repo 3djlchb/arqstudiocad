@@ -5,12 +5,30 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Literal
 
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox, QWidget
 
-from arqstudiocad.commands import BlockClash, ClashChoice, ViewControl
+from arqstudiocad.commands import (
+    BlockClash,
+    BlockDefinitionState,
+    BlockDialogAction,
+    BlockObjectsChoice,
+    ClashChoice,
+    ViewControl,
+)
 from arqstudiocad.core import CadDocument
 from arqstudiocad.i18n import tr
-from arqstudiocad.ui import block_clash_dialog, edit_block_dialog, text_dialog
+from arqstudiocad.ui import (
+    block_clash_dialog,
+    block_definition_dialog,
+    edit_block_dialog,
+    purge_dialog,
+    rename_block_dialog,
+    text_dialog,
+)
+
+#: The Block Definition dialog's last choice for the objects (ADR 0023 D2a).
+BLOCK_OBJECTS_SETTING = "block_definition/objects"
 
 
 def drawing_filter() -> str:
@@ -29,10 +47,12 @@ class QtUiServices:
         parent: QWidget,
         views: Callable[[CadDocument], ViewControl | None] | None = None,
         panels: Callable[[str], bool] | None = None,
+        settings: QSettings | None = None,
     ) -> None:
         self._parent = parent
         self._views = views
         self._panels = panels
+        self._settings = settings
         self.last_folder = ""
 
     def choose_open_path(self) -> Path | None:
@@ -170,6 +190,56 @@ class QtUiServices:
 
     def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
         return edit_block_dialog.choose_block_to_edit(document, chosen, self._parent)
+
+    def define_block(
+        self, document: CadDocument, state: BlockDefinitionState
+    ) -> tuple[BlockDialogAction, BlockDefinitionState] | None:
+        stored = self._settings.value(BLOCK_OBJECTS_SETTING) if self._settings else None
+        remembered: BlockObjectsChoice = (
+            stored if stored in ("retain", "convert", "delete") else "convert"
+        )
+        answer = block_definition_dialog.define_block(document, state, remembered, self._parent)
+        if answer is not None and answer[0] == "ok" and self._settings is not None:
+            # The choice made last is the next one's (ADR 0023 D2a).
+            self._settings.setValue(BLOCK_OBJECTS_SETTING, answer[1].objects)
+        return answer
+
+    def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
+        return rename_block_dialog.rename_block(document, chosen, self._parent)
+
+    def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
+        return purge_dialog.purge_blocks(document, self._parent)
+
+    def ask_purge_block(self, name: str) -> bool:
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            tr("Purge"),
+            tr("Purge block {name} from the drawing?", name=name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            self._parent,
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
+
+    def ask_redefine_block(self, name: str, references: int) -> bool:
+        if references == 1:
+            change = tr("1 reference in the drawing will change.")
+        else:
+            change = tr("{count} references in the drawing will change.", count=references)
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            tr("Redefine block"),
+            tr(
+                "A block named {name} exists in the drawing. Redefine it with the "
+                "objects selected? {change}",
+                name=name,
+                change=change,
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            self._parent,
+        )
+        box.setDefaultButton(QMessageBox.StandardButton.No)
+        return box.exec() == QMessageBox.StandardButton.Yes
 
     def resolve_block_clashes(self, clashes: Sequence[BlockClash]) -> dict[str, ClashChoice] | None:
         return block_clash_dialog.resolve_block_clashes(clashes, self._parent)

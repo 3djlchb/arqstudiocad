@@ -4,14 +4,19 @@
 //! values. The Blocks palette reads what it shows of each block here
 //! (ADR 0025).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use acadrust::document::{
+    SemanticNodeV1, SemanticPartV1, SemanticReferenceV1, SemanticTableRecordV1,
+};
 use acadrust::entities::{AttributeEntity, Insert};
 use acadrust::tables::{BlockRecord, TableEntry};
 use acadrust::types::{Transform, Vector3};
+use acadrust::xdata::XDataValue;
 use acadrust::{EntityType, Handle};
 use arq_geometry::Point2;
 
+use crate::block_editor::block_of;
 use crate::document::Document;
 use crate::entity::EntityId;
 use crate::error::{DocumentError, DocumentResult};
@@ -38,6 +43,19 @@ pub struct BlockInfo {
     pub explodable: bool,
     /// Whether its references must be scaled the same in X and Y.
     pub scale_uniformly: bool,
+}
+
+/// Where a block's references are (SELECTBLOCK, ADR 0025 step 8d).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockReferences {
+    /// Those in model space that can be selected, in the order drawn.
+    pub shown: Vec<EntityId>,
+    /// Those in model space that draw nothing: on an off or frozen layer.
+    pub hidden: usize,
+    /// Those inside other blocks, which are selected as a whole.
+    pub nested: usize,
+    /// Those in paper space or a layout.
+    pub in_layouts: usize,
 }
 
 /// What BLOCK does with the objects it makes a block from (ADR 0023 D2a):
@@ -155,20 +173,151 @@ impl Document {
             .iter()
             .map(|b| (b.handle(), b.name.as_str()))
             .collect();
+        let copies = self.anonymous_copies();
         let mut counts = HashMap::new();
         for e in cad.entities() {
             if let EntityType::Insert(insert) = e {
-                // The reference's own link to its dynamic block, else the
-                // anonymous block's (AcadRust reads both kinds of file).
-                let definition = cad
-                    .dynamic_definition_for_insert(insert.common.handle)
-                    .map(|h| cad.dynamic_block_definition(h).unwrap_or(h));
+                let definition = self.definition_of(insert.common.handle, &copies);
                 if let Some(name) = definition.and_then(|h| names.get(&h)) {
                     *counts.entry((*name).to_owned()).or_insert(0) += 1;
                 }
             }
         }
         counts
+    }
+
+    /// The block record reference `insert` stands for: its block's, or the
+    /// dynamic block's when it draws through an anonymous copy (`*U…`),
+    /// `copies` linking those the codec cannot (`anonymous_copies`).
+    fn definition_of(&self, insert: Handle, copies: &HashMap<Handle, Handle>) -> Option<Handle> {
+        let cad = self.cad();
+        // The reference's own link to its dynamic block, else the anonymous
+        // block's (AcadRust reads both kinds of file).
+        cad.dynamic_definition_for_insert(insert)
+            .map(|h| cad.dynamic_block_definition(h).unwrap_or(h))
+            .map(|h| copies.get(&h).copied().unwrap_or(h))
+    }
+
+    /// Anonymous copies (`*U…`) of a dynamic block that lost their link to
+    /// it, by the block they copy (ADR 0025 step 8d, maintainer
+    /// 2026-10-26). An application that drops dynamic-block data when it
+    /// saves keeps the copies its references draw, and AutoCAD's extended
+    /// data on them: a copy is linked when its true name
+    /// (`AcDbDynamicBlockTrueName`) names a block INSERT can place, or when
+    /// exactly one such block has the same edit tag (`AcDbBlockRepETag`)
+    /// and draws the same.
+    fn anonymous_copies(&self) -> HashMap<Handle, Handle> {
+        let cad = self.cad();
+        let mut true_names: HashMap<Handle, String> = HashMap::new();
+        let mut tags: HashMap<Handle, Vec<XDataValue>> = HashMap::new();
+        cad.semantic_inventory_v1().visit(|part| {
+            let SemanticPartV1::NonEntityExtendedData {
+                owner:
+                    SemanticReferenceV1::Resolved(SemanticNodeV1::TableRecord(
+                        SemanticTableRecordV1::BlockRecord(record),
+                    )),
+                application: Some(application),
+                values: Some(values),
+            } = part
+            else {
+                return;
+            };
+            match application.name.as_str() {
+                "AcDbDynamicBlockTrueName" => {
+                    let name = values.into_iter().find_map(|v| match v {
+                        XDataValue::String(s) => Some(s),
+                        _ => None,
+                    });
+                    if let Some(name) = name {
+                        true_names.insert(record.handle(), name);
+                    }
+                }
+                "AcDbBlockRepETag" => {
+                    tags.insert(record.handle(), values);
+                }
+                _ => {}
+            }
+        });
+        let named: Vec<(String, Handle)> = self
+            .block_names()
+            .into_iter()
+            .filter_map(|n| cad.block_records.get(&n).map(|r| (n.clone(), r.handle())))
+            .collect();
+        let mut copies = HashMap::new();
+        // Only anonymous ones: a named block is never another's copy. Those
+        // the codec links are mapped before these (`definition_of`).
+        for record in cad.block_records.iter().filter(|b| b.is_anonymous()) {
+            let h = record.handle();
+            let by_name = true_names
+                .get(&h)
+                .and_then(|t| named.iter().find(|(n, _)| n.eq_ignore_ascii_case(t)))
+                .map(|(_, d)| *d);
+            let by_contents = || {
+                let tag = tags.get(&h)?;
+                let drawn = self.contents_drawing(&record.name);
+                let mut same = named
+                    .iter()
+                    .filter(|(n, d)| tags.get(d) == Some(tag) && self.contents_drawing(n) == drawn);
+                let first = same.next()?.1;
+                same.next().is_none().then_some(first)
+            };
+            if let Some(definition) = by_name.or_else(by_contents) {
+                copies.insert(h, definition);
+            }
+        }
+        copies
+    }
+
+    /// Where block `name`'s references are, found ignoring case, for
+    /// SELECTBLOCK (ADR 0025 step 8d): those placed in model space that can
+    /// be selected, and how many cannot. A dynamic block's anonymous
+    /// references count for it, as in `block_references`.
+    pub fn find_block_references(&self, name: &str) -> DocumentResult<BlockReferences> {
+        let cad = self.cad();
+        let block = self
+            .block_names()
+            .into_iter()
+            .find(|n| n.eq_ignore_ascii_case(name))
+            .and_then(|n| cad.block_records.get(&n))
+            .ok_or_else(|| DocumentError::InvalidBlockName(format!("no block named {name:?}")))?
+            .handle();
+        let copies = self.anonymous_copies();
+        let mut found = BlockReferences::default();
+        let mut placed: HashSet<Handle> = HashSet::new();
+        // Model space first, in the order drawn, as a window selects.
+        for e in cad.model_space_entities() {
+            let h = e.as_entity().handle();
+            if !matches!(e, EntityType::Insert(_)) || self.definition_of(h, &copies) != Some(block)
+            {
+                continue;
+            }
+            placed.insert(h);
+            // Selectable as a click finds it: when it draws something.
+            if self.drawing(h.value()).is_some_and(|d| !d.is_empty()) {
+                found.shown.push(h.value());
+            } else {
+                found.hidden += 1;
+            }
+        }
+        for e in cad.entities() {
+            let EntityType::Insert(insert) = e else {
+                continue;
+            };
+            let h = insert.common.handle;
+            if placed.contains(&h) || self.definition_of(h, &copies) != Some(block) {
+                continue;
+            }
+            let owner = cad
+                .block_records
+                .iter()
+                .find(|b| b.handle() == insert.common.owner_handle);
+            if owner.is_some_and(|b| b.is_layout() || b.is_paper_space()) {
+                found.in_layouts += 1;
+            } else {
+                found.nested += 1;
+            }
+        }
+        Ok(found)
     }
 
     /// Makes block `name` from `ids` with its base point at `base`, and
@@ -276,6 +425,41 @@ impl Document {
             BlockObjects::Convert => self.insert_block(&block, base, 1.0, 0.0).map(Some),
             BlockObjects::Retain | BlockObjects::Delete => Ok(None),
         }
+    }
+
+    /// Renames block `name`, found ignoring case, to `new_name`; every
+    /// reference follows, in model and paper space and inside other blocks
+    /// (RENAME, ADR 0025 step 8c). Changing only the case is allowed. A
+    /// name in use, a dynamic block, or one INSERT cannot place is refused.
+    /// Returns the old name as the drawing spelled it.
+    pub fn rename_block(&mut self, name: &str, new_name: &str) -> DocumentResult<String> {
+        let block = self.editable_block(name)?;
+        check_block_name(new_name)?;
+        if block == new_name {
+            return Ok(block);
+        }
+        if !block.eq_ignore_ascii_case(new_name) && self.cad().block_records.contains(new_name) {
+            return Err(DocumentError::InvalidBlockName(format!(
+                "a block named {new_name:?} exists"
+            )));
+        }
+        let references: Vec<Handle> = self
+            .cad()
+            .entities()
+            .filter(|e| block_of(e).is_some_and(|b| b.eq_ignore_ascii_case(&block)))
+            .map(|e| e.as_entity().handle())
+            .collect();
+        self.touch_structure();
+        self.cad_mut()
+            .block_records
+            .rename(&block, new_name)
+            .map_err(|e| DocumentError::InvalidBlockName(e.to_string()))?;
+        for h in references {
+            if let Some(EntityType::Insert(insert)) = self.cad_mut().get_entity_mut(h) {
+                insert.block_name = new_name.to_owned();
+            }
+        }
+        Ok(block)
     }
 
     /// Places block `name` at `point`, scaled by `scale` and turned

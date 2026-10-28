@@ -4,12 +4,19 @@ use std::f64::consts::FRAC_PI_2;
 
 use arq_geometry::{Line, Point2};
 
-use crate::blocks::{BlockDefinition, BlockObjects};
+use acadrust::entities::Insert;
+use acadrust::tables::AppId;
+use acadrust::types::Vector3;
+use acadrust::xdata::{ExtendedDataRecord, XDataValue};
+use acadrust::{EntityType, tables::TableEntry};
+
+use crate::blocks::{BlockDefinition, BlockObjects, BlockReferences};
 use crate::document::Document;
 use crate::drawing::Shape;
 use crate::entity::{EntityId, PlanGeometry};
 use crate::error::DocumentError;
 use crate::test_dxf::{LAYERS, door_block, dxf};
+use crate::translate::handle;
 
 fn p(x: f64, y: f64) -> Point2 {
     Point2::new(x, y).unwrap()
@@ -531,4 +538,377 @@ fn a_block_that_does_not_allow_exploding_is_not_exploded() {
     let other = frame(&mut doc);
     let free = doc.create_block("LIBRE", p(10.0, 10.0), &other).unwrap();
     assert_eq!(doc.explode_insert(free).unwrap().len(), 2);
+}
+
+// RENAME (ADR 0025 step 8c)
+
+/// PUERTA placed twice (one spelled in lower case) and once inside MURO,
+/// which is placed too.
+fn doors() -> Document {
+    let door = door_block();
+    let wall: Vec<&str> = vec![
+        "0", "BLOCK", "8", "0", "2", "MURO", "70", "0", "10", "0", "20", "0", "30", "0", "3",
+        "MURO", //
+        "0", "INSERT", "8", "0", "2", "PUERTA", "10", "5", "20", "0", "30", "0", //
+        "0", "ENDBLK", "8", "0",
+    ];
+    dxf(
+        LAYERS,
+        &[&door, &wall],
+        &[
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "puerta", "10", "9", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "MURO", "10", "0", "20", "5", "30", "0",
+            ],
+        ],
+    )
+}
+
+/// What every reference in model space draws, in order.
+fn everything_drawn(doc: &Document) -> Vec<Vec<(i64, i64)>> {
+    doc.entities().iter().map(|e| drawn(doc, e.id())).collect()
+}
+
+#[test]
+fn renaming_a_block_renames_every_reference_to_it() {
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    assert_eq!(doc.rename_block("puerta", "Door").unwrap(), "PUERTA");
+    assert_eq!(doc.block_names(), ["Door", "MURO"]);
+    assert!(doc.block_info("PUERTA").is_none());
+    assert_eq!(references(&doc, "Door"), 3, "two placed, one inside MURO");
+    assert_eq!(everything_drawn(&doc), before, "drawn as before");
+    // Only the case changed: allowed, and spelled as typed.
+    doc.rename_block("DOOR", "door").unwrap();
+    assert_eq!(doc.block_names(), ["door", "MURO"]);
+    assert_eq!(references(&doc, "door"), 3);
+    // The same name: nothing to do.
+    assert_eq!(doc.rename_block("door", "door").unwrap(), "door");
+}
+
+#[test]
+fn a_renamed_block_is_saved_and_read_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    doc.rename_block("PUERTA", "Puerta de paso").unwrap();
+    for name in ["doors.dwg", "doors.dxf"] {
+        let path = dir.path().join(name);
+        doc.save(&path).unwrap();
+        let back = Document::open(&path).unwrap();
+        assert_eq!(back.block_names(), ["MURO", "Puerta de paso"], "{name}");
+        assert_eq!(references(&back, "Puerta de paso"), 3, "{name}");
+        assert_eq!(everything_drawn(&back), before, "{name}");
+    }
+}
+
+#[test]
+fn what_cannot_be_renamed_is_refused_and_nothing_changes() {
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    for (name, new, why) in [
+        ("PUERTA", "muro", "a block named \"muro\" exists"),
+        ("PUERTA", "A/B", "not a valid block name"),
+        ("PUERTA", "*U9", "not a valid block name"),
+        ("PUERTA", " PUERTA", "not a valid block name"),
+        ("PUERTA", "", "not a valid block name"),
+        ("NADA", "OTRA", "no block named"),
+        ("*Model_Space", "OTRA", "no block named"),
+    ] {
+        assert!(
+            matches!(
+                doc.rename_block(name, new),
+                Err(DocumentError::InvalidBlockName(m)) if m.contains(why)
+            ),
+            "{name:?} to {new:?}"
+        );
+    }
+    assert_eq!(doc.block_names(), ["MURO", "PUERTA"]);
+    assert_eq!(everything_drawn(&doc), before);
+}
+
+#[test]
+fn undo_gives_a_renamed_block_its_name_back() {
+    let mut doc = doors();
+    let before = everything_drawn(&doc);
+    doc.begin_change().unwrap();
+    doc.rename_block("PUERTA", "Door").unwrap();
+    let mut change = doc.commit_change().unwrap();
+    let summary = change.summary().clone();
+    assert_eq!(summary.blocks_created(), ["Door"]);
+    assert_eq!(summary.blocks_deleted(), ["PUERTA"]);
+    assert_eq!(
+        summary.modified().len(),
+        2,
+        "the two placed doors; MURO's reference draws the same"
+    );
+    let undone = doc.undo_change(&mut change).unwrap();
+    assert_eq!(undone.blocks_created(), ["PUERTA"]);
+    assert_eq!(doc.block_names(), ["MURO", "PUERTA"]);
+    assert_eq!(references(&doc, "PUERTA"), 3);
+    assert_eq!(everything_drawn(&doc), before);
+    doc.redo_change(&mut change).unwrap();
+    assert_eq!(references(&doc, "Door"), 3);
+    // Its own name again: nothing changes.
+    doc.begin_change().unwrap();
+    doc.rename_block("door", "Door").unwrap();
+    assert!(doc.commit_change().unwrap().summary().is_empty());
+}
+
+#[test]
+#[ignore = "needs tools/fetch_codec_samples.py"]
+fn a_dynamic_block_is_not_renamed() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/corpus/acadrust/fixtures/dynamic-blocks/lookup.dwg");
+    let mut doc = Document::open(path).unwrap();
+    let names = doc.block_names();
+    let name = names
+        .iter()
+        .find(|n| doc.is_dynamic_block(n))
+        .expect("the sample's dynamic block")
+        .clone();
+    assert!(matches!(
+        doc.rename_block(&name, "OTRO"),
+        Err(DocumentError::InvalidBlockName(m)) if m.contains("dynamic")
+    ));
+    assert_eq!(doc.block_names(), names);
+}
+
+// SELECTBLOCK (ADR 0025 step 8d)
+
+#[test]
+fn the_references_found_are_those_that_can_be_selected() {
+    let door = door_block();
+    let wall: Vec<&str> = vec![
+        "0", "BLOCK", "8", "0", "2", "MURO", "70", "0", "10", "0", "20", "0", "30", "0", "3",
+        "MURO", //
+        "0", "INSERT", "8", "0", "2", "PUERTA", "10", "5", "20", "0", "30", "0", //
+        "0", "ENDBLK", "8", "0",
+    ];
+    let mut doc = dxf(
+        LAYERS,
+        &[&door, &wall],
+        &[
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "MURO", "10", "0", "20", "5", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "puerta", "10", "9", "20", "0", "30", "0",
+            ],
+            &[
+                "0", "INSERT", "8", "0", "2", "PUERTA", "10", "20", "20", "0", "30", "0",
+            ],
+            // In paper space.
+            &[
+                "0", "INSERT", "8", "0", "67", "1", "2", "PUERTA", "10", "0", "20", "0", "30", "0",
+            ],
+        ],
+    );
+    let ids: Vec<EntityId> = doc.entities().iter().map(|e| e.id()).collect();
+    assert_eq!(ids.len(), 4, "model space only");
+    let found = doc.find_block_references("puerta").unwrap();
+    assert_eq!(found.shown, [ids[0], ids[2], ids[3]], "in the order drawn");
+    assert_eq!((found.hidden, found.nested, found.in_layouts), (0, 1, 1));
+    // On a frozen layer it draws nothing; on an off layer its line on
+    // MUROS still shows, so a click finds it (as AutoCAD).
+    let frozen = doc.layer_by_name("CONGELADA").unwrap().id();
+    let off = doc.layer_by_name("APAGADA").unwrap().id();
+    doc.set_entity_layer(ids[2], frozen).unwrap();
+    doc.set_entity_layer(ids[3], off).unwrap();
+    let found = doc.find_block_references("PUERTA").unwrap();
+    assert_eq!(found.shown, [ids[0], ids[3]]);
+    assert_eq!((found.hidden, found.nested), (1, 1));
+    let wall = doc.find_block_references("MURO").unwrap();
+    assert_eq!(
+        wall,
+        BlockReferences {
+            shown: vec![ids[1]],
+            ..BlockReferences::default()
+        }
+    );
+    assert!(matches!(
+        doc.find_block_references("NADA"),
+        Err(DocumentError::InvalidBlockName(m)) if m.contains("no block named")
+    ));
+}
+
+#[test]
+#[ignore = "needs tools/fetch_codec_samples.py"]
+fn a_dynamic_blocks_references_are_found_through_their_anonymous_copies() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/corpus/acadrust/fixtures/dynamic-blocks/lookup.dwg");
+    let doc = Document::open(path).unwrap();
+    let name = doc
+        .block_names()
+        .into_iter()
+        .find(|n| doc.is_dynamic_block(n))
+        .expect("the sample's dynamic block");
+    let found = doc.find_block_references(&name).unwrap();
+    let total = found.shown.len() + found.hidden + found.nested + found.in_layouts;
+    assert_eq!(
+        Some(&total),
+        doc.block_references().get(&name),
+        "as the palette counts"
+    );
+    assert!(!found.shown.is_empty());
+    for id in &found.shown {
+        assert_eq!(doc.entity(*id).unwrap().kind(), "INSERT");
+    }
+}
+
+// Anonymous copies that lost their link (maintainer, 2026-10-26)
+
+/// Registers application `app` and gives block record `block` its
+/// extended data, as AutoCAD writes it on a dynamic block's copies.
+fn tag(doc: &mut Document, block: &str, app: &str, values: Vec<XDataValue>) {
+    let cad = doc.cad_mut();
+    if !cad.app_ids.contains(app) {
+        let mut id = AppId::new(app);
+        id.handle = cad.allocate_handle();
+        cad.app_ids.add(id).unwrap();
+    }
+    let h = cad.block_records.get(block).unwrap().handle();
+    let mut record = ExtendedDataRecord::new(app);
+    record.values = values;
+    cad.object_xdata.entry(h).or_default().add_record(record);
+}
+
+fn edit_tag(n: i32) -> Vec<XDataValue> {
+    vec![XDataValue::Integer16(1), XDataValue::Integer32(n)]
+}
+
+/// A reference to block record `name`, anonymous ones included, at `at`.
+fn place(doc: &mut Document, name: &str, at: (f64, f64)) -> EntityId {
+    let insert = Insert::new(name, Vector3::new(at.0, at.1, 0.0));
+    let h = doc
+        .cad_mut()
+        .add_entity(EntityType::Insert(insert))
+        .unwrap();
+    doc.sync_entity(h.value());
+    h.value()
+}
+
+/// Anonymous block `name` holding a copy of what block `of` holds, or of
+/// `other` when given, placed once at `at`.
+fn copy_of(
+    doc: &mut Document,
+    name: &str,
+    of: &str,
+    other: Option<EntityId>,
+    at: (f64, f64),
+) -> EntityId {
+    let owner = doc
+        .add_block_record(name, Vector3::new(0.0, 0.0, 0.0))
+        .unwrap();
+    let contents: Vec<EntityType> = match other {
+        Some(id) => vec![doc.cad().get_entity(handle(id)).unwrap().clone()],
+        None => doc.cad().entities_in_block(of).cloned().collect(),
+    };
+    for entity in contents {
+        doc.add_copy(entity, owner).unwrap();
+    }
+    place(doc, name, at)
+}
+
+/// COLUMNA from a line, placed once where the line was.
+fn column() -> (Document, EntityId) {
+    let mut doc = Document::new();
+    let a = line(&mut doc, (0.0, 0.0), (0.0, 3.0));
+    let placed = doc.create_block("COLUMNA", p(0.0, 0.0), &[a]).unwrap();
+    (doc, placed)
+}
+
+#[test]
+fn a_copy_with_the_same_edit_tag_and_contents_counts_for_its_block() {
+    let (mut doc, placed) = column();
+    let copy = copy_of(&mut doc, "*U52", "COLUMNA", None, (5.0, 0.0));
+    let again = place(&mut doc, "*U52", (10.0, 0.0));
+    assert_eq!(references(&doc, "COLUMNA"), 1, "no link yet");
+    tag(&mut doc, "COLUMNA", "AcDbBlockRepETag", edit_tag(4));
+    tag(&mut doc, "*U52", "AcDbBlockRepETag", edit_tag(4));
+    assert_eq!(references(&doc, "COLUMNA"), 3);
+    let found = doc.find_block_references("columna").unwrap();
+    assert_eq!(found.shown, [placed, copy, again]);
+    assert!(
+        !doc.block_names().contains(&"*U52".to_owned()),
+        "still anonymous"
+    );
+}
+
+#[test]
+fn a_copy_that_differs_or_matches_twice_stays_apart() {
+    let (mut doc, _) = column();
+    let other = line(&mut doc, (0.0, 0.0), (0.0, 5.0));
+    copy_of(&mut doc, "*U1", "", Some(other), (5.0, 0.0));
+    copy_of(&mut doc, "*U2", "COLUMNA", None, (9.0, 0.0));
+    for block in ["COLUMNA", "*U1", "*U2"] {
+        tag(&mut doc, block, "AcDbBlockRepETag", edit_tag(4));
+    }
+    // *U1 draws a longer line; *U2 has another tag.
+    tag(&mut doc, "*U2", "AcDbBlockRepETag", edit_tag(5));
+    assert_eq!(references(&doc, "COLUMNA"), 1);
+    // A second block with the same tag and contents: which one is unknown.
+    let b = line(&mut doc, (20.0, 0.0), (20.0, 3.0));
+    doc.create_block("PILAR", p(20.0, 0.0), &[b]).unwrap();
+    tag(&mut doc, "PILAR", "AcDbBlockRepETag", edit_tag(5));
+    assert_eq!(references(&doc, "PILAR"), 2, "*U2 is PILAR's");
+    tag(&mut doc, "COLUMNA", "AcDbBlockRepETag", edit_tag(5));
+    assert_eq!(
+        (references(&doc, "PILAR"), references(&doc, "COLUMNA")),
+        (1, 1),
+        "two candidates: none chosen"
+    );
+}
+
+#[test]
+fn a_copy_names_its_block_by_its_true_name() {
+    let (mut doc, _) = column();
+    // A stretched variant: it draws something else, but says whose it is.
+    let longer = line(&mut doc, (0.0, 0.0), (0.0, 6.0));
+    copy_of(&mut doc, "*U7", "", Some(longer), (5.0, 0.0));
+    tag(
+        &mut doc,
+        "*U7",
+        "AcDbDynamicBlockTrueName",
+        vec![XDataValue::String("columna".to_owned())],
+    );
+    assert_eq!(references(&doc, "COLUMNA"), 2);
+    // A true name no block has links nothing.
+    copy_of(&mut doc, "*U8", "", Some(longer), (9.0, 0.0));
+    tag(
+        &mut doc,
+        "*U8",
+        "AcDbDynamicBlockTrueName",
+        vec![XDataValue::String("VIGA".to_owned())],
+    );
+    assert_eq!(references(&doc, "COLUMNA"), 2);
+}
+
+#[test]
+fn a_named_block_is_never_another_blocks_copy() {
+    let (mut doc, _) = column();
+    // The same drawing, edit tag and even true name, but a name of its own.
+    let b = line(&mut doc, (20.0, 0.0), (20.0, 3.0));
+    doc.create_block("PILAR", p(20.0, 0.0), &[b]).unwrap();
+    for block in ["COLUMNA", "PILAR"] {
+        tag(&mut doc, block, "AcDbBlockRepETag", edit_tag(4));
+    }
+    tag(
+        &mut doc,
+        "PILAR",
+        "AcDbDynamicBlockTrueName",
+        vec![XDataValue::String("COLUMNA".to_owned())],
+    );
+    assert_eq!(
+        (references(&doc, "COLUMNA"), references(&doc, "PILAR")),
+        (1, 1)
+    );
 }

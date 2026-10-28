@@ -478,6 +478,12 @@ impl CadDocument {
             .map(|(id, changes)| (id, CadChangeSet(changes)))
     }
 
+    /// Renames block `name` to `new_name`, every reference following
+    /// (RENAME): one undo step.
+    fn rename_block(&self, name: &str, new_name: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.rename_block(name, new_name))
+    }
+
     /// Places block `name` at `point`, scaled and turned (radians), on the
     /// current layer; its attributes take their default values (INSERT).
     #[pyo3(signature = (name, point, scale = 1.0, rotation = 0.0))]
@@ -489,6 +495,13 @@ impl CadDocument {
         rotation: f64,
     ) -> PyResult<(EntityId, CadChangeSet)> {
         self.create(|cad| cad.insert_block(name, point.0, scale, rotation))
+    }
+
+    /// The drawing's insertion units, as DWG's INSUNITS code: a new
+    /// block's units by default (ADR 0023 D2a).
+    #[getter]
+    fn insertion_units(&self) -> PyResult<i16> {
+        self.read(|cad| cad.document().insertion_units())
     }
 
     /// The blocks INSERT can place, sorted: not anonymous, layouts or
@@ -510,6 +523,40 @@ impl CadDocument {
     #[getter]
     fn block_references(&self) -> PyResult<std::collections::HashMap<String, usize>> {
         self.read(|cad| cad.document().block_references())
+    }
+
+    /// Where block `name`'s references are (SELECTBLOCK, ADR 0025 step
+    /// 8d): the ids of those in model space that can be selected, in the
+    /// order drawn, then how many are on off or frozen layers, inside other
+    /// blocks, and in layouts.
+    fn find_block_references(&self, name: &str) -> PyResult<(Vec<EntityId>, usize, usize, usize)> {
+        let found = self
+            .read(|cad| {
+                cad.document()
+                    .find_block_references(name)
+                    .map_err(arq_core::CadError::from)
+            })?
+            .py()?;
+        Ok((found.shown, found.hidden, found.nested, found.in_layouts))
+    }
+
+    /// The blocks INSERT can place that nothing references, dynamic ones
+    /// included (PURGE, ADR 0025 step 8e).
+    #[getter]
+    fn unused_blocks(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.document().unused_blocks())
+    }
+
+    /// Purges unused blocks `names`, and with `nested` the blocks they held
+    /// that nothing else uses: one undo step. Returns the blocks purged.
+    #[pyo3(signature = (names, nested = true))]
+    fn purge_blocks(
+        &self,
+        names: Vec<String>,
+        nested: bool,
+    ) -> PyResult<(Vec<String>, CadChangeSet)> {
+        self.edit(|cad| cad.purge_blocks(&names, nested))
+            .map(|(purged, changes)| (purged, CadChangeSet(changes)))
     }
 
     /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a

@@ -5,14 +5,17 @@ editor of its own, and save it back into the drawing. The Blocks palette
 starts INSERT and BEDIT with the block already chosen (ADR 0025 D5), loads
 templates and inserts their blocks, copying each first (D6, D7)."""
 
+import fnmatch
 import math
 from collections.abc import Callable, Generator, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from arqstudiocad.commands import (
     Background,
     BlockClash,
+    BlockDefinitionState,
     ClashChoice,
     Command,
     CommandCancelledError,
@@ -32,8 +35,84 @@ ORIGIN = (0.0, 0.0)
 
 
 def block(ctx: CommandContext) -> CommandScript:
-    """A block named and based at a point, made from objects selected; a
-    reference to it takes their place (AutoCAD's "Convert to block")."""
+    """BLOCK: the Block Definition dialog (ADR 0023 D2a), as AutoCAD's;
+    without an interface, -BLOCK's prompts. The dialog closes to pick the
+    base point or select objects and opens again; a name the drawing uses
+    is offered to be redefined. One undo step."""
+    if ctx.ui is None:
+        yield from block_prompts(ctx)
+        return
+    document = ctx.document()
+    template = ctx.session.template
+    state = BlockDefinitionState(
+        ids=ctx.session.selection(document), units=document.insertion_units
+    )
+    while True:
+        answer = ctx.ui.define_block(document, state)
+        if answer is None:
+            raise CommandCancelledError()
+        action, state = answer
+        if action == "pick_point":
+            state = replace(state, base=(yield ctx.point(tr("Specify insertion base point"))))
+            continue
+        if action == "select_objects":
+            ctx.session.clear_selection(document)
+            state = replace(state, ids=(yield from select_objects(ctx, document)))
+            continue
+        if state.base_on_screen:
+            state = replace(state, base=(yield ctx.point(tr("Specify insertion base point"))))
+        if state.objects_on_screen:
+            ctx.session.clear_selection(document)
+            state = replace(state, ids=(yield from select_objects(ctx, document)))
+        if not state.ids:
+            ctx.message(tr("No objects are selected."))
+            continue
+        name = state.name.strip()
+        taken = _named(document, name)
+        if taken is not None:
+            references = document.block_references.get(taken, 0)
+            if not ctx.ui.ask_redefine_block(taken, references):
+                continue
+            name = taken
+        elif template is not None and template.is_open:
+            found = _named(template, name)
+            if found is not None and not ctx.ui.ask_block_name_in_template(found, template.name):
+                continue
+        try:
+            _, changes = document.define_block(
+                name,
+                state.base,
+                state.ids,
+                objects=state.objects or "convert",
+                description=state.description.strip(),
+                units=state.units,
+                scale_uniformly=state.scale_uniformly,
+                explodable=state.explodable,
+                redefine=taken is not None,
+            )
+        except InvalidOperationError as error:
+            ctx.message(tr("{name} cannot be made: {reason}", name=name, reason=error))
+            continue
+        ctx.session.report(document, changes)
+        ctx.session.clear_selection(document)
+        ctx.session.block_used(document, name, CREATED)
+        if taken is not None:
+            ctx.message(
+                tr("Block {name} redefined from {count} objects.", name=name, count=len(state.ids))
+            )
+        else:
+            ctx.message(
+                tr("Block {name} made from {count} objects.", name=name, count=len(state.ids))
+            )
+        if state.open_editor:
+            _edit(ctx, document, name)
+        return
+
+
+def block_prompts(ctx: CommandContext) -> CommandScript:
+    """-BLOCK: a block named and based at a point, made from objects
+    selected, asked at the command line; a reference to it takes their
+    place (AutoCAD's "Convert to block"). A name in use is refused."""
     document = ctx.document()
     template = ctx.session.template
     while True:
@@ -205,6 +284,230 @@ def edit_clicked(name: str) -> Command:
     Block Definition dialog opens with block ``name`` chosen (ADR 0023 D3,
     maintainer, 2026-10-25)."""
     return Command("BEDIT", lambda ctx: bedit(ctx, name), repeat=False)
+
+
+def rename(ctx: CommandContext, chosen: str | None = None) -> CommandScript:
+    """RENAME: a block of the drawing gets another name, every reference
+    following (ADR 0025 step 8c), as chosen in the Rename dialog with
+    ``chosen`` selected first. Only blocks are renamed for now."""
+    if ctx.ui is None:
+        yield from rename_prompts(ctx)
+        return
+    document = ctx.document()
+    if not document.block_names:
+        raise CommandCancelledError(tr("The drawing has no blocks to rename."))
+    while True:
+        answer = ctx.ui.rename_block(document, chosen)
+        if answer is None:
+            raise CommandCancelledError()
+        old, new = answer
+        problem = _renamed(ctx, document, old, new)
+        if problem is None:
+            return
+        # Said, then the dialog again with that block.
+        ctx.message(problem)
+        chosen = old
+
+
+def rename_prompts(ctx: CommandContext) -> CommandScript:
+    """-RENAME: the kind of object, its name and the new one, asked at the
+    command line as AutoCAD's; only blocks for now."""
+    document = ctx.document()
+    yield ctx.choose(tr("Object type to rename"), [Option("B", tr("Block"))], default="B")
+    while (old := _named(document, (yield ctx.ask(tr("Old block name"))).strip())) is None:
+        ctx.message(tr("There is no such block."))
+    problem = _not_renamable(ctx, document, old)
+    if problem is not None:
+        raise CommandCancelledError(problem)
+    while True:
+        new = (yield ctx.ask(tr("New block name"))).strip()
+        problem = _renamed(ctx, document, old, new)
+        if problem is None:
+            return
+        ctx.message(problem)
+
+
+def rename_named(name: str) -> Command:
+    """RENAME with block ``name`` chosen first, as the Blocks palette's
+    context menu starts it."""
+    return Command("RENAME", lambda ctx: rename(ctx, name), repeat=False)
+
+
+def _not_renamable(ctx: CommandContext, document: CadDocument, name: str) -> str | None:
+    """Why block ``name`` of ``document`` cannot be renamed now; None if it
+    can."""
+    if document.is_dynamic_block(name):
+        # Its anonymous references wait for the parametric engine (04.1).
+        return tr("{name} is a dynamic block: it cannot be renamed yet.", name=name)
+    for editor in ctx.session.block_editors(document):
+        edited = ctx.session.block_editor_of(editor)
+        if edited is not None and edited[1].lower() == name.lower():
+            return tr("Close the block editor of {name} before renaming it.", name=name)
+    return None
+
+
+def _renamed(ctx: CommandContext, document: CadDocument, old: str, new: str) -> str | None:
+    """Renames block ``old`` of ``document`` to ``new``, saying so; why not,
+    if it cannot be."""
+    found = _named(document, old)
+    if found is None:
+        return tr("There is no such block.")
+    problem = _not_renamable(ctx, document, found)
+    if problem is not None:
+        return problem
+    taken = _named(document, new)
+    if taken is not None and taken.lower() != found.lower():
+        return tr("A block named {name} exists in the drawing.", name=taken)
+    if new == found:
+        return tr("{name} is already called so.", name=found)
+    try:
+        ctx.session.rename_block(document, found, new)
+    except InvalidOperationError:
+        return tr("{name} is not a valid block name.", name=new)
+    ctx.message(tr("Block {old} renamed to {new}.", old=found, new=new))
+    return None
+
+
+def selectblock(ctx: CommandContext) -> CommandScript:
+    """SELECTBLOCK: selects the references to a block placed in the
+    drawing, replacing the selection; the view stays where it is (ADR 0025
+    step 8d, maintainer 2026-10-26). Asks the block's name."""
+    document = ctx.document()
+    if not document.block_names:
+        raise CommandCancelledError(tr("The drawing has no blocks."))
+    while (name := _named(document, (yield ctx.ask(tr("Block name"))).strip())) is None:
+        ctx.message(tr("There is no such block."))
+    _select_references(ctx, document, name)
+
+
+def select_named(name: str) -> Command:
+    """SELECTBLOCK with block ``name`` already chosen, as the Blocks
+    palette's context menu starts it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        _select_references(ctx, document, found)
+        return
+        yield
+
+    return Command("SELECTBLOCK", run, repeat=False)
+
+
+def _select_references(ctx: CommandContext, document: CadDocument, name: str) -> None:
+    """Selects block ``name``'s references in model space, alone, and says
+    how many others could not be: those that draw nothing, those inside
+    other blocks (selected as a whole) and those in layouts."""
+    shown, hidden, nested, in_layouts = document.find_block_references(name)
+    ctx.session.clear_selection(document)
+    ctx.session.select(document, shown)
+    if len(shown) == 1:
+        ctx.message(tr("1 reference to {name} selected.", name=name))
+    else:
+        ctx.message(tr("{count} references to {name} selected.", count=len(shown), name=name))
+    if hidden:
+        ctx.message(tr("Not selected: {count} on frozen or off layers.", count=hidden))
+    if nested:
+        ctx.message(tr("Not selected: {count} inside other blocks.", count=nested))
+    if in_layouts:
+        ctx.message(tr("Not selected: {count} in layouts.", count=in_layouts))
+
+
+def purge(ctx: CommandContext) -> CommandScript:
+    """PURGE: unused blocks chosen in the Purge dialog are purged, nested
+    items too when asked (ADR 0025 step 8e, maintainer 2026-10-26). Only
+    blocks for now."""
+    if ctx.ui is None:
+        yield from purge_prompts(ctx)
+        return
+    document = ctx.document()
+    if not document.unused_blocks:
+        raise CommandCancelledError(tr("No unused blocks to purge."))
+    answer = ctx.ui.purge_blocks(document)
+    if answer is None:
+        raise CommandCancelledError()
+    names, nested = answer
+    _purge(ctx, document, names, nested)
+
+
+def purge_prompts(ctx: CommandContext) -> CommandScript:
+    """-PURGE: the kind of objects, the names (wildcards allowed, ``*``
+    every one) and whether to purge nested items, asked at the command line
+    as AutoCAD's; only blocks for now."""
+    document = ctx.document()
+    yield ctx.choose(
+        tr("Type of unused objects to purge"), [Option("B", tr("Blocks"))], default="B"
+    )
+    typed = (yield ctx.ask(tr("Names to purge"), default="*")).strip() or "*"
+    nested = yield ctx.choose(
+        tr("Purge nested items?"), [Option("Y", tr("Yes")), Option("N", tr("No"))], default="Y"
+    )
+    patterns = [p.strip().casefold() for p in typed.split(",") if p.strip()]
+    found = [
+        n
+        for n in document.unused_blocks
+        if any(fnmatch.fnmatchcase(n.casefold(), p) for p in patterns)
+    ]
+    dynamic = [n for n in found if document.is_dynamic_block(n)]
+    if dynamic:
+        ctx.message(tr("Not purged: {names} (dynamic blocks).", names=", ".join(dynamic)))
+    names = [n for n in found if n not in dynamic]
+    if not names:
+        raise CommandCancelledError(tr("No unused blocks to purge."))
+    _purge(ctx, document, names, nested == "Y")
+
+
+def purge_named(name: str) -> Command:
+    """PURGE of block ``name`` alone, nested items included, once confirmed,
+    as the Blocks palette's context menu starts it."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        found = _named(document, name)
+        if found is None:
+            raise CommandCancelledError(tr("There is no such block."))
+        if document.is_dynamic_block(found):
+            raise CommandCancelledError(
+                tr("{name} is a dynamic block: it cannot be purged yet.", name=found)
+            )
+        if found not in document.unused_blocks:
+            raise CommandCancelledError(tr("{name} is in use: it cannot be purged.", name=found))
+        if ctx.ui is not None and not ctx.ui.ask_purge_block(found):
+            raise CommandCancelledError()
+        _purge(ctx, document, [found], nested=True)
+        return
+        yield
+
+    return Command("PURGE", run, repeat=False)
+
+
+def _purge(ctx: CommandContext, document: CadDocument, names: list[str], nested: bool) -> None:
+    """Purges blocks ``names`` of ``document`` in one undo step, saying which
+    went; a block open in a block editor stays."""
+    edited = {
+        found[1].lower()
+        for editor in ctx.session.block_editors(document)
+        if (found := ctx.session.block_editor_of(editor)) is not None
+    }
+    kept = [n for n in names if n.lower() in edited]
+    if kept:
+        ctx.message(tr("Not purged: {names} (open in a block editor).", names=", ".join(kept)))
+    names = [n for n in names if n.lower() not in edited]
+    if not names:
+        raise CommandCancelledError()
+    try:
+        purged, changes = document.purge_blocks(names, nested)
+    except InvalidOperationError as error:
+        raise CommandCancelledError(tr("Nothing was purged: {reason}", reason=error)) from None
+    ctx.session.report(document, changes)
+    if len(purged) == 1:
+        ctx.message(tr("1 block purged: {names}.", names=purged[0]))
+    else:
+        ctx.message(
+            tr("{count} blocks purged: {names}.", count=len(purged), names=", ".join(purged))
+        )
 
 
 def insert_named(
@@ -602,9 +905,15 @@ def _number(
 #: Block commands, with AutoCAD's aliases.
 BLOCK_COMMANDS = (
     Command("BLOCK", block, ("B",)),
+    Command("-BLOCK", block_prompts, ("-B",)),
     Command("INSERT", insert, ("I",)),
     Command("BEDIT", bedit, ("BE",)),
     Command("BSAVE", bsave),
     Command("BCLOSE", bclose),
     Command("COPYBLOCK", copyblock),
+    Command("RENAME", rename, ("REN",)),
+    Command("-RENAME", rename_prompts, ("-REN",)),
+    Command("SELECTBLOCK", selectblock),
+    Command("PURGE", purge, ("PU",)),
+    Command("-PURGE", purge_prompts, ("-PU",)),
 )

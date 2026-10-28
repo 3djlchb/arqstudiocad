@@ -1,4 +1,13 @@
 {
+  "-BLOCK": [
+    "-BLOQUE"
+  ],
+  "-PURGE": [
+    "-LIMPIA"
+  ],
+  "-RENAME": [
+    "-CAMBIANOM"
+  ],
   "ARC": [
     "ARCO"
   ],
@@ -73,8 +82,14 @@
   "PROPERTIES": [
     "PROPIEDADES"
   ],
+  "PURGE": [
+    "LIMPIA"
+  ],
   "REDO": [
     "REHACER"
+  ],
+  "RENAME": [
+    "CAMBIANOM"
   ],
   "ROTATE": [
     "GIRA",
@@ -89,6 +104,9 @@
   "SCALE": [
     "ESCALA",
     "ES"
+  ],
+  "SELECTBLOCK": [
+    "SELECBLOQUE"
   ],
   "TEXT": [
     "TEXTO"

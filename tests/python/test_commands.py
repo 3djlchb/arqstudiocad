@@ -14,6 +14,8 @@ from damaged_files import LINES, recovered_dxf
 from arqstudiocad.commands import (
     Background,
     BlockClash,
+    BlockDefinitionState,
+    BlockDialogAction,
     ClashChoice,
     Command,
     CommandCancelledError,
@@ -147,6 +149,23 @@ class FakeUi:
 
     def choose_block_to_edit(self, document: CadDocument, chosen: str | None) -> str | None:
         return None
+
+    def define_block(
+        self, document: CadDocument, state: BlockDefinitionState
+    ) -> tuple[BlockDialogAction, BlockDefinitionState] | None:
+        return None
+
+    def ask_redefine_block(self, name: str, references: int) -> bool:
+        return False
+
+    def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
+        return None
+
+    def purge_blocks(self, document: CadDocument) -> tuple[list[str], bool] | None:
+        return None
+
+    def ask_purge_block(self, name: str) -> bool:
+        return False
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None

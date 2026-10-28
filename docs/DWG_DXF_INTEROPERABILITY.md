@@ -327,7 +327,9 @@ fixes the proven DXF -> DWG loss in fork `0d438b6`: owned TABLECONTENT supplies
 missing instance formatting, and serialized right/inside grid indexes are
 translated correctly. Independent ProgeCAD reopening now matches all 249
 native DWG measurements, including the custom margins, text heights and red
-0.50 mm right borders. The recovered 2007 read, resource-manager refusal and
+0.50 mm right borders. The [DWG 2007 reader follow-up](testing/progecad-table-2007-reader.md)
+in fork `179aaeb` also reads and rewrites all four native AC1021 tables strictly,
+with 249/249 native measurements matching. The resource-manager refusal and
 same-format DXF border investigation remain open. No full table-format
 exemption was added to safe saving. This extends 03.4/03.5 evidence and does
 not close either milestone.

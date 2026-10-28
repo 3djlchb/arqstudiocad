@@ -1,6 +1,6 @@
 # 0025. The Blocks palette
 
-Date: 2026-10-22 · Status: Proposed · Builds on [0006](0006-i18n.md),
+Date: 2026-10-22 (accepted 2026-10-27) · Status: Accepted · Builds on [0006](0006-i18n.md),
 [0013](0013-application-shell.md), [0015](0015-workspaces.md),
 [0016](0016-editing-workflow.md), [0023](0023-blocks.md)
 
@@ -337,6 +337,44 @@ Each step is its own pull request with tests, as ADR 0023 D5:
   - **Edit block** for the drawing's blocks, as the button.
   - **Redefine from template** when the drawing's block of that name differs, neither of them dynamic. A dialog shows both blocks, the template's on the left, and how many references will change; Redefine runs COPYBLOCK with that choice, one undo step.
   - Without a drawing, or for a recent block that cannot be had, the items that need one are disabled.
+- **Step 8c (2026-10-26):** renaming a block *(maintainer, 2026-10-26)*:
+  - The core operation `Document::rename_block` renames the block record and every reference to it: in model and paper space, and inside other blocks. Changing only the case is allowed. One undo step, named RENAME. The change set names the old block deleted and the new one created, as D3 says. Python: `CadDocument.rename_block(name, new_name)`.
+  - It refuses:
+    - a name in use or invalid;
+    - a block INSERT cannot place;
+    - a dynamic block, whose anonymous references wait for milestone 04.1.
+  - The command is **RENAME** (alias `REN`; Spanish `CAMBIANOM`), as AutoCAD's. For now it renames blocks only; other named objects can join it later.
+  - RENAME opens a small Rename dialog through the new UI service `rename_block`: the block and its new name. OK stays disabled, with the reason, while the name cannot be taken. A block open in a block editor is refused until that editor is closed.
+  - **-RENAME** (alias `-REN`; Spanish `-CAMBIANOM`) asks at the command line: the object type (Block), the old name, then the new name.
+  - The palette's context menu gains **Rename…** for the drawing's blocks. It is disabled for a dynamic block, as Edit block.
+  - After a rename, the session publishes `BlockRenamed`. The palette keeps the block selected under its new name, and the Recent source renames that drawing's entries.
+- **Step 8d (2026-10-26):** selecting a block's references *(maintainer, 2026-10-26)*:
+  - The core query `Document::find_block_references` finds a block's references in model space that can be selected, in the order drawn, as a click finds them: those that draw something. A reference on an off layer still shows what its block holds on other layers, so it counts as selectable.
+  - It also counts the references that cannot be selected:
+    - those that draw nothing (frozen or off layers);
+    - those inside other blocks, which are selected as a whole;
+    - those in layouts.
+  - A dynamic block's anonymous references count for it, as in the palette's count. Python: `CadDocument.find_block_references(name)`.
+  - **Copies that lost their link** *(maintainer, 2026-10-26, from a drawing saved by progeCAD)*:
+    - An application that drops dynamic-block data when it saves keeps the anonymous copies (`*U…`) its references draw. The link to their block can be lost, as in the maintainer's drawing, where 18 columns referenced `*U52` and not "Columna general".
+    - A copy the codec cannot link counts for a block INSERT can place when either:
+      - its true name (`AcDbDynamicBlockTrueName`) names that block; or
+      - exactly one such block has the same edit tag (`AcDbBlockRepETag`) and draws the same.
+    - A named block is never taken for another's copy. The file is not changed.
+    - Both the selection and the palette's count use this, and the budget tables of milestone 02.11 will too. Editing dynamic blocks still waits for milestone 04.1.
+  - **SELECTBLOCK** (Spanish `SELECBLOQUE`) asks for the block's name. It replaces the selection with the references, without moving the view, and says how many were selected and how many could not be.
+  - The palette's context menu gains **Select in drawing** for the drawing's blocks, dynamic ones included. It runs SELECTBLOCK with the block chosen.
+  - The maintainer intends these selections to feed budget tables; the block data they need is milestone 02.11.
+- **Step 8e (2026-10-26):** purging unused blocks *(maintainer, 2026-10-26)*:
+  - The core operation `Document::purge_blocks(names, nested)` removes each block's contents, its BLOCK and ENDBLK, every object owned by any of them or by its record (extension dictionaries and what they hold), and the record itself. One undo step, named PURGE.
+  - `Document::unused_blocks` lists the blocks INSERT can place that nothing references, anywhere, including through anonymous copies (step 8d). Dynamic blocks are listed, but `purge_blocks` refuses them until milestone 04.1. It also refuses a block in use. Python: `CadDocument.unused_blocks` and `purge_blocks(names, nested=True)`.
+  - With **Purge nested items**, as AutoCAD's, the blocks a purged block held also go once nothing else uses them, and so on down.
+  - A purged drawing passes the codec's audit with no new issue in memory on the test drawings. Saved and read back, the maintainer's real drawings keep exactly the issues they had. The codec still keeps index entries for removed records and entities, so an audit in memory flags them after purging a block from a real drawing. Clearing those entries needs an API in the codec fork.
+  - **PURGE** (alias `PU`; Spanish `LIMPIA`) opens a Purge dialog through the new UI service `purge_blocks`. It lists the unused blocks with a box and a preview, and holds Purge nested items (checked by default), **Purge**, **Purge All** and **Close**. A dynamic block is listed without a box, saying why. Only blocks are purged for now; layers, styles and linetypes can join later.
+  - **-PURGE** (alias `-PU`; Spanish `-LIMPIA`) asks at the command line for the object type (Blocks), the names (wildcards, `*` for all) and whether to purge nested items.
+  - A block open in a block editor is not purged, and the command says so.
+  - The palette's context menu gains **Purge…** for the drawing's blocks. It is enabled only for an unused block that is not dynamic, and asks first through `ask_purge_block`.
+  - With this step, every step of D9 is done, and the maintainer accepted the ADR (2026-10-27).
 
 ## Consequences
 

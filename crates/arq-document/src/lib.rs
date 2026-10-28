@@ -42,6 +42,7 @@ mod layers;
 mod model;
 mod ocs;
 mod pick;
+mod purge;
 mod reading;
 mod solid;
 mod table_style_verify;
@@ -52,7 +53,7 @@ mod translate;
 mod verify;
 
 pub use block_copy::ClashChoice;
-pub use blocks::{BlockDefinition, BlockInfo, BlockObjects};
+pub use blocks::{BlockDefinition, BlockInfo, BlockObjects, BlockReferences};
 pub use change::{Change, ChangeSet};
 pub use document::Document;
 pub use drawing::{DrawItem, Shape};
