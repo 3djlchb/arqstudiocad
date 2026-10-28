@@ -91,16 +91,17 @@ def test_the_service_asks_with_no_as_the_default(
     parent = QWidget()
     qtbot.addWidget(parent)
     services = QtUiServices(parent)
-    seen: list[tuple[str, str, bool]] = []
+    seen: list[tuple[str, bool]] = []
 
     def answer(box: QMessageBox) -> int:
+        # Not the title: macOS message boxes have none.
         no = box.defaultButton() is box.button(QMessageBox.StandardButton.No)
-        seen.append((box.windowTitle(), box.text(), no))
+        seen.append((box.text(), no))
         return QMessageBox.StandardButton.Yes.value
 
     monkeypatch.setattr(QMessageBox, "exec", answer)
     assert services.ask_clear_block_data("MESA")
-    assert seen == [("Clear block data", "Clear the budget data of block MESA?", True)]
+    assert seen == [("Clear the budget data of block MESA?", True)]
 
 
 @pytest.fixture
