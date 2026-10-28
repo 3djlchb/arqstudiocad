@@ -8,8 +8,8 @@
 use std::collections::BTreeMap;
 
 use arq_document::{
-    BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Document, DocumentError, Entity,
-    EntityId, LayerId, PlanGeometry,
+    BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Currencies, Document,
+    DocumentError, Entity, EntityId, LayerId, PlanGeometry,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Transform2, Vector2};
 
@@ -222,6 +222,25 @@ impl CadDocument {
         nested: bool,
     ) -> CadResult<(Vec<String>, ChangeSet)> {
         self.transact("PURGE", |doc| Ok(doc.purge_blocks(names, nested)?))
+    }
+
+    /// Sets block `name`'s data for budgets; empty data removes it
+    /// (BLOCKDATA, ADR 0027). One undo step; returns the block's name as
+    /// the drawing spells it.
+    pub fn set_block_data(
+        &mut self,
+        name: &str,
+        data: &BlockData,
+    ) -> CadResult<(String, ChangeSet)> {
+        self.transact("BLOCKDATA", |doc| Ok(doc.set_block_data(name, data)?))
+    }
+
+    /// Replaces the drawing's currency register (CURRENCIES, ADR 0027 D3).
+    /// One undo step.
+    pub fn set_currencies(&mut self, currencies: &Currencies) -> CadResult<ChangeSet> {
+        Ok(self
+            .transact("CURRENCIES", |doc| Ok(doc.set_currencies(currencies)?))?
+            .1)
     }
 
     /// A new drawing holding block `name`'s contents alone, for the block

@@ -346,6 +346,45 @@ fn purging_blocks_is_one_undo_step() {
 }
 
 #[test]
+fn block_data_and_currencies_are_one_undo_step_each() {
+    use arq_document::{Currency, Money};
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    cad.create_block("MESA", p(0.0, 0.0), &[a]).unwrap();
+    let mut register = Currencies::default();
+    register.list.push(Currency {
+        code: "PEN".to_owned(),
+        name: "Peruvian sol".to_owned(),
+        symbol: "S/".to_owned(),
+        decimals: 2,
+        active: true,
+    });
+    let changes = cad.set_currencies(&register).unwrap();
+    assert_eq!(cad.undo_name(), Some("CURRENCIES"));
+    assert!(changes.document_changed());
+    let data = BlockData {
+        category: "Mobiliario".to_owned(),
+        cost: Some(Money::parse("450", 2, "PEN").unwrap()),
+        ..BlockData::default()
+    };
+    let (name, changes) = cad.set_block_data("mesa", &data).unwrap();
+    assert_eq!(name, "MESA");
+    assert_eq!(cad.undo_name(), Some("BLOCKDATA"));
+    assert_eq!(changes.blocks_modified(), ["MESA"]);
+    assert_eq!(cad.document().block_data("MESA").unwrap(), Some(data));
+    // Refused: PEN is in use; no step is recorded.
+    assert!(matches!(
+        cad.set_currencies(&Currencies::default()),
+        Err(CadError::InvalidOperation(m)) if m.starts_with("PEN is used by 1 block")
+    ));
+    assert_eq!(cad.undo_name(), Some("BLOCKDATA"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().block_data("MESA").unwrap(), None);
+    cad.undo().unwrap();
+    assert_eq!(cad.document().currencies().unwrap(), Currencies::default());
+}
+
+#[test]
 fn saving_a_block_editor_is_one_step_that_redraws_the_references() {
     let mut cad = CadDocument::new();
     let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();

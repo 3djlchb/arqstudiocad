@@ -63,7 +63,7 @@ impl ChangeSet {
     pub fn blocks_created(&self) -> &[String] {
         &self.blocks_created
     }
-    /// Block definitions whose contents changed, by name.
+    /// Block definitions whose contents or data changed, by name.
     pub fn blocks_modified(&self) -> &[String] {
         &self.blocks_modified
     }
@@ -199,6 +199,8 @@ pub(crate) struct Recording {
     layers_created: BTreeSet<LayerId>,
     layers_modified: BTreeSet<LayerId>,
     layers_deleted: BTreeSet<LayerId>,
+    /// Blocks whose data changed (ADR 0027), by name.
+    blocks: BTreeSet<String>,
     document: bool,
 }
 
@@ -221,6 +223,7 @@ impl Document {
             layers_created: BTreeSet::new(),
             layers_modified: BTreeSet::new(),
             layers_deleted: BTreeSet::new(),
+            blocks: BTreeSet::new(),
             document: false,
         });
         Ok(())
@@ -300,7 +303,7 @@ impl Document {
             .cad()
             .block_records
             .iter()
-            .filter(|b| touched.contains(&b.handle))
+            .filter(|b| touched.contains(&b.handle) || rec.blocks.contains(&b.name))
             .map(|b| b.name.clone())
             .filter(|n| before.contains(n) && now.contains(n))
             .collect::<BTreeSet<_>>()
@@ -435,6 +438,13 @@ impl Document {
                 LayerNote::Modified => rec.layers_modified.insert(id),
                 LayerNote::Deleted => rec.layers_deleted.insert(id),
             };
+        }
+    }
+
+    /// Block `name`'s record changed, not its contents (its data).
+    pub(crate) fn note_block(&mut self, name: &str) {
+        if let Some(rec) = self.recording.as_mut() {
+            rec.blocks.insert(name.to_owned());
         }
     }
 

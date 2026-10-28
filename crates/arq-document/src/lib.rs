@@ -21,12 +21,14 @@
 //! | Pick, window/crossing selection, object snaps | [`Document::pick`], [`Document::select_window`], [`Document::snap`] |
 //! | Plan geometry of LINE, CIRCLE, ARC | [`PlanGeometry`] |
 //! | Layers | [`Document::layers`] → [`Layer`], [`Document::create_layer`]… |
+//! | Block data and currencies for budgets | [`Document::block_data`] → [`BlockData`], [`Document::currencies`] → [`Currencies`] |
 //! | Record, undo and redo a change | [`Document::begin_change`] → [`Change`], [`ChangeSet`] |
 //! | Check the own model against the engine | [`Document::check_model`] |
 //! | Errors | [`DocumentError`] |
 
 mod acis;
 mod block_copy;
+mod block_data;
 mod block_editor;
 mod blocks;
 mod change;
@@ -53,6 +55,7 @@ mod translate;
 mod verify;
 
 pub use block_copy::ClashChoice;
+pub use block_data::{BlockData, Currencies, Currency, Money};
 pub use blocks::{BlockDefinition, BlockInfo, BlockObjects, BlockReferences};
 pub use change::{Change, ChangeSet};
 pub use document::Document;

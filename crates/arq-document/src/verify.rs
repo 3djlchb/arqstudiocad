@@ -54,6 +54,7 @@ impl Document {
         );
         self.compare_xrefs(written, &mut differences);
         self.compare_table_style_maps(written, &mut differences);
+        self.compare_block_data(written, &mut differences);
         if differences.len() > MAX_DIFFERENCES {
             let more = differences.len() - MAX_DIFFERENCES;
             differences.truncate(MAX_DIFFERENCES);
