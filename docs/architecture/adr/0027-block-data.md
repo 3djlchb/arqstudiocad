@@ -204,7 +204,35 @@ These come later, each with its own ADR or roadmap entry:
   exchange rates, and export to CSV and spreadsheets;
 - a library of block data shared between drawings;
 - fixed, editable lists for category and type;
-- showing a field as a label in the drawing.
+- showing a field as a label in the drawing;
+- **measured quantities** for budget line items *(maintainer,
+  2026-10-28)*, so an item is priced by what a block measures, not only
+  by how many references it has. Each item has a unit (each, m, m², m³,
+  kg). The quantities would be:
+  - a block's perimeter and area, from its 2D contents (closed
+    polylines, hatches, circles);
+  - its height and volume, from its 3D solids, once the owned kernel
+    measures them (`arq-kernel` step 3, milestone 02.8);
+  - its weight, from its volume and its material's density;
+  - each reference measured with its own scale.
+
+  Each block says which of these its line item is priced by: its number
+  of references, its perimeter, its area, its volume, and so on. That
+  choice, and the unit, are part of the block's data and can be changed.
+
+  **Dynamic blocks** need this most *(maintainer, 2026-10-28)*. Each
+  reference has its own dimensions, set by its parameters (a door's
+  width, a wall's length), so its quantities come from that reference,
+  not from the definition. When a parameter changes, the quantities
+  follow on their own. This joins the parametric engine (milestone 04.1),
+  which recomputes a dynamic block when a parameter changes.
+
+  This comes after the budget table, with its own ADR. That ADR decides:
+  - which geometry counts;
+  - how drawing units become an item's units;
+  - where densities live;
+  - whether quantities are computed when needed or stored;
+  - how a dynamic block's parameters reach its quantities.
 
 ### D8 — Order of work
 
