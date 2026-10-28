@@ -15,7 +15,7 @@ through ``tr()``.
 import re
 from typing import NamedTuple
 
-from arqstudiocad.core import CadCurrency
+from arqstudiocad.core import CadCurrency, CadDocument
 from arqstudiocad.i18n import tr
 
 
@@ -236,6 +236,22 @@ class CurrencyRegister(NamedTuple):
             if currency.code == code and currency.thousands and currency.decimal:
                 return currency.thousands, currency.decimal
         return self.thousands, self.decimal
+
+    def get(self, code: str) -> CadCurrency | None:
+        """The currency with code ``code``, if the register holds it."""
+        return next((c for c in self.currencies if c.code == code), None)
+
+    def cost_text(self, amount: str, code: str) -> str:
+        """A cost as the user reads it: its currency's symbol, or its code,
+        then the amount in that currency's format (``"S/ 450.00"``)."""
+        currency = self.get(code)
+        sign = currency.symbol if currency is not None and currency.symbol else code
+        return f"{sign} {format_amount(amount, *self.format_of(code))}"
+
+
+def register_of(document: CadDocument) -> CurrencyRegister:
+    """``document``'s currency register, principal currency and format."""
+    return CurrencyRegister(*document.currencies, *document.number_format)
 
 
 def format_amount(amount: str, thousands: str, decimal: str) -> str:

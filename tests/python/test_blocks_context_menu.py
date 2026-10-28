@@ -53,13 +53,22 @@ def test_the_drawings_blocks_can_be_inserted_and_edited(window: MainWindow) -> N
     assert panel.block_menu() is None, "nothing selected"
     panel.select("Mesa")
     found = actions(panel)
-    assert list(found) == ["insert", "insert_options", "edit", "rename", "select", "purge"]
+    assert list(found) == [
+        "insert",
+        "insert_options",
+        "edit",
+        "rename",
+        "select",
+        "block_data",
+        "purge",
+    ]
     assert [a.text() for a in found.values()] == [
         "Insert",
         "Insert with options…",
         "Edit block",
         "Rename…",
         "Select in drawing",
+        "Block data…",
         "Purge…",
     ]
     purge = found.pop("purge")

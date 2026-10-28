@@ -1,0 +1,196 @@
+"""The Block Data dialog (BLOCKDATA, ADR 0027 step 4a, maintainer
+2026-10-27): a block's category and type, with the values the drawing
+already uses suggested, its material and supplier, and its cost: an amount
+typed in its currency's number format (D3a) and one of the drawing's
+active currencies, the principal one first. The dialog only proposes the
+data: the command writes it, and the core checks it again."""
+
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from arqstudiocad.core import CadBlockData, CadDocument, CadError
+from arqstudiocad.currencies import format_amount, parse_amount, register_of
+from arqstudiocad.i18n import tr
+from arqstudiocad.ui.currencies_dialog import ok_cancel
+
+#: The longest text a field holds, as the core accepts.
+MAX_TEXT = 255
+
+
+def suggestions(document: CadDocument, field: str) -> list[str]:
+    """The values the drawing's blocks already give ``field`` (``category``
+    or ``type``), each once ignoring case, as the first block by name spells
+    it, sorted."""
+    found: dict[str, str] = {}
+    every = document.blocks_data
+    for name in sorted(every, key=str.casefold):
+        value = getattr(every[name], field).strip()
+        if value:
+            found.setdefault(value.casefold(), value)
+    return sorted(found.values(), key=str.casefold)
+
+
+class BlockDataDialog(QDialog):
+    """Edits block ``name``'s data for budgets; nothing is written here."""
+
+    def __init__(self, document: CadDocument, name: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("block_data_dialog")
+        self.setWindowTitle(tr("Block data: {name}", name=name))
+        self.register = register_of(document)
+        self.note = QLabel()
+        self.note.setWordWrap(True)
+        try:
+            data = document.block_data(name) or CadBlockData()
+        except CadError:
+            data = CadBlockData()
+            self.note.setText(tr("The block's data could not be read: saving replaces it."))
+        self.note.setVisible(bool(self.note.text()))
+
+        self.category = self._suggesting(suggestions(document, "category"), data.category)
+        self.kind = self._suggesting(suggestions(document, "type"), data.type)
+        self.material = QLineEdit(data.material)
+        self.supplier = QLineEdit(data.supplier)
+        for field in (self.material, self.supplier):
+            field.setMaxLength(MAX_TEXT)
+
+        # The cost: an amount and one of the active currencies.
+        self.currency = QComboBox()
+        active = [c for c in self.register.currencies if c.is_active]
+        active.sort(key=lambda c: c.code != self.register.principal)
+        for currency in active:
+            self.currency.addItem(
+                f"{currency.code} ({currency.symbol})" if currency.symbol else currency.code,
+                currency.code,
+            )
+        if data.currency is not None and self.currency.findData(data.currency) < 0:
+            # Not an active currency of the register (ADR 0027 D3).
+            self.currency.addItem(tr("{code} (not active)", code=data.currency), data.currency)
+        if data.currency is not None:
+            self.currency.setCurrentIndex(self.currency.findData(data.currency))
+        self._shown_format = self._format()
+        self.cost = QLineEdit(
+            format_amount(data.cost, *self._shown_format) if data.cost is not None else ""
+        )
+        self.cost.setPlaceholderText(tr("No cost"))
+        cost = QHBoxLayout()
+        cost.addWidget(self.cost, 1)
+        cost.addWidget(self.currency)
+
+        self.problem = QLabel()
+        self.problem.setWordWrap(True)
+        self.buttons = ok_cancel(self)
+        form = QFormLayout()
+        form.addRow(tr("Category"), self.category)
+        form.addRow(tr("Type"), self.kind)
+        form.addRow(tr("Material"), self.material)
+        form.addRow(tr("Supplier"), self.supplier)
+        form.addRow(tr("Cost"), cost)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.note)
+        layout.addLayout(form)
+        layout.addWidget(self.problem)
+        layout.addWidget(self.buttons)
+        self.cost.textChanged.connect(lambda _text: self._show())
+        self.currency.currentIndexChanged.connect(lambda _i: self._currency_changed())
+        self.resize(420, 0)
+        self._show()
+
+    def data(self) -> CadBlockData | None:
+        """The data the fields hold, or None while one cannot be written."""
+        if self._problem():
+            return None
+        amount = self._amount()
+        return CadBlockData(
+            category=self.category.currentText().strip(),
+            type=self.kind.currentText().strip(),
+            material=self.material.text().strip(),
+            supplier=self.supplier.text().strip(),
+            cost=amount,
+            currency=self.currency.currentData() if amount is not None else None,
+        )
+
+    def _suggesting(self, values: list[str], current: str) -> QComboBox:
+        box = QComboBox()
+        box.setEditable(True)
+        box.addItems(values)
+        box.setCurrentText(current)
+        line = box.lineEdit()
+        assert line is not None
+        line.setMaxLength(MAX_TEXT)
+        return box
+
+    def _format(self) -> tuple[str, str]:
+        return self.register.format_of(self.currency.currentData() or "")
+
+    def _amount(self) -> str | None:
+        """The amount typed as the core reads it; None when empty. Raises
+        ValueError when it is not an amount in the currency's format."""
+        typed = self.cost.text().strip()
+        return parse_amount(typed, *self._format()) if typed else None
+
+    def _problem(self) -> str:
+        """Why the fields cannot be written, or empty."""
+        try:
+            amount = self._amount()
+        except ValueError as error:
+            return str(error)
+        if amount is None:
+            return ""
+        code = self.currency.currentData()
+        currency = self.register.get(code)
+        if currency is None or not currency.is_active:
+            return tr(
+                "{code} is not an active currency: activate it in Currencies, or choose another.",
+                code=code,
+            )
+        decimals = len(amount.partition(".")[2])
+        if decimals > currency.decimals:
+            return tr(
+                "A cost in {code} has at most {decimals} decimals.",
+                code=code,
+                decimals=currency.decimals,
+            )
+        return ""
+
+    def _currency_changed(self) -> None:
+        """The amount typed keeps its value, written in the new currency's
+        format."""
+        typed = self.cost.text().strip()
+        if typed:
+            try:
+                amount = parse_amount(typed, *self._shown_format)
+            except ValueError:
+                amount = None
+            if amount is not None:
+                self.cost.setText(format_amount(amount, *self._format()))
+        self._shown_format = self._format()
+        self._show()
+
+    def _show(self) -> None:
+        problem = self._problem()
+        self.problem.setText(problem)
+        ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+        ok.setEnabled(not problem)
+        example = format_amount("1250.50", *self._format())
+        self.cost.setToolTip(tr("Write it as {example}.", example=example))
+
+
+def edit_block_data(
+    document: CadDocument, name: str, parent: QWidget | None = None
+) -> CadBlockData | None:
+    """Shows the Block Data dialog for block ``name``; the data proposed, or
+    None if it was cancelled."""
+    dialog = BlockDataDialog(document, name, parent)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return None
+    return dialog.data()

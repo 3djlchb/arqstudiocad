@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
-from arqstudiocad.core import CadDocument, CadError
+from arqstudiocad.core import CadBlockData, CadDocument, CadError
 from arqstudiocad.currencies import CurrencyRegister
 from arqstudiocad.events import (
     CommandCancelled,
@@ -263,6 +263,11 @@ class UiServices(Protocol):
         """``document``'s currency register as edited in the Currencies
         dialog, with its principal currency and number format (CURRENCIES,
         ADR 0027 D3); None if it was cancelled."""
+        ...
+
+    def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
+        """Block ``name``'s data for budgets as edited in the Block Data
+        dialog (BLOCKDATA, ADR 0027 step 4a); None if it was cancelled."""
         ...
 
     def choose_block(self, names: Sequence[str], title: str) -> str | None:

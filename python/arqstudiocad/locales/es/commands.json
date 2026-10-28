@@ -2,6 +2,9 @@
   "-BLOCK": [
     "-BLOQUE"
   ],
+  "-BLOCKDATA": [
+    "-DATOSBLOQUE"
+  ],
   "-PURGE": [
     "-LIMPIA"
   ],
@@ -19,6 +22,9 @@
   ],
   "BLOCK": [
     "BLOQUE"
+  ],
+  "BLOCKDATA": [
+    "DATOSBLOQUE"
   ],
   "BLOCKSPALETTE": [
     "PALETABLOQUES"

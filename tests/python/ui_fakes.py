@@ -13,7 +13,7 @@ from arqstudiocad.commands import (
     ClashChoice,
     ViewControl,
 )
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import CadBlockData, CadDocument
 from arqstudiocad.currencies import CurrencyRegister
 
 
@@ -74,6 +74,10 @@ class QuietUi:
     #: it was shown.
     currencies_answer: CurrencyRegister | None = None
     currencies_shown: list[CurrencyRegister] = field(default_factory=list)
+    #: The Block Data dialog's answer (None: cancelled), and the blocks it
+    #: was opened on.
+    block_data_answer: CadBlockData | None = None
+    block_data_shown: list[str] = field(default_factory=list)
     #: The block the Edit Block Definition dialog was opened on.
     edit_chosen: str | None = None
     #: BLOCK's answer when the loaded template has the name: go on, or
@@ -146,6 +150,10 @@ class QuietUi:
             CurrencyRegister(*document.currencies, *document.number_format)
         )
         return self.currencies_answer
+
+    def edit_block_data(self, document: CadDocument, name: str) -> CadBlockData | None:
+        self.block_data_shown.append(name)
+        return self.block_data_answer
 
     def rename_block(self, document: CadDocument, chosen: str | None) -> tuple[str, str] | None:
         self.rename_chosen.append(chosen)
