@@ -55,6 +55,8 @@ codegen-units = 1
 # table-style maps only when all cells are represented. Native TABLECONTENT
 # supplies missing instance formatting; grid indexes keep right/inside borders
 # distinct. Legacy flat cells keep independent border presence bits and omit
-# virtual-edge payloads. Immutable tag: arqstudiocad/on-c5555a5-table-2007-reader.
+# virtual-edge payloads. Zombie Map resource managers retain their opaque
+# streams as standard proxies; proxy class registrations stay positional.
+# Immutable tag: arqstudiocad/on-c5555a5-map-resource-proxy.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "179aaeb0268d4f687406d6d46eb15bf8f9c60700" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "c05e7be3480959677ed79f5b8eed8263fe375454" }
