@@ -224,6 +224,15 @@ impl Document {
                 here.explodable = explodable;
                 here.scale_uniformly = uniform;
             }
+            // Its data, and the currency of its cost (ADR 0027 D6); a block
+            // redefined takes the source's, none included.
+            let data = source.block_data(&step.from).ok().flatten();
+            if let Some(cost) = data.as_ref().and_then(|d| d.cost.as_ref()) {
+                self.add_currency(source.currency_of(&cost.currency, cost.decimals));
+            }
+            if data.is_some() || step.redefine {
+                self.write_block_data(&step.to, &data.unwrap_or_default());
+            }
             owners.push(owner);
         }
         // The contents, remembering where each source object went.

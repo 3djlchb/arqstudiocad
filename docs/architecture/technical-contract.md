@@ -228,7 +228,7 @@ pub struct CadChangeSet {   // read through accessors of the same names
     layers_modified: Vec<LayerId>,
     layers_deleted: Vec<LayerId>,
     blocks_created: Vec<String>,   // block definitions, by name (ADR 0025 D3)
-    blocks_modified: Vec<String>,  // contents changed
+    blocks_modified: Vec<String>,  // contents or data changed (ADR 0027)
     blocks_deleted: Vec<String>,   // a rename is one deleted and one created
     document: bool,         // a document setting changed (e.g. current layer)
 }

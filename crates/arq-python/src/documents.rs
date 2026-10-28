@@ -16,8 +16,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use arq_core::{
-    BlockDefinition, BlockObjects, CadApplication as CoreApplication, CadChangeSet as ChangeSet,
-    CadDocument as CoreDocument, CadError, ClashChoice, DocumentId, EntityId, LayerId,
+    BlockData, BlockDefinition, BlockObjects, CadApplication as CoreApplication,
+    CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
+    DocumentId, EntityId, LayerId, Money,
 };
 use arq_geometry::{Geometry2, Line};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -25,7 +26,7 @@ use pyo3::prelude::*;
 
 use crate::changes::{CadChangeSet, CadGroup};
 use crate::errors::IntoPy;
-use crate::info::{CadBlockInfo, CadEntityInfo, CadLayerInfo};
+use crate::info::{CadBlockData, CadBlockInfo, CadCurrency, CadEntityInfo, CadLayerInfo};
 use crate::values::{
     CadArc, CadBounds2, CadCircle, CadColor, CadGrip, CadLine, CadSnap, PyPoint, PyVector,
     snap_kinds,
@@ -557,6 +558,91 @@ impl CadDocument {
     ) -> PyResult<(Vec<String>, CadChangeSet)> {
         self.edit(|cad| cad.purge_blocks(&names, nested))
             .map(|(purged, changes)| (purged, CadChangeSet(changes)))
+    }
+
+    /// Block `name`'s data for budgets (ADR 0027); None when it has none.
+    /// Data the drawing holds and does not read is an error.
+    fn block_data(&self, name: &str) -> PyResult<Option<CadBlockData>> {
+        let data = self
+            .read(|cad| cad.document().block_data(name).map_err(CadError::from))?
+            .py()?;
+        Ok(data.map(CadBlockData::from_core))
+    }
+
+    /// Every block's data that reads, by the block's name.
+    #[getter]
+    fn blocks_data(&self) -> PyResult<std::collections::HashMap<String, CadBlockData>> {
+        let all = self.read(|cad| cad.document().blocks_data())?;
+        Ok(all
+            .into_iter()
+            .map(|(name, data)| (name, CadBlockData::from_core(data)))
+            .collect())
+    }
+
+    /// Sets block `name`'s data; empty data removes it (BLOCKDATA). The
+    /// cost is decimal text, with at most its currency's decimals, in an
+    /// active currency of the register. One undo step.
+    fn set_block_data(&self, name: &str, data: CadBlockData) -> PyResult<CadChangeSet> {
+        self.change(|cad| {
+            let cost = match &data.cost {
+                None => None,
+                Some((amount, code)) => {
+                    let decimals = cad
+                        .document()
+                        .currencies()?
+                        .get(code)
+                        .map(|c| c.decimals)
+                        .ok_or_else(|| {
+                            CadError::InvalidOperation(format!(
+                                "{code} is not an active currency of the drawing"
+                            ))
+                        })?;
+                    Some(Money::parse(amount, decimals, code)?)
+                }
+            };
+            let data = BlockData {
+                category: data.category.clone(),
+                kind: data.kind.clone(),
+                material: data.material.clone(),
+                supplier: data.supplier.clone(),
+                cost,
+            };
+            Ok(cad.set_block_data(name, &data)?.1)
+        })
+    }
+
+    /// The drawing's currency register and its principal currency's code;
+    /// US dollars alone when the drawing has none (ADR 0027 D3).
+    #[getter]
+    fn currencies(&self) -> PyResult<(Vec<CadCurrency>, String)> {
+        let register = self
+            .read(|cad| cad.document().currencies().map_err(CadError::from))?
+            .py()?;
+        Ok((
+            register.list.into_iter().map(CadCurrency).collect(),
+            register.principal,
+        ))
+    }
+
+    /// How many blocks' costs use each currency, by code.
+    #[getter]
+    fn currency_uses(&self) -> PyResult<std::collections::BTreeMap<String, usize>> {
+        self.read(|cad| cad.document().currency_uses())
+    }
+
+    /// Replaces the currency register (CURRENCIES): `principal` is the code
+    /// of one of `currencies`, active. A currency a block's cost uses stays,
+    /// active, with its decimals. One undo step.
+    fn set_currencies(
+        &self,
+        currencies: Vec<CadCurrency>,
+        principal: &str,
+    ) -> PyResult<CadChangeSet> {
+        let register = Currencies {
+            list: currencies.into_iter().map(|c| c.0).collect(),
+            principal: principal.to_owned(),
+        };
+        self.change(|cad| cad.set_currencies(&register))
     }
 
     /// Block `name`'s preview for the Blocks palette (ADR 0025 D3): a

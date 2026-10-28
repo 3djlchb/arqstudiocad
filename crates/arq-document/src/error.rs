@@ -79,6 +79,9 @@ pub enum DocumentError {
     /// A block name, scale or rotation BLOCK or INSERT cannot use, or a
     /// block that does not exist (ADR 0023).
     InvalidBlockName(String),
+    /// Block data or a currency register that cannot be written, or that
+    /// a drawing holds and does not read (ADR 0027).
+    InvalidBlockData(String),
     /// A text value that cannot be written (ADR 0022): an empty or
     /// multiline single-line text, or a height that is not positive.
     InvalidText(&'static str),
@@ -172,6 +175,7 @@ impl fmt::Display for DocumentError {
             Self::UnsupportedOperation(message) => write!(f, "{message}"),
             Self::InvalidText(why) => write!(f, "{why}"),
             Self::InvalidBlockName(why) => write!(f, "{why}"),
+            Self::InvalidBlockData(why) => write!(f, "{why}"),
             Self::LayerNotFound(name) => write!(f, "no layer named {name:?}"),
             Self::LayerIdNotFound(id) => write!(f, "no layer with id {id}"),
             Self::LayerExists(name) => write!(f, "a layer named {name:?} already exists"),

@@ -128,8 +128,8 @@ DXF.
 - **The change set (contract §6):**
   - a block whose data changed is reported in `blocks_modified`, whose
     meaning widens to "contents or data changed";
-  - a new field `currencies_changed: bool` reports a change of the
-    register, with its Python binding, its `.pyi` stub and its event.
+  - a change of the register is reported by the existing
+    `document_changed` (amended in step 2: no new field is needed).
 - **Python:** `CadDocument.block_data(name)`,
   `CadDocument.set_block_data(name, data)`, `CadDocument.currencies` and
   `CadDocument.set_currencies(register)`. The values a field already has
@@ -199,6 +199,43 @@ Each step is its own pull request with tests:
    section.
 5. **The Properties panel's** Block data group.
 
+## Implementation notes
+
+- **Step 2, the core (2026-10-27):**
+  - `arq-document` (`block_data.rs`) adds `BlockData`, `Money`, `Currency`
+    and `Currencies`:
+    - `Document::block_data`, `blocks_data` and `set_block_data`;
+    - `Document::currencies`, `currency_uses` and `set_currencies`.
+  - The XRECORDs are keyed `ARQSTUDIOCAD_BLOCKDATA`, in the block record's
+    extension dictionary, and `ARQSTUDIOCAD_CURRENCIES`, in the root
+    dictionary. Each starts with version 1 (group code 70), followed by
+    pairs: a name (code 1), then a value (code 300).
+  - A new error, `InvalidBlockData`, covers data that cannot be written or
+    does not read.
+  - `arq-core`: `set_block_data` is one undo step, BLOCKDATA;
+    `set_currencies` is one undo step, CURRENCIES.
+  - **Python:** `CadBlockData` and `CadCurrency`, and on `CadDocument`:
+    - `block_data`, `blocks_data` and `set_block_data`, the cost given as
+      decimal text;
+    - `currencies` (the list and the principal code), `currency_uses` and
+      `set_currencies`.
+  - **A change from D5:** the register's change is reported by the change
+    set's existing `document_changed`, which already means "a
+    document-level setting changed". No new field was needed, so the
+    contract, the binding and the events are unchanged. A block whose data
+    changed is reported in `blocks_modified`, as D5 says.
+  - **Saving** compares every block's data and the register when it reads
+    the file back.
+  - **D6:**
+    - COPYBLOCK, and with it the Template source, copies a block's data
+      and adds its currency to the register;
+    - a redefinition takes the source's data, none included;
+    - RENAME and the block editor keep the data, and PURGE removes it.
+  - Tests:
+    - in Rust, amounts, refusals, undo, unknown pairs, unreadable data,
+      round trips in DWG and DXF, and D6;
+    - in Python, the API.
+
 ## Consequences
 
 - **Budgets become possible** from what the drawing already holds: the
@@ -209,8 +246,9 @@ Each step is its own pull request with tests:
     block data is opened, saved and read back.
   - A program that drops unknown XRECORDs loses the data, but not the
     drawing.
-- **The change set gains a field,** so the contract, the Rust struct, the
-  binding, the stub and the events change together in step 2.
+- **The change set reports the register** through its existing
+  `document_changed` (see the step 2 note), so the contract does not
+  change.
 - **COPYBLOCK changes:** it must copy one extension dictionary, the
   record's, while it still clears those of the copied entities.
 - **The currency register is document data,** not a user preference: two

@@ -76,8 +76,9 @@ mod spatial_index;
 pub use app::{CadApplication, DocumentId};
 pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
-    BlockDefinition, BlockInfo, BlockObjects, ClashChoice, Color, Document, DrawItem, Entity,
-    EntityId, FileFormat, Grip, GripKind, Layer, LayerId, PlanGeometry, Shape, TextData,
+    BlockData, BlockDefinition, BlockInfo, BlockObjects, ClashChoice, Color, Currencies, Currency,
+    Document, DrawItem, Entity, EntityId, FileFormat, Grip, GripKind, Layer, LayerId, Money,
+    PlanGeometry, Shape, TextData,
 };
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};

@@ -1,8 +1,9 @@
 //! `CadEntityInfo`, `CadLayerInfo` and `CadBlockInfo`: immutable
 //! descriptions of an entity, a layer and a block (contract §4, ADR 0012 D4.2). They are copies taken when the
-//! query ran; later edits never change them.
+//! query ran; later edits never change them. `CadBlockData` and
+//! `CadCurrency` are values too, made in Python to be written (ADR 0027).
 
-use arq_core::{BlockInfo, Entity, Layer, TextData};
+use arq_core::{BlockData, BlockInfo, Currency, Entity, Layer, TextData};
 use arq_geometry::Geometry2;
 use pyo3::prelude::*;
 use pyo3::types::PyString;
@@ -332,7 +333,173 @@ impl CadBlockInfo {
     }
 }
 
+/// A block's data for budgets (ADR 0027 D1): free texts, empty when not
+/// given, and a cost, an exact amount as decimal text (`"120.50"`) in a
+/// currency of the drawing's register, or neither.
+#[pyclass(frozen, eq, from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, PartialEq, Default)]
+pub struct CadBlockData {
+    pub category: String,
+    pub kind: String,
+    pub material: String,
+    pub supplier: String,
+    /// The amount and the currency's code.
+    pub cost: Option<(String, String)>,
+}
+
+#[pymethods]
+impl CadBlockData {
+    #[new]
+    #[pyo3(signature = (*, category="", r#type="", material="", supplier="", cost=None, currency=None))]
+    fn new(
+        category: &str,
+        r#type: &str,
+        material: &str,
+        supplier: &str,
+        cost: Option<String>,
+        currency: Option<String>,
+    ) -> PyResult<Self> {
+        let cost = match (cost, currency) {
+            (Some(amount), Some(code)) => Some((amount, code)),
+            (None, None) => None,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "a cost and its currency go together",
+                ));
+            }
+        };
+        Ok(Self {
+            category: category.to_owned(),
+            kind: r#type.to_owned(),
+            material: material.to_owned(),
+            supplier: supplier.to_owned(),
+            cost,
+        })
+    }
+
+    /// Its category.
+    #[getter]
+    fn category(&self) -> &str {
+        &self.category
+    }
+
+    /// Its type.
+    #[getter(r#type)]
+    fn kind(&self) -> &str {
+        &self.kind
+    }
+
+    /// Its material.
+    #[getter]
+    fn material(&self) -> &str {
+        &self.material
+    }
+
+    /// Its supplier.
+    #[getter]
+    fn supplier(&self) -> &str {
+        &self.supplier
+    }
+
+    /// What one of it costs, as decimal text with its currency's
+    /// decimals (`"120.50"`); None without a cost.
+    #[getter]
+    fn cost(&self) -> Option<&str> {
+        self.cost.as_ref().map(|(amount, _)| amount.as_str())
+    }
+
+    /// The cost's currency code (`"USD"`); None without a cost.
+    #[getter]
+    fn currency(&self) -> Option<&str> {
+        self.cost.as_ref().map(|(_, code)| code.as_str())
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadBlockData(category={:?}, type={:?}, material={:?}, supplier={:?}, cost={:?}, currency={:?})",
+            self.category,
+            self.kind,
+            self.material,
+            self.supplier,
+            self.cost(),
+            self.currency()
+        )
+    }
+}
+
+impl CadBlockData {
+    /// From the core's data.
+    pub fn from_core(data: BlockData) -> Self {
+        Self {
+            category: data.category,
+            kind: data.kind,
+            material: data.material,
+            supplier: data.supplier,
+            cost: data.cost.map(|m| (m.amount(), m.currency)),
+        }
+    }
+}
+
+/// A currency of the drawing's register (ADR 0027 D3).
+#[pyclass(frozen, eq, from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, PartialEq)]
+pub struct CadCurrency(pub Currency);
+
+#[pymethods]
+impl CadCurrency {
+    #[new]
+    #[pyo3(signature = (code, name, symbol="", decimals=2, active=true))]
+    fn new(code: &str, name: &str, symbol: &str, decimals: u8, active: bool) -> Self {
+        Self(Currency {
+            code: code.to_owned(),
+            name: name.to_owned(),
+            symbol: symbol.to_owned(),
+            decimals,
+            active,
+        })
+    }
+
+    /// Its code: ISO 4217 (`"USD"`) or the user's own.
+    #[getter]
+    fn code(&self) -> &str {
+        &self.0.code
+    }
+
+    /// Its name.
+    #[getter]
+    fn name(&self) -> &str {
+        &self.0.name
+    }
+
+    /// Its symbol; may be empty.
+    #[getter]
+    fn symbol(&self) -> &str {
+        &self.0.symbol
+    }
+
+    /// Its decimals, 0 to 4.
+    #[getter]
+    fn decimals(&self) -> u8 {
+        self.0.decimals
+    }
+
+    /// Whether a block's cost may use it.
+    #[getter]
+    fn is_active(&self) -> bool {
+        self.0.active
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadCurrency(code={:?}, active={})",
+            self.0.code, self.0.active
+        )
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<CadBlockData>()?;
+    m.add_class::<CadCurrency>()?;
     m.add_class::<CadEntityInfo>()?;
     m.add_class::<CadBlockInfo>()?;
     m.add_class::<CadLayerInfo>()?;
