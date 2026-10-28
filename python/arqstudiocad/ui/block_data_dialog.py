@@ -1,10 +1,14 @@
-"""The Block Data dialog (BLOCKDATA, ADR 0027 step 4a, maintainer
-2026-10-27): a block's category and type, with the values the drawing
-already uses suggested, its material and supplier, and its cost: an amount
-typed in its currency's number format (D3a) and one of the drawing's
-active currencies, the principal one first. The dialog only proposes the
-data: the command writes it, and the core checks it again."""
+"""A block's data for budgets (ADR 0027): its category and type, with the
+values the drawing already uses suggested, its material and supplier, and
+its cost: an amount typed in its currency's number format (D3a) and one of
+the drawing's active currencies, the principal one first.
 
+The fields are one widget, shown by the Block Data dialog (BLOCKDATA, step
+4a) and by the Block Definition dialog's Budget data section (step 4b).
+They only propose the data: the command writes it, and the core checks it
+again."""
+
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -39,23 +43,17 @@ def suggestions(document: CadDocument, field: str) -> list[str]:
     return sorted(found.values(), key=str.casefold)
 
 
-class BlockDataDialog(QDialog):
-    """Edits block ``name``'s data for budgets; nothing is written here."""
+class BlockDataFields(QWidget):
+    """The fields of a block's data over ``document``, filled from ``data``;
+    ``changed`` says when what they hold, or its problem, may differ."""
 
-    def __init__(self, document: CadDocument, name: str, parent: QWidget | None = None) -> None:
+    changed = Signal()
+
+    def __init__(
+        self, document: CadDocument, data: CadBlockData, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
-        self.setObjectName("block_data_dialog")
-        self.setWindowTitle(tr("Block data: {name}", name=name))
         self.register = register_of(document)
-        self.note = QLabel()
-        self.note.setWordWrap(True)
-        try:
-            data = document.block_data(name) or CadBlockData()
-        except CadError:
-            data = CadBlockData()
-            self.note.setText(tr("The block's data could not be read: saving replaces it."))
-        self.note.setVisible(bool(self.note.text()))
-
         self.category = self._suggesting(suggestions(document, "category"), data.category)
         self.kind = self._suggesting(suggestions(document, "type"), data.type)
         self.material = QLineEdit(data.material)
@@ -86,28 +84,20 @@ class BlockDataDialog(QDialog):
         cost.addWidget(self.cost, 1)
         cost.addWidget(self.currency)
 
-        self.problem = QLabel()
-        self.problem.setWordWrap(True)
-        self.buttons = ok_cancel(self)
-        form = QFormLayout()
-        form.addRow(tr("Category"), self.category)
-        form.addRow(tr("Type"), self.kind)
-        form.addRow(tr("Material"), self.material)
-        form.addRow(tr("Supplier"), self.supplier)
-        form.addRow(tr("Cost"), cost)
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.note)
-        layout.addLayout(form)
-        layout.addWidget(self.problem)
-        layout.addWidget(self.buttons)
-        self.cost.textChanged.connect(lambda _text: self._show())
+        self.form = QFormLayout(self)
+        self.form.setContentsMargins(0, 0, 0, 0)
+        self.form.addRow(tr("Category"), self.category)
+        self.form.addRow(tr("Type"), self.kind)
+        self.form.addRow(tr("Material"), self.material)
+        self.form.addRow(tr("Supplier"), self.supplier)
+        self.form.addRow(tr("Cost"), cost)
+        self.cost.textChanged.connect(lambda _text: self._typed())
         self.currency.currentIndexChanged.connect(lambda _i: self._currency_changed())
-        self.resize(420, 0)
-        self._show()
+        self._typed()
 
     def data(self) -> CadBlockData | None:
         """The data the fields hold, or None while one cannot be written."""
-        if self._problem():
+        if self.problem():
             return None
         amount = self._amount()
         return CadBlockData(
@@ -119,26 +109,7 @@ class BlockDataDialog(QDialog):
             currency=self.currency.currentData() if amount is not None else None,
         )
 
-    def _suggesting(self, values: list[str], current: str) -> QComboBox:
-        box = QComboBox()
-        box.setEditable(True)
-        box.addItems(values)
-        box.setCurrentText(current)
-        line = box.lineEdit()
-        assert line is not None
-        line.setMaxLength(MAX_TEXT)
-        return box
-
-    def _format(self) -> tuple[str, str]:
-        return self.register.format_of(self.currency.currentData() or "")
-
-    def _amount(self) -> str | None:
-        """The amount typed as the core reads it; None when empty. Raises
-        ValueError when it is not an amount in the currency's format."""
-        typed = self.cost.text().strip()
-        return parse_amount(typed, *self._format()) if typed else None
-
-    def _problem(self) -> str:
+    def problem(self) -> str:
         """Why the fields cannot be written, or empty."""
         try:
             amount = self._amount()
@@ -162,6 +133,25 @@ class BlockDataDialog(QDialog):
             )
         return ""
 
+    def _suggesting(self, values: list[str], current: str) -> QComboBox:
+        box = QComboBox()
+        box.setEditable(True)
+        box.addItems(values)
+        box.setCurrentText(current)
+        line = box.lineEdit()
+        assert line is not None
+        line.setMaxLength(MAX_TEXT)
+        return box
+
+    def _format(self) -> tuple[str, str]:
+        return self.register.format_of(self.currency.currentData() or "")
+
+    def _amount(self) -> str | None:
+        """The amount typed as the core reads it; None when empty. Raises
+        ValueError when it is not an amount in the currency's format."""
+        typed = self.cost.text().strip()
+        return parse_amount(typed, *self._format()) if typed else None
+
     def _currency_changed(self) -> None:
         """The amount typed keeps its value, written in the new currency's
         format."""
@@ -174,15 +164,55 @@ class BlockDataDialog(QDialog):
             if amount is not None:
                 self.cost.setText(format_amount(amount, *self._format()))
         self._shown_format = self._format()
+        self._typed()
+
+    def _typed(self) -> None:
+        example = format_amount("1250.50", *self._format())
+        self.cost.setToolTip(tr("Write it as {example}.", example=example))
+        self.changed.emit()
+
+
+class BlockDataDialog(QDialog):
+    """Edits block ``name``'s data for budgets; nothing is written here."""
+
+    def __init__(self, document: CadDocument, name: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("block_data_dialog")
+        self.setWindowTitle(tr("Block data: {name}", name=name))
+        self.note = QLabel()
+        self.note.setWordWrap(True)
+        try:
+            data = document.block_data(name) or CadBlockData()
+        except CadError:
+            data = CadBlockData()
+            self.note.setText(tr("The block's data could not be read: saving replaces it."))
+        self.note.setVisible(bool(self.note.text()))
+        self.fields = BlockDataFields(document, data)
+        fields = self.fields
+        self.category, self.kind = fields.category, fields.kind
+        self.material, self.supplier = fields.material, fields.supplier
+        self.cost, self.currency = fields.cost, fields.currency
+        self.problem = QLabel()
+        self.problem.setWordWrap(True)
+        self.buttons = ok_cancel(self)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.note)
+        layout.addWidget(fields)
+        layout.addWidget(self.problem)
+        layout.addWidget(self.buttons)
+        fields.changed.connect(self._show)
+        self.resize(420, 0)
         self._show()
 
+    def data(self) -> CadBlockData | None:
+        """The data the fields hold, or None while one cannot be written."""
+        return self.fields.data()
+
     def _show(self) -> None:
-        problem = self._problem()
+        problem = self.fields.problem()
         self.problem.setText(problem)
         ok = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
         ok.setEnabled(not problem)
-        example = format_amount("1250.50", *self._format())
-        self.cost.setToolTip(tr("Write it as {example}.", example=example))
 
 
 def edit_block_data(

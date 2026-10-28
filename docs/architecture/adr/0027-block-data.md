@@ -377,6 +377,24 @@ Each step is its own pull request with tests:
       currency's format (`S/ 1.250,50`).
   - `arqstudiocad.currencies` gains `register_of(document)`, and
     `CurrencyRegister.get` and `cost_text`.
+- **Step 4b, the Budget data section (2026-10-28):**
+  - The Block Data dialog's fields became one widget, `BlockDataFields`,
+    which the Block Definition dialog also shows.
+  - **The section:** an optional Budget data section below the groups.
+    - It is folded by default, and unfolded when it holds data or was
+      unfolded before the dialog closed to pick.
+    - Data that cannot be written keeps OK disabled, saying "Budget
+      data: …".
+    - It has a **Currencies…** button: the dialog closes with the new
+      action `currencies`, BLOCK edits the currencies as CURRENCIES does
+      (its own undo step), then opens the dialog again.
+  - `BlockDefinitionState` gains `data` and `data_shown`.
+  - **BLOCK** writes the block and its data in one undo step (a group
+    named BLOCK). If the core refuses the data, nothing is made and the
+    dialog opens again.
+  - **A redefinition:** empty data leaves the block's data as it is; data
+    given replaces it. Clearing a block's data is BLOCKDATA's.
+  - **-BLOCK** asks no budget data: -BLOCKDATA does.
 
 ## Consequences
 

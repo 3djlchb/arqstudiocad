@@ -1,8 +1,10 @@
 """The Block Definition dialog (ADR 0023 D2a), as AutoCAD's and progeCAD's:
 the block's name and description, its base point, the objects and what
-happens to them, its behavior and units. BLOCK shows it; it closes to pick
-the base point or select objects, and BLOCK opens it again with what it
-held. Annotative waits for annotation scales (phase 04)."""
+happens to them, its behavior and units, and an optional Budget data
+section, folded by default (ADR 0027 step 4b). BLOCK shows it; it closes
+to pick the base point, select objects or edit the currencies, and BLOCK
+opens it again with what it held. Annotative waits for annotation scales
+(phase 04)."""
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -20,13 +22,15 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QRadioButton,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from arqstudiocad.commands import BlockDefinitionState, BlockDialogAction, BlockObjectsChoice
-from arqstudiocad.core import CadDocument
+from arqstudiocad.core import CadBlockData, CadDocument
 from arqstudiocad.i18n import tr
+from arqstudiocad.ui.block_data_dialog import BlockDataFields
 from arqstudiocad.ui.blocks_panel import units_name
 
 #: Characters a block name cannot hold, as the core refuses them.
@@ -125,6 +129,31 @@ class BlockDefinitionDialog(QDialog):
         behavior_form.addRow(self.explodable)
         behavior_form.addRow(tr("Block unit:"), self.units)
 
+        # Budget data (ADR 0027 step 4b): optional, folded unless it holds
+        # something or was unfolded before the dialog closed to pick.
+        self._data = state.data
+        self.data_fields = BlockDataFields(document, state.data)
+        self.data_fields.changed.connect(self._check)
+        self.edit_currencies = QPushButton(tr("Currencies…"))
+        self.edit_currencies.clicked.connect(lambda: self._close_for("currencies"))
+        currencies_row = QHBoxLayout()
+        currencies_row.addStretch(1)
+        currencies_row.addWidget(self.edit_currencies)
+        self.data_box = QWidget()
+        data_column = QVBoxLayout(self.data_box)
+        data_column.setContentsMargins(16, 0, 0, 0)
+        data_column.addWidget(self.data_fields)
+        data_column.addLayout(currencies_row)
+        self.data_toggle = QToolButton()
+        self.data_toggle.setObjectName("budget_data_toggle")
+        self.data_toggle.setText(tr("Budget data"))
+        self.data_toggle.setCheckable(True)
+        self.data_toggle.setAutoRaise(True)
+        self.data_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.data_toggle.setChecked(state.data_shown or state.data != CadBlockData())
+        self.data_toggle.toggled.connect(lambda _on: self._fold())
+        self._fold()
+
         self.open_editor = QCheckBox(tr("Open in block editor"))
         self.open_editor.setChecked(state.open_editor)
         self.problem_label = QLabel()
@@ -156,6 +185,8 @@ class BlockDefinitionDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addLayout(names)
         layout.addLayout(groups)
+        layout.addWidget(self.data_toggle)
+        layout.addWidget(self.data_box)
         layout.addWidget(self.problem_label)
         layout.addLayout(bottom)
         for box in (self.base_on_screen, self.objects_on_screen):
@@ -191,7 +222,17 @@ class BlockDefinitionDialog(QDialog):
             explodable=self.explodable.isChecked(),
             units=int(self.units.currentData()),
             open_editor=self.open_editor.isChecked(),
+            # What cannot be written yet keeps the data it had.
+            data=self.data_fields.data() or self._data,
+            data_shown=self.data_toggle.isChecked(),
         )
+
+    def _fold(self) -> None:
+        """Shows or hides the Budget data section, its arrow following."""
+        shown = self.data_toggle.isChecked()
+        self.data_box.setVisible(shown)
+        self.data_toggle.setArrowType(Qt.ArrowType.DownArrow if shown else Qt.ArrowType.RightArrow)
+        self.adjustSize()
 
     def problem(self) -> str | None:
         """Why OK cannot make the block yet; None when it can."""
@@ -207,6 +248,9 @@ class BlockDefinitionDialog(QDialog):
             return tr("{name} is a dynamic block: it cannot be redefined yet.", name=taken)
         if not self.ids and not self.objects_on_screen.isChecked():
             return tr("No objects are selected.")
+        data = self.data_fields.problem()
+        if data:
+            return tr("Budget data: {problem}", problem=data)
         return None
 
     def _check(self) -> None:

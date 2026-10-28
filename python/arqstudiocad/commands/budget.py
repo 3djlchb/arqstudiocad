@@ -37,19 +37,28 @@ def currencies(ctx: CommandContext) -> CommandScript:
             text = f"{currency.code} — {shown_name(currency.name)}"
             ctx.message(f"{text} ({state})" if state else text)
         return
+    if not edit_currencies(ctx, document):
+        raise CommandCancelledError()
+    yield from ()
+
+
+def edit_currencies(ctx: CommandContext, document: CadDocument) -> bool:
+    """The Currencies dialog, and what it proposes written in one undo step,
+    or why the core refused it said; False if it was cancelled. BLOCK's
+    Budget data section opens it too (ADR 0027 step 4b)."""
+    assert ctx.ui is not None
     answer = ctx.ui.edit_currencies(document)
     if answer is None:
-        raise CommandCancelledError()
+        return False
     try:
         changes = document.set_currencies(*answer)
     except InvalidOperationError as error:
-        raise CommandCancelledError(
-            tr("The currencies were not changed: {reason}", reason=error)
-        ) from None
+        ctx.message(tr("The currencies were not changed: {reason}", reason=error))
+        return True
     if changes.document_changed:
         ctx.session.report(document, changes)
         ctx.message(tr("Currencies changed."))
-    yield from ()
+    return True
 
 
 def block_data(ctx: CommandContext) -> CommandScript:

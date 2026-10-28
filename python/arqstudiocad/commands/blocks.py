@@ -24,8 +24,9 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
+from arqstudiocad.commands.budget import edit_currencies
 from arqstudiocad.commands.modify import select_objects
-from arqstudiocad.core import CadDocument, CadError, InvalidOperationError
+from arqstudiocad.core import CadBlockData, CadDocument, CadError, InvalidOperationError
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.recent_blocks import CREATED, FROM_TEMPLATE, INSERTED
@@ -59,6 +60,10 @@ def block(ctx: CommandContext) -> CommandScript:
             ctx.session.clear_selection(document)
             state = replace(state, ids=(yield from select_objects(ctx, document)))
             continue
+        if action == "currencies":
+            # As CURRENCIES, its own undo step; then the dialog again.
+            edit_currencies(ctx, document)
+            continue
         if state.base_on_screen:
             state = replace(state, base=(yield ctx.point(tr("Specify insertion base point"))))
         if state.objects_on_screen:
@@ -79,21 +84,27 @@ def block(ctx: CommandContext) -> CommandScript:
             if found is not None and not ctx.ui.ask_block_name_in_template(found, template.name):
                 continue
         try:
-            _, changes = document.define_block(
-                name,
-                state.base,
-                state.ids,
-                objects=state.objects or "convert",
-                description=state.description.strip(),
-                units=state.units,
-                scale_uniformly=state.scale_uniformly,
-                explodable=state.explodable,
-                redefine=taken is not None,
-            )
+            # The block and its budget data, one undo step (ADR 0027 step
+            # 4b); empty data leaves a redefined block's data as it is.
+            with document.group("BLOCK") as group:
+                document.define_block(
+                    name,
+                    state.base,
+                    state.ids,
+                    objects=state.objects or "convert",
+                    description=state.description.strip(),
+                    units=state.units,
+                    scale_uniformly=state.scale_uniformly,
+                    explodable=state.explodable,
+                    redefine=taken is not None,
+                )
+                if state.data != CadBlockData():
+                    document.set_block_data(name, state.data)
         except InvalidOperationError as error:
             ctx.message(tr("{name} cannot be made: {reason}", name=name, reason=error))
             continue
-        ctx.session.report(document, changes)
+        if group.changes is not None:
+            ctx.session.report(document, group.changes)
         ctx.session.clear_selection(document)
         ctx.session.block_used(document, name, CREATED)
         if taken is not None:
