@@ -61,6 +61,7 @@ fn pen() -> Currency {
         symbol: "S/".to_owned(),
         decimals: 2,
         active: true,
+        format: None,
     }
 }
 
@@ -389,6 +390,7 @@ fn the_register_is_set_checked_and_undone() {
         symbol: String::new(),
         decimals: 4,
         active: false,
+        format: None,
     });
     own.principal = "PEN".to_owned();
     doc.set_currencies(&own).unwrap();
@@ -642,6 +644,7 @@ fn a_copied_block_brings_its_data_and_its_currency() {
         symbol: "€".to_owned(),
         decimals: 2,
         active: false,
+        format: None,
     });
     doc.set_currencies(&inactive).unwrap();
     doc.copy_block(&source, "SILLA", &BTreeMap::new()).unwrap();
@@ -691,4 +694,114 @@ fn a_copied_block_brings_its_data_and_its_currency() {
     assert_eq!(doc.block_data("SILLA").unwrap(), None);
     doc.copy_block(&source, "SILLA", &redefine).unwrap();
     assert_eq!(doc.block_data("SILLA").unwrap(), Some(in_soles));
+}
+
+#[test]
+fn the_register_keeps_how_amounts_are_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut doc = drawing();
+    let register = doc.currencies().unwrap();
+    assert_eq!(
+        (register.thousands, register.decimal),
+        (',', '.'),
+        "1,250.50"
+    );
+    for (thousands, decimal) in [('.', ','), (' ', ','), (' ', '.'), (',', '.')] {
+        let mut format = with_pen();
+        format.thousands = thousands;
+        format.decimal = decimal;
+        doc.set_currencies(&format).unwrap();
+        assert_eq!(doc.currencies().unwrap(), format);
+        for name in ["format.dwg", "format.dxf"] {
+            let path = dir.path().join(name);
+            doc.save(&path).unwrap();
+            let back = Document::open(&path).unwrap();
+            assert_eq!(back.currencies().unwrap(), format, "{name}: {thousands:?}");
+        }
+    }
+    for (thousands, decimal) in [('.', '.'), (',', ','), ('.', ' '), ('_', '.'), (',', ';')] {
+        let mut format = with_pen();
+        format.thousands = thousands;
+        format.decimal = decimal;
+        invalid(
+            doc.set_currencies(&format),
+            "thousands are separated by a comma, a point or a space",
+        );
+    }
+    // A name the register does not know does not read.
+    let handle = doc.register().unwrap().handle;
+    if let Some(ObjectType::XRecord(x)) = doc.cad_mut().objects.get_mut(&handle) {
+        let at = x
+            .entries
+            .iter()
+            .position(|e| e.value.as_string() == Some("decimal"))
+            .unwrap();
+        x.entries[at + 1].value = XRecordValue::String("tab".to_owned());
+    }
+    invalid(
+        doc.currencies(),
+        "the drawing's currencies could not be read",
+    );
+}
+
+#[test]
+fn a_currency_may_write_amounts_its_own_way() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut doc = drawing();
+    let mut register = with_pen();
+    register.list.push(Currency {
+        code: "EUR".to_owned(),
+        name: "Euro".to_owned(),
+        symbol: "€".to_owned(),
+        decimals: 2,
+        active: true,
+        format: Some(('.', ',')),
+    });
+    register.list[1].format = Some((' ', '.'));
+    register.thousands = ' ';
+    register.decimal = ',';
+    doc.set_currencies(&register).unwrap();
+    let back = doc.currencies().unwrap();
+    assert_eq!(back, register);
+    assert_eq!(back.format_of("EUR"), ('.', ','));
+    assert_eq!(back.format_of("PEN"), (' ', '.'));
+    assert_eq!(back.format_of("USD"), (' ', ','), "the drawing's");
+    assert_eq!(back.format_of("BOB"), (' ', ','), "not in the register");
+    for name in ["own.dwg", "own.dxf"] {
+        let path = dir.path().join(name);
+        doc.save(&path).unwrap();
+        assert_eq!(
+            Document::open(&path).unwrap().currencies().unwrap(),
+            register,
+            "{name}"
+        );
+    }
+    // Back to the drawing's.
+    register.list[2].format = None;
+    doc.set_currencies(&register).unwrap();
+    assert_eq!(doc.currencies().unwrap().format_of("EUR"), (' ', ','));
+    // Refused like the drawing's.
+    for format in [('.', '.'), ('_', ','), (',', ' ')] {
+        let mut bad = register.clone();
+        bad.list[1].format = Some(format);
+        invalid(doc.set_currencies(&bad), "PEN: thousands are separated by");
+    }
+    // A currency given one separator alone, either one, does not read.
+    for alone in ["decimal", "thousands"] {
+        let mut doc = drawing();
+        doc.set_currencies(&register).unwrap();
+        let handle = doc.register().unwrap().handle;
+        if let Some(ObjectType::XRecord(x)) = doc.cad_mut().objects.get_mut(&handle) {
+            let at = x
+                .entries
+                .iter()
+                .rposition(|e| e.value.as_string() == Some(alone))
+                .unwrap();
+            x.entries.drain(at..at + 2);
+        }
+        invalid(
+            doc.currencies(),
+            "the drawing's currencies could not be read",
+        );
+    }
 }

@@ -13,9 +13,11 @@ from PySide6.QtGui import QPainter, QPalette, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -34,11 +36,22 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad.core import CadCurrency, CadDocument
-from arqstudiocad.currencies import CATALOG, CatalogCurrency, shown_name
+from arqstudiocad.currencies import (
+    CATALOG,
+    DECIMAL,
+    THOUSANDS,
+    CatalogCurrency,
+    CurrencyRegister,
+    format_amount,
+    shown_name,
+)
 from arqstudiocad.i18n import tr
 
 #: The table's columns.
-ACTIVE, PRINCIPAL, CODE, NAME, SYMBOL, DECIMALS, USES = range(7)
+ACTIVE, PRINCIPAL, CODE, NAME, SYMBOL, DECIMALS, FORMAT, USES = range(8)
+#: A currency's own formats, after General (the drawing's): every pair of
+#: separators the core accepts.
+FORMATS = ((",", "."), (".", ","), (" ", ","), (" ", "."))
 #: A code of the user's own: 3 to 10 capital letters or digits, as the core
 #: accepts.
 OWN_CODE = re.compile(r"[A-Z0-9]{3,10}")
@@ -119,7 +132,8 @@ class CurrenciesDialog(QDialog):
         self.setWindowTitle(tr("Currencies"))
         self.uses = document.currency_uses
         currencies, principal = document.currencies
-        self.table = QTableWidget(0, 7)
+        self.general = document.number_format
+        self.table = QTableWidget(0, 8)
         self.table.setHorizontalHeaderLabels(
             [
                 tr("Active"),
@@ -128,6 +142,7 @@ class CurrenciesDialog(QDialog):
                 tr("Name"),
                 tr("Symbol"),
                 tr("Decimals"),
+                tr("Format"),
                 tr("Blocks"),
             ]
         )
@@ -161,15 +176,66 @@ class CurrenciesDialog(QDialog):
             )
         )
         self.note.setWordWrap(True)
+
+        # How amounts are written (maintainer, 2026-10-27).
+        thousands, decimal = document.number_format
+        names = {",": tr("Comma (,)"), ".": tr("Point (.)"), " ": tr("Space")}
+        self.thousands = QComboBox()
+        for separator in THOUSANDS:
+            self.thousands.addItem(names[separator], separator)
+        self.decimal = QComboBox()
+        for separator in DECIMAL:
+            self.decimal.addItem(names[separator], separator)
+        self.thousands.setCurrentIndex(THOUSANDS.index(thousands))
+        self.decimal.setCurrentIndex(DECIMAL.index(decimal))
+        self.example = QLabel()
+        self.thousands.currentIndexChanged.connect(lambda _i: self._separators(self.thousands))
+        self.decimal.currentIndexChanged.connect(lambda _i: self._separators(self.decimal))
+        numbers = QGroupBox(tr("General number format"))
+        form = QFormLayout(numbers)
+        form.addRow(tr("Thousands separator"), self.thousands)
+        form.addRow(tr("Decimal separator"), self.decimal)
+        form.addRow(tr("Example"), self.example)
         self.buttons = ok_cancel(self)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.table, 1)
         layout.addLayout(edit)
         layout.addWidget(self.note)
+        layout.addWidget(numbers)
         layout.addWidget(self.buttons)
-        self.resize(640, 360)
+        self.resize(720, 460)
+        self._separators(self.decimal)
         self._show()
+
+    def number_format(self) -> tuple[str, str]:
+        """The thousands and decimal separators chosen."""
+        return self.thousands.currentData(), self.decimal.currentData()
+
+    def _separators(self, changed: QComboBox) -> None:
+        """Keeps the two separators apart: the one not just changed takes
+        another, and the example follows."""
+        thousands, decimal = self.number_format()
+        if thousands == decimal:
+            other = self.decimal if changed is self.thousands else self.thousands
+            choices = DECIMAL if other is self.decimal else THOUSANDS
+            taken = thousands if other is self.decimal else decimal
+            other.blockSignals(True)
+            other.setCurrentIndex(next(i for i, s in enumerate(choices) if s != taken))
+            other.blockSignals(False)
+        self.general = self.number_format()
+        self.example.setText(format_amount("1234567.89", *self.general))
+        for row in range(self.table.rowCount()):
+            self.format_list(row).setItemText(0, self._general_text())
+
+    def format_list(self, row: int) -> QComboBox:
+        """Row ``row``'s list of formats: General, then its own."""
+        widget = self.table.cellWidget(row, FORMAT)
+        assert isinstance(widget, QComboBox)
+        return widget
+
+    def _general_text(self) -> str:
+        return tr("General ({example})", example=format_amount("1250.50", *self.general))
 
     # The register the dialog proposes
 
@@ -197,9 +263,10 @@ class CurrenciesDialog(QDialog):
         self.table.blockSignals(False)
         self._show()
 
-    def register(self) -> tuple[list[CadCurrency], str]:
-        """The currencies as the table shows them, and the principal one's
-        code. A catalog name shown translated is kept in English."""
+    def register(self) -> CurrencyRegister:
+        """The currencies as the table shows them, the principal one's code
+        and the number format. A catalog name shown translated is kept in
+        English."""
         currencies = []
         for row in range(self.table.rowCount()):
             name_item = self._item(row, NAME)
@@ -207,6 +274,8 @@ class CurrenciesDialog(QDialog):
             name = name_item.text().strip()
             if name == shown_name(stored):
                 name = stored
+            own: tuple[str, str] | None = self.format_list(row).currentData()
+            thousands, decimal = own if own is not None else (None, None)
             currencies.append(
                 CadCurrency(
                     self._item(row, CODE).text(),
@@ -214,9 +283,13 @@ class CurrenciesDialog(QDialog):
                     self._item(row, SYMBOL).text().strip(),
                     int(self._item(row, DECIMALS).text()),
                     self._item(row, ACTIVE).checkState() == Qt.CheckState.Checked,
+                    thousands,
+                    decimal,
                 )
             )
-        return currencies, self.codes()[self.principal_row()]
+        return CurrencyRegister(
+            currencies, self.codes()[self.principal_row()], *self.number_format()
+        )
 
     # Rows
 
@@ -242,10 +315,19 @@ class CurrenciesDialog(QDialog):
             (NAME, name, editable),
             (SYMBOL, QTableWidgetItem(currency.symbol), editable),
             (DECIMALS, QTableWidgetItem(str(currency.decimals)), fixed),
+            (FORMAT, QTableWidgetItem(), fixed),
             (USES, QTableWidgetItem(str(uses)), fixed),
         ):
             item.setFlags(flags)
             self.table.setItem(row, column, item)
+        # Its own way of writing amounts, or the drawing's (General).
+        formats = QComboBox()
+        formats.addItem(self._general_text(), None)
+        for pair in FORMATS:
+            formats.addItem(format_amount("1250.50", *pair), pair)
+        own = (currency.thousands, currency.decimal)
+        formats.setCurrentIndex(FORMATS.index(own) + 1 if own in FORMATS else 0)
+        self.table.setCellWidget(row, FORMAT, formats)
 
     def _item(self, row: int, column: int) -> QTableWidgetItem:
         item = self.table.item(row, column)
@@ -288,7 +370,7 @@ class CurrenciesDialog(QDialog):
     def _from_catalog(self) -> None:
         dialog = CatalogDialog(set(self.codes()), self)
         if dialog.exec() == QDialog.DialogCode.Accepted and (chosen := dialog.chosen()):
-            self._append(CadCurrency(chosen.code, chosen.name, chosen.symbol, chosen.decimals))
+            self._append(chosen.currency())
 
     def _own(self) -> None:
         dialog = OwnCurrencyDialog(set(self.codes()), self)
@@ -440,7 +522,7 @@ class OwnCurrencyDialog(QDialog):
 
 def edit_currencies(
     document: CadDocument, parent: QWidget | None = None
-) -> tuple[list[CadCurrency], str] | None:
+) -> CurrencyRegister | None:
     """Shows the Currencies dialog; the register proposed, or None if it was
     cancelled."""
     dialog = CurrenciesDialog(document, parent)

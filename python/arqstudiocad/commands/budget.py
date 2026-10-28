@@ -24,9 +24,8 @@ def currencies(ctx: CommandContext) -> CommandScript:
     answer = ctx.ui.edit_currencies(document)
     if answer is None:
         raise CommandCancelledError()
-    register, principal = answer
     try:
-        changes = document.set_currencies(register, principal)
+        changes = document.set_currencies(*answer)
     except InvalidOperationError as error:
         raise CommandCancelledError(
             tr("The currencies were not changed: {reason}", reason=error)

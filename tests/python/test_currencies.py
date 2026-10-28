@@ -10,14 +10,29 @@ from pytestqt.qtbot import QtBot
 from test_blocks import Harness
 from ui_fakes import QuietUi
 
-from arqstudiocad.core import CadApplication, CadBlockData, CadCurrency, CadDocument
-from arqstudiocad.currencies import CATALOG, catalog_currency, shown_name
+from arqstudiocad.core import (
+    CadApplication,
+    CadBlockData,
+    CadCurrency,
+    CadDocument,
+    InvalidOperationError,
+)
+from arqstudiocad.currencies import (
+    CATALOG,
+    CurrencyRegister,
+    catalog_currency,
+    format_amount,
+    parse_amount,
+    shown_name,
+)
 from arqstudiocad.events import DocumentChanged
 from arqstudiocad.i18n import discover, set_language
 from arqstudiocad.ui import currencies_dialog
 from arqstudiocad.ui.currencies_dialog import (
     ACTIVE,
     CODE,
+    FORMAT,
+    FORMATS,
     NAME,
     PRINCIPAL,
     SYMBOL,
@@ -31,6 +46,7 @@ from arqstudiocad.ui.qt_services import QtUiServices
 USD = CadCurrency("USD", "US dollar", "$", 2, True)
 PEN = CadCurrency("PEN", "Peruvian sol", "S/", 2, True)
 EUR = CadCurrency("EUR", "Euro", "€", 2, False)
+ANSWER = CurrencyRegister([USD], "USD", " ", ",")
 
 
 def drawing() -> CadDocument:
@@ -52,7 +68,11 @@ def test_the_catalog_lists_iso_currencies_once_with_their_decimals() -> None:
     assert len(CATALOG) >= 150
     assert all(len(c.code) == 3 and c.code.isupper() and c.name for c in CATALOG)
     assert {c.decimals for c in CATALOG} <= {0, 2, 3}
-    assert catalog_currency("USD") == ("USD", "US dollar", "$", 2), "the core's default"
+    assert catalog_currency("USD") == ("USD", "US dollar", "$", 2, ",", "."), "the core's default"
+    assert catalog_currency("EUR")[4:] == (".", ",")  # type: ignore[index]
+    assert catalog_currency("RUB")[4:] == (" ", ",")  # type: ignore[index]
+    assert catalog_currency("CHF")[4:] == (" ", ".")  # type: ignore[index]
+    assert all((c.thousands, c.decimal) in FORMATS for c in CATALOG)
     assert catalog_currency("JPY").decimals == 0  # type: ignore[union-attr]
     assert catalog_currency("KWD").decimals == 3  # type: ignore[union-attr]
     assert catalog_currency("BGN") is None, "the euro since 2026"
@@ -82,11 +102,12 @@ def harness(ui: QuietUi | None = None) -> Harness:
 
 
 def test_currencies_writes_what_the_dialog_proposes() -> None:
-    ui = QuietUi(currencies_answer=([USD, PEN], "PEN"))
+    ui = QuietUi(currencies_answer=CurrencyRegister([USD, PEN], "PEN", ".", ","))
     h = harness(ui)
     h.run("CURRENCIES")
-    assert ui.currencies_shown == [([USD, PEN, EUR], "USD")]
+    assert ui.currencies_shown == [CurrencyRegister([USD, PEN, EUR], "USD", ",", ".")]
     assert h.document.currencies == ([USD, PEN], "PEN")
+    assert h.document.number_format == (".", ",")
     assert h.new_steps() == ["CURRENCIES"] and h.runner.active is None
     assert h.messages()[-1] == "Currencies changed."
     changed = [e for e in h.events if isinstance(e, DocumentChanged)]
@@ -99,14 +120,14 @@ def test_currencies_cancelled_or_unchanged_changes_nothing() -> None:
     before = h.messages()
     h.run("CURRENCIES")
     assert h.messages() == before, "cancelled quietly"
-    ui.currencies_answer = ([USD, PEN, EUR], "USD")
+    ui.currencies_answer = CurrencyRegister([USD, PEN, EUR], "USD", ",", ".")
     h.run("CURRENCIES")
     assert h.new_steps() == [] and h.runner.active is None
     assert "Currencies changed." not in h.messages()
 
 
 def test_a_register_that_would_break_a_cost_is_refused() -> None:
-    ui = QuietUi(currencies_answer=([USD, EUR], "USD"))
+    ui = QuietUi(currencies_answer=CurrencyRegister([USD, EUR], "USD", ",", "."))
     h = harness(ui)
     h.run("CURRENCIES")
     assert h.messages()[-1].startswith("The currencies were not changed: PEN is used by 1 block")
@@ -169,7 +190,7 @@ def test_the_dialog_shows_the_register(qtbot: QtBot) -> None:
     assert not enabled(shown, 0, ACTIVE), "the principal one stays active"
     assert not enabled(shown, 1, ACTIVE), "a cost uses PEN"
     assert enabled(shown, 2, ACTIVE)
-    assert shown.register() == ([USD, PEN, EUR], "USD"), "unchanged"
+    assert shown.register() == ([USD, PEN, EUR], "USD", ",", "."), "unchanged"
 
 
 def test_the_principal_and_active_boxes_follow_each_other(qtbot: QtBot) -> None:
@@ -186,7 +207,7 @@ def test_the_principal_and_active_boxes_follow_each_other(qtbot: QtBot) -> None:
     usd = shown.table.item(0, ACTIVE)
     assert usd is not None
     usd.setCheckState(Qt.CheckState.Unchecked)
-    currencies, principal = shown.register()
+    currencies, principal, *_ = shown.register()
     assert principal == "EUR"
     assert [c.is_active for c in currencies] == [False, True, True]
 
@@ -214,7 +235,7 @@ def test_a_catalog_name_is_shown_translated_and_kept_in_english(qtbot: QtBot) ->
         (QDialogButtonBox.StandardButton.Cancel, "Cancelar"),
     ):
         assert shown.buttons.button(which).text() == text
-    assert shown.register() == ([USD, PEN, EUR], "USD")
+    assert shown.register() == ([USD, PEN, EUR], "USD", ",", ".")
 
 
 def test_remove_only_what_nothing_needs(qtbot: QtBot) -> None:
@@ -228,7 +249,7 @@ def test_remove_only_what_nothing_needs(qtbot: QtBot) -> None:
     assert shown.remove.isEnabled()
     shown.remove.click()
     assert shown.codes() == ["USD", "PEN"]
-    assert shown.register() == ([USD, PEN], "USD")
+    assert shown.register() == ([USD, PEN], "USD", ",", ".")
 
 
 def test_adding_from_the_catalog(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -259,7 +280,8 @@ def test_adding_from_the_catalog(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(CatalogDialog, "exec", pick)
     shown.add_catalog.click()
     assert shown.codes() == ["USD", "PEN", "EUR", "JPY"]
-    assert shown.register()[0][3] == CadCurrency("JPY", "Japanese yen", "¥", 0, True)
+    jpy = CadCurrency("JPY", "Japanese yen", "¥", 0, True, ",", ".")
+    assert shown.register()[0][3] == jpy, "in its usual format"
 
 
 def test_an_own_currency(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -297,12 +319,152 @@ def test_the_service_shows_the_dialog(qtbot: QtBot, monkeypatch: pytest.MonkeyPa
     parent = QWidget()
     qtbot.addWidget(parent)
     services = QtUiServices(parent)
-    monkeypatch.setattr(
-        currencies_dialog, "edit_currencies", lambda document, parent: ([USD], "USD")
-    )
-    assert services.edit_currencies(drawing()) == ([USD], "USD")
+    monkeypatch.setattr(currencies_dialog, "edit_currencies", lambda document, parent: ANSWER)
+    assert services.edit_currencies(drawing()) == ANSWER
     monkeypatch.undo()
     monkeypatch.setattr(CurrenciesDialog, "exec", lambda self: QDialog.DialogCode.Rejected.value)
     assert currencies_dialog.edit_currencies(drawing()) is None
     monkeypatch.setattr(CurrenciesDialog, "exec", lambda self: QDialog.DialogCode.Accepted.value)
-    assert currencies_dialog.edit_currencies(drawing()) == ([USD, PEN, EUR], "USD")
+    assert currencies_dialog.edit_currencies(drawing()) == ([USD, PEN, EUR], "USD", ",", ".")
+
+
+# How amounts are written (maintainer, 2026-10-27)
+
+
+@pytest.mark.parametrize(
+    ("thousands", "decimal", "shown"),
+    [
+        (",", ".", "1,234,567.89"),
+        (".", ",", "1.234.567,89"),
+        (" ", ",", "1 234 567,89"),
+        (" ", ".", "1 234 567.89"),
+    ],
+)
+def test_amounts_are_shown_and_read_in_the_drawings_format(
+    thousands: str, decimal: str, shown: str
+) -> None:
+    assert format_amount("1234567.89", thousands, decimal) == shown
+    assert format_amount("120", thousands, decimal) == "120"
+    assert format_amount("0.5", thousands, decimal) == f"0{decimal}5"
+    assert parse_amount(shown, thousands, decimal) == "1234567.89"
+    plain = shown.replace(thousands, "")
+    assert parse_amount(f"  {plain} ", thousands, decimal) == "1234567.89", "thousands optional"
+    assert parse_amount("7", thousands, decimal) == "7"
+
+
+def test_what_is_not_an_amount_in_the_format_is_refused() -> None:
+    assert parse_amount("1 234,5", " ", ",") == "1234.5"
+    assert parse_amount("1\u00a0234,5", " ", ",") == "1234.5", "a no-break space too"
+    for typed in (
+        "1250.50",
+        "1.25,0",
+        "12.3456,0",
+        "1234.567,5",
+        ".5",
+        "",
+        "1,2,3",
+        "1.234,5x",
+        "-5",
+        "٣",
+    ):
+        with pytest.raises(ValueError, match=r"is not an amount: write it as 1\.250,50\."):
+            parse_amount(typed, ".", ",")
+    set_language("es")
+    with pytest.raises(ValueError, match=r"^1,5 no es un importe: escríbalo como 1,250.50\.$"):
+        parse_amount("1,5", ",", ".")
+
+
+def test_the_api_keeps_the_format_unless_given() -> None:
+    document = drawing()
+    assert document.number_format == (",", ".")
+    document.set_currencies([USD, PEN, EUR], "USD", ".", ",")
+    assert document.number_format == (".", ",")
+    document.set_currencies([USD, PEN, EUR], "PEN")
+    assert document.number_format == (".", ","), "kept"
+    with pytest.raises(InvalidOperationError, match="thousands are separated"):
+        document.set_currencies([USD, PEN, EUR], "USD", ",", ",")
+    with pytest.raises(ValueError, match="a separator is one character"):
+        document.set_currencies([USD, PEN, EUR], "USD", "..", ",")
+    document.undo()
+    assert document.number_format == (".", ",") and document.currencies[1] == "USD"
+
+
+def test_the_dialog_chooses_the_format_and_keeps_the_separators_apart(qtbot: QtBot) -> None:
+    shown = dialog(qtbot, drawing())
+    assert shown.number_format() == (",", ".")
+    assert shown.example.text() == "1,234,567.89"
+    shown.thousands.setCurrentIndex(1)  # point: the decimal becomes a comma
+    assert shown.number_format() == (".", ",")
+    assert shown.example.text() == "1.234.567,89"
+    shown.thousands.setCurrentIndex(2)  # space
+    assert shown.number_format() == (" ", ",") and shown.example.text() == "1 234 567,89"
+    shown.decimal.setCurrentIndex(0)  # point, apart from a space
+    assert shown.number_format() == (" ", ".")
+    shown.thousands.setCurrentIndex(1)
+    shown.decimal.setCurrentIndex(1)
+    assert shown.number_format() == (".", ",")
+    shown.decimal.setCurrentIndex(0)  # point: the thousands become a comma
+    assert shown.number_format() == (",", ".")
+    shown.thousands.setCurrentIndex(2)
+    assert shown.register() == ([USD, PEN, EUR], "USD", " ", ".")
+    set_language("es")
+    spanish = dialog(qtbot, drawing())
+    assert [spanish.thousands.itemText(i) for i in range(3)] == ["Coma (,)", "Punto (.)", "Espacio"]
+
+
+def test_the_dialog_opens_on_the_drawings_format(qtbot: QtBot) -> None:
+    document = drawing()
+    document.set_currencies([USD, PEN, EUR], "USD", " ", ",")
+    shown = dialog(qtbot, document)
+    assert shown.number_format() == (" ", ",") and shown.example.text() == "1 234 567,89"
+
+
+# A currency's own format (maintainer, 2026-10-27)
+
+
+def test_a_currency_carries_its_own_format() -> None:
+    own = CadCurrency("EUR", "Euro", "€", 2, True, ".", ",")
+    assert (own.thousands, own.decimal) == (".", ",")
+    assert (USD.thousands, USD.decimal) == (None, None), "the drawing's"
+    with pytest.raises(ValueError, match="go together"):
+        CadCurrency("EUR", "Euro", thousands=".")
+    document = drawing()
+    document.set_currencies([USD, PEN, own], "USD", " ", ",")
+    register = CurrencyRegister(*document.currencies, *document.number_format)
+    assert register.currencies[2] == own
+    assert register.format_of("EUR") == (".", ",")
+    assert register.format_of("USD") == (" ", ","), "General"
+    assert register.format_of("BOB") == (" ", ","), "not in the register"
+    with pytest.raises(InvalidOperationError, match="EUR: thousands are separated"):
+        document.set_currencies([USD, CadCurrency("EUR", "Euro", "€", 2, True, ",", ",")], "USD")
+
+
+def test_the_format_column_chooses_general_or_its_own(qtbot: QtBot) -> None:
+    document = drawing()
+    euro = CadCurrency("EUR", "Euro", "€", 2, False, ".", ",")
+    document.set_currencies([USD, PEN, euro], "USD")
+    shown = dialog(qtbot, document)
+    lists = [shown.format_list(r) for r in range(3)]
+    assert [shown.format_list(0).itemText(i) for i in range(5)] == [
+        "General (1,250.50)",
+        "1,250.50",
+        "1.250,50",
+        "1 250,50",
+        "1 250.50",
+    ]
+    assert [f.currentIndex() for f in lists] == [0, 0, 2]
+    lists[1].setCurrentIndex(3)
+    currencies = shown.register().currencies
+    assert (currencies[1].thousands, currencies[1].decimal) == (" ", ",")
+    assert (currencies[0].thousands, currencies[0].decimal) == (None, None)
+    assert (currencies[2].thousands, currencies[2].decimal) == (".", ",")
+    lists[2].setCurrentIndex(0)
+    assert shown.register().currencies[2].thousands is None, "back to General"
+    # General follows the drawing's format chosen below.
+    shown.thousands.setCurrentIndex(1)
+    assert lists[0].itemText(0) == "General (1.250,50)"
+    set_language("es")
+    spanish = dialog(qtbot, document)
+    assert spanish.format_list(0).itemText(0) == "General (1,250.50)"
+    header = spanish.table.horizontalHeaderItem(FORMAT)
+    assert header is not None and header.text() == "Formato"
