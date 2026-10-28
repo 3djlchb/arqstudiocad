@@ -46,13 +46,15 @@ lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
-# AcadRust after 0.6.5 (the original's 2b12197) with our changes, kept in
+# AcadRust 0.6.7 (the original's c5555a5) with our changes, kept in
 # our fork (ADR 0017 D2): class objects that fail to decode kept verbatim;
 # inline surfaces' binary extra modeler block; TOLERANCE text and box in
 # DXF; R11/R12 current layer, style and linetype names (the original now
 # writes DXF hatch elliptic edge angles in degrees itself). Also preserves
 # the DXF unloaded Xref marker verified in ProgeCAD and converts companion
-# table-style maps only when all cells are represented. Immutable fork tag:
-# arqstudiocad/on-c5555a5-xref-table-conversion, on c5555a5 (0.6.7).
+# table-style maps only when all cells are represented. Native TABLECONTENT
+# supplies missing instance formatting; grid indexes keep right/inside borders
+# distinct. Legacy flat cells keep independent border presence bits and omit
+# virtual-edge payloads. Immutable tag: arqstudiocad/on-c5555a5-table-2007-reader.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "59aaf4cddee5a1a7c86a640c1246225be1bfe2bc" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "179aaeb0268d4f687406d6d46eb15bf8f9c60700" }

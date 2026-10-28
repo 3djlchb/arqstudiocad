@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "application_base": "3d4459c",
+  "codec": "59aaf4cddee5a1a7c86a640c1246225be1bfe2bc",
+  "progecad_build": "13.1.508.P.VC17.x64.26.0.12.5",
+  "tables_per_source": 4,
+  "rows_per_table": 5,
+  "columns_per_table": 3,
+  "native_properties_per_capture": 249,
+  "sources": [
+    {
+      "name": "tables-native-ac1021.dwg",
+      "sha256": "1e15a2a0946da5d6f07c9ee10005a2b77d3d8db7e89968b3bd7a34cddf6b59be",
+      "version": "AC1021",
+      "core_entities": 3,
+      "recovery": [
+        "Parse error: Invalid record at handle 0x2FA, type_code=-16: Parse error: Truncated DWG stream at bit 63057: requested 8 bits, 7 remain",
+        "Invalid record at handle 0x2FA, type_code=-16: Parse error: Truncated DWG stream at bit 63057: requested 8 bits, 7 remain"
+      ]
+    },
+    {
+      "name": "tables-native-ac1024.dxf",
+      "sha256": "ea1133894888fbb2416db2eed44a4375d56d2fd6531e0405d6f7f61cbae47ebe",
+      "version": "AC1024",
+      "core_entities": 4,
+      "recovery": []
+    },
+    {
+      "name": "tables-native-ac1032.dwg",
+      "sha256": "6f4050e24aaa4413e46e290cc4a3fdcd4f39f1c8783c566c8002a00fe5705678",
+      "version": "AC1032",
+      "core_entities": 4,
+      "recovery": []
+    }
+  ],
+  "outputs": [
+    {
+      "source": "tables-native-ac1024.dxf",
+      "name": "from-tables-native-ac1024-dxf.dwg",
+      "core_save": "verified",
+      "sha256": "f63204df7c7e9d3e6a5d1b06589df987c00497385eed8c0cc9ef497ca27e5c48",
+      "native_properties": 249,
+      "different_properties": 68,
+      "scalar_differences": [
+        {
+          "key": "table/0/text_height/1",
+          "before": 2.5,
+          "after": 4.5
+        },
+        {
+          "key": "table/0/text_height/2",
+          "before": 2.5,
+          "after": 6.0
+        },
+        {
+          "key": "table/0/text_height/4",
+          "before": 2.5,
+          "after": 4.5
+        },
+        {
+          "key": "table/160/horizontal_margin",
+          "before": 4.5,
+          "after": 1.5
+        },
+        {
+          "key": "table/160/text_height/1",
+          "before": 3.0,
+          "after": 4.5
+        },
+        {
+          "key": "table/160/text_height/2",
+          "before": 3.0,
+          "after": 6.0
+        },
+        {
+          "key": "table/160/text_height/4",
+          "before": 3.0,
+          "after": 4.5
+        },
+        {
+          "key": "table/160/vertical_margin",
+          "before": 3.0,
+          "after": 1.5
+        },
+        {
+          "key": "table/320/text_height/1",
+          "before": 2.5,
+          "after": 4.5
+        },
+        {
+          "key": "table/320/text_height/2",
+          "before": 2.5,
+          "after": 6.0
+        },
+        {
+          "key": "table/320/text_height/4",
+          "before": 2.5,
+          "after": 4.5
+        },
+        {
+          "key": "table/480/horizontal_margin",
+          "before": 2.0,
+          "after": 1.5
+        },
+        {
+          "key": "table/480/text_height/1",
+          "before": 4.0,
+          "after": 4.5
+        },
+        {
+          "key": "table/480/text_height/2",
+          "before": 4.0,
+          "after": 6.0
+        },
+        {
+          "key": "table/480/text_height/4",
+          "before": 4.0,
+          "after": 4.5
+        },
+        {
+          "key": "table/480/vertical_margin",
+          "before": 2.0,
+          "after": 1.5
+        }
+      ],
+      "different_cell_records": [
+        "table/0/cell_dxf/0",
+        "table/0/cell_dxf/10",
+        "table/0/cell_dxf/11",
+        "table/0/cell_dxf/12",
+        "table/0/cell_dxf/13",
+        "table/0/cell_dxf/14",
+        "table/0/cell_dxf/3",
+        "table/0/cell_dxf/4",
+        "table/0/cell_dxf/5",
+        "table/0/cell_dxf/6",
+        "table/0/cell_dxf/7",
+        "table/0/cell_dxf/8",
+        "table/0/cell_dxf/9",
+        "table/160/cell_dxf/0",
+        "table/160/cell_dxf/10",
+        "table/160/cell_dxf/11",
+        "table/160/cell_dxf/12",
+        "table/160/cell_dxf/13",
+        "table/160/cell_dxf/14",
+        "table/160/cell_dxf/3",
+        "table/160/cell_dxf/4",
+        "table/160/cell_dxf/5",
+        "table/160/cell_dxf/6",
+        "table/160/cell_dxf/7",
+        "table/160/cell_dxf/8",
+        "table/160/cell_dxf/9",
+        "table/320/cell_dxf/0",
+        "table/320/cell_dxf/10",
+        "table/320/cell_dxf/11",
+        "table/320/cell_dxf/12",
+        "table/320/cell_dxf/13",
+        "table/320/cell_dxf/14",
+        "table/320/cell_dxf/3",
+        "table/320/cell_dxf/4",
+        "table/320/cell_dxf/5",
+        "table/320/cell_dxf/6",
+        "table/320/cell_dxf/7",
+        "table/320/cell_dxf/8",
+        "table/320/cell_dxf/9",
+        "table/480/cell_dxf/0",
+        "table/480/cell_dxf/10",
+        "table/480/cell_dxf/11",
+        "table/480/cell_dxf/12",
+        "table/480/cell_dxf/13",
+        "table/480/cell_dxf/14",
+        "table/480/cell_dxf/3",
+        "table/480/cell_dxf/4",
+        "table/480/cell_dxf/5",
+        "table/480/cell_dxf/6",
+        "table/480/cell_dxf/7",
+        "table/480/cell_dxf/8",
+        "table/480/cell_dxf/9"
+      ]
+    },
+    {
+      "source": "tables-native-ac1024.dxf",
+      "name": "from-tables-native-ac1024-dxf.dxf",
+      "core_save": "verified",
+      "sha256": "06477deb7a7f4556a9e860675055bdb43c7251964ebc8fd1c4e5def1e0b7903e",
+      "native_properties": 249,
+      "different_properties": 5,
+      "scalar_differences": [],
+      "different_cell_records": [
+        "table/480/cell_dxf/10",
+        "table/480/cell_dxf/4",
+        "table/480/cell_dxf/6",
+        "table/480/cell_dxf/7",
+        "table/480/cell_dxf/8"
+      ]
+    },
+    {
+      "source": "tables-native-ac1032.dwg",
+      "name": "from-tables-native-ac1032-dwg.dwg",
+      "core_save": "verified",
+      "sha256": "d3270551021c5e7ca40a90b532ffec6a71aa1a5391d669e097d86b5f969a4fc6",
+      "native_properties": 249,
+      "different_properties": 0,
+      "scalar_differences": [],
+      "different_cell_records": []
+    },
+    {
+      "source": "tables-native-ac1032.dwg",
+      "name": "from-tables-native-ac1032-dwg.dxf",
+      "core_save": "refused",
+      "reason": "MAPRESOURCEMANAGEROBJECT: 1 -> 0",
+      "output_exists": false
+    }
+  ]
+}
