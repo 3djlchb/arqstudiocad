@@ -541,6 +541,30 @@ impl CadDocument {
         Ok((found.shown, found.hidden, found.nested, found.in_layouts))
     }
 
+    /// How many times each block is placed in model space, for the budget
+    /// (ADR 0028 D3): references inside other blocks count once for each
+    /// placement of the block holding them, a dynamic block's anonymous
+    /// copies count for it, layouts do not count. Blocks placed nowhere
+    /// there are left out.
+    #[getter]
+    fn block_quantities(&self) -> PyResult<std::collections::HashMap<String, u64>> {
+        self.read(|cad| cad.document().block_quantities())
+    }
+
+    /// As `block_quantities`, counting only references `entity_ids` and
+    /// what they hold (ADR 0028 D5); other entities are ignored.
+    fn block_quantities_of(
+        &self,
+        entity_ids: Vec<EntityId>,
+    ) -> PyResult<std::collections::HashMap<String, u64>> {
+        self.read(|cad| {
+            cad.document()
+                .block_quantities_of(&entity_ids)
+                .map_err(arq_core::CadError::from)
+        })?
+        .py()
+    }
+
     /// The blocks INSERT can place that nothing references, dynamic ones
     /// included (PURGE, ADR 0025 step 8e).
     #[getter]
