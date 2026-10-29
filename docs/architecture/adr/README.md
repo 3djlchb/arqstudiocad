@@ -31,7 +31,8 @@ that changes gets a new ADR that supersedes the old one.
 | [0024](0024-3d-document-model.md) | The 3D document model: a solid is our own B-rep; DWG ACIS read into it and kept byte for byte until edited; Truck the first temporary backend after review; read, see, measure, then create and edit | Accepted |
 | [0025](0025-blocks-palette.md) | The Blocks palette: Drawing, Template and Recent sources; previews in Rust from new change-set block fields; dynamic blocks tagged; inserting by button or drop through INSERT; copying definitions with clashes asked about; BLOCKSPALETTE, PROPERTIES, Ctrl+1 and Ctrl+3 | Accepted |
 | [0026](0026-external-reference-loading.md) | External reference inventory, bounded path resolution, read-only child snapshots, reference save guards and reload lifecycle; implementation remains phase 04 or later | Proposed |
-| [0027](0027-block-data.md) | Block data for budgets: category, type, material, supplier and a cost on each block definition, in an XRECORD; the cost in a currency from the drawing's register (several active, one principal, ISO 4217 catalog or the user's own); BLOCKDATA and CURRENCIES | Proposed |
+| [0027](0027-block-data.md) | Block data for budgets: category, type, material, supplier and a cost on each block definition, in an XRECORD; the cost in a currency from the drawing's register (several active, one principal, ISO 4217 catalog or the user's own); BLOCKDATA and CURRENCIES | Accepted |
+| [0028](0028-budget-table.md) | The budget table: a dockable Budget panel grouped by category, model-space quantities with nested references multiplied, blocks without cost apart, totals per currency, export to CSV and Excel (openpyxl) | Proposed |
 
 Template:
 
