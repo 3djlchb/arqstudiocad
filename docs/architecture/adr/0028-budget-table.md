@@ -160,6 +160,13 @@ Each step is its own pull request with tests:
    - the Python API;
    - tests with nesting, anonymous copies, layouts and the maintainer's
      drawings.
+   - Done: `Document::block_quantities` and `block_quantities_of(ids)`,
+     in Python `CadDocument.block_quantities` and `block_quantities_of`.
+     A MINSERT counts each of its copies. Only blocks INSERT can place
+     are listed: an anonymous copy whose block is unknown is not, though
+     what it holds counts. A block holding itself through others, which
+     only a broken file has, is counted where it is placed; what it holds
+     is not, and the count does not loop.
 3. **The panel** (D1, D2, D4, D5), the BUDGET command and its toggle.
 4. **Export** (D6): CSV, then Excel with `openpyxl`.
 

@@ -189,7 +189,11 @@ impl Document {
     /// The block record reference `insert` stands for: its block's, or the
     /// dynamic block's when it draws through an anonymous copy (`*U…`),
     /// `copies` linking those the codec cannot (`anonymous_copies`).
-    fn definition_of(&self, insert: Handle, copies: &HashMap<Handle, Handle>) -> Option<Handle> {
+    pub(crate) fn definition_of(
+        &self,
+        insert: Handle,
+        copies: &HashMap<Handle, Handle>,
+    ) -> Option<Handle> {
         let cad = self.cad();
         // The reference's own link to its dynamic block, else the anonymous
         // block's (AcadRust reads both kinds of file).
@@ -206,7 +210,7 @@ impl Document {
     /// (`AcDbDynamicBlockTrueName`) names a block INSERT can place, or when
     /// exactly one such block has the same edit tag (`AcDbBlockRepETag`)
     /// and draws the same.
-    fn anonymous_copies(&self) -> HashMap<Handle, Handle> {
+    pub(crate) fn anonymous_copies(&self) -> HashMap<Handle, Handle> {
         let cad = self.cad();
         let mut true_names: HashMap<Handle, String> = HashMap::new();
         let mut tags: HashMap<Handle, Vec<XDataValue>> = HashMap::new();
