@@ -25,6 +25,12 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   analytic and NURBS geometry: all 75 of LibreDWG's bodies) and draws
   them by their edges and isolines (step 2, see); step 3, measure, is
   next. The Blocks palette (milestone 02.9, ADR 0025) is complete, and the
+  Block Definition dialog (02.10) too. Next is block data for budgets
+  (02.11): a cost in a currency from the drawing's register, proposed in
+  ADR 0027.
+- **Engine:** AcadRust 0.6.8 plus upstream post-release fixes, patched from our
+  fork at `a1a9a56` (ADR 0017's log, 2026-10-28;
+  [upgrade validation](testing/acadrust-068-upgrade.md)).
   Block Definition dialog (02.10) and block data for budgets (02.11, ADR
   0027). Next is the budget table (02.12), proposed in ADR 0028.
 - **Engine:** AcadRust 0.6.7, patched from our fork (ADR 0017's log,
@@ -89,7 +95,7 @@ detail: [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md).
 
 | Milestone | Content | Status |
 |---|---|---|
-| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ (since 2026-10-24 AcadRust 0.6.7, patched from our fork: ADR 0017's log) |
+| 03.1 Engine on AcadRust | AcadRust 0.6.4 from crates.io behind `arq-document`; corpus and tests green | ✅ (since 2026-10-28 AcadRust 0.6.8 plus post-release fixes, patched from our fork: ADR 0017's log) |
 | 03.2 opencadcodec's improvements | One by one with regression drawings: geometric constraints first, then fidelity fixes and diagnostics; kept in our AcadRust fork | ✅ every measured difference checked and the right ones brought in (R2004 lofted surfaces); the fork's wrong readings replaced by keeping objects verbatim; R11 linetypes, TOLERANCE in DXF and our own RAY and ACIS checks fixed; LibreDWG regression reads and round trips covered; two R2000 TABLESTYLE-owner losses are now explicitly checked as safe refusals ([evidence](testing/progecad-dxf-unloaded.md)) |
 | 03.3 Data protections | Damaged files reported, safe save with read-back validation, no silent loss on version conversion, regression drawings | ✅ damaged files refused or recovered and marked; saves read back and checked; losses asked before saving; regression drawings made by the tests |
 | 03.4 Compatibility matrix | By version, entity and operation; dynamic blocks, constraints, ACIS, Xrefs, tables, dimensions, hatches, custom BIM objects | ◐ reproducible integrated-core read/safe-save report (`tools/compatibility_matrix.py`); initial 30-file run: DWG 27 verified / 3 refused, DXF 16 verified / 14 refused; two legacy MULTILEADERSTYLE refusals explained and regression-tested; two R2000 TABLESTYLE-owner losses remain safely refused; synthetic Xref corpus checks path, flags and INSERT transformations through DWG/DXF; filename markers represent Xref INSERTs; fork 59aaf4c preserves the explicit DXF unloaded marker verified in native ProgeCAD exports and reopening; all six local Xref drawings and 12 strict DWG/DXF saves pass, with the reference-level save guard retained ([investigation](testing/progecad-dxf-unloaded.md), [baseline results](testing/progecad-xrefs-results.md)); native table corpus measures three ProgeCAD inputs and 249 properties per reopening; fork 0d438b6 corrects the measured DXF-to-DWG margins, row text heights and right-border loss, with 0/249 differences against native DWG reopening ([correction](testing/progecad-table-instance-formatting.md)); the subsequent fork 179aaeb corrects AC1021 native border-table reading and strict rewriting, also matching 249/249 native measurements ([reader correction](testing/progecad-table-2007-reader.md)); other format limits remain open ([baseline](testing/progecad-tables-results.md)); reference resolution, broader version/operation coverage, visual/semantic fidelity and external validation remain open ([measurements](DWG_DXF_INTEROPERABILITY.md#integrated-product-matrix-034)) |
