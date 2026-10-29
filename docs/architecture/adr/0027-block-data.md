@@ -1,6 +1,6 @@
 # 0027. Block data and the drawing's currencies
 
-Date: 2026-10-27 · Status: Proposed · Builds on [0006](0006-i18n.md),
+Date: 2026-10-27 (accepted 2026-10-29) · Status: Accepted · Builds on [0006](0006-i18n.md),
 [0017](0017-dwg-dxf-engine-strategy.md), [0018](0018-native-format.md),
 [0023](0023-blocks.md), [0025](0025-blocks-palette.md), and technical
 contract sections 3, 4, 6, 10 and 13.
@@ -428,7 +428,8 @@ Each step is its own pull request with tests:
     currency moves the cost to it. Without a cost, the currency chosen
     waits, by block, until a cost is typed.
   - Two blocks, or anything that is not a reference, show no group.
-  - With this step every step of D8 is done.
+  - With this step every step of D8 is done, and the maintainer accepted
+    the ADR (2026-10-29). The budget table follows in ADR 0028.
 
 ## Consequences
 
