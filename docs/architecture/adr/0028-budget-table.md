@@ -168,6 +168,16 @@ Each step is its own pull request with tests:
      only a broken file has, is counted where it is placed; what it holds
      is not, and the count does not loop.
 3. **The panel** (D1, D2, D4, D5), the BUDGET command and its toggle.
+   - Done. The maintainer chose (2026-10-29) to dock it across the
+     bottom, above the command window, closed at first, and to end each
+     category with a Subtotal row per currency, as the export will write
+     it.
+   - The budget itself is built apart from the panel,
+     `arqstudiocad.budget.budget_of`, for the export to reuse.
+   - Categories that differ only in case are one group, spelled as its
+     first block by name spells it.
+   - The panel reads the drawing only while it is open, and catches up
+     when opened again.
 4. **Export** (D6): CSV, then Excel with `openpyxl`.
 
 ## Consequences

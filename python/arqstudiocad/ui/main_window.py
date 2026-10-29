@@ -53,6 +53,7 @@ from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
 from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.blocks_panel import BlocksPanel
+from arqstudiocad.ui.budget_panel import BudgetPanel
 from arqstudiocad.ui.command_window import CommandWindow
 from arqstudiocad.ui.document_tabs import DocumentTabs
 from arqstudiocad.ui.drafting_bar import DraftingBar
@@ -108,11 +109,13 @@ class MainWindow(QMainWindow):
         self.properties_panel = PropertiesPanel(self.session, self.events, self)
         self.history_panel = HistoryPanel(self.session, self.events, self)
         self.blocks_panel = BlocksPanel(self.session, self.events, self.runner, self, settings)
+        self.budget_panel = BudgetPanel(self.session, self.events, self)
         self.panels: dict[str, QDockWidget] = {
             "layers": self.layers_panel,
             "properties": self.properties_panel,
             "blocks": self.blocks_panel,
             "history": self.history_panel,
+            "budget": self.budget_panel,
         }
         right = Qt.DockWidgetArea.RightDockWidgetArea
         # Panels move, float and dock on any side, side by side or as tabs,
@@ -138,6 +141,11 @@ class MainWindow(QMainWindow):
         self.tabifyDockWidget(self.layers_panel, self.blocks_panel)
         # The Blocks palette starts closed, as AutoCAD's (ADR 0025 D2).
         self.blocks_panel.hide()
+        # The Budget panel, wide for its columns: across the bottom, above
+        # the command window, closed at first (maintainer, 2026-10-29).
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.budget_panel)
+        self.splitDockWidget(self.budget_panel, self.command_window, Qt.Orientation.Vertical)
+        self.budget_panel.hide()
         self.layers_panel.raise_()
         #: The pins: a panel stays open, or collapses to a tab on its side.
         self.auto_hide = AutoHide(self, self.panels.values(), settings)
@@ -146,6 +154,7 @@ class MainWindow(QMainWindow):
         self._palette_button("BLOCKSPALETTE", self.blocks_panel)
         self._palette_button("LAYER", self.layers_panel)
         self._palette_button("PROPERTIES", self.properties_panel)
+        self._palette_button("BUDGET", self.budget_panel)
         for signal in (
             self.events.active_document_changed,
             self.events.document_saved,
@@ -314,6 +323,7 @@ class MainWindow(QMainWindow):
         self.properties_panel.retranslate()
         self.history_panel.retranslate()
         self.blocks_panel.retranslate()
+        self.budget_panel.retranslate()
         self.workspaces.retranslate()
         self.auto_hide.retranslate()
         self._tools_menu.setTitle(tr("&Tools"))
@@ -350,6 +360,7 @@ class MainWindow(QMainWindow):
         self.layers_panel.restyle()
         self.history_panel.restyle()
         self.blocks_panel.restyle()
+        self.budget_panel.restyle()
         self.theme = theme
         self.command_actions.set_theme(theme)
         self.drafting_bar.set_theme(theme)
