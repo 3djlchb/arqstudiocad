@@ -32,7 +32,7 @@ pyo3 = "0.29.3"
 # DWG/DXF engine (ADR 0017): AcadRust from crates.io, pinned to the exact version
 # measured. Upgrade only deliberately, after the round-trip corpus and
 # tools/dwg-bench pass, and record it in ADR 0017's log.
-acadrust = "=0.6.7"
+acadrust = "=0.6.8"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -46,7 +46,7 @@ lto = "thin"
 codegen-units = 1
 
 [patch.crates-io]
-# AcadRust 0.6.7 (the original's c5555a5) with our changes, kept in
+# AcadRust 0.6.8 (upstream ea66abee, including post-release fixes) with our changes, kept in
 # our fork (ADR 0017 D2): class objects that fail to decode kept verbatim;
 # inline surfaces' binary extra modeler block; TOLERANCE text and box in
 # DXF; R11/R12 current layer, style and linetype names (the original now
@@ -57,6 +57,6 @@ codegen-units = 1
 # distinct. Legacy flat cells keep independent border presence bits and omit
 # virtual-edge payloads. Zombie Map resource managers retain their opaque
 # streams as standard proxies; proxy class registrations stay positional.
-# Immutable tag: arqstudiocad/on-c5555a5-map-resource-proxy.
+# Immutable tag: arqstudiocad/on-ea66abe.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "c05e7be3480959677ed79f5b8eed8263fe375454" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "a1a9a56965d67230295777d3dc419edc9b6571b3" }

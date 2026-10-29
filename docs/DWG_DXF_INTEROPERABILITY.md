@@ -2,10 +2,15 @@
 
 Module M02, phase 03. The decision is
 [ADR 0017](architecture/adr/0017-dwg-dxf-engine-strategy.md): AcadRust
-(crates.io, `=0.6.7`, patched from our fork) as the base, behind `arq-document`; opencadcodec's
+(crates.io, `=0.6.8`, patched from our fork) as the base, behind `arq-document`; opencadcodec's
 improvements brought in one by one; LibreDWG out of the product. The
 evidence is the [library comparison](references/dwg-library-comparison.md)
 (220 drawings, 6,600 operations); the tool is `tools/dwg-bench`.
+
+The current fork merges upstream `ea66abee` with our preservation patches at
+`a1a9a56`; [upgrade validation](testing/acadrust-068-upgrade.md) records the
+paired corpus and native ProgeCAD checks, including the unchanged table-format
+limitations.
 
 ## Protections (ADR 0017 D5)
 
