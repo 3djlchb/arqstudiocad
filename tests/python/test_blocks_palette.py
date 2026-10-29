@@ -352,7 +352,9 @@ def test_the_palettes_group_holds_blocks_layers_and_properties(window: MainWindo
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     shown = [b.defaultAction() for b in groups["palettes"].buttons]
     actions = window.command_actions
-    assert shown == [actions["BLOCKSPALETTE"], actions["LAYER"], actions["PROPERTIES"]]
+    # The Budget panel joins them (ADR 0028 D1).
+    palettes = ("BLOCKSPALETTE", "LAYER", "PROPERTIES", "BUDGET")
+    assert shown == [actions[name] for name in palettes]
     assert actions["PROPERTIES"].shortcut().toString() == "Ctrl+1"
     assert actions["PROPERTIES"].text() == "&Properties"
     for command in ("LAYER", "PROPERTIES"):

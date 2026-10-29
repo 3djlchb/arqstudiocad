@@ -151,7 +151,7 @@ CAD = Discipline(
                 RibbonGroup(
                     "palettes",
                     lambda: tr("Palettes"),
-                    ("BLOCKSPALETTE", "LAYER", "PROPERTIES"),
+                    ("BLOCKSPALETTE", "LAYER", "PROPERTIES", "BUDGET"),
                 ),
             ),
         ),

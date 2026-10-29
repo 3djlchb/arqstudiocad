@@ -3,7 +3,8 @@ currencies, the ones blocks' costs may use, in the Currencies dialog.
 BLOCKDATA edits a block's data (category, type, material, supplier and
 cost) in the Block Data dialog, and -BLOCKDATA at the command line (step
 4a, maintainer 2026-10-27): the block is the one of the references
-selected, one picked, or one named."""
+selected, one picked, or one named. BUDGET opens the Budget panel (ADR
+0028 D1)."""
 
 from collections.abc import Generator
 from typing import Any
@@ -238,7 +239,17 @@ def _write(ctx: CommandContext, document: CadDocument, name: str, data: CadBlock
 
 
 #: Budget data commands.
+def budget(ctx: CommandContext) -> CommandScript:
+    """BUDGET: opens the Budget panel (ADR 0028 D1), with or without a
+    drawing."""
+    if ctx.ui is None or not ctx.ui.show_panel("budget"):
+        raise CommandCancelledError(tr("The budget panel is not available here."))
+    return
+    yield
+
+
 BUDGET_COMMANDS = (
+    Command("BUDGET", budget),
     Command("CURRENCIES", currencies),
     Command("BLOCKDATA", block_data),
     Command("-BLOCKDATA", block_data_prompts),
