@@ -2,14 +2,17 @@
 sections chosen from a sidebar, each subsection a titled group box, with
 Reset section, OK, Apply and Cancel. Modal; it remembers its size and the
 last section shown. Only settings whose feature exists are shown: this
-version holds General (language and theme).
+version holds General (language and theme) and User preferences (what a
+right-click in model space does).
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
+from functools import partial
+from typing import Literal
 
 from PySide6.QtCore import QEvent, QSettings, QSize, Qt
-from PySide6.QtGui import QFont, QPalette
+from PySide6.QtGui import QFont, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -40,6 +43,13 @@ SIZE = QSize(900, 640)
 #: Where the dialog keeps its size and its last section.
 SIZE_SETTING = "options/size"
 SECTION_SETTING = "options/section"
+#: What a right-click in model space does with nothing selected.
+RIGHT_CLICK_SETTING = "options/right_click"
+
+#: A right-click with nothing selected and no command running: the context
+#: menu, or the last command repeated at once (ADR 0029 D4).
+type RightClick = Literal["menu", "repeat"]
+RIGHT_CLICKS: tuple[RightClick, ...] = ("menu", "repeat")
 
 
 @dataclass(frozen=True)
@@ -49,16 +59,37 @@ class Options:
 
     language: str = ""
     theme: Theme = THEMES[0]
+    right_click: RightClick = RIGHT_CLICKS[0]
 
 
 #: Each section's defaults are these values for its settings.
 DEFAULTS = Options()
 #: The sections shown, in order, and the settings each one holds.
-SECTIONS: dict[str, tuple[str, ...]] = {"general": ("language", "theme")}
+SECTIONS: dict[str, tuple[str, ...]] = {
+    "general": ("language", "theme"),
+    "user_preferences": ("right_click",),
+}
 
 
 def section_title(key: str) -> str:
-    return {"general": tr("General")}[key]
+    return {"general": tr("General"), "user_preferences": tr("User preferences")}[key]
+
+
+def saved_right_click(settings: QSettings | None) -> RightClick:
+    """The right-click setting kept in ``settings``; the default when none
+    is, or one this version does not know."""
+    saved = settings.value(RIGHT_CLICK_SETTING) if settings is not None else None
+    for value in RIGHT_CLICKS:
+        if saved == value:
+            return value
+    return DEFAULTS.right_click
+
+
+def changed_keys(before: Options, after: Options) -> tuple[str, ...]:
+    """The settings that differ, by field name."""
+    return tuple(
+        f.name for f in fields(Options) if getattr(before, f.name) != getattr(after, f.name)
+    )
 
 
 class OptionsDialog(QDialog):
@@ -81,6 +112,8 @@ class OptionsDialog(QDialog):
         self.applied = values
         self.pending = values
         self._filling = False
+        #: The rows' labels, muted by :meth:`restyle`.
+        self._labels: list[QLabel] = []
 
         self.sidebar = QListWidget()
         self.sidebar.setObjectName("options_sidebar")
@@ -97,6 +130,14 @@ class OptionsDialog(QDialog):
             scroll.setWidget(self._page(key))
             self.pages.addWidget(scroll)
         self.sidebar.currentRowChanged.connect(self._show_section)
+        for keys, step in (
+            ("Ctrl+Tab", 1),
+            ("Ctrl+PgDown", 1),
+            ("Ctrl+Shift+Tab", -1),
+            ("Ctrl+PgUp", -1),
+        ):
+            shortcut = QShortcut(QKeySequence(keys), self)
+            shortcut.activated.connect(partial(self.next_section, step))
 
         self.reset_button = QPushButton()
         self.ok_button = QPushButton()
@@ -142,19 +183,36 @@ class OptionsDialog(QDialog):
             self.theme = QComboBox()
             self.theme.setObjectName("theme")
             self.theme.currentIndexChanged.connect(self._changed)
-            for group, label, control in (
-                (self.language_group, self.language_label, self.language),
-                (self.theme_group, self.theme_label, self.theme),
-            ):
-                self._row(group, label, control)
-                rows.addWidget(group)
+            self._group(rows, self.language_group, [(self.language_label, self.language)])
+            self._group(rows, self.theme_group, [(self.theme_label, self.theme)])
+        elif key == "user_preferences":
+            self.right_click_group = QGroupBox()
+            self.right_click_label = QLabel()
+            self.right_click = QComboBox()
+            self.right_click.setObjectName("right_click")
+            self.right_click.currentIndexChanged.connect(self._changed)
+            # One choice until a command has a menu of its options (ADR 0029
+            # D4); shown so the setting is where it will grow.
+            self.during_command_label = QLabel()
+            self.during_command = QComboBox()
+            self.during_command.setObjectName("during_command")
+            self._group(
+                rows,
+                self.right_click_group,
+                [
+                    (self.right_click_label, self.right_click),
+                    (self.during_command_label, self.during_command),
+                ],
+            )
         rows.addStretch(1)
         return page
 
-    @staticmethod
-    def _row(group: QGroupBox, label: QLabel, control: QWidget) -> None:
-        """A row of ``group``: a muted label about 200 px wide, then its
-        control taking the free width (the brief's layout)."""
+    def _group(
+        self, rows: QVBoxLayout, group: QGroupBox, content: list[tuple[QLabel, QWidget]]
+    ) -> None:
+        """``group`` added to ``rows``, holding a row per label and control:
+        a muted label about 200 px wide, then its control taking the free
+        width (the brief's layout)."""
         plain = QFont(group.font())
         # Set, not just copied, so the group's bold title is not inherited.
         plain.setBold(False)
@@ -162,12 +220,15 @@ class OptionsDialog(QDialog):
         title.setBold(True)
         # The title in bold, what the group holds not.
         group.setFont(title)
-        label.setFont(plain)
-        control.setFont(plain)
-        label.setMinimumWidth(LABEL_WIDTH)
-        control.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         form = QFormLayout(group)
-        form.addRow(label, control)
+        for label, control in content:
+            label.setFont(plain)
+            control.setFont(plain)
+            label.setMinimumWidth(LABEL_WIDTH)
+            control.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            form.addRow(label, control)
+            self._labels.append(label)
+        rows.addWidget(group)
 
     def restyle(self) -> None:
         """Colors from the palette, the primary one fixed (ADR 0029 D3)."""
@@ -185,7 +246,7 @@ class OptionsDialog(QDialog):
             f"QPushButton {{ background-color: {PRIMARY}; color: white; font-weight: bold; "
             f"border: 1px solid {PRIMARY}; border-radius: 2px; padding: 6px 12px; }}"
         )
-        for label in (self.language_label, self.theme_label):
+        for label in self._labels:
             label.setStyleSheet(f"color: {muted};")
 
     def retranslate(self) -> None:
@@ -201,6 +262,9 @@ class OptionsDialog(QDialog):
         self.language_label.setText(tr("Interface language"))
         self.theme_group.setTitle(tr("Theme"))
         self.theme_label.setText(tr("Theme"))
+        self.right_click_group.setTitle(tr("Right-click in model space"))
+        self.right_click_label.setText(tr("With nothing selected"))
+        self.during_command_label.setText(tr("During a command"))
         self._fill()
 
     def _fill(self) -> None:
@@ -217,6 +281,14 @@ class OptionsDialog(QDialog):
             for theme in THEMES:
                 self.theme.addItem(theme_title(theme), theme)
             self.theme.setCurrentIndex(max(0, self.theme.findData(self.pending.theme)))
+            self.right_click.clear()
+            self.right_click.addItem(tr("Show the context menu"), "menu")
+            self.right_click.addItem(tr("Repeat the last command"), "repeat")
+            self.right_click.setCurrentIndex(
+                max(0, self.right_click.findData(self.pending.right_click))
+            )
+            self.during_command.clear()
+            self.during_command.addItem(tr("Acts as Enter"), "enter")
         finally:
             self._filling = False
         self.apply_button.setEnabled(self.pending != self.applied)
@@ -232,6 +304,12 @@ class OptionsDialog(QDialog):
         if row >= 0:
             self.pages.setCurrentIndex(row)
 
+    def next_section(self, step: int) -> None:
+        """The section ``step`` rows down the sidebar (up when negative),
+        wrapping around: Ctrl+Tab, Ctrl+PgDn and back (ADR 0029 D3)."""
+        count = self.sidebar.count()
+        self.sidebar.setCurrentRow((self.sidebar.currentRow() + step) % count)
+
     # Changes
 
     def _changed(self) -> None:
@@ -239,9 +317,11 @@ class OptionsDialog(QDialog):
             return
         language = self.language.currentData()
         theme = self.theme.currentData()
+        right_click = self.right_click.currentData()
         self.pending = Options(
             language=str(language) if language is not None else "",
             theme=theme if theme in THEMES else self.pending.theme,
+            right_click=right_click if right_click in RIGHT_CLICKS else self.pending.right_click,
         )
         self.apply_button.setEnabled(self.pending != self.applied)
 

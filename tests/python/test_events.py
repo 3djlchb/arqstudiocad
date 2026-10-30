@@ -19,6 +19,7 @@ from arqstudiocad.events import (
     Event,
     EventBus,
     LanguageChanged,
+    OptionsChanged,
     SelectionChanged,
 )
 from arqstudiocad.i18n import set_language
@@ -115,6 +116,9 @@ def test_the_bridge_re_emits_events_as_signals(qtbot: QtBot) -> None:
         bus.publish(LanguageChanged("es"))
     assert typed.args == [LanguageChanged("es")]
     assert generic.args == [LanguageChanged("es")]
+    with qtbot.waitSignal(bridge.options_changed) as options:
+        bus.publish(OptionsChanged(("right_click",)))
+    assert options.args == [OptionsChanged(("right_click",))]
 
 
 def test_events_from_a_worker_thread_reach_slots_on_the_gui_thread(qtbot: QtBot) -> None:

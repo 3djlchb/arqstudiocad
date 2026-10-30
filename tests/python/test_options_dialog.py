@@ -1,24 +1,31 @@
 """The Options dialog (ADR 0029 D3, D4): its sections in a sidebar, each
 subsection a titled group box, Reset section / OK / Apply / Cancel, its size
-and last section remembered; General holds the language and the theme, which
-the window applies as the Tools menu does."""
+and last section remembered, Ctrl+Tab between sections; General holds the
+language and the theme, which the window applies as the Tools menu does;
+User preferences what a right-click in model space does. Every change is
+announced in one OptionsChanged."""
 
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QSettings, QSize
-from PySide6.QtWidgets import QApplication, QDialog, QGroupBox
+from PySide6.QtCore import QSettings, QSize, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QDialog, QGroupBox, QWidget
 from pytestqt.qtbot import QtBot
 
+from arqstudiocad.events import OptionsChanged
 from arqstudiocad.i18n import current_language, set_language
 from arqstudiocad.ui.main_window import LANGUAGE_SETTING, MainWindow
 from arqstudiocad.ui.options_dialog import (
     PRIMARY,
+    RIGHT_CLICK_SETTING,
     SECTION_SETTING,
     SIZE,
     SIZE_SETTING,
     Options,
     OptionsDialog,
+    changed_keys,
+    saved_right_click,
 )
 from arqstudiocad.ui.theme import THEME_SETTING, apply_theme
 
@@ -43,13 +50,26 @@ def dialog(
     return d, applied
 
 
+def titles(d: OptionsDialog) -> list[str]:
+    """The group boxes' titles, section by section, top to bottom."""
+    pages = [page for i in range(d.pages.count()) if isinstance(page := d.pages.widget(i), QWidget)]
+    groups = sorted(
+        d.findChildren(QGroupBox),
+        key=lambda g: (
+            next(i for i, page in enumerate(pages) if page.isAncestorOf(g)),
+            g.y(),
+        ),
+    )
+    return [g.title() for g in groups]
+
+
 def test_general_holds_the_language_and_the_theme(qtbot: QtBot) -> None:
     d, _ = dialog(qtbot)
     assert d.windowTitle() == "Options" and d.isModal()
-    assert [d.sidebar.item(r).text() for r in range(d.sidebar.count())] == ["General"]
+    sections = [d.sidebar.item(r).text() for r in range(d.sidebar.count())]
+    assert sections == ["General", "User preferences"]
     assert d.section() == "general" and d.size() == SIZE
-    titles = [g.title() for g in d.findChildren(QGroupBox)]
-    assert titles == ["Language", "Theme"]
+    assert titles(d) == ["Language", "Theme", "Right-click in model space"]
     languages = [d.language.itemText(i) for i in range(d.language.count())]
     assert languages == ["System language", "English", "Español"], "each by its own name"
     assert d.language.currentData() == ""
@@ -118,7 +138,10 @@ def test_a_language_applied_names_the_dialog_again(qtbot: QtBot) -> None:
         assert d.apply_button.text() == "Aplicar" and d.reset_button.text() == "Restablecer sección"
         assert d.language.itemText(0) == "Idioma del sistema"
         assert d.language.currentData() == "es", "the choice is kept"
-        assert [g.title() for g in d.findChildren(QGroupBox)] == ["Idioma", "Tema"]
+        assert titles(d) == ["Idioma", "Tema", "Clic derecho en el espacio modelo"]
+        assert d.sidebar.item(1).text() == "Preferencias de usuario"
+        assert d.right_click.itemText(1) == "Repetir el último comando"
+        assert d.during_command.itemText(0) == "Equivale a Intro"
     finally:
         set_language("en")
 
@@ -154,6 +177,11 @@ def test_size_and_section_are_remembered(qtbot: QtBot, tmp_path: Path) -> None:
     assert settings.value(SECTION_SETTING) == "general"
     again, _ = dialog(qtbot, settings=settings)
     assert again.size() == QSize(950, 700)
+    d, _ = dialog(qtbot, settings=settings)
+    d.sidebar.setCurrentRow(1)
+    d.ok_button.click()
+    assert settings.value(SECTION_SETTING) == "user_preferences"
+    assert dialog(qtbot, settings=settings)[0].section() == "user_preferences"
     settings.setValue(SECTION_SETTING, "gone")
     assert dialog(qtbot, settings=settings)[0].section() == "general"
 
@@ -171,7 +199,7 @@ def window(qtbot: QtBot, tmp_path: Path) -> MainWindow:
 def test_the_window_applies_language_and_theme(window: MainWindow) -> None:
     settings = window._settings
     assert settings is not None
-    assert window.options_values() == Options("", "dark")
+    assert window.options_values() == Options("", "dark", "menu")
     settings.setValue(LANGUAGE_SETTING, "xx")
     assert window.options_values().language == "", "not installed: the system's"
     try:
@@ -204,3 +232,136 @@ def test_options_shows_the_dialog_until_it_closes(
     assert window.runner.active is None
     window.command_actions["OPTIONS"].trigger()
     assert len(shown) == 2, "Tools, Options… too"
+
+
+def test_user_preferences_says_what_a_right_click_does(qtbot: QtBot) -> None:
+    d, applied = dialog(qtbot)
+    d.sidebar.setCurrentRow(1)
+    assert d.section() == "user_preferences"
+    page = d.pages.currentWidget()
+    assert page is not None and page.isAncestorOf(d.right_click)
+    assert d.right_click_label.text() == "With nothing selected"
+    assert [d.right_click.itemText(i) for i in range(d.right_click.count())] == [
+        "Show the context menu",
+        "Repeat the last command",
+    ]
+    assert d.right_click.currentData() == "menu"
+    assert d.during_command_label.text() == "During a command"
+    # One choice until a command has a menu of its own (ADR 0029 D4).
+    assert [d.during_command.itemText(i) for i in range(d.during_command.count())] == [
+        "Acts as Enter"
+    ]
+    assert d.during_command.isEnabled()
+    assert not d.right_click_label.font().bold() and d.right_click_group.font().bold()
+    assert not d.during_command_label.font().bold(), "every row, not just the first"
+    muted = d.language_label.styleSheet()
+    assert muted.startswith("color:")
+    assert d.right_click_label.styleSheet() == d.during_command_label.styleSheet() == muted
+    d.right_click.setCurrentIndex(d.right_click.findData("repeat"))
+    d.ok_button.click()
+    assert applied.calls == [Options("", "dark", "repeat")]
+
+
+def test_reset_section_resets_only_its_own_settings(qtbot: QtBot) -> None:
+    d, _ = dialog(qtbot, Options("es", "light", "repeat"))
+    d.sidebar.setCurrentRow(1)
+    assert d.right_click.currentData() == "repeat", "as saved"
+    d.reset_button.click()
+    assert d.pending == Options("es", "light", "menu")
+    assert d.right_click.currentData() == "menu"
+    d.sidebar.setCurrentRow(0)
+    assert d.pending == Options("es", "light", "menu"), "kept across sections"
+    d.reset_button.click()
+    assert d.pending == Options("", "dark", "menu")
+
+
+@pytest.mark.parametrize(
+    ("key", "modifiers"),
+    [
+        (Qt.Key.Key_Tab, Qt.KeyboardModifier.ControlModifier),
+        (Qt.Key.Key_PageDown, Qt.KeyboardModifier.ControlModifier),
+        (
+            Qt.Key.Key_Backtab,
+            Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier,
+        ),
+        (Qt.Key.Key_PageUp, Qt.KeyboardModifier.ControlModifier),
+    ],
+)
+def test_the_keyboard_moves_between_sections(
+    qtbot: QtBot, key: Qt.Key, modifiers: Qt.KeyboardModifier
+) -> None:
+    d, _ = dialog(qtbot)
+    d.show()
+    with qtbot.waitActive(d):
+        d.activateWindow()
+    d.language.setFocus()
+    d.theme.setCurrentIndex(d.theme.findData("light"))
+    QTest.keyClick(d.language, key, modifiers)
+    assert d.section() == "user_preferences", "two sections: either way is the other"
+    assert d.pages.currentIndex() == 1
+    QTest.keyClick(d.focusWidget() or d, key, modifiers)
+    assert d.section() == "general", "around"
+    assert d.pending.theme == "light", "nothing pending is lost"
+
+
+def test_next_section_wraps_both_ways(qtbot: QtBot) -> None:
+    d, _ = dialog(qtbot)
+    d.next_section(1)
+    assert d.section() == "user_preferences"
+    d.next_section(1)
+    assert d.section() == "general"
+    d.next_section(-1)
+    assert d.section() == "user_preferences"
+
+
+def test_the_right_click_setting_as_saved(tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "r.ini"), QSettings.Format.IniFormat)
+    assert saved_right_click(None) == "menu"
+    assert saved_right_click(settings) == "menu"
+    settings.setValue(RIGHT_CLICK_SETTING, "repeat")
+    assert saved_right_click(settings) == "repeat"
+    settings.setValue(RIGHT_CLICK_SETTING, "later")
+    assert saved_right_click(settings) == "menu", "unknown: the default"
+
+
+def test_changed_keys_names_each_setting() -> None:
+    assert changed_keys(Options(), Options()) == ()
+    assert changed_keys(Options(), Options("es", "light", "repeat")) == (
+        "language",
+        "theme",
+        "right_click",
+    )
+    assert changed_keys(Options(), Options(right_click="repeat")) == ("right_click",)
+
+
+def test_the_window_keeps_the_right_click_and_announces_changes(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    settings = window._settings
+    assert settings is not None
+    announced: list[OptionsChanged] = []
+    window.bus.subscribe(OptionsChanged, announced.append)
+    try:
+        window.apply_options(Options("", "dark", "repeat"))
+        assert window.right_click == "repeat"
+        assert settings.value(RIGHT_CLICK_SETTING) == "repeat"
+        assert window.options_values().right_click == "repeat"
+        assert announced == [OptionsChanged(("right_click",))]
+        window.apply_options(Options("", "dark", "repeat"))
+        assert len(announced) == 1, "nothing changed: nothing announced"
+        window.apply_options(Options("es", "light", "menu"))
+        assert announced[1:] == [OptionsChanged(("language", "theme", "right_click"))], "once"
+        window.change_theme("dark")
+        window.change_language("en")
+        assert announced[2:] == [OptionsChanged(("theme",)), OptionsChanged(("language",))]
+    finally:
+        window.change_language("en")
+        window.change_theme("dark")
+    settings.sync()
+    again = MainWindow(settings)
+    try:
+        assert again.right_click == "menu"
+        settings.setValue(RIGHT_CLICK_SETTING, "repeat")
+        assert MainWindow(settings).right_click == "repeat", "kept across restarts"
+    finally:
+        again.deleteLater()

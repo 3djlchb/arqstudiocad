@@ -41,6 +41,7 @@ __all__ = [
     "Event",
     "EventBus",
     "LanguageChanged",
+    "OptionsChanged",
     "SelectionChanged",
     "Subscription",
     "WorkFinished",
@@ -228,6 +229,15 @@ class LanguageChanged(Event):
     """The interface language changed to ``code`` (e.g. ``"es"``)."""
 
     code: str
+
+
+@dataclass(frozen=True, slots=True)
+class OptionsChanged(Event):
+    """User settings changed, from the Options dialog or a menu (ADR 0029
+    D5): ``keys`` names each one, as the Options dialog's fields
+    (``"language"``, ``"theme"``, ``"right_click"``)."""
+
+    keys: tuple[str, ...]
 
 
 type Handler[E: Event] = Callable[[E], None]
