@@ -96,6 +96,12 @@ class CommandWindow(QDockWidget):
         if session.active is not None:
             session.clear_selection(session.active)
 
+    def enter(self) -> None:
+        """Enter, from wherever it comes (a right-click during a command,
+        Repeat in the context menu, ADR 0029): what is typed is sent, an
+        empty line repeats the last command."""
+        self._send()
+
     def type_key(self, event: QKeyEvent) -> None:
         """A key typed elsewhere (the viewport): the command line takes it,
         shown if it was closed, as AutoCAD's does."""

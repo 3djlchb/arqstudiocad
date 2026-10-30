@@ -6,13 +6,14 @@ from functools import partial
 from html import escape
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, qVersion
+from PySide6.QtCore import QLocale, QPoint, QRect, QSettings, Qt, qVersion
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QStackedWidget,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad import _core
+from arqstudiocad.application import choose_language
 from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
 from arqstudiocad.commands.blocks import edit_clicked
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry, open_command
@@ -55,11 +57,13 @@ from arqstudiocad.ui.background import QtWorker
 from arqstudiocad.ui.blocks_panel import BlocksPanel
 from arqstudiocad.ui.budget_panel import BudgetPanel
 from arqstudiocad.ui.command_window import CommandWindow
+from arqstudiocad.ui.context_menu import inside, model_space_menu
 from arqstudiocad.ui.document_tabs import DocumentTabs
 from arqstudiocad.ui.drafting_bar import DraftingBar
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.history_panel import HistoryPanel
 from arqstudiocad.ui.layers_panel import LayersPanel
+from arqstudiocad.ui.options_dialog import Options, OptionsDialog
 from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
@@ -93,7 +97,7 @@ class MainWindow(QMainWindow):
         self.ui = (
             ui
             if ui is not None
-            else QtUiServices(self, self.viewport_for, self.show_panel, settings)
+            else QtUiServices(self, self.viewport_for, self.show_panel, settings, self.show_options)
         )
         self.worker = worker if worker is not None else QtWorker(self)
         self.runner = CommandRunner(
@@ -101,6 +105,8 @@ class MainWindow(QMainWindow):
         )
         self.command_actions = CommandActions(self.runner, self)
         self.command_window = CommandWindow(self.runner, self.events, self)
+        #: The model-space context menu shown last (ADR 0029 D1).
+        self.context_menu: QMenu | None = None
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.command_window)
         # A few lines, as in AutoCAD; the user can drag it taller.
         self.resizeDocks([self.command_window], [COMMAND_WINDOW_HEIGHT], Qt.Orientation.Vertical)
@@ -272,6 +278,8 @@ class MainWindow(QMainWindow):
             self._theme_group.addAction(action)
             self.theme_actions[theme] = action
         self.theme_actions[self.theme].setChecked(True)
+        self._tools_menu.addSeparator()
+        self._tools_menu.addAction(self.command_actions["OPTIONS"])
 
         self.workspaces = WorkspaceSwitcher(
             self,
@@ -469,6 +477,9 @@ class MainWindow(QMainWindow):
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
         viewport.escape_pressed.connect(self.command_window.escape)
+        viewport.context_requested.connect(
+            lambda at: self._on_context_requested(viewport, document, at)
+        )
         # A block dragged from the Blocks palette is placed by INSERT (ADR 0025 D5).
         viewport.block_drag_entered.connect(self.blocks_panel.start_drop_insert)
         viewport.block_drag_ended.connect(self.blocks_panel.end_drop_insert)
@@ -477,6 +488,62 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(viewport, document.name)
         self._show_tabs_strip()
         self._update_tab_titles()
+
+    def _on_context_requested(self, viewport: Viewport, document: CadDocument, at: QPoint) -> None:
+        """A right-click, the Menu key or Shift+F10 on the drawing (ADR 0029
+        D1, D2): Enter during a command; with nothing selected, the context
+        menu at ``at``, kept inside the drawing; with a selection, nothing
+        yet (the object menu is later work)."""
+        if self.runner.active is not None:
+            self.command_window.enter()
+            return
+        if self.session.selection(document):
+            return
+        menu = model_space_menu(self.runner.last, viewport, self._repeat_last, self._open_options)
+        self.context_menu = menu
+        area = QRect(viewport.mapToGlobal(QPoint(0, 0)), viewport.size())
+        menu.popup(inside(menu, at, area))
+
+    def _repeat_last(self) -> None:
+        """The context menu's Repeat: exactly an empty Enter."""
+        self.command_window.input.clear()
+        self.command_window.enter()
+
+    def _open_options(self) -> None:
+        self.command_actions["OPTIONS"].trigger()
+
+    # The Options dialog (ADR 0029 D3)
+
+    def options_values(self) -> Options:
+        """The settings the Options dialog shows: the language saved, or
+        the system's when none is, and the theme."""
+        saved = self._settings.value(LANGUAGE_SETTING) if self._settings is not None else None
+        installed = {pack.code for pack in available_languages()}
+        language = saved if isinstance(saved, str) and saved in installed else ""
+        return Options(language=language, theme=self.theme)
+
+    def apply_options(self, values: Options) -> None:
+        """Applies what the Options dialog changed, as the Tools menu does."""
+        if values.language != self.options_values().language:
+            if values.language:
+                self.change_language(values.language)
+            else:
+                # The system's language: nothing saved, as on first start.
+                if self._settings is not None:
+                    self._settings.remove(LANGUAGE_SETTING)
+                code = choose_language(None, None, QLocale.system().name())
+                if set_language(code):
+                    self.bus.publish(LanguageChanged(code))
+        if values.theme != self.theme:
+            self.change_theme(values.theme)
+
+    def options_dialog(self) -> OptionsDialog:
+        return OptionsDialog(self.options_values(), self.apply_options, self._settings, self)
+
+    def show_options(self) -> bool:
+        """OPTIONS: the dialog, modal, until it closes."""
+        self.options_dialog().exec()
+        return True
 
     def _edit_double_clicked(self, document: CadDocument, entity_id: int) -> None:
         """A double click on a block reference opens the Edit Block

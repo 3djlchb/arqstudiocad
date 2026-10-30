@@ -196,6 +196,10 @@ class FakeUi:
         self.asked.append(f"panel {name}")
         return True
 
+    def show_options(self) -> bool:
+        self.asked.append("options")
+        return True
+
 
 # The registry
 

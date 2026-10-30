@@ -306,6 +306,11 @@ class UiServices(Protocol):
         """Shows and raises a panel (``"layers"``…); False if there is none."""
         ...
 
+    def show_options(self) -> bool:
+        """Opens the Options dialog (OPTIONS, ADR 0029 D3) until it closes;
+        False if there is none."""
+        ...
+
 
 class CommandCancelledError(Exception):
     """Raised inside a command to stop it as cancelled, with a reason."""
@@ -486,6 +491,12 @@ class CommandRunner:
     def prompt(self) -> Prompt | None:
         """What the running command is asking for."""
         return self._prompt
+
+    @property
+    def last(self) -> Command | None:
+        """The last command that repeats, which an empty Enter starts again
+        (ADR 0029 D1); the session's, whichever drawing is active."""
+        return self._last
 
     @property
     def busy(self) -> str | None:

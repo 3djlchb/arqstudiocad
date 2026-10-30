@@ -234,6 +234,19 @@ Each step is its own pull request with tests:
    - the Menu key and Shift+F10;
    - OPTIONS / OP / OPCIONES and Tools › Options… open a first dialog
      shell.
+   - Done. A shell with no section would show nothing (D4), so the
+     maintainer chose (2026-10-29) to bring forward the dialog's
+     structure (D3) and its General section (language and theme).
+   - **What remains for step 3:** User preferences, `OptionsChanged`,
+     and Ctrl+Tab between sections, which needs a second section to do
+     anything.
+   - **Shift+F10:** not every platform reports it as a context-menu
+     event, so the viewport handles the key itself. A keyboard
+     context-menu event within half a second of it is not taken as
+     another request.
+   - **Repeat** sends an empty line through the command window, so its
+     echo is an empty Enter's. Text typed on the command line is dropped
+     first.
 3. **The dialog** (D3, D4, D5):
    - the sidebar, the group boxes and the action row with its semantics;
    - General (language, theme);

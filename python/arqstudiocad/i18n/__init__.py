@@ -180,6 +180,13 @@ def localized_commands() -> dict[str, str]:
     return {name: command for command, names in _active.commands.items() for name in names}
 
 
+def command_display_name(name: str) -> str:
+    """English command ``name`` as the active language shows it: the first
+    name the language adds for it (LINE → LINEA), else ``name``."""
+    names = _active.commands.get(name, ()) if _active is not None else ()
+    return names[0] if names else name
+
+
 def tr(source: str, /, **values: object) -> str:
     """Translate `source` into the active language, then fill `{placeholders}`.
 
