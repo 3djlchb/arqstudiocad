@@ -29,15 +29,22 @@ Selected entities show their grips (ADR 0016 D7), blue squares; a click
 on one asks for a grip edit (:attr:`Viewport.grip_clicked`) instead of
 selecting, and the hot grip turns red.
 
+A right-click, the Menu key or Shift+F10 asks for the context menu
+(:attr:`Viewport.context_requested`, ADR 0029 D1); the window decides what
+it does: the menu, or Enter during a command.
+
 Keys typed in the viewport go to the command line (:attr:`Viewport.key_typed`),
 as in AutoCAD, where typing anywhere answers the command.
 """
 
 import math
+import time
 
-from PySide6.QtCore import QEvent, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
+    QContextMenuEvent,
+    QCursor,
     QDragEnterEvent,
     QDragLeaveEvent,
     QDragMoveEvent,
@@ -115,6 +122,10 @@ def snap_name(kind: str) -> str:
     return names.get(kind, kind)
 
 
+#: Seconds within which a keyboard context-menu event follows the Shift+F10
+#: that already asked for the menu.
+MENU_KEY_ECHO = 0.5
+
 #: The block editor's background, so it is never mistaken for the drawing:
 #: a mid grey, as AutoCAD's and progeCAD's, the same in both themes; ACI 7
 #: stays white on it (maintainer, 2026-10-25). One value, which the Options
@@ -153,6 +164,9 @@ class Viewport(QWidget):
     #: An entity was double-clicked with the left button (its id), with no
     #: point asked for: it should be edited.
     entity_double_clicked = Signal(int)
+    #: A right-click, the Menu key or Shift+F10 (ADR 0029 D1): where the
+    #: context menu would open, a ``QPoint`` on the screen.
+    context_requested = Signal(object)
 
     def __init__(
         self,
@@ -180,6 +194,8 @@ class Viewport(QWidget):
         # A point prompt: whether one is open, its last point, and where a
         # click would put the point now (snapped or ORTHO) with its snap.
         self._asking = False
+        #: When Shift+F10 last asked for the context menu (``time.monotonic``).
+        self._menu_key_at = -MENU_KEY_ECHO
         self._base: Point | None = None
         self._target: Point | None = None
         self._snap: CadSnap | None = None
@@ -406,7 +422,30 @@ class Viewport(QWidget):
             return
         super().mouseDoubleClickEvent(event)
 
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802 (Qt API)
+        event.accept()
+        if event.reason() == QContextMenuEvent.Reason.Mouse:
+            self.context_requested.emit(event.globalPos())
+        elif time.monotonic() - self._menu_key_at > MENU_KEY_ECHO:
+            self.context_requested.emit(self.menu_point())
+        # Else Shift+F10, already asked for when it was pressed.
+
+    def menu_point(self) -> QPoint:
+        """Where a menu opened from the keyboard goes: at the cursor, or at
+        the center when the cursor is outside (ADR 0029 D1)."""
+        at = self.mapFromGlobal(QCursor.pos())
+        if not self.rect().contains(at):
+            at = self.rect().center()
+        return self.mapToGlobal(at)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 (Qt API)
+        if event.key() == Qt.Key.Key_F10 and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
+            # Not every platform turns Shift+F10 into a context-menu event;
+            # where one does, it is not asked for twice.
+            self._menu_key_at = time.monotonic()
+            self.context_requested.emit(self.menu_point())
+            event.accept()
+            return
         if event.key() == Qt.Key.Key_Escape:
             self._press = self._band = None
             self.update()

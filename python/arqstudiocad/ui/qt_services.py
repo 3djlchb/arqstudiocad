@@ -51,10 +51,12 @@ class QtUiServices:
         views: Callable[[CadDocument], ViewControl | None] | None = None,
         panels: Callable[[str], bool] | None = None,
         settings: QSettings | None = None,
+        options: Callable[[], bool] | None = None,
     ) -> None:
         self._parent = parent
         self._views = views
         self._panels = panels
+        self._options = options
         self._settings = settings
         self.last_folder = ""
 
@@ -283,6 +285,9 @@ class QtUiServices:
 
     def show_panel(self, name: str) -> bool:
         return self._panels is not None and self._panels(name)
+
+    def show_options(self) -> bool:
+        return self._options is not None and self._options()
 
     def _remember(self, path: str) -> Path | None:
         if not path:

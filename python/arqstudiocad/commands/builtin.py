@@ -338,6 +338,14 @@ def layer(ctx: CommandContext) -> CommandScript:
     yield
 
 
+def options(ctx: CommandContext) -> CommandScript:
+    """Opens the Options dialog (ADR 0029 D3), with or without a drawing."""
+    if ctx.ui is None or not ctx.ui.show_options():
+        raise CommandCancelledError(tr("The Options dialog is not available here."))
+    return
+    yield
+
+
 def properties(ctx: CommandContext) -> CommandScript:
     """Opens the Properties panel, as AutoCAD's PROPERTIES (Ctrl+1), with
     or without a drawing (ADR 0025 D2)."""
@@ -368,6 +376,7 @@ BUILTIN_COMMANDS = (
     Command("LAYER", layer, ("LA",)),
     Command("BLOCKSPALETTE", blocks_palette),
     Command("PROPERTIES", properties, ("PR",)),
+    Command("OPTIONS", options, ("OP",)),
     Command("IDPOINT", id_, ("ID",)),
     Command("DISTANCE", dist, ("DI", "DIST")),
 )

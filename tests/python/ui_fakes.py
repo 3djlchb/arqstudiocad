@@ -93,6 +93,8 @@ class QuietUi:
     asked: list[str] = field(default_factory=list)
     recovered: list[tuple[str, list[str]]] = field(default_factory=list)
     panels_shown: list[str] = field(default_factory=list)
+    #: How many times the Options dialog was opened.
+    options_shown: int = 0
 
     def choose_open_path(self) -> Path | None:
         self.asked.append("open")
@@ -199,3 +201,7 @@ class QuietUi:
     def show_panel(self, name: str) -> bool:
         self.panels_shown.append(name)
         return True if self.panel_for is None else self.panel_for(name)
+
+    def show_options(self) -> bool:
+        self.options_shown += 1
+        return True
