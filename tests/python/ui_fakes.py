@@ -43,6 +43,8 @@ class QuietUi:
     #: The template the Blocks palette's file dialog returns (None: cancelled).
     template_path: Path | None = None
     save_path: Path | None = None
+    #: Where the budget is exported (None: cancelled).
+    export_path: Path | None = None
     save_changes: Literal["yes", "no", "cancel"] = "no"
     overwrite_damaged: Literal["overwrite", "save_as", "cancel"] = "cancel"
     accept_losses: bool = False
@@ -103,6 +105,10 @@ class QuietUi:
     def choose_save_path(self, suggested: str) -> Path | None:
         self.asked.append(f"save {suggested}")
         return self.save_path
+
+    def choose_budget_export_path(self, suggested: str) -> Path | None:
+        self.asked.append(f"export {suggested}")
+        return self.export_path
 
     def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
         self.asked.append(f"changes {name}")

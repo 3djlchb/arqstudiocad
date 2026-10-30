@@ -4,11 +4,14 @@ BLOCKDATA edits a block's data (category, type, material, supplier and
 cost) in the Block Data dialog, and -BLOCKDATA at the command line (step
 4a, maintainer 2026-10-27): the block is the one of the references
 selected, one picked, or one named. BUDGET opens the Budget panel (ADR
-0028 D1)."""
+0028 D1); BUDGETEXPORT writes the budget to Excel or CSV (D6)."""
 
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
+from pathlib import Path
 from typing import Any
 
+from arqstudiocad.budget import budget_of
+from arqstudiocad.budget_export import SUFFIXES, ExcelUnavailableError, export_budget
 from arqstudiocad.commands import (
     Command,
     CommandCancelledError,
@@ -238,7 +241,6 @@ def _write(ctx: CommandContext, document: CadDocument, name: str, data: CadBlock
         ctx.message(tr("Block data of {name} saved.", name=name))
 
 
-#: Budget data commands.
 def budget(ctx: CommandContext) -> CommandScript:
     """BUDGET: opens the Budget panel (ADR 0028 D1), with or without a
     drawing."""
@@ -248,8 +250,57 @@ def budget(ctx: CommandContext) -> CommandScript:
     yield
 
 
+def budget_export(ctx: CommandContext) -> CommandScript:
+    """BUDGETEXPORT: the budget of the objects selected, or of the whole
+    drawing when none are, written to Excel or CSV (ADR 0028 D6)."""
+    document = ctx.document()
+    yield from export_from(ctx, ctx.session.selection(document) or None)
+
+
+def export_command(selection_only: bool) -> Command:
+    """BUDGETEXPORT as the Budget panel's Export… runs it: of the selection
+    with Selection only, else of the whole drawing, as the panel shows."""
+
+    def run(ctx: CommandContext) -> CommandScript:
+        document = ctx.document()
+        yield from export_from(ctx, ctx.session.selection(document) if selection_only else None)
+
+    return Command("BUDGETEXPORT", run, repeat=False)
+
+
+def export_from(ctx: CommandContext, ids: Sequence[int] | None) -> CommandScript:
+    """Writes the budget of references ``ids``, or of the whole drawing, to
+    a file chosen in the Save dialog, or typed without an interface."""
+    document = ctx.document()
+    budget = budget_of(document, ids)
+    if budget.empty:
+        raise CommandCancelledError(tr("The budget is empty: there is nothing to export."))
+    suggested = f"{Path(document.name).stem} - {tr('Budget')}.xlsx"
+    if ctx.ui is not None:
+        path = ctx.ui.choose_budget_export_path(suggested)
+        if path is None:
+            raise CommandCancelledError()
+    else:
+        path = Path((yield ctx.ask(tr("File to export to (.xlsx or .csv)"))))
+    if path.suffix.lower() not in SUFFIXES:
+        raise CommandCancelledError(
+            tr("A budget is exported to .xlsx or .csv, not {suffix}.", suffix=path.suffix or "")
+        )
+    try:
+        export_budget(budget, path)
+    except ExcelUnavailableError as error:
+        raise CommandCancelledError(str(error)) from error
+    except OSError as error:
+        raise CommandCancelledError(
+            tr("{file} could not be written: {reason}", file=path.name, reason=error.strerror)
+        ) from error
+    ctx.message(tr("Budget exported to {file}.", file=str(path)))
+
+
+#: Budget data commands.
 BUDGET_COMMANDS = (
     Command("BUDGET", budget),
+    Command("BUDGETEXPORT", budget_export),
     Command("CURRENCIES", currencies),
     Command("BLOCKDATA", block_data),
     Command("-BLOCKDATA", block_data_prompts),

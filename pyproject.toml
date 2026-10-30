@@ -20,7 +20,10 @@ classifiers = [
 ]
 # Single source of truth for the version: [workspace.package] in Cargo.toml.
 dynamic = ["version"]
-dependencies = ["PySide6-Essentials>=6.12,<6.13"]
+dependencies = [
+    "openpyxl>=3.1,<4",
+    "PySide6-Essentials>=6.12,<6.13",
+]
 
 [project.scripts]
 arqstudiocad = "arqstudiocad.__main__:main"
@@ -37,6 +40,7 @@ dev = [
     "mypy>=1.18",
     "pre-commit>=4",
     "numpy>=2",
+    "types-openpyxl>=3.1",
 ]
 package = ["pyinstaller>=6.22,<7"]
 

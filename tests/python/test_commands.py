@@ -133,6 +133,10 @@ class FakeUi:
         self.asked.append(f"save {suggested}")
         return self.save_path
 
+    def choose_budget_export_path(self, suggested: str) -> Path | None:
+        self.asked.append(f"export {suggested}")
+        return None
+
     def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
         self.asked.append(f"changes {name}")
         return self.save_changes

@@ -179,6 +179,26 @@ Each step is its own pull request with tests:
    - The panel reads the drawing only while it is open, and catches up
      when opened again.
 4. **Export** (D6): CSV, then Excel with `openpyxl`.
+   - Done, in one pull request. The maintainer chose (2026-10-29) an
+     **Export…** button in the Budget panel, writing what the panel
+     shows, and the command **BUDGETEXPORT** (Spanish
+     `EXPORTARPRESUPUESTO`): of the objects selected, as BLOCKDATA takes
+     them, or of the whole drawing. One Save dialog offers both types.
+   - Both formats add a **Currency** column, so every amount says its
+     currency.
+   - The CSV field separator follows the drawing's general number format
+     (a semicolon when its decimal separator is a comma), not each
+     currency's: one file has one separator, and an amount holding it is
+     quoted.
+   - `openpyxl` 3.1.5 (MIT) and `et_xmlfile` 2.0.0 (MIT) are recorded in
+     `THIRD_PARTY.md`; `types-openpyxl` is a development dependency for
+     mypy. Workbooks open in Excel, LibreOffice Calc and ONLYOFFICE.
+   - **Packaging:** PyInstaller finds the import inside `export_xlsx`, so
+     the Windows, macOS, `.deb` and `.rpm` packages carry it. The Flatpak
+     manifest, built offline and blocked for now, will need both as
+     Python modules; until then Excel export says it is unavailable there
+     and CSV works.
+   - With this step every step of D8 is done.
 
 ## Consequences
 

@@ -2,7 +2,8 @@
 grouped by category, each group ending with its subtotal per currency
 (maintainer, 2026-10-29), then the blocks placed without a cost, then the
 totals per currency. It follows the drawing as it changes; with Selection
-only, it follows the selection too.
+only, it follows the selection too. Export… writes what it shows to Excel
+or CSV through BUDGETEXPORT (D6).
 """
 
 from PySide6.QtCore import Qt
@@ -10,9 +11,11 @@ from PySide6.QtGui import QFont, QPalette, QShowEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDockWidget,
+    QHBoxLayout,
     QHeaderView,
     QLabel,
     QMainWindow,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -20,6 +23,8 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad.budget import Budget, BudgetRow, budget_of
+from arqstudiocad.commands import CommandRunner
+from arqstudiocad.commands.budget import export_command
 from arqstudiocad.core import CadDocument
 from arqstudiocad.currencies import CurrencyRegister
 from arqstudiocad.events import Event, SelectionChanged
@@ -40,11 +45,16 @@ class BudgetPanel(QDockWidget):
     """The budget of the active drawing, or of its selection."""
 
     def __init__(
-        self, session: Session, events: QtEventBridge, parent: QWidget | None = None
+        self,
+        session: Session,
+        events: QtEventBridge,
+        runner: CommandRunner | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("budget_panel")
         self._session = session
+        self._runner = runner
         #: The drawing changed while the panel was hidden.
         self._stale = True
         #: Not yet opened: its first opening gives it room.
@@ -56,7 +66,13 @@ class BudgetPanel(QDockWidget):
         layout.setContentsMargins(6, 6, 6, 6)
         self.selection_only = QCheckBox()
         self.selection_only.toggled.connect(lambda _checked: self.refresh())
-        layout.addWidget(self.selection_only)
+        self.export_button = QPushButton()
+        self.export_button.clicked.connect(self.export)
+        top = QHBoxLayout()
+        top.addWidget(self.selection_only)
+        top.addStretch(1)
+        top.addWidget(self.export_button)
+        layout.addLayout(top)
         self.caption = QLabel()
         self.caption.setWordWrap(True)
         layout.addWidget(self.caption)
@@ -89,6 +105,8 @@ class BudgetPanel(QDockWidget):
     def retranslate(self) -> None:
         self.setWindowTitle(tr("Budget"))
         self.selection_only.setText(tr("Selection only"))
+        self.export_button.setText(tr("Export…"))
+        self.export_button.setToolTip(tr("Writes the budget shown to Excel or CSV."))
         self.caption.setText(
             tr("Quantities: references in model space, those inside other blocks included.")
         )
@@ -125,13 +143,20 @@ class BudgetPanel(QDockWidget):
         if document is None:
             self.budget = Budget()
             self.table.setEnabled(False)
+            self.export_button.setEnabled(False)
             self.footer.setText(tr("No drawing is open."))
             return
         self.table.setEnabled(True)
         ids = self._session.selection(document) if self.selection_only.isChecked() else None
         self.budget = budget_of(document, ids)
         self._fill(self.budget)
+        self.export_button.setEnabled(not self.budget.empty and self._runner is not None)
         self.footer.setText(self._footer(ids))
+
+    def export(self) -> None:
+        """Export…: BUDGETEXPORT of what the panel shows."""
+        if self._runner is not None:
+            self._runner.start(export_command(self.selection_only.isChecked()))
 
     def _footer(self, ids: tuple[int, ...] | None) -> str:
         budget = self.budget
