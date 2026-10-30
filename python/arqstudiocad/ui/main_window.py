@@ -109,7 +109,7 @@ class MainWindow(QMainWindow):
         self.properties_panel = PropertiesPanel(self.session, self.events, self)
         self.history_panel = HistoryPanel(self.session, self.events, self)
         self.blocks_panel = BlocksPanel(self.session, self.events, self.runner, self, settings)
-        self.budget_panel = BudgetPanel(self.session, self.events, self)
+        self.budget_panel = BudgetPanel(self.session, self.events, self.runner, self)
         self.panels: dict[str, QDockWidget] = {
             "layers": self.layers_panel,
             "properties": self.properties_panel,

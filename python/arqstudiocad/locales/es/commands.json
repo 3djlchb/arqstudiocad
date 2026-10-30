@@ -35,6 +35,9 @@
   "BUDGET": [
     "PRESUPUESTO"
   ],
+  "BUDGETEXPORT": [
+    "EXPORTARPRESUPUESTO"
+  ],
   "CIRCLE": [
     "CIRCULO"
   ],

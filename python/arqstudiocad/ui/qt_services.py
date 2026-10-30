@@ -79,6 +79,17 @@ class QtUiServices:
         path, _ = QFileDialog.getSaveFileName(self._parent, tr("Save drawing as"), start, filters)
         return self._remember(path)
 
+    def choose_budget_export_path(self, suggested: str) -> Path | None:
+        start = str(Path(self.last_folder) / suggested) if self.last_folder else suggested
+        excel, comma = tr("Excel workbooks (*.xlsx)"), tr("CSV files (*.csv)")
+        path, chosen = QFileDialog.getSaveFileName(
+            self._parent, tr("Export budget"), start, f"{excel};;{comma}"
+        )
+        if path and Path(path).suffix.lower() not in (".xlsx", ".csv"):
+            # A name typed without its type takes the chosen filter's.
+            path += ".csv" if chosen == comma else ".xlsx"
+        return self._remember(path)
+
     def ask_save_changes(self, name: str) -> Literal["yes", "no", "cancel"]:
         buttons = (
             QMessageBox.StandardButton.Save
