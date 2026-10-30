@@ -1,6 +1,7 @@
 """The model-space context menu (ADR 0029 D1, D2): a right-click, the Menu
 key or Shift+F10 opens Repeat {command} and Options… with nothing selected
-and no command running; during a command a right-click acts as Enter. And
+and no command running; during a command a right-click acts as Enter. With the
+user's preference, a right-click repeats the last command instead. And
 OPTIONS (OP, OPCIONES), which the menu's Options… runs."""
 
 import pytest
@@ -17,6 +18,7 @@ from arqstudiocad.events import CommandCancelled
 from arqstudiocad.i18n import command_display_name, set_language
 from arqstudiocad.ui.context_menu import inside, model_space_menu
 from arqstudiocad.ui.main_window import MainWindow
+from arqstudiocad.ui.options_dialog import Options
 from arqstudiocad.ui.viewport import Viewport
 
 
@@ -233,3 +235,39 @@ def test_the_menu_in_spanish(window: MainWindow) -> None:
 def test_tools_holds_options(window: MainWindow) -> None:
     assert window.command_actions["OPTIONS"] in window._tools_menu.actions()
     assert window.command_actions["OPTIONS"].text() == "&Options…"
+
+
+def test_a_right_click_can_repeat_at_once(window: MainWindow) -> None:
+    _, viewport = drawing(window)
+    window.apply_options(Options(right_click="repeat"))
+    right_click(viewport)
+    assert window.context_menu is None and window.runner.active is None, "nothing to repeat"
+    window.runner.execute("LINE")
+    window.runner.cancel()
+    window.command_window.input.setText("CIRCLE")
+    right_click(viewport)
+    assert window.context_menu is None, "no menu"
+    assert window.runner.active == "LINE", "as an empty Enter"
+    assert window.command_window.input.text() == ""
+    window.runner.execute("0,0")
+    window.runner.execute("10,0")
+    right_click(viewport)
+    assert window.runner.active is None, "during a command: Enter"
+
+
+def test_the_keys_open_the_menu_whatever_the_right_button_does(window: MainWindow) -> None:
+    _, viewport = drawing(window)
+    window.apply_options(Options(right_click="repeat"))
+    window.runner.execute("LINE")
+    window.runner.cancel()
+    QApplication.sendEvent(
+        viewport, QContextMenuEvent(QContextMenuEvent.Reason.Keyboard, QPoint(0, 0), QPoint(0, 0))
+    )
+    menu = opened(window)
+    assert window.runner.active is None
+    menu.close()
+    window.context_menu = None
+    shift_f10 = QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_F10, Qt.KeyboardModifier.ShiftModifier)
+    QApplication.sendEvent(viewport, shift_f10)
+    opened(window).close()
+    assert window.runner.active is None

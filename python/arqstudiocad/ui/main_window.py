@@ -44,6 +44,7 @@ from arqstudiocad.events import (
     Event,
     EventBus,
     LanguageChanged,
+    OptionsChanged,
     SelectionChanged,
     WorkStarted,
 )
@@ -63,7 +64,13 @@ from arqstudiocad.ui.drafting_bar import DraftingBar
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.history_panel import HistoryPanel
 from arqstudiocad.ui.layers_panel import LayersPanel
-from arqstudiocad.ui.options_dialog import Options, OptionsDialog
+from arqstudiocad.ui.options_dialog import (
+    RIGHT_CLICK_SETTING,
+    Options,
+    OptionsDialog,
+    changed_keys,
+    saved_right_click,
+)
 from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
@@ -89,6 +96,8 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self._settings = settings
+        #: What a right-click with nothing selected does (ADR 0029 D4).
+        self.right_click = saved_right_click(settings)
         self.bus = bus if bus is not None else EventBus()
         self.events = QtEventBridge(self.bus, self)
         self.events.language_changed.connect(self._on_language_changed)
@@ -358,7 +367,12 @@ class MainWindow(QMainWindow):
             action.setChecked(True)
 
     def change_theme(self, theme: Theme) -> None:
-        """Switch between the dark and the light theme, and remember it."""
+        """Switch between the dark and the light theme, remember it, and
+        tell everyone."""
+        self._set_theme(theme)
+        self.bus.publish(OptionsChanged(("theme",)))
+
+    def _set_theme(self, theme: Theme) -> None:
         app = QApplication.instance()
         if isinstance(app, QApplication):
             apply_theme(app, theme)
@@ -378,11 +392,16 @@ class MainWindow(QMainWindow):
 
     def change_language(self, code: str) -> None:
         """Switch the interface language, remember it, and tell everyone."""
+        if self._set_language(code):
+            self.bus.publish(OptionsChanged(("language",)))
+
+    def _set_language(self, code: str) -> bool:
         if not set_language(code):
-            return
+            return False
         if self._settings is not None:
             self._settings.setValue(LANGUAGE_SETTING, code)
         self.bus.publish(LanguageChanged(code))
+        return True
 
     def _on_language_changed(self, event: LanguageChanged) -> None:
         self._qt_translations.apply(event.code)
@@ -478,7 +497,7 @@ class MainWindow(QMainWindow):
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
         viewport.escape_pressed.connect(self.command_window.escape)
         viewport.context_requested.connect(
-            lambda at: self._on_context_requested(viewport, document, at)
+            lambda at, keyboard: self._on_context_requested(viewport, document, at, keyboard)
         )
         # A block dragged from the Blocks palette is placed by INSERT (ADR 0025 D5).
         viewport.block_drag_entered.connect(self.blocks_panel.start_drop_insert)
@@ -489,15 +508,23 @@ class MainWindow(QMainWindow):
         self._show_tabs_strip()
         self._update_tab_titles()
 
-    def _on_context_requested(self, viewport: Viewport, document: CadDocument, at: QPoint) -> None:
+    def _on_context_requested(
+        self, viewport: Viewport, document: CadDocument, at: QPoint, keyboard: bool = False
+    ) -> None:
         """A right-click, the Menu key or Shift+F10 on the drawing (ADR 0029
         D1, D2): Enter during a command; with nothing selected, the context
-        menu at ``at``, kept inside the drawing; with a selection, nothing
-        yet (the object menu is later work)."""
+        menu at ``at``, kept inside the drawing, or for a right-click the
+        last command repeated when the user prefers it (D4); with a
+        selection, nothing yet (the object menu is later work)."""
         if self.runner.active is not None:
             self.command_window.enter()
             return
         if self.session.selection(document):
+            return
+        # The keys ask for a menu: they open it whatever the right button does
+        # (maintainer, 2026-10-29).
+        if not keyboard and self.right_click == "repeat":
+            self._repeat_last()
             return
         menu = model_space_menu(self.runner.last, viewport, self._repeat_last, self._open_options)
         self.context_menu = menu
@@ -520,13 +547,15 @@ class MainWindow(QMainWindow):
         saved = self._settings.value(LANGUAGE_SETTING) if self._settings is not None else None
         installed = {pack.code for pack in available_languages()}
         language = saved if isinstance(saved, str) and saved in installed else ""
-        return Options(language=language, theme=self.theme)
+        return Options(language=language, theme=self.theme, right_click=self.right_click)
 
     def apply_options(self, values: Options) -> None:
-        """Applies what the Options dialog changed, as the Tools menu does."""
-        if values.language != self.options_values().language:
+        """Applies what the Options dialog changed, as the Tools menu does,
+        and announces it in one :class:`OptionsChanged`."""
+        keys = changed_keys(self.options_values(), values)
+        if "language" in keys:
             if values.language:
-                self.change_language(values.language)
+                self._set_language(values.language)
             else:
                 # The system's language: nothing saved, as on first start.
                 if self._settings is not None:
@@ -534,8 +563,14 @@ class MainWindow(QMainWindow):
                 code = choose_language(None, None, QLocale.system().name())
                 if set_language(code):
                     self.bus.publish(LanguageChanged(code))
-        if values.theme != self.theme:
-            self.change_theme(values.theme)
+        if "theme" in keys:
+            self._set_theme(values.theme)
+        if "right_click" in keys:
+            self.right_click = values.right_click
+            if self._settings is not None:
+                self._settings.setValue(RIGHT_CLICK_SETTING, values.right_click)
+        if keys:
+            self.bus.publish(OptionsChanged(keys))
 
     def options_dialog(self) -> OptionsDialog:
         return OptionsDialog(self.options_values(), self.apply_options, self._settings, self)

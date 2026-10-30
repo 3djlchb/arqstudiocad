@@ -258,7 +258,8 @@ change set), `SelectionChanged`, `ActiveLayerChanged`, `BlockSaved` (a block
 editor saved into its block, ADR 0023), `BlockUsed` (a block created or
 inserted, for the Blocks palette's Recent source, ADR 0025), `CommandStarted`,
 `CommandPrompt`, `CommandMessage`, `CommandFinished`, `CommandCancelled`,
-`WorkStarted`, `WorkFinished`, `LanguageChanged`.
+`WorkStarted`, `WorkFinished`, `LanguageChanged`, `OptionsChanged` (user
+settings changed, ADR 0029).
 
 Events are frozen dataclasses stating facts, never requests: whoever changes
 something publishes the event after. The bus delivers synchronously, in

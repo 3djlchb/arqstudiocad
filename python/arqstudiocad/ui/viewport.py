@@ -31,7 +31,8 @@ selecting, and the hot grip turns red.
 
 A right-click, the Menu key or Shift+F10 asks for the context menu
 (:attr:`Viewport.context_requested`, ADR 0029 D1); the window decides what
-it does: the menu, or Enter during a command.
+it does: the menu, a repeat (a right-click, by the user's preference), or
+Enter during a command.
 
 Keys typed in the viewport go to the command line (:attr:`Viewport.key_typed`),
 as in AutoCAD, where typing anywhere answers the command.
@@ -165,8 +166,9 @@ class Viewport(QWidget):
     #: point asked for: it should be edited.
     entity_double_clicked = Signal(int)
     #: A right-click, the Menu key or Shift+F10 (ADR 0029 D1): where the
-    #: context menu would open, a ``QPoint`` on the screen.
-    context_requested = Signal(object)
+    #: context menu would open, a ``QPoint`` on the screen, and whether the
+    #: keyboard asked (True) or the right button (False).
+    context_requested = Signal(object, bool)
 
     def __init__(
         self,
@@ -425,9 +427,9 @@ class Viewport(QWidget):
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:  # noqa: N802 (Qt API)
         event.accept()
         if event.reason() == QContextMenuEvent.Reason.Mouse:
-            self.context_requested.emit(event.globalPos())
+            self.context_requested.emit(event.globalPos(), False)
         elif time.monotonic() - self._menu_key_at > MENU_KEY_ECHO:
-            self.context_requested.emit(self.menu_point())
+            self.context_requested.emit(self.menu_point(), True)
         # Else Shift+F10, already asked for when it was pressed.
 
     def menu_point(self) -> QPoint:
@@ -443,7 +445,7 @@ class Viewport(QWidget):
             # Not every platform turns Shift+F10 into a context-menu event;
             # where one does, it is not asked for twice.
             self._menu_key_at = time.monotonic()
-            self.context_requested.emit(self.menu_point())
+            self.context_requested.emit(self.menu_point(), True)
             event.accept()
             return
         if event.key() == Qt.Key.Key_Escape:

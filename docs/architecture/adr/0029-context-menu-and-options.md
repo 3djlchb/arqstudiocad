@@ -252,6 +252,23 @@ Each step is its own pull request with tests:
    - General (language, theme);
    - User preferences › Right-click, which the menu then reads;
    - `OptionsChanged`.
+   - Done, with Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+PgDn and Ctrl+PgUp
+     between sections, wrapping around.
+   - **The right-click setting** is kept as `options/right_click`
+     (`menu` or `repeat`); a value this version does not know reads as
+     the default. "Repeat the last command" is exactly an empty Enter:
+     with no last command it does nothing.
+   - **The Menu key and Shift+F10** always open the menu, whatever the
+     setting: they ask for a menu, and keep Options… reachable from the
+     keyboard (maintainer, 2026-10-29).
+   - **During a command** shows its one choice, Acts as Enter, in an
+     enabled list (maintainer, 2026-10-29); the command's options menu
+     adds the second.
+   - **`OptionsChanged`** carries the changed settings by the dialog's
+     field names (`language`, `theme`, `right_click`). OK or Apply
+     publishes one for everything applied; the Tools menu's language and
+     theme items publish one each. `LanguageChanged` is still published
+     for a new language.
 4. **The crosshair** (D6):
    - the viewport draws it;
    - Display › Crosshair with the live preview, the snap-marker and
