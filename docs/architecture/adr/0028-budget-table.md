@@ -1,6 +1,6 @@
 # 0028. The budget table
 
-Date: 2026-10-29 · Status: Proposed · Builds on [0013](0013-application-shell.md),
+Date: 2026-10-29 (accepted 2026-10-29) · Status: Accepted · Builds on [0013](0013-application-shell.md),
 [0025](0025-blocks-palette.md), [0027](0027-block-data.md), and the
 [master plan](../../MASTER_PLAN.md) §16 (new technologies).
 
@@ -198,7 +198,8 @@ Each step is its own pull request with tests:
      manifest, built offline and blocked for now, will need both as
      Python modules; until then Excel export says it is unavailable there
      and CSV works.
-   - With this step every step of D8 is done.
+   - With this step every step of D8 is done, and the maintainer accepted
+     the ADR (2026-10-29).
 
 ## Consequences
 
