@@ -311,6 +311,15 @@ Each step is its own pull request with tests:
        the block dialogs do.
      - Labels are 200 px wide and wrap, so every group's controls line up.
 5. **Zoom:** User preferences › Zoom (ZOOMWHEEL and the zoom factor).
+   - Done. The Zoom group comes before Right-click, as the brief shows.
+   - **Reverse wheel zoom (ZOOMWHEEL):** a check box across the group;
+     forward zooms out when it is on.
+   - **Zoom factor:** a slider and a number kept in step, "% per notch",
+     from 5 to 100 % (maintainer, 2026-10-31), default 25 %, the step it
+     had. The number is the percent itself, not the mockup's 60 → 10 %
+     scale, as D4 decided.
+   - Kept as `options/zoom_wheel_reversed` and `options/zoom_factor`; the
+     window applies them to every viewport, and to those opened later.
 
 Later steps add each hidden setting with its feature (D4).
 

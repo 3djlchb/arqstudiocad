@@ -1,6 +1,7 @@
 {
   "#RRGGBB": "#RRGGBB",
   "#RRGGBB or empty": "#RRGGBB o vacío",
+  "% per notch": "% por paso",
   "&About {app}": "&Acerca de {app}",
   "&Arc": "&Arco",
   "&Blocks": "&Bloques",
@@ -559,6 +560,7 @@
   "Replace the damaged file?": "¿Reemplazar el archivo dañado?",
   "Reset section": "Restablecer sección",
   "Retain objects": "Retener entidades",
+  "Reverse wheel zoom (ZOOMWHEEL)": "Invertir el zoom de la rueda del ratón (ZOOMWHEEL)",
   "Ribbon": "Cinta de opciones",
   "Right": "Derecha",
   "Right-click in model space": "Clic derecho en el espacio modelo",
@@ -773,6 +775,7 @@
   "Zambian kwacha": "Kwacha zambiano",
   "Zimbabwe gold": "Oro de Zimbabue",
   "Zoom": "Zoom",
+  "Zoom factor": "Factor de zoom",
   "each": "und",
   "inactive": "inactiva",
   "principal": "principal",

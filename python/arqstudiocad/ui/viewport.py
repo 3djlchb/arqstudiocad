@@ -83,8 +83,12 @@ from arqstudiocad.points import Point, ortho
 from arqstudiocad.ui.block_drag import dragged_block
 from arqstudiocad.ui.crosshair import Crosshair, crosshair_rects, paint_crosshair
 
-#: Zoom factor of one wheel notch (120 eighths of a degree).
-WHEEL_STEP = 1.25
+#: How much one wheel notch (120 eighths of a degree) zooms, in percent:
+#: the default of Options > User preferences > Zoom, and its bounds.
+WHEEL_PERCENT = 25
+WHEEL_PERCENTS = (5, 100)
+#: The zoom factor of one notch by default.
+WHEEL_STEP = 1 + WHEEL_PERCENT / 100
 
 #: Half the side of the pick box, in logical pixels (AutoCAD's PICKBOX is 3).
 PICK_PIXELS = 4
@@ -221,6 +225,10 @@ class Viewport(QWidget):
         self._crosshair = Crosshair()
         #: The snap markers' color (Options > Display).
         self._marker = MARKER
+        #: One wheel notch's zoom factor, and whether forward zooms out
+        #: (Options > User preferences > Zoom).
+        self._wheel_step = WHEEL_STEP
+        self._wheel_reversed = False
         self._cursor_at: QPointF | None = None
         self.setCursor(self._rest_cursor())
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
@@ -364,7 +372,9 @@ class Viewport(QWidget):
         if notches:
             x, y = self._physical(event.position())
             self._auto_fit = False
-            self.view.zoom_at(x, y, WHEEL_STEP**notches)
+            if self._wheel_reversed:
+                notches = -notches
+            self.view.zoom_at(x, y, self._wheel_step**notches)
             self._redraw()
         event.accept()
 
@@ -565,6 +575,17 @@ class Viewport(QWidget):
             if self._drag is None:
                 self.setCursor(self._rest_cursor())
             self.update()
+
+    @property
+    def wheel(self) -> tuple[float, bool]:
+        """One wheel notch's zoom factor, and whether it is reversed."""
+        return self._wheel_step, self._wheel_reversed
+
+    def set_wheel(self, percent: int, reverse: bool = False) -> None:
+        """Each notch zooms by ``percent``; forward zooms in, or out when
+        ``reversed`` (AutoCAD's ZOOMWHEEL 1)."""
+        self._wheel_step = 1 + percent / 100
+        self._wheel_reversed = reverse
 
     @property
     def marker_color(self) -> QColor:
