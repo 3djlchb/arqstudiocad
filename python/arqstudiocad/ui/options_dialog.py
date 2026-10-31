@@ -4,7 +4,8 @@ Reset section, OK, Apply and Cancel. Modal; it remembers its size and the
 last section shown. Only settings whose feature exists are shown: this
 version holds General (language and theme), Display (the crosshair, the
 snap markers' and command line's colors, the block editor's background)
-and User preferences (what a right-click in model space does).
+and User preferences (the wheel's zoom, what a right-click in model space
+does).
 """
 
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from typing import Any, Literal
 from PySide6.QtCore import QEvent, QSettings, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QKeySequence, QPalette, QShortcut
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -43,7 +45,13 @@ from arqstudiocad.ui.crosshair import (
 )
 from arqstudiocad.ui.options_widgets import ColorField, CrosshairPreview, color_value
 from arqstudiocad.ui.theme import THEMES, Theme, theme_title
-from arqstudiocad.ui.viewport import BLOCK_EDITOR_BACKGROUND, MARKER, MODEL_SPACE_BACKGROUND
+from arqstudiocad.ui.viewport import (
+    BLOCK_EDITOR_BACKGROUND,
+    MARKER,
+    MODEL_SPACE_BACKGROUND,
+    WHEEL_PERCENT,
+    WHEEL_PERCENTS,
+)
 
 #: The primary color: the current section and OK, white text on it at
 #: about 5.5:1 (the brief's choice, as the Blocks palette's).
@@ -72,6 +80,10 @@ class Options:
     language: str = ""
     theme: Theme = THEMES[0]
     right_click: RightClick = RIGHT_CLICKS[0]
+    #: The wheel: forward zooms out when reversed (ZOOMWHEEL), and each
+    #: notch zooms by ``zoom_factor`` percent.
+    zoom_wheel_reversed: bool = False
+    zoom_factor: int = WHEEL_PERCENT
     #: The crosshair (ADR 0029 D6): size in percent, type, ``#rrggbb`` or
     #: empty for automatic contrast.
     crosshair_size: int = 5
@@ -101,7 +113,7 @@ SECTIONS: dict[str, tuple[str, ...]] = {
         "command_line_color",
         "block_editor_background",
     ),
-    "user_preferences": ("right_click",),
+    "user_preferences": ("zoom_wheel_reversed", "zoom_factor", "right_click"),
 }
 #: The settings kept under ``options/``; language and theme keep their own
 #: keys, shared with the Tools menu (ADR 0029 D5).
@@ -128,12 +140,20 @@ def checked(name: str, saved: object) -> Any:
         return next((value for value in RIGHT_CLICKS if value == saved), None)
     if name == "crosshair_type":
         return next((value for value in CROSSHAIR_TYPES if value == saved), None)
-    if name == "crosshair_size":
+    if name in ("crosshair_size", "zoom_factor"):
+        low, high = SIZES if name == "crosshair_size" else WHEEL_PERCENTS
         try:
-            size = int(str(saved))
+            number = int(str(saved))
         except ValueError:
             return None
-        return size if SIZES[0] <= size <= SIZES[1] else None
+        return number if low <= number <= high else None
+    if name == "zoom_wheel_reversed":
+        # An INI file keeps it as text.
+        if saved is True or saved == "true":
+            return True
+        if saved is False or saved == "false":
+            return False
+        return None
     color = color_value(saved) if isinstance(saved, str) else None
     if name == "block_editor_background" and not color:
         return None
@@ -270,6 +290,29 @@ class OptionsDialog(QDialog):
         elif key == "display":
             self._display_page(rows)
         elif key == "user_preferences":
+            self.zoom_group = QGroupBox()
+            self.zoom_wheel_reversed = QCheckBox()
+            self.zoom_wheel_reversed.toggled.connect(self._changed)
+            self.zoom_factor_label = QLabel()
+            self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
+            self.zoom_spin = QSpinBox()
+            for control in (self.zoom_slider, self.zoom_spin):
+                control.setRange(*WHEEL_PERCENTS)
+            self.zoom_slider.valueChanged.connect(self.zoom_spin.setValue)
+            self.zoom_spin.valueChanged.connect(self.zoom_slider.setValue)
+            self.zoom_spin.valueChanged.connect(self._changed)
+            self.zoom_unit = QLabel()
+            zoom_box = QWidget()
+            zoom_line = QHBoxLayout(zoom_box)
+            zoom_line.setContentsMargins(0, 0, 0, 0)
+            zoom_line.addWidget(self.zoom_slider, 1)
+            zoom_line.addWidget(self.zoom_spin)
+            zoom_line.addWidget(self.zoom_unit)
+            self._group(
+                rows,
+                self.zoom_group,
+                [(None, self.zoom_wheel_reversed), (self.zoom_factor_label, zoom_box)],
+            )
             self.right_click_group = QGroupBox()
             self.right_click_label = QLabel()
             self.right_click = QComboBox()
@@ -377,13 +420,14 @@ class OptionsDialog(QDialog):
         self,
         rows: QVBoxLayout,
         group: QGroupBox,
-        content: list[tuple[QLabel, QWidget]],
+        content: list[tuple[QLabel | None, QWidget]],
         notes: list[QLabel] | None = None,
     ) -> None:
         """``group`` added to ``rows``, holding a row per label and control:
         a muted label 200 px wide, wrapped when longer, so the controls of
         every group line up; then its control taking the free width (the
-        brief's layout); then ``notes``, help across the group."""
+        brief's layout); a control without a label, a check box, across the
+        group; then ``notes``, help across the group."""
         plain = QFont(group.font())
         # Set, not just copied, so the group's bold title is not inherited.
         plain.setBold(False)
@@ -393,8 +437,11 @@ class OptionsDialog(QDialog):
         group.setFont(title)
         form = QFormLayout(group)
         for label, control in content:
-            label.setFont(plain)
             control.setFont(plain)
+            if label is None:
+                form.addRow(control)
+                continue
+            label.setFont(plain)
             label.setFixedWidth(LABEL_WIDTH)
             label.setWordWrap(True)
             control.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -446,6 +493,12 @@ class OptionsDialog(QDialog):
         self.right_click_group.setTitle(tr("Right-click in model space"))
         self.right_click_label.setText(tr("With nothing selected"))
         self.during_command_label.setText(tr("During a command"))
+        self.zoom_group.setTitle(tr("Zoom"))
+        self.zoom_wheel_reversed.setText(tr("Reverse wheel zoom (ZOOMWHEEL)"))
+        self.zoom_factor_label.setText(tr("Zoom factor"))
+        self.zoom_spin.setAccessibleName(tr("Zoom factor"))
+        self.zoom_slider.setAccessibleName(tr("Zoom factor"))
+        self.zoom_unit.setText(tr("% per notch"))
         self.crosshair_group.setTitle(tr("Crosshair"))
         self.size_label.setText(tr("Size"))
         self.size_spin.setAccessibleName(tr("Crosshair size, in percent"))
@@ -490,6 +543,8 @@ class OptionsDialog(QDialog):
             )
             self.during_command.clear()
             self.during_command.addItem(tr("Acts as Enter"), "enter")
+            self.zoom_wheel_reversed.setChecked(self.pending.zoom_wheel_reversed)
+            self.zoom_spin.setValue(self.pending.zoom_factor)
             self.size_spin.setValue(self.pending.crosshair_size)
             self.crosshair_type.clear()
             for kind, title in zip(
@@ -547,6 +602,8 @@ class OptionsDialog(QDialog):
             language=str(language) if language is not None else "",
             theme=theme if theme in THEMES else self.pending.theme,
             right_click=right_click if right_click in RIGHT_CLICKS else self.pending.right_click,
+            zoom_wheel_reversed=self.zoom_wheel_reversed.isChecked(),
+            zoom_factor=self.zoom_spin.value(),
             crosshair_size=self.size_spin.value(),
             crosshair_type=kind if kind in CROSSHAIR_TYPES else self.pending.crosshair_type,
             **{self._field_name(field): field.value() for field in self._color_fields()},

@@ -75,6 +75,7 @@ def test_general_holds_the_language_and_the_theme(qtbot: QtBot) -> None:
         "Theme",
         "Crosshair",
         "Block editor",
+        "Zoom",
         "Right-click in model space",
     ]
     languages = [d.language.itemText(i) for i in range(d.language.count())]
@@ -150,6 +151,7 @@ def test_a_language_applied_names_the_dialog_again(qtbot: QtBot) -> None:
             "Tema",
             "Cursor en cruz",
             "Editor de bloques",
+            "Zoom",
             "Clic derecho en el espacio modelo",
         ]
         assert d.sidebar.item(1).text() == "Visualización"

@@ -557,11 +557,12 @@ class MainWindow(QMainWindow):
         return self._options.right_click
 
     def _style_viewport(self, viewport: Viewport) -> None:
-        """The Display settings on ``viewport``: its crosshair, its snap
-        markers, and a block editor's background."""
+        """The settings that shape ``viewport``: its crosshair, its snap
+        markers, its wheel's zoom, and a block editor's background."""
         values = self._options
         viewport.set_crosshair(values.crosshair)
         viewport.set_marker_color(values.marker_color)
+        viewport.set_wheel(values.zoom_factor, values.zoom_wheel_reversed)
         if self.session.block_editor_of(viewport.document) is not None:
             color = QColor(values.block_editor_background)
             viewport.set_background((color.red(), color.green(), color.blue()))
