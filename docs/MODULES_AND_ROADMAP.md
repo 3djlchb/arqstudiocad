@@ -7,7 +7,7 @@ code exists. Phases may overlap once their contracts are stable.
 
 Legend: ✅ done · ◐ in progress · ○ to do.
 
-## Where we are (2026-10-22)
+## Where we are (2026-10-31)
 
 - **Technical MVP: 8 of 8** (master plan §15): milestone 02.6 saves and
   recovers the working document (DWG) from the own internal model.
@@ -17,6 +17,7 @@ Legend: ✅ done · ◐ in progress · ○ to do.
 - **On hold:** milestone 02.7's GPU viewport waits for the reference
   machine (GT 730 on LMDE 7), its release gate (ADR 0007); the work
   resumes when the maintainer has it at hand (maintainer, 2026-10-18).
+  Milestone 02.8 goes on without it; only shading solids waits for it.
 - **Current:** milestone 02.8: texts (ADR 0022), blocks (ADR 0023: EXPLODE
   with attributes, BLOCK and INSERT, the block editor) and the PLINE
   command are done; dynamic blocks wait for the parametric engine,
@@ -24,10 +25,12 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   owned kernel `arq-kernel` reads DWG solids into its B-rep (step 1,
   analytic and NURBS geometry: all 75 of LibreDWG's bodies) and draws
   them by their edges and isolines (step 2, see); step 3, measure, is
-  next. The Blocks palette (02.9, ADR 0025), the Block Definition dialog
-  (02.10), block data for budgets (02.11, ADR 0027) and the budget table
-  (02.12, ADR 0028) are done. Next are the model-space context menu and
-  the Options dialog (02.13), proposed in ADR 0029.
+  next. The 3D modeling commands get a ribbon tab of their own, 3D
+  (maintainer, 2026-10-31).
+- **Done since 02.8 began:** the Blocks palette (02.9, ADR 0025), the
+  Block Definition dialog (02.10), block data for budgets (02.11, ADR
+  0027), the budget table (02.12, ADR 0028), and the model-space context
+  menu with the Options dialog (02.13, ADR 0029).
 - **Engine:** AcadRust 0.6.8 plus upstream post-release fixes, patched from our
   fork at `f1b0980` (ADR 0017's log, 2026-10-30;
   [upgrade validation](testing/acadrust-068-upgrade.md),
@@ -41,13 +44,17 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   validated by the maintainer, including property editors, shared panel/table
   styling, and CAD color selection; 03.2 is done and 03.4 compatibility work
   is in progress.
-- **Milestone 02.8** is in progress alongside 02.7: the 3D mathematical
+- **Milestone 02.8** goes on while 02.7 is on hold: the 3D mathematical
   foundation, polyline vertex editing and PLINE, texts, blocks, the 3D
   document decision, reading solids (analytic and NURBS) and drawing their
-  edges and isolines in plan are done; measuring, writing ACIS, creating
-  and transforming solids, stage 2 of the own model (ADR 0018 D2), and
-  3D wireframe with user coordinate systems remain. Shading waits for the
-  GPU viewport (02.7).
+  edges and isolines in plan are done. What remains, in order (checked
+  against the code, 2026-10-31): measuring solids; writing ACIS from the
+  B-rep, which saving created or edited solids needs; creating primitives,
+  extrusions and revolutions; transforming solids as a whole; booleans,
+  through Truck once reviewed; stage 2 of the own model (ADR 0018 D2:
+  polylines, block references and definitions; the model owns stage 1
+  today); and 3D wireframe entities with Z and user coordinate systems.
+  Shading waits for the GPU viewport (02.7).
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
   milestones 2.1–2.8; the table at the end maps old names to new ones.
 
@@ -78,12 +85,12 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.5 Editing workflow | Selection, multifunction grips, object snaps and ORTHO, AutoCAD point syntax, LINE…ERASE, blocks and polylines transformed as a whole, property editors, Spanish command names (ADR 0016) | ✅ steps 2.5.1–2.5.8 complete and manually validated by the maintainer |
 | 02.6 Own internal model | Stage 1 of ADR 0018 D2: layers, current layer, LINE, CIRCLE, ARC owned by our model; the DWG engine reads into it and writes from it; save and recover the DWG from the own model; written through to the engine, checked after every transaction in debug builds | ✅ |
 | 02.7 Spatial index and GPU viewport | Spatial index (ADR 0021); wgpu renderer with backend probing (ADR 0007); CPU rasterizer as fallback | ◐ R*-tree accelerates bounding-box queries and supplies candidates for picking, window/crossing selection, and object snaps; exact geometry checks remain; the offscreen backend probe passes locally on Windows/DX12; GPU viewport rendering and reference Linux validation remain open |
-| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; attribute values kept as texts since ADR 0023 D1, PR #41); PLINE (PR #48); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep with analytic and NURBS geometry, and all 75 of LibreDWG's bodies read into it and check; step 2, see, done: solids drawn in plan by their edges and isolines (ISOLINES), in blocks too; step 3, measure, next |
+| 02.8 Wider entities and 3D | Polyline vertices, block contents and explode, texts; staged 3D geometry foundation and later document model (ADRs 0019 and 0014 question 4) | ◐ 3D mathematical foundation complete (PR #24); polyline vertex grips and transactional vertex edits complete (PR #35); block-reference EXPLODE complete (PR #36; attribute values kept as texts since ADR 0023 D1, PR #41); PLINE (PR #48); texts complete (ADR 0022: drawn with their letters in a built-in stroke font, transformed as a whole, one grip, content, height and rotation in Properties, TEXT and basic MTEXT commands with word wrapping; the drawing's fonts and formatted MTEXT in phase 04); blocks complete (ADR 0023); the 3D document model decided (ADR 0024: own B-rep, ACIS kept, Truck as first temporary backend); step 1, read, done: `arq-kernel` holds the B-rep with analytic and NURBS geometry, and all 75 of LibreDWG's bodies read into it and check; step 2, see, done: solids drawn in plan by their edges and isolines (ISOLINES), in blocks too; step 3, measure, next; the 3D modeling commands get a ribbon tab of their own, 3D (maintainer, 2026-10-31); 02.7's GPU viewport on hold, which only shading waits for |
 | 02.9 Blocks palette | A dockable palette of the drawing's, a template's and recent blocks, with previews, the dynamic-block tag, insertion by button or drag and drop, and copying definitions between files (ADR 0025; [design brief](design/blocks-palette.md)) | ✅ PR #52 added the Drawing source as a searchable list, BLOCKSPALETTE and Ctrl+3, and synchronized palette toggles in the View tab and menu; step 2b took the mockup's layout (sources, list with each block's references, Selected block section) on new core queries `block_info` and `block_references`; step 2c added the insert options (scale, rotation, on screen) and the Insert, Edit block and New actions through INSERT, BEDIT and BLOCK; step 2d added PROPERTIES and Ctrl+1, and Layers and Properties in the Palettes group; step 3 added previews drawn in Rust, the grid of cards and block definitions in change sets (contract §6); step 4 tagged dynamic blocks with a star, listed their parameters and kept them out of the block editor; step 5 dropped blocks onto the drawing through INSERT and added Explode; step 7a added the core operation that copies a block from another document, with its nested blocks, layers, linetypes and styles, and the clash choices; step 7b added the Template source (load in the background, sample template, empty state, file drop, insert by copying); step 7c added the clash dialog (both blocks previewed, three choices) and BLOCK's check of the template's names; step 6 added the Recent source (this session's and the previous one's blocks, from the file each came from); step 8a made a double click on a block open the Edit Block Definition dialog and a grey block editor; step 8b added the blocks' context menu (Insert with options, Copy to drawing through COPYBLOCK, Redefine from template, confirmed); step 8c added RENAME (alias REN, Spanish CAMBIANOM) for blocks, with its dialog, -RENAME's prompts and the menu's Rename…; step 8d added SELECTBLOCK (Spanish SELECBLOQUE) and the menu's Select in drawing; step 8e added PURGE (alias PU, Spanish LIMPIA) for unused blocks, with its dialog, nested items, -PURGE's prompts and the menu's Purge…, completing ADR 0025 D9; the maintainer accepted the ADR (2026-10-27), independent of the 3D kernel steps |
 | 02.10 Block definition dialog | BLOCK's dialog, as AutoCAD's *Block Definition* (maintainer, 2026-10-25): name with the drawing's blocks, description, base point and objects typed or picked on screen, Retain / Convert to block / Delete the objects, Scale uniformly, Allow exploding, units, and Open in block editor; Annotative shown disabled until annotation scales (phase 04). Order: brought forward, before Blocks palette steps 8c–8e and the model-space context menu and Options (maintainer, 2026-10-26). ADR 0023 D2a records the maintainer's decisions; then two pull requests: the core (Retain and Delete, writing the description and units, reading, writing and honoring the two flags in INSERT and EXPLODE), then the dialog | ✅ ADR 0023 D2a (PR #76); the core: define_block with Retain, Convert and Delete, redefining, the record's description, units and flags, EXPLODE honoring Allow exploding (PR #77); the dialog: BLOCK opens it, -BLOCK keeps the prompts, a name in use is redefined once confirmed |
 | 02.11 Block data | Each block definition carries its own data for budget tables (maintainer, 2026-10-26): category, type, material, cost and supplier; the cost has a currency from the drawing's register (maintainer, 2026-10-27). Decisions ([ADR 0027](architecture/adr/0027-block-data.md)): the data is stored inside the DWG, on the block definition (an extension dictionary with an XRECORD), so it travels with the drawing and with a copied block; it belongs to the definition, not to each reference, and a budget's quantity is the number of references (SELECTBLOCK's count); category and type are free text, suggesting the values the drawing already uses; the cost is an exact amount with its currency's decimals; the drawing's register, kept in the DWG, lists its currencies (US dollars by default), several active and one principal, picked from an ISO 4217 catalog or the user's own, so that a budget can later be broken down by currency. The Block Definition dialog shows them in an optional section, folded by default; they are edited later from the Blocks palette (Block data…) and the Properties panel, and the currencies from a Currencies dialog (CURRENCIES), without the block editor, which keeps them when it saves. Attributes stay for what differs between references (a door's code, a room's number). A library shared between drawings, and the budget table itself (quantities × cost), come later; after it, measured quantities for budget line items (perimeter, area, height, volume, weight, each in its unit, the measure each block is priced by chosen and changeable), taken from each reference, so a dynamic block's quantities follow its parameters with the parametric engine (04.1) (maintainer, 2026-10-28; ADR 0027 D7). Order: after Blocks palette step 8e; an ADR first, then the core, the Currencies dialog, the Budget data section with BLOCKDATA and the palette, and the Properties panel | ✅ ADR 0027, accepted 2026-10-29; step 2, the core: block data and the currency register kept in the DWG and checked on save, BLOCKDATA and CURRENCIES as undo steps, copied, renamed and purged with their block, and the Python API; step 3: CURRENCIES (Spanish MONEDAS) and its Currencies dialog, with the ISO 4217 catalog and the number format (thousands and decimal separators, D3a), general for the drawing and, if wanted, its own for each currency; step 4a: BLOCKDATA (Spanish DATOSBLOQUE) and -BLOCKDATA with the Block Data dialog, and the Blocks palette's Block data… and Budget data section; step 4b: the folded Budget data section of the Block Definition dialog, written with the block in one undo step; clearing a block's data at once: Clear data in the Block Data dialog and Clear block data in the palette's menu, confirmed first; step 5: the Properties panel's Block data group, edited in place for references of one block, completing ADR 0027 D8 |
 | 02.12 Budget table | The budget from the drawing (maintainer, 2026-10-29; [ADR 0028](architecture/adr/0028-budget-table.md)): a dockable Budget panel and the BUDGET command (Spanish PRESUPUESTO), grouped by category with subtotals; each block's quantity is its references in model space, nested ones multiplied by the block holding them, layouts excluded; blocks without a cost listed apart, never summed; totals per currency, never mixed; the whole drawing or the selection only; export to CSV and to Excel (.xlsx, through openpyxl, MIT). Order: the ADR, the core's quantities, the panel, the export | ✅ ADR 0028, accepted 2026-10-29 |
-| 02.13 Context menu and Options | The maintainer's design briefs (2026-10-22; decisions 2026-10-29, [ADR 0029](architecture/adr/0029-context-menu-and-options.md)): a right-click on model space with nothing selected opens Repeat {command} and Options…, and acts as Enter during a command; the Options dialog (OPTIONS, OP, Spanish OPCIONES), modal, showing only settings whose feature exists: language and theme, a crosshair drawn by the viewport with a live preview, the block editor's background, wheel zoom, the right-click setting. Order: the ADR, the menu, the dialog, the crosshair, zoom | ◐ ADR 0029 proposed; steps 2 (the menu, the dialog with General), 3 (User preferences › Right-click, `OptionsChanged`, Ctrl+Tab), 4 (the crosshair drawn by the viewport; Options › Display) and 5 (User preferences › Zoom) done: every step of ADR 0029 |
+| 02.13 Context menu and Options | The maintainer's design briefs (2026-10-22; decisions 2026-10-29, [ADR 0029](architecture/adr/0029-context-menu-and-options.md)): a right-click on model space with nothing selected opens Repeat {command} and Options…, and acts as Enter during a command; the Options dialog (OPTIONS, OP, Spanish OPCIONES), modal, showing only settings whose feature exists: language and theme, a crosshair drawn by the viewport with a live preview, the block editor's background, wheel zoom, the right-click setting. Order: the ADR, the menu, the dialog, the crosshair, zoom | ✅ ADR 0029, accepted 2026-10-31: the menu, the dialog with General, User preferences (Right-click, Zoom), `OptionsChanged`, Ctrl+Tab, the crosshair drawn by the viewport and Options › Display |
 
 ## Phase 03 — DWG/DXF ◐
 
@@ -226,6 +233,11 @@ Milestone 02.8 proceeds in independently reviewable steps:
    9. the temporary backend retired when nothing uses it.
 
    Steps 1 to 6 need no backend.
+
+**Where the 3D commands go:** the ribbon gets a tab of its own, **3D**,
+for measuring, creating and editing solids (maintainer, 2026-10-31). It
+joins the 2D drafting workspace's tabs (Home, Insert, Annotate, View) as
+the first 3D command arrives.
 
 ## Modules and phases
 
