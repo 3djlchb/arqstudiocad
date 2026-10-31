@@ -356,3 +356,21 @@ or establish full cell-level fidelity.
 corpus with AcadRust, opencadcodec and, when built with it, LibreDWG; every
 engine upgrade runs it and the round-trip corpus, and the results go into
 ADR 0017's log.
+
+### Per-cell table follow-up (2026-10-31)
+
+The [derived cell-cache investigation](testing/progecad-table-cell-fidelity.md)
+corrects demonstrated inherited-height and shared-border losses in fork
+`5c09a39` after PR #101. All sixty cell heights and measured border
+properties now match. Fifty-two raw CELL_VALUE flag differences also occur in
+a fresh reopening of ProgeCAD's original DXF export, without a codec rewrite.
+The correction's same-format DXF rewrite matches that native DXF control exactly;
+DXF-to-DWG and native DWG 2007 rewriting retain 249/249 original DWG measurements.
+The raw comparator is unchanged; explicit visible-edge presence differs in five
+modern-export records, with measured values retained. The final paired corpus
+has 940 jobs, with zero changed success states or summaries. Fork `5c09a39` is published;
+Git-pinned acceptance passes 488 Rust and 795 Python tests, six external core
+corpus groups and seven optional document tests. The repeated integrated matrix
+retains 34 clean reads, 58 verified saves, eight blocked losses and the same two
+R2000 TABLESTYLE-owner refusals, with zero changed rows. Product adoption awaits
+PR review and merge; 03.4/03.5 remain open.

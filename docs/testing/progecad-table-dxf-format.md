@@ -235,3 +235,7 @@ codec benchmark is claimed after publication: those checks already tested this
 identical committed codec source. Git-pin evidence uses the
 `target/table-dxf-git-*` prefix and its hashes are added to the evidence manifest.
 No product code, guard, comparator or loss-consent rule changed in this adoption.
+
+## Subsequent per-cell investigation
+
+PR #101 merged this correction. The [2026-10-31 cell-cache follow-up](progecad-table-cell-fidelity.md) corrects the demonstrated inherited cell-height and shared-border losses and distinguishes raw representation differences using a fresh native DXF control. The measurements above remain the historical baseline for this earlier codec revision; the follow-up records the new published revision and its separate acceptance.

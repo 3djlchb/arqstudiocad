@@ -59,6 +59,8 @@ codegen-units = 1
 # streams as standard proxies; proxy class registrations stay positional.
 # Modern table DXF exports retain asserted margins, row-type text heights and
 # complete formatting through an owned TABLECONTENT round-trip companion.
-# Immutable tag: arqstudiocad/on-ea66abe-table-dxf-format.
+# Per-cell cache retains asserted inherited heights and shared border properties;
+# visibility stays independent from lineweight across DXF/DWG.
+# Immutable tag: arqstudiocad/on-ea66abe-table-cell-cache.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "f1b0980d181fa64d36d5740dd8140f656f16b9fb" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "5c09a390bbe41c85f53f7982da72c437ec4bc9f4" }
