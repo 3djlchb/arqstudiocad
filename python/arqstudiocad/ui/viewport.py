@@ -29,6 +29,10 @@ Selected entities show their grips (ADR 0016 D7), blue squares; a click
 on one asks for a grip edit (:attr:`Viewport.grip_clicked`) instead of
 selecting, and the hot grip turns red.
 
+The viewport draws its own crosshair (:mod:`arqstudiocad.ui.crosshair`,
+ADR 0029 D6) over the cached image, the system cursor hidden; a mouse move
+repaints only the old and the new crosshair, never the drawing.
+
 A right-click, the Menu key or Shift+F10 asks for the context menu
 (:attr:`Viewport.context_requested`, ADR 0029 D1); the window decides what
 it does: the menu, a repeat (a right-click, by the user's preference), or
@@ -57,6 +61,7 @@ from PySide6.QtGui import (
     QPaintEvent,
     QPen,
     QPolygonF,
+    QRegion,
     QResizeEvent,
     QTransform,
     QWheelEvent,
@@ -76,6 +81,7 @@ from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point, ortho
 from arqstudiocad.ui.block_drag import dragged_block
+from arqstudiocad.ui.crosshair import Crosshair, crosshair_rects, paint_crosshair
 
 #: Zoom factor of one wheel notch (120 eighths of a degree).
 WHEEL_STEP = 1.25
@@ -207,7 +213,11 @@ class Viewport(QWidget):
         self._hot: CadGrip | None = None
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setCursor(Qt.CursorShape.CrossCursor)
+        #: How the crosshair looks, and where it is (logical pixels; None
+        #: while the cursor is away or the view is being panned).
+        self._crosshair = Crosshair()
+        self._cursor_at: QPointF | None = None
+        self.setCursor(self._rest_cursor())
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.setMinimumSize(64, 64)
         # A block dragged from the palette over the drawing, by name.
@@ -326,6 +336,15 @@ class Viewport(QWidget):
         if self._image is not None:
             painter.drawImage(0, 0, self._image)
         self._paint_overlay(painter)
+        if self._cursor_at is not None:
+            paint_crosshair(
+                painter,
+                self._crosshair,
+                self._cursor_at,
+                QRectF(self.rect()),
+                PICK_PIXELS,
+                QColor(*self.view.background),
+            )
         painter.end()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
@@ -348,6 +367,8 @@ class Viewport(QWidget):
         if event.button() == Qt.MouseButton.MiddleButton:
             self._drag = event.position()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            # The hand alone while panning.
+            self._move_crosshair(None)
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton:
@@ -370,6 +391,8 @@ class Viewport(QWidget):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         position = event.position()
+        if self._drag is None:
+            self._move_crosshair(position)
         if self._drag is not None and event.buttons() & Qt.MouseButton.MiddleButton:
             ratio = self.devicePixelRatioF()
             delta = position - self._drag
@@ -393,7 +416,8 @@ class Viewport(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.MouseButton.MiddleButton:
             self._drag = None
-            self.setCursor(Qt.CursorShape.CrossCursor)
+            self.setCursor(self._rest_cursor())
+            self._move_crosshair(event.position())
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton and self._press is not None:
@@ -483,6 +507,7 @@ class Viewport(QWidget):
         self._follow_drop(event.position())
 
     def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:  # noqa: N802 (Qt API)
+        self._move_crosshair(None)
         if self._drop_name is not None:
             self._drop_name = None
             self.update()
@@ -509,6 +534,7 @@ class Viewport(QWidget):
 
     def _follow_drop(self, position: QPointF) -> None:
         """The dragged block follows the cursor, snapped, as at a click."""
+        self._move_crosshair(position)
         if self._asking:
             self._aim(position)
         world = self.view.to_world(*self._physical(position))
@@ -519,6 +545,48 @@ class Viewport(QWidget):
 
     def leaveEvent(self, event: object) -> None:  # noqa: N802 (Qt API)
         self._set_hover(None)
+        self._move_crosshair(None)
+
+    # The crosshair (ADR 0029 D6)
+
+    @property
+    def crosshair(self) -> Crosshair:
+        """How the crosshair looks."""
+        return self._crosshair
+
+    def set_crosshair(self, style: Crosshair) -> None:
+        if style != self._crosshair:
+            self._crosshair = style
+            if self._drag is None:
+                self.setCursor(self._rest_cursor())
+            self.update()
+
+    @property
+    def cursor_at(self) -> QPointF | None:
+        """Where the crosshair is drawn, or None when it is not."""
+        return self._cursor_at
+
+    def _rest_cursor(self) -> Qt.CursorShape:
+        """The system cursor over the drawing: hidden under the crosshair,
+        or the arrow when that is the type chosen."""
+        if self._crosshair.type == "arrow":
+            return Qt.CursorShape.ArrowCursor
+        return Qt.CursorShape.BlankCursor
+
+    def _move_crosshair(self, position: QPointF | None) -> None:
+        """Moves the crosshair, repainting where it was and where it goes,
+        not the drawing."""
+        if position == self._cursor_at:
+            return
+        area = QRectF(self.rect())
+        region = QRegion()
+        for at in (self._cursor_at, position):
+            if at is not None:
+                for rect in crosshair_rects(self._crosshair, at, area, PICK_PIXELS):
+                    region += rect
+        self._cursor_at = position
+        if not region.isEmpty():
+            self.update(region)
 
     # Picking, in logical (widget) coordinates
 

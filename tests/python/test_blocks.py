@@ -187,9 +187,12 @@ def test_a_drag_without_band_draws_no_rubber_band(window: MainWindow, tmp_path: 
     from test_point_input import mouse, plan
 
     from arqstudiocad.events import Drag
+    from arqstudiocad.ui.crosshair import Crosshair
 
     viewport = plan(window, tmp_path)  # a line (0,0)-(100,0), a circle at (50,40)
     window.session.drafting.set_osnap(False)
+    # The band alone: the crosshair's arm would lie on the strip.
+    viewport.set_crosshair(Crosshair(type="arrow"))
 
     def band_pixels(drag: Drag) -> int:
         """Pixels lit along the empty strip from (10,20) to (35,20)."""
