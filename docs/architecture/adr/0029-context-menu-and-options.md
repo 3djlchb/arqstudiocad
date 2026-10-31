@@ -293,6 +293,23 @@ Each step is its own pull request with tests:
    - **For 4b** (maintainer, 2026-10-30): an empty object-snap marker
      color keeps AutoCAD's yellow, as the mockup shows; the swatches open
      Qt's color dialog, since these are interface colors, not CAD colors.
+   - **4b done:** Display holds Crosshair (size with its slider, number
+     and live preview; type; the crosshair's, snap markers' and command
+     line's colors) and Block editor (its background color).
+     - Settings are kept under `options/` (`crosshair_size`,
+       `crosshair_type`, `crosshair_color`, `marker_color`,
+       `command_line_color`, `block_editor_background`). A value this
+       version does not take reads as its default.
+     - A color is `#RRGGBB` or empty; the block editor's background is
+       never empty. Text that is not a color marks the field and keeps
+       its last valid value.
+     - An empty command-line color is the theme's text color.
+     - The window applies them at once to every viewport (a block
+       editor's background too) and to the command line, and to every
+       viewport opened later.
+     - The preview's caption reuses "Preview" ("Vista preliminar"), as
+       the block dialogs do.
+     - Labels are 200 px wide and wrap, so every group's controls line up.
 5. **Zoom:** User preferences › Zoom (ZOOMWHEEL and the zoom factor).
 
 Later steps add each hidden setting with its feature (D4).

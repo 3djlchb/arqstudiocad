@@ -20,6 +20,7 @@ from arqstudiocad.ui.options_dialog import (
     PRIMARY,
     RIGHT_CLICK_SETTING,
     SECTION_SETTING,
+    SECTIONS,
     SIZE,
     SIZE_SETTING,
     Options,
@@ -67,9 +68,15 @@ def test_general_holds_the_language_and_the_theme(qtbot: QtBot) -> None:
     d, _ = dialog(qtbot)
     assert d.windowTitle() == "Options" and d.isModal()
     sections = [d.sidebar.item(r).text() for r in range(d.sidebar.count())]
-    assert sections == ["General", "User preferences"]
+    assert sections == ["General", "Display", "User preferences"]
     assert d.section() == "general" and d.size() == SIZE
-    assert titles(d) == ["Language", "Theme", "Right-click in model space"]
+    assert titles(d) == [
+        "Language",
+        "Theme",
+        "Crosshair",
+        "Block editor",
+        "Right-click in model space",
+    ]
     languages = [d.language.itemText(i) for i in range(d.language.count())]
     assert languages == ["System language", "English", "Español"], "each by its own name"
     assert d.language.currentData() == ""
@@ -138,8 +145,15 @@ def test_a_language_applied_names_the_dialog_again(qtbot: QtBot) -> None:
         assert d.apply_button.text() == "Aplicar" and d.reset_button.text() == "Restablecer sección"
         assert d.language.itemText(0) == "Idioma del sistema"
         assert d.language.currentData() == "es", "the choice is kept"
-        assert titles(d) == ["Idioma", "Tema", "Clic derecho en el espacio modelo"]
-        assert d.sidebar.item(1).text() == "Preferencias de usuario"
+        assert titles(d) == [
+            "Idioma",
+            "Tema",
+            "Cursor en cruz",
+            "Editor de bloques",
+            "Clic derecho en el espacio modelo",
+        ]
+        assert d.sidebar.item(1).text() == "Visualización"
+        assert d.sidebar.item(2).text() == "Preferencias de usuario"
         assert d.right_click.itemText(1) == "Repetir el último comando"
         assert d.during_command.itemText(0) == "Equivale a Intro"
     finally:
@@ -178,7 +192,7 @@ def test_size_and_section_are_remembered(qtbot: QtBot, tmp_path: Path) -> None:
     again, _ = dialog(qtbot, settings=settings)
     assert again.size() == QSize(950, 700)
     d, _ = dialog(qtbot, settings=settings)
-    d.sidebar.setCurrentRow(1)
+    d.sidebar.setCurrentRow(2)
     d.ok_button.click()
     assert settings.value(SECTION_SETTING) == "user_preferences"
     assert dialog(qtbot, settings=settings)[0].section() == "user_preferences"
@@ -236,7 +250,7 @@ def test_options_shows_the_dialog_until_it_closes(
 
 def test_user_preferences_says_what_a_right_click_does(qtbot: QtBot) -> None:
     d, applied = dialog(qtbot)
-    d.sidebar.setCurrentRow(1)
+    d.sidebar.setCurrentRow(2)
     assert d.section() == "user_preferences"
     page = d.pages.currentWidget()
     assert page is not None and page.isAncestorOf(d.right_click)
@@ -264,7 +278,7 @@ def test_user_preferences_says_what_a_right_click_does(qtbot: QtBot) -> None:
 
 def test_reset_section_resets_only_its_own_settings(qtbot: QtBot) -> None:
     d, _ = dialog(qtbot, Options("es", "light", "repeat"))
-    d.sidebar.setCurrentRow(1)
+    d.sidebar.setCurrentRow(2)
     assert d.right_click.currentData() == "repeat", "as saved"
     d.reset_button.click()
     assert d.pending == Options("es", "light", "menu")
@@ -296,19 +310,22 @@ def test_the_keyboard_moves_between_sections(
         d.activateWindow()
     d.language.setFocus()
     d.theme.setCurrentIndex(d.theme.findData("light"))
-    QTest.keyClick(d.language, key, modifiers)
-    assert d.section() == "user_preferences", "two sections: either way is the other"
-    assert d.pages.currentIndex() == 1
-    QTest.keyClick(d.focusWidget() or d, key, modifiers)
-    assert d.section() == "general", "around"
+    forward = key in (Qt.Key.Key_Tab, Qt.Key.Key_PageDown)
+    order = ["display", "user_preferences", "general"]
+    if not forward:
+        order = ["user_preferences", "display", "general"]
+    for expected in order:
+        QTest.keyClick(d.focusWidget() or d, key, modifiers)
+        assert d.section() == expected, "around"
+        assert d.pages.currentIndex() == list(SECTIONS).index(expected)
     assert d.pending.theme == "light", "nothing pending is lost"
 
 
 def test_next_section_wraps_both_ways(qtbot: QtBot) -> None:
     d, _ = dialog(qtbot)
     d.next_section(1)
-    assert d.section() == "user_preferences"
-    d.next_section(1)
+    assert d.section() == "display"
+    d.next_section(2)
     assert d.section() == "general"
     d.next_section(-1)
     assert d.section() == "user_preferences"
