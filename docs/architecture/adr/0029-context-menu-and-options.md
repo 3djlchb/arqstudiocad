@@ -274,6 +274,25 @@ Each step is its own pull request with tests:
    - Display › Crosshair with the live preview, the snap-marker and
      command-line colors;
    - Display › Block editor background.
+   - **In two pull requests** (maintainer, 2026-10-30): 4a, the viewport
+     draws the crosshair, and 4b, the Display section with its preview,
+     the colors and the block editor's background.
+   - **4a done:** `arqstudiocad.ui.crosshair` holds the shape and the
+     automatic color, with no widget, so the preview paints the same
+     crosshair.
+     - The pick box is always drawn. A size of 100 % crosses the whole
+       viewport wherever the cursor is.
+     - Small cross: arms of 8 px beyond the pick box, whatever the size.
+     - Automatic color: white or black by the background's relative
+       luminance, so the block editor's grey gets white.
+     - The crosshair is hidden while panning and when the cursor or a
+       dragged block leaves the drawing. It follows a block dragged from
+       the palette.
+     - A mouse move repaints one thin strip per line, where the crosshair
+       was and where it goes.
+   - **For 4b** (maintainer, 2026-10-30): an empty object-snap marker
+     color keeps AutoCAD's yellow, as the mockup shows; the swatches open
+     Qt's color dialog, since these are interface colors, not CAD colors.
 5. **Zoom:** User preferences › Zoom (ZOOMWHEEL and the zoom factor).
 
 Later steps add each hidden setting with its feature (D4).
