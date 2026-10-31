@@ -86,7 +86,7 @@ both layouts. This is the real menu, not the smaller historical ADR example.
 | [qt_services.py](../../python/arqstudiocad/ui/qt_services.py) | `drawing_filter`:16, `QtUiServices`:20; file dialogs, save/recovery/loss questions, block chooser, text dialog, view/panel lookup. |
 | [qt_translations.py](../../python/arqstudiocad/ui/qt_translations.py) | `QtTranslations.apply`:12; install/remove Qt base `.qm` translator. |
 | [recent_menu.py](../../python/arqstudiocad/ui/recent_menu.py) | `RecentFilesMenu`:17, `_rebuild`:54, `open_requested`; settings-backed paths and clear action. |
-| [theme.py](../../python/arqstudiocad/ui/theme.py) | `palette`:60, `apply_theme`:72; Fusion and dark/light palette. |
+| [theme.py](../../python/arqstudiocad/ui/theme.py) | `palette`:97, `apply_theme`:108; Fusion, its own dark and light palettes (light windows `#F2F1F0`), title bars following the theme. |
 | [panel_style.py](../../python/arqstudiocad/ui/panel_style.py) | `toggle_focus_style`, `apply_data_view_style`, `apply_property_grid_style`, `apply_panel_action_style`; QSS and palette roles. |
 | [command_icons.py](../../python/arqstudiocad/ui/command_icons.py) | `command_icon`:21; theme-specific SVGs for selected commands; null icon fallback. |
 
@@ -112,5 +112,5 @@ These suites are source evidence, not results of this audit:
 | Layout / docking | [test_workspaces.py](../../tests/python/test_workspaces.py), `test_every_tool_is_a_command_with_an_action`:79, Ribbon tests:181,209; [test_docking.py](../../tests/python/test_docking.py); [test_auto_hide.py](../../tests/python/test_auto_hide.py), hover:97, persistence:185 |
 | View / selection | [test_viewport.py](../../tests/python/test_viewport.py), wheel:94, pan:114; [test_selection.py](../../tests/python/test_selection.py), click:143, crossing:155, overlay:187 |
 | Panels | [test_panels.py](../../tests/python/test_panels.py), layer failures:160, geometry editing:301, mixed properties:329, degrees:407, history:466; [test_blocks_palette.py](../../tests/python/test_blocks_palette.py), list:51, toggle:68 |
-| Appearance / input | [test_theme.py](../../tests/python/test_theme.py), switch:34; [test_color_picker.py](../../tests/python/test_color_picker.py), screen fit:81; [test_command_window.py](../../tests/python/test_command_window.py), input:39, cancellation:113 |
+| Appearance / input | [test_theme.py](../../tests/python/test_theme.py), switch:36; [test_color_picker.py](../../tests/python/test_color_picker.py), screen fit:81; [test_command_window.py](../../tests/python/test_command_window.py), input:39, cancellation:113 |
 | Integration | [test_events.py](../../tests/python/test_events.py), GUI-thread delivery:120; [test_block_editor.py](../../tests/python/test_block_editor.py), [test_texts.py](../../tests/python/test_texts.py), [test_mtext.py](../../tests/python/test_mtext.py), [test_i18n.py](../../tests/python/test_i18n.py) |
