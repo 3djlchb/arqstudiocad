@@ -1,6 +1,6 @@
 # 0029. The model-space context menu and the Options dialog
 
-Date: 2026-10-29 · Status: Proposed · Builds on [0006](0006-i18n.md),
+Date: 2026-10-29 (accepted 2026-10-31) · Status: Accepted · Builds on [0006](0006-i18n.md),
 [0013](0013-application-shell.md), [0015](0015-workspaces.md),
 [0016](0016-editing-workflow.md) and [0023](0023-blocks.md) (the block
 editor's background). The maintainer's design briefs:
