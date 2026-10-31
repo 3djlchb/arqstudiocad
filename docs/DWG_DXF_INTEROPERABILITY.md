@@ -339,6 +339,17 @@ same-format DXF border investigation remain open. No full table-format
 exemption was added to safe saving. This extends 03.4/03.5 evidence and does
 not close either milestone.
 
+The resource-manager refusal above was subsequently corrected by the
+[Map proxy follow-up](testing/progecad-map-resource-preservation.md), retained
+through the [0.6.8 upgrade](testing/acadrust-068-upgrade.md). The
+[DWG-to-DXF formatting follow-up](testing/progecad-table-dxf-format.md), fork
+`f1b0980`, corrects eight margin measurements, twelve row-type text heights and
+eight merged-title values. Independent ProgeCAD reopening now matches all 189
+non-cell-record properties, with sixty cell-record differences still reported.
+The unchanged integrated 34-drawing matrix has 58 verified saves, eight blocked
+losses and two known R2000 TABLESTYLE-owner errors. This does not close 03.4/03.5
+or establish full cell-level fidelity.
+
 ### Historical library comparison
 
 `tools/dwg-bench` (a workspace of its own) reads, writes and re-reads a

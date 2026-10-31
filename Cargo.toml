@@ -57,6 +57,8 @@ codegen-units = 1
 # distinct. Legacy flat cells keep independent border presence bits and omit
 # virtual-edge payloads. Zombie Map resource managers retain their opaque
 # streams as standard proxies; proxy class registrations stay positional.
-# Immutable tag: arqstudiocad/on-ea66abe.
+# Modern table DXF exports retain asserted margins, row-type text heights and
+# complete formatting through an owned TABLECONTENT round-trip companion.
+# Immutable tag: arqstudiocad/on-ea66abe-table-dxf-format.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "a1a9a56965d67230295777d3dc419edc9b6571b3" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "f1b0980d181fa64d36d5740dd8140f656f16b9fb" }
