@@ -86,6 +86,13 @@ class CommandWindow(QDockWidget):
         if self._runner.active is None:
             self.prompt.setText(tr("Command:"))
 
+    def set_text_color(self, color: str) -> None:
+        """The history, prompt and input in ``color`` (``#RRGGBB``), or the
+        theme's text color when it is empty (Options > Display)."""
+        sheet = f"color: {color};" if color else ""
+        for widget in (self.history, self.prompt, self.input):
+            widget.setStyleSheet(sheet)
+
     def escape(self) -> None:
         """Esc, wherever it is pressed: as AutoCAD, it cancels the running
         command, drops what was typed and empties the selection (ADR 0016

@@ -133,10 +133,13 @@ def snap_name(kind: str) -> str:
 #: that already asked for the menu.
 MENU_KEY_ECHO = 0.5
 
+#: Model space's background, the core's default (``CadView.background``).
+MODEL_SPACE_BACKGROUND = (33, 40, 48)
+
 #: The block editor's background, so it is never mistaken for the drawing:
 #: a mid grey, as AutoCAD's and progeCAD's, the same in both themes; ACI 7
-#: stays white on it (maintainer, 2026-10-25). One value, which the Options
-#: dialog will let the user change.
+#: stays white on it (maintainer, 2026-10-25). The default of Options >
+#: Display > Block editor.
 BLOCK_EDITOR_BACKGROUND = (96, 96, 96)
 
 
@@ -216,6 +219,8 @@ class Viewport(QWidget):
         #: How the crosshair looks, and where it is (logical pixels; None
         #: while the cursor is away or the view is being panned).
         self._crosshair = Crosshair()
+        #: The snap markers' color (Options > Display).
+        self._marker = MARKER
         self._cursor_at: QPointF | None = None
         self.setCursor(self._rest_cursor())
         self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
@@ -562,6 +567,26 @@ class Viewport(QWidget):
             self.update()
 
     @property
+    def marker_color(self) -> QColor:
+        """The snap markers' color."""
+        return self._marker
+
+    def set_marker_color(self, color: str) -> None:
+        """The snap markers in ``color`` (``#RRGGBB``), or AutoCAD's
+        yellow when it is empty (maintainer, 2026-10-30)."""
+        chosen = QColor(color) if color else QColor()
+        marker = chosen if chosen.isValid() else MARKER
+        if marker != self._marker:
+            self._marker = marker
+            self.update()
+
+    def set_background(self, rgb: tuple[int, int, int]) -> None:
+        """The drawing's background, drawn again."""
+        if tuple(self.view.background) != rgb:
+            self.view.background = rgb
+            self._redraw()
+
+    @property
     def cursor_at(self) -> QPointF | None:
         """Where the crosshair is drawn, or None when it is not."""
         return self._cursor_at
@@ -702,7 +727,7 @@ class Viewport(QWidget):
             painter.setPen(QPen(self.palette().text().color(), 1, Qt.PenStyle.DashLine))
             painter.drawLine(logical(self._base), at)
         if self._snap is not None:
-            painter.setPen(QPen(MARKER, 2))
+            painter.setPen(QPen(self._marker, 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             draw_marker(painter, self._snap.kind, at, MARKER_PIXELS)
             label = at + QPointF(MARKER_PIXELS + 4, -MARKER_PIXELS - 4)

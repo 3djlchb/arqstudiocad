@@ -2,12 +2,13 @@
 properties and history panels, language switch and About."""
 
 import platform
+from dataclasses import replace
 from functools import partial
 from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QLocale, QPoint, QRect, QSettings, Qt, qVersion
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QColor, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -65,18 +66,19 @@ from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.history_panel import HistoryPanel
 from arqstudiocad.ui.layers_panel import LayersPanel
 from arqstudiocad.ui.options_dialog import (
-    RIGHT_CLICK_SETTING,
     Options,
     OptionsDialog,
+    RightClick,
     changed_keys,
-    saved_right_click,
+    save_options,
+    saved_options,
 )
 from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
-from arqstudiocad.ui.viewport import BLOCK_EDITOR_BACKGROUND, Viewport
+from arqstudiocad.ui.viewport import Viewport
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
 from arqstudiocad.workspaces import BLOCK_EDITOR, WorkspaceRegistry, builtin_workspaces
 
@@ -96,8 +98,8 @@ class MainWindow(QMainWindow):
     ) -> None:
         super().__init__()
         self._settings = settings
-        #: What a right-click with nothing selected does (ADR 0029 D4).
-        self.right_click = saved_right_click(settings)
+        #: The Options dialog's settings but language and theme (ADR 0029 D5).
+        self._options = saved_options(settings)
         self.bus = bus if bus is not None else EventBus()
         self.events = QtEventBridge(self.bus, self)
         self.events.language_changed.connect(self._on_language_changed)
@@ -114,6 +116,7 @@ class MainWindow(QMainWindow):
         )
         self.command_actions = CommandActions(self.runner, self)
         self.command_window = CommandWindow(self.runner, self.events, self)
+        self.command_window.set_text_color(self._options.command_line_color)
         #: The model-space context menu shown last (ADR 0029 D1).
         self.context_menu: QMenu | None = None
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.command_window)
@@ -483,8 +486,7 @@ class MainWindow(QMainWindow):
         if document is None or event.document_id in self.viewports:
             return
         viewport = Viewport(document, drafting=self.session.drafting)
-        if self.session.block_editor_of(document) is not None:
-            viewport.view.background = BLOCK_EDITOR_BACKGROUND
+        self._style_viewport(viewport)
         viewport.entity_double_clicked.connect(
             lambda entity_id: self._edit_double_clicked(document, entity_id)
         )
@@ -547,7 +549,22 @@ class MainWindow(QMainWindow):
         saved = self._settings.value(LANGUAGE_SETTING) if self._settings is not None else None
         installed = {pack.code for pack in available_languages()}
         language = saved if isinstance(saved, str) and saved in installed else ""
-        return Options(language=language, theme=self.theme, right_click=self.right_click)
+        return replace(self._options, language=language, theme=self.theme)
+
+    @property
+    def right_click(self) -> RightClick:
+        """What a right-click with nothing selected does (ADR 0029 D4)."""
+        return self._options.right_click
+
+    def _style_viewport(self, viewport: Viewport) -> None:
+        """The Display settings on ``viewport``: its crosshair, its snap
+        markers, and a block editor's background."""
+        values = self._options
+        viewport.set_crosshair(values.crosshair)
+        viewport.set_marker_color(values.marker_color)
+        if self.session.block_editor_of(viewport.document) is not None:
+            color = QColor(values.block_editor_background)
+            viewport.set_background((color.red(), color.green(), color.blue()))
 
     def apply_options(self, values: Options) -> None:
         """Applies what the Options dialog changed, as the Tools menu does,
@@ -565,10 +582,12 @@ class MainWindow(QMainWindow):
                     self.bus.publish(LanguageChanged(code))
         if "theme" in keys:
             self._set_theme(values.theme)
-        if "right_click" in keys:
-            self.right_click = values.right_click
-            if self._settings is not None:
-                self._settings.setValue(RIGHT_CLICK_SETTING, values.right_click)
+        self._options = values
+        if self._settings is not None:
+            save_options(self._settings, values, keys)
+        for viewport in self.viewports.values():
+            self._style_viewport(viewport)
+        self.command_window.set_text_color(values.command_line_color)
         if keys:
             self.bus.publish(OptionsChanged(keys))
 
