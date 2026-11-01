@@ -730,6 +730,136 @@ fn codec_solids_are_measured() {
     }
 }
 
+/// One solid as another CAD application measured it: volume, centroid,
+/// bounds' corners.
+struct Reference {
+    drawing: &'static str,
+    handle: u64,
+    volume: f64,
+    centroid: [f64; 3],
+    low: [f64; 3],
+    high: [f64; 3],
+}
+
+/// ProgeCAD 2026 Professional's MASSPROP (LUPREC 8, world UCS), run by
+/// the maintainer on 2026-11-01. Its own results are approximate: its
+/// centroids of symmetric solids stray from their centers by up to
+/// `6e-4`, its volumes by up to `6e-6` of a solid's.
+const PROGECAD: [Reference; 6] = [
+    Reference {
+        drawing: "2007/ATMOS-DC22S.dwg",
+        handle: 0x8C,
+        volume: 19_592_914.614_651_34,
+        centroid: [1_328.499_972_81, -14.987_696_13, 617.000_021_02],
+        low: [974.0, -30.0, 156.0],
+        high: [1683.0, 0.0, 1078.0],
+    },
+    Reference {
+        drawing: "2007/ATMOS-DC22S.dwg",
+        handle: 0xB2,
+        volume: 11_750_881.741_293_85,
+        centroid: [1_294.040_285_63, 265.000_000_09, 1_110.854_321_5],
+        low: [1044.0, 0.0, 1078.0],
+        high: [1508.0, 530.0, 1_179.515_627_2],
+    },
+    Reference {
+        drawing: "2007/ATMOS-DC22S.dwg",
+        handle: 0xD7,
+        volume: 12_403_946.906_181_33,
+        centroid: [819.848_588_69, 193.352_143_37, 562.592_609_39],
+        low: [793.0, 39.0, 153.0],
+        high: [845.0, 349.0, 1013.0],
+    },
+    Reference {
+        drawing: "2007/ATMOS-DC22S.dwg",
+        handle: 0xED,
+        volume: 23_090.656_802_5,
+        centroid: [828.0, 485.0, 929.999_970_52],
+        low: [793.0, 466.0, 911.0],
+        high: [863.0, 504.0, 949.0],
+    },
+    Reference {
+        drawing: "2007/ATMOS-DC22S.dwg",
+        handle: 0x102,
+        volume: 112_342.685_577_79,
+        centroid: [753.0, 199.999_432_83, 871.999_558_24],
+        low: [713.0, 124.0, 796.0],
+        high: [793.0, 276.0, 948.0],
+    },
+    Reference {
+        drawing: "example_2000.dwg",
+        handle: 0x2E1,
+        volume: 4_243.178_532_51,
+        centroid: [3_220.261_140_49, 13_922.518_386_87, 2.0],
+        low: [2_229.632_278_89, 13_562.283_472_34, 0.0],
+        high: [4_237.097_850_09, 14_169.087_206_81, 4.0],
+    },
+];
+
+/// Solids measured as another application measures them: within its own
+/// accuracy for the volume and the centroid, closely for the bounds; and
+/// ED, a tube of radii 19 and 16 and length 70, to its closed form.
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_solids_match_another_application() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    for r in &PROGECAD {
+        let doc =
+            Document::open(root.join(r.drawing)).unwrap_or_else(|e| panic!("{}: {e}", r.drawing));
+        let what = format!("{} {:X}", r.drawing, r.handle);
+        let body = doc
+            .solid(r.handle)
+            .unwrap_or_else(|| panic!("{what}: no solid"))
+            .unwrap_or_else(|e| panic!("{what}: {e}"));
+        let m = body
+            .mass_properties()
+            .unwrap_or_else(|e| panic!("{what}: {e}"));
+        let size = ((r.high[0] - r.low[0]).powi(2)
+            + (r.high[1] - r.low[1]).powi(2)
+            + (r.high[2] - r.low[2]).powi(2))
+        .sqrt();
+        let drift = (m.volume - r.volume).abs() / r.volume;
+        assert!(
+            drift < 1e-5,
+            "{what}: volume {} against {} ({drift:e})",
+            m.volume,
+            r.volume
+        );
+        let ours = [m.centroid.x(), m.centroid.y(), m.centroid.z()];
+        let (low, high) = (m.bounds.min(), m.bounds.max());
+        for i in 0..3 {
+            assert!(
+                (ours[i] - r.centroid[i]).abs() < 1e-5 * size,
+                "{what}: centroid {ours:?}"
+            );
+            let (ours_low, ours_high) = (
+                [low.x(), low.y(), low.z()][i],
+                [high.x(), high.y(), high.z()][i],
+            );
+            assert!(
+                (ours_low - r.low[i]).abs() < 1e-6 * size,
+                "{what}: bounds {low:?}"
+            );
+            assert!(
+                (ours_high - r.high[i]).abs() < 1e-6 * size,
+                "{what}: bounds {high:?}"
+            );
+        }
+        if r.handle == 0xED {
+            let tube = std::f64::consts::PI * (19.0f64.powi(2) - 16.0f64.powi(2)) * 70.0;
+            assert!(
+                (m.volume - tube).abs() < 1e-10 * tube,
+                "{what}: {} against {tube}",
+                m.volume
+            );
+            assert!(
+                (m.centroid.z() - 930.0).abs() < 1e-9 * size,
+                "{what}: off its axis"
+            );
+        }
+    }
+}
+
 #[test]
 #[ignore = "needs ARQ_CORPUS_DIR: real drawings (a folder or one file), never committed"]
 fn local_drawings_round_trip() {
