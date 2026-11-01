@@ -223,6 +223,77 @@ may run in parallel once contracts are defined. Status and milestones:
 | 10 | Extensions and advanced optimization | plugin API, automation, performance profiles, large models, additional libraries, LuxCoreRender evaluation |
 | 11 | Cross-platform distribution | installers, bundled dependencies, signing where it applies, updates, installation docs, tests on Windows, Linux, macOS |
 
+### 9.1. Planned automation languages (M11, phase 10)
+
+Maintainer direction recorded on 2026-11-01: Python remains the primary
+public automation API. Plan **ArqLISP** as an independently implemented Lisp
+dialect that can execute a documented subset of AutoLISP source routines
+(`.lsp`); evaluate **ArqBasic** afterward as a possible independently
+implemented BASIC dialect with a documented subset of VBA compatibility.
+These are future M11 work, not implemented capabilities or a change to the
+current phase priorities. The [phase 10 milestones](MODULES_AND_ROADMAP.md)
+record their order and acceptance criteria.
+
+All language adapters must use the same controlled application operations
+and public Python API, through the existing PyO3 boundary to Rust. Rust
+continues to own the document, geometry, transactions and undo/redo. Python
+coordinates commands and publishes changes to the interface; a script must
+not mutate codec state or widgets directly. Existing validation, change
+sets and safe-save/loss-consent protections apply to every language.
+
+The order is: strengthen the shared automation and plugin contract; deliver
+an initial tested ArqLISP subset; expand compatibility against real source
+routines; then evaluate ArqBasic with representative macros. Architectural
+design may be documented earlier, but bringing implementation forward
+requires a recorded priority change. Before implementation, an ADR must
+resolve interpreter placement and selection, API/version compatibility,
+script loading, errors, execution limits, cancellation, permissions and
+trust, transaction boundaries, event delivery and platform support. Every
+new runtime or dependency must pass section 16's technology review.
+
+**Portability acceptance criterion for both languages:** the language core
+and common CAD API must work on every supported application platform and
+architecture: Windows x86-64/ARM64, macOS Intel/Apple Silicon (universal2
+packaging), and Linux x86-64, with Linux ARM64 subject to the existing
+feasibility condition in [ADR 0003](architecture/adr/0003-target-platforms.md).
+A routine using only the declared portable subset must have equivalent
+observable results, within the API's documented numeric tolerances, on all
+supported targets. Runtime and dependency selection must support those
+targets; native dependencies must be built and bundled for each applicable
+architecture, without assuming x86 instruction sets or pointer sizes.
+
+Platform-specific extensions are separate optional capabilities, not
+requirements of the common language/CAD API. In particular, Windows
+COM/ActiveX, OCX controls, Windows API calls and platform-specific DLLs must
+not become dependencies of the portable subset. Scripts must be able to
+query capability availability; unsupported calls must produce clear
+diagnostics before the affected operation mutates the document, preserving
+the existing transaction rules. Document each extension's platform limits.
+
+Before claiming support, run the same portable routine regressions on the
+supported OS/architecture matrix, test both available and unavailable
+extension paths, and verify the packaged interpreter and native libraries
+on each target. Extend CI where coverage is missing and record untested
+targets explicitly. Existing application build jobs alone do not establish
+language compatibility or successful runtime packaging. ArqBasic's
+feasibility decision must include this same portability criterion.
+
+Future implementation code follows GPL-3.0-or-later; these planning documents
+remain CC BY-SA 4.0. Use original code or appropriately licensed compatible
+components, with provenance recorded in THIRD_PARTY.md. This plan does not
+approve embedding or redistributing Autodesk or Microsoft proprietary
+runtimes. Any such alternative would need separate licensing and
+architecture review.
+
+Compatibility must name and test its supported functions and host-object
+model, rather than promise that every existing routine runs unchanged.
+ArqLISP's initial source support does not include compiled `.fas`/`.vlx`,
+DCL or Visual LISP/ActiveX compatibility. ArqBasic evaluation must distinguish
+language syntax from CAD object-model calls, forms, COM dependencies and
+`.dvb` project loading. Those are separate capabilities, not consequences
+of parsing BASIC. ArqBasic is an evaluation target; an implementation follows
+only if its usefulness, licensing and cross-platform feasibility justify it.
+
 ## 10. Performance and quality
 
 Performance is an architectural property, not a last-minute optimization.

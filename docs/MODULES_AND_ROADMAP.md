@@ -191,6 +191,44 @@ Plugin API, automation, performance profiles, large models and terrains,
 additional libraries, LuxCoreRender evaluated against Cycles on shared
 scenes. Module M11.
 
+Automation-language direction recorded by the maintainer on 2026-11-01:
+Python remains the primary public automation API; ArqLISP is the first
+planned compatibility language, followed by evaluation of ArqBasic.
+See [master plan section 9.1](MASTER_PLAN.md#91-planned-automation-languages-m11-phase-10).
+The milestones below are planned, with no implementation started. They do
+not bring phase 10 ahead of the current work.
+
+| Milestone | Content and acceptance | Status |
+|---|---|---|
+| 10.1 Shared automation and plugin contract | Build on the existing typed Python core API (02.3) and application command/session/event machinery. Define supported extension entry points, loading and lifecycle, API versioning and compatibility tests, errors, permissions/trust, execution limits and cancellation. An ADR precedes interpreter/runtime selection; all adapters preserve Rust document ownership, transactions, undo/redo, event delivery and safe-save guards. | ○ planned; the current core API exists, but a complete public plugin/scripting environment is not implemented |
+| 10.2 ArqLISP initial source compatibility | Independently implement a documented subset of Lisp and AutoLISP `.lsp` routines through 10.1: language basics, command registration/execution, selection and supported entity queries/edits. Publish a supported/unsupported function matrix and representative routine tests, including invalid input, failed-operation rollback, cancellation and GUI event synchronization. Select a runtime only through the master plan section 16 review and the ADR. | ○ planned, after 10.1; no interpreter selected or implemented |
+| 10.3 ArqLISP compatibility expansion | Expand only against identified routine needs and regression tests. Evaluate DCL, Visual LISP/ActiveX and compiled `.fas`/`.vlx` support separately, with platform and licensing review; initial `.lsp` support does not imply those capabilities. | ○ planned, after 10.2; advanced compatibility scope undecided |
+| 10.4 ArqBasic feasibility | After the ArqLISP foundation, evaluate an independent BASIC dialect and a documented VBA-compatible subset using representative source macros. Assess language semantics, the CAD host-object model, forms, COM and `.dvb` projects separately. Record a go/no-go decision, licensing, platform limits and acceptance tests in an ADR before any implementation commitment. | ○ evaluation planned; neither Microsoft VBA integration nor a complete VBA clone is approved |
+
+**Portability gate for 10.1-10.4:** ArqLISP and any approved ArqBasic
+implementation must keep their language core and common CAD API portable
+across Windows x86-64/ARM64, macOS Intel/Apple Silicon (universal2), and
+Linux x86-64; Linux ARM64 retains ADR 0003's feasibility condition. Select
+runtimes and dependencies accordingly. Run common source-routine tests on
+each supported OS/architecture, with equivalent results within documented
+numeric tolerances, and verify the packaged runtime/native dependencies.
+CI must gain missing target coverage before support is claimed; existing
+application builds are not language acceptance evidence.
+
+Keep COM/ActiveX, OCX, Windows API and platform-specific DLL integrations as
+optional extensions. Provide capability queries, document platform limits,
+and reject unsupported calls clearly before their operation mutates the
+document. Test both capability-present and capability-absent paths. ArqBasic
+feasibility includes this gate rather than assuming VBA dependencies are
+portable. See master plan section 9.1 for the binding design criterion.
+
+Future language implementation code is GPL-3.0-or-later, with third-party
+provenance and compatible licenses checked before reuse. The existing
+Python API and these future adapters share one application/core contract;
+they do not create separate document models or mutation paths. The plan
+approves future work and evaluation, not proprietary runtime redistribution
+or a claim of full AutoLISP/VBA compatibility.
+
 ## Phase 11 — Cross-platform distribution ○
 
 Installers, bundled dependencies, signing and notarization where they apply,
