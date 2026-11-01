@@ -58,7 +58,7 @@ impl Body {
 }
 
 /// An edge from its start vertex to its end vertex; empty without a curve.
-fn edge_polyline(body: &Body, edge: &Edge, chord: f64) -> Vec<Point3> {
+pub(crate) fn edge_polyline(body: &Body, edge: &Edge, chord: f64) -> Vec<Point3> {
     let (start, end) = (body.vertex(edge.start).point, body.vertex(edge.end).point);
     let closed = edge.start == edge.end;
     match &edge.curve {
@@ -107,7 +107,7 @@ fn edge_polyline(body: &Body, edge: &Edge, chord: f64) -> Vec<Point3> {
 
 /// The parameter of point `p` (on or near the ellipse) as the angle from
 /// its major axis in its own scaled frame.
-fn ellipse_parameter(e: &EllipseCurve, p: Point3) -> f64 {
+pub(crate) fn ellipse_parameter(e: &EllipseCurve, p: Point3) -> f64 {
     let a = e.major().length();
     let u = e.major() / a;
     let v = e.normal().cross(u);
@@ -134,46 +134,15 @@ fn face_isolines(
     edges: &[Vec<Point3>],
     count: usize,
 ) -> Vec<Vec<Point3>> {
-    // The face's boundary as oriented segments, in loop order.
-    let mut boundary: Vec<(Point3, Point3)> = Vec::new();
-    for lp in &face.loops {
-        for &c in &body.loops()[lp.index()].coedges {
-            let coedge = body.coedges()[c.index()];
-            let points = &edges[coedge.edge.index()];
-            let pairs = points.windows(2).map(|w| (w[0], w[1]));
-            if coedge.reversed {
-                boundary.extend(pairs.rev().map(|(a, b)| (b, a)));
-            } else {
-                boundary.extend(pairs);
-            }
-        }
-    }
+    let boundary = boundary_of(body, face, edges);
     let lines = isolines(&face.surface, &boundary, count);
-    if boundary.is_empty() {
+    let Some((guides, reach)) = guides_of(face, &boundary) else {
         // No loops: the whole surface (a sphere, a torus).
         return lines
             .iter()
             .map(|line| sample(line).into_iter().map(line).collect())
             .collect();
-    }
-    // How near the boundary the local rule is trusted.
-    let reach = Bounds3::from_points(boundary.iter().map(|(a, _)| *a))
-        .map_or(0.0, |b| b.size().length())
-        * NEAR;
-    // Each boundary segment with the left direction on the face, from
-    // the outward normal at its middle: computed once per face.
-    let guides: Vec<Guide> = boundary
-        .iter()
-        .filter_map(|&(a, b)| {
-            let along = b - a;
-            let n = outward(face, a.midpoint(b))?;
-            Some(Guide {
-                a,
-                along,
-                left: n.cross(along),
-            })
-        })
-        .collect();
+    };
     let side = |p: Point3| side_of(&guides, p);
     let mut pieces = Vec::new();
     for line in lines {
@@ -186,6 +155,85 @@ fn face_isolines(
 /// is trusted.
 const NEAR: f64 = 0.15;
 
+/// A face's boundary as oriented segments, in loop order, from its edges'
+/// polylines.
+pub(crate) fn boundary_of(
+    body: &Body,
+    face: &Face,
+    edges: &[Vec<Point3>],
+) -> Vec<(Point3, Point3)> {
+    let mut boundary = Vec::new();
+    for lp in &face.loops {
+        for &c in &body.loops()[lp.index()].coedges {
+            let coedge = body.coedges()[c.index()];
+            let points = &edges[coedge.edge.index()];
+            let pairs = points.windows(2).map(|w| (w[0], w[1]));
+            if coedge.reversed {
+                boundary.extend(pairs.rev().map(|(a, b)| (b, a)));
+            } else {
+                boundary.extend(pairs);
+            }
+        }
+    }
+    boundary
+}
+
+/// Each boundary segment with the left direction on the face, from the
+/// outward normal at its middle, and how near the boundary the local rule
+/// is trusted; `None` without a boundary (the whole surface).
+pub(crate) fn guides_of(face: &Face, boundary: &[(Point3, Point3)]) -> Option<(Vec<Guide>, f64)> {
+    if boundary.is_empty() {
+        return None;
+    }
+    let reach = Bounds3::from_points(boundary.iter().map(|(a, _)| *a))
+        .map_or(0.0, |b| b.size().length())
+        * NEAR;
+    let guides = boundary
+        .iter()
+        .filter_map(|&(a, b)| {
+            let along = b - a;
+            let n = outward(face, a.midpoint(b))?;
+            Some(Guide {
+                a,
+                along,
+                left: n.cross(along),
+            })
+        })
+        .collect();
+    Some((guides, reach))
+}
+
+/// Whether the point of `line` at `t` lies in the face, by the rule
+/// [`clip`] follows: its own side when near the boundary, else the state
+/// carried along the line from its sample nearest the boundary; `None`
+/// when the line never comes near the boundary.
+pub(crate) fn inside_at(
+    line: &Isoline,
+    t: f64,
+    side: &dyn Fn(Point3) -> (f64, bool),
+    reach: f64,
+) -> Option<bool> {
+    let mut ts = sample(line);
+    let at = ts.partition_point(|&s| s < t);
+    ts.insert(at, t);
+    let probes: Vec<(f64, bool)> = ts.iter().map(|&s| side(line(s))).collect();
+    let seed = (0..ts.len()).min_by(|&a, &b| probes[a].0.total_cmp(&probes[b].0))?;
+    if probes[seed].0 > reach {
+        return None;
+    }
+    // From the seed toward t: the state changes only near the boundary.
+    let mut state = probes[seed].1;
+    let step: isize = if at >= seed { 1 } else { -1 };
+    let mut i = seed;
+    while i != at {
+        i = i.wrapping_add_signed(step);
+        if probes[i].0 <= reach {
+            state = probes[i].1;
+        }
+    }
+    Some(state)
+}
+
 /// The parameters an isoline is sampled at.
 fn sample(_line: &Isoline) -> Vec<f64> {
     (0..=ISOLINE_SAMPLES)
@@ -194,7 +242,7 @@ fn sample(_line: &Isoline) -> Vec<f64> {
 }
 
 /// An isoline: its point at a parameter from 0 to 1.
-type Isoline = Box<dyn Fn(f64) -> Point3>;
+pub(crate) type Isoline = Box<dyn Fn(f64) -> Point3>;
 
 /// The isolines of a surface: none on a plane; on a cylinder or cone,
 /// lines along the axis; on a sphere, meridians and the equator; on a
@@ -311,7 +359,7 @@ fn height_range(
 
 /// The face's outward unit normal near `p`: the surface's, turned when
 /// the face is reversed.
-fn outward(face: &Face, p: Point3) -> Option<Vector3> {
+pub(crate) fn outward(face: &Face, p: Point3) -> Option<Vector3> {
     let n = match face.surface {
         Surface::Plane(s) => Some(s.normal()),
         Surface::Cone(s) => {
@@ -346,7 +394,7 @@ fn outward(face: &Face, p: Point3) -> Option<Vector3> {
 
 /// A piece of a face's boundary: from `a` along `along`, with the
 /// direction `left` pointing into the face beside it.
-struct Guide {
+pub(crate) struct Guide {
     a: Point3,
     along: Vector3,
     left: Vector3,
@@ -355,7 +403,7 @@ struct Guide {
 /// How far `p`, on the face's surface, lies from the face's boundary, and
 /// whether it is on the left of the nearest boundary segment seen from
 /// outside: inside, when near.
-fn side_of(guides: &[Guide], p: Point3) -> (f64, bool) {
+pub(crate) fn side_of(guides: &[Guide], p: Point3) -> (f64, bool) {
     let mut nearest: Option<(f64, Point3, &Guide)> = None;
     for g in guides {
         let len2 = g.along.dot(g.along);

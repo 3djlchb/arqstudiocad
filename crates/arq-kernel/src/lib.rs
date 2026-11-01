@@ -11,12 +11,15 @@
 //! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |
 //! | Why parts are no body | [`BrepError`] |
 //! | What to draw of a body | [`Body::wireframe`] → [`Wireframe`] |
+//! | Its volume, area, centroid and bounds | [`Body::mass_properties`] → [`MassProperties`] |
 //!
 //! Like `arq-geometry`, this crate depends on no document, Python or GUI;
 //! no engine or backend type appears in it (ADR 0020 D4).
 
 mod brep;
+mod chart;
 mod curve;
+mod measure;
 mod nurbs;
 mod surface;
 mod tessellate;
@@ -26,6 +29,7 @@ pub use brep::{
     Shell, ShellId, Vertex, VertexId,
 };
 pub use curve::{Curve, EllipseCurve, LineCurve};
+pub use measure::{MassProperties, MeasureError};
 pub use nurbs::{NurbsCurve, NurbsSurface};
 pub use surface::{Cone, EllipticCylinder, Plane, Sphere, Surface, Torus};
 pub use tessellate::Wireframe;

@@ -8,7 +8,7 @@
 //! Book*); openNURBS was read as a reference (ADR 0020 amendment), nothing
 //! of it copied.
 
-use arq_geometry::{GeometryError, GeometryResult, Point3, Transform3, Vector3};
+use arq_geometry::{Bounds3, GeometryError, GeometryResult, Point3, Transform3, Vector3};
 
 /// A NURBS curve: `degree`, a knot vector of `points.len() + degree + 1`
 /// non-decreasing values, control points and their positive weights (all 1
@@ -270,9 +270,24 @@ impl NurbsSurface {
         }
     }
 
+    /// The diagonal of its control points' box: the surface's size.
+    pub(crate) fn size(&self) -> f64 {
+        Bounds3::from_points(self.points.iter().copied()).map_or(0.0, |b| b.size().length())
+    }
+
+    /// The parameters where its polynomial pieces join, inside its domain,
+    /// along `u` and `v`.
+    pub(crate) fn breaks(&self) -> (Vec<f64>, Vec<f64>) {
+        let ((u0, u1), (v0, v1)) = self.domain();
+        (
+            inner_knots(&self.knots_u, u0, u1),
+            inner_knots(&self.knots_v, v0, v1),
+        )
+    }
+
     /// The partial derivatives at `(u, v)`, by central differences inside
     /// the domain.
-    fn derivatives(&self, u: f64, v: f64) -> (Vector3, Vector3) {
+    pub(crate) fn derivatives(&self, u: f64, v: f64) -> (Vector3, Vector3) {
         let ((u0, u1), (v0, v1)) = self.domain();
         let (hu, hv) = ((u1 - u0) * 1e-7, (v1 - v0) * 1e-7);
         let (ua, ub) = ((u - hu).max(u0), (u + hu).min(u1));
@@ -321,6 +336,13 @@ fn check_weights(weights: &[f64], count: usize) -> GeometryResult<()> {
         return Err(GeometryError::OutOfRange { what: "weight" });
     }
     Ok(())
+}
+
+/// The distinct knots strictly between `a` and `b`.
+pub(crate) fn inner_knots(knots: &[f64], a: f64, b: f64) -> Vec<f64> {
+    let mut inner: Vec<f64> = knots.iter().copied().filter(|&k| a < k && k < b).collect();
+    inner.dedup();
+    inner
 }
 
 fn domain(degree: usize, knots: &[f64], count: usize) -> (f64, f64) {
