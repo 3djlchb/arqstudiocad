@@ -45,6 +45,14 @@ all = { level = "warn", priority = -1 }
 lto = "thin"
 codegen-units = 1
 
+# The geometry kernel integrates numerically (measuring solids): optimized
+# even in development builds and tests, which would otherwise take minutes.
+[profile.dev.package.arq-kernel]
+opt-level = 3
+
+[profile.dev.package.arq-geometry]
+opt-level = 3
+
 [patch.crates-io]
 # AcadRust 0.6.8 (upstream ea66abee, including post-release fixes) with our changes, kept in
 # our fork (ADR 0017 D2): class objects that fail to decode kept verbatim;

@@ -127,6 +127,51 @@ part of this ADR.
   count, so an edited body is never drawn from a stale one. A body that
   does not translate keeps its bounding box. Shading waits for the GPU
   viewport (02.7).
+- **Step 3, measure, the kernel (2026-10-31):** `Body::mass_properties`
+  gives a body's volume, surface area, centroid and bounds, in three pull
+  requests: the kernel, then the document and the Python API, then
+  MASSPROP (Spanish PROPFIS) on the command line, in the ribbon's new 3D
+  tab; moments of inertia come later (maintainer, 2026-10-31).
+  - **How (maintainer, 2026-10-31):** integrating over each face's
+    boundary on the edges' exact curves, not triangulating the faces. The
+    divergence theorem turns the volume and the centroid into integrals
+    over the faces; Green's theorem turns each face's integral over its
+    parameters into one along its loops. The triangulation comes with
+    shading (02.7) and will be checked against these measures.
+  - Each surface has a chart: `(u, v)`, its derivatives and its inverse.
+    Cones, cylinders and spheres close in `u`, tori both ways, a NURBS
+    surface where its ends meet (its parameters swapped to put that way
+    first). The 1-form along the loops is chosen periodic, so no seam
+    enters the sums. A sphere's poles and a cone's apex add the line
+    around them when the face holds them, which follows from how its
+    loops wind around the axis, and, when they do not, from the sign of
+    its area. A torus face whose loops wind both ways is refused.
+  - Gauss–Legendre rules on the edges, cut at a spline's knots, are
+    doubled until each quantity settles to `1e-11` of the body's size to
+    its power. The inner integrals are exact for planes, cones, spheres
+    and tori; an elliptic section's settles on its own; a spline's is
+    refined with the loops.
+  - NURBS curves and surfaces now give their derivatives exactly, from
+    their homogeneous form; the central differences they used before
+    carried rounding noise of `1e-9`, above what the rules settle to.
+  - A closed body's outward vector area is nothing: one that is not
+    (within `1e-6` of its area) is refused as not closed, as sheets are.
+  - The bounds are the edges' (exact for lines and arcs, sampled for
+    splines), the apices and poles inside faces, and the points of
+    spheres and tori that stand out inside their faces, told by the rule
+    the isolines use; a spline face's own bulge is not sought yet.
+  - **Checked:** solids built by hand with closed-form answers (a box,
+    cylinders whole and halved, a cone to its apex, a sphere whole, as a
+    hemisphere either way up and cut off its axis, a torus whole, halved
+    either way up and in pieces whose loops wind round the tube, a
+    frustum, an elliptic cylinder, a box with a spherical void, a box
+    topped by a trimmed NURBS patch, a cylinder with a spline rim, an arc
+    running against its curve) to `1e-10`; every 3DSOLID of LibreDWG's drawings (59)
+    measures, and measures the same moved far away (to `2e-13`); the
+    open sheets are refused. The maintainer's MASSPROP results on some of
+    them are to be the reference values.
+  - The kernel and `arq-geometry` are built optimized in development
+    profiles too: the corpus test took minutes otherwise.
 
 ## Consequences
 

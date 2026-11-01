@@ -347,6 +347,12 @@ impl BodyBuilder {
         id
     }
 
+    /// A face added before, to change.
+    #[cfg(test)]
+    pub(crate) fn face_mut(&mut self, id: FaceId) -> &mut Face {
+        &mut self.body.faces[id.index()]
+    }
+
     /// Adds a shell.
     pub fn shell(&mut self, shell: Shell) -> ShellId {
         let id = ShellId(next_id(self.body.shells.len()));

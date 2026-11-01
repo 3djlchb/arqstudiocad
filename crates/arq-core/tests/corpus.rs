@@ -727,6 +727,65 @@ fn codec_solids_read_into_our_brep() {
     }
 }
 
+/// Solids measured (ADR 0024, step "measure"): every 3DSOLID of LibreDWG's
+/// drawings has a positive volume and area, its centroid inside its
+/// bounds, and measures the same moved far away; the open sheets
+/// (SURFACE, REGION) are refused, and the one closed SURFACE measured.
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_solids_are_measured() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    // Drawing, bodies measured, bodies refused.
+    let expected: [(&str, usize, usize); 6] = [
+        ("2007/ATMOS-DC22S.dwg", 58, 0),
+        ("2004/Surface.dwg", 1, 4),
+        ("example_r14.dwg", 1, 2),
+        ("example_2000.dwg", 1, 2),
+        ("example_2007.dwg", 1, 2),
+        ("example_2013.dwg", 1, 2),
+    ];
+    let away = arq_geometry::Transform3::translation(
+        arq_geometry::Vector3::new(1e3, -2e3, 5e2).expect("finite"),
+    );
+    for (name, measured, refused) in expected {
+        let doc = Document::open(root.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let (mut ok, mut not) = (0, 0);
+        for e in doc.entities() {
+            let Some(Ok(body)) = doc.solid(e.id()) else {
+                continue;
+            };
+            let what = format!("{name} {:X} {}", e.id(), e.kind());
+            match body.mass_properties() {
+                Ok(m) => {
+                    assert!(m.volume > 0.0 && m.area > 0.0, "{what}: {m:?}");
+                    let inside =
+                        arq_geometry::Tolerance::new(1e-9 * m.bounds.size().length(), 1e-9)
+                            .expect("positive");
+                    assert!(m.bounds.contains_point(m.centroid, inside), "{what}: {m:?}");
+                    let moved = body
+                        .transformed(away, 1.0)
+                        .expect("a translation")
+                        .mass_properties()
+                        .unwrap_or_else(|e| panic!("{what} moved: {e}"));
+                    let drift = (moved.volume - m.volume).abs() / m.volume;
+                    assert!(drift < 1e-9, "{what}: the volume drifts by {drift:e}");
+                    let shifted = away.apply_point(m.centroid);
+                    assert!(
+                        moved.centroid.distance_to(shifted) < 1e-9 * m.bounds.size().length(),
+                        "{what}: the centroid does not follow"
+                    );
+                    ok += 1;
+                }
+                Err(why) => {
+                    assert!(e.kind() != "3DSOLID", "{what}: {why}");
+                    not += 1;
+                }
+            }
+        }
+        assert_eq!((ok, not), (measured, refused), "{name}");
+    }
+}
+
 #[test]
 #[ignore = "needs ARQ_CORPUS_DIR: real drawings (a folder or one file), never committed"]
 fn local_drawings_round_trip() {
