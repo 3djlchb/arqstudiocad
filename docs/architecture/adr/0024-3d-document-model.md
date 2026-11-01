@@ -168,8 +168,20 @@ part of this ADR.
     topped by a trimmed NURBS patch, a cylinder with a spline rim, an arc
     running against its curve) to `1e-10`; every 3DSOLID of LibreDWG's drawings (59)
     measures, and measures the same moved far away (to `2e-13`); the
-    open sheets are refused. The maintainer's MASSPROP results on some of
-    them are to be the reference values.
+    open sheets are refused.
+  - **Against another application (2026-11-01):** ProgeCAD 2026
+    Professional's MASSPROP on six of those solids (LUPREC 8, world UCS)
+    agrees within its own accuracy: volumes within `1e-5`, centroids
+    within `1e-5` of a solid's size, bounds within `1e-6`. Its results
+    are the approximate ones: its centroids of symmetric solids stray from
+    their centers by up to `6e-4`, and of ED, a tube of radii 19 and 16
+    and length 70, it gives `23090.6568` where the closed form
+    `π · 7350 = 23090.7060` is met here to `1e-10`.
+  - **Precision (maintainer, 2026-11-01):** the application keeps its own
+    precision, the highest it reaches, in every measure it shows and
+    keeps. Only when importing from ProgeCAD or AutoCAD, or exporting to
+    them, are values compared, or written, at that application's
+    precision.
   - The kernel and `arq-geometry` are built optimized in development
     profiles too: the corpus test took minutes otherwise.
 
