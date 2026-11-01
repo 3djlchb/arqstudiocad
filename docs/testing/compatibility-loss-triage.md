@@ -157,6 +157,14 @@ No new ProgeCAD session, all-feature suite, Python build or platform CI run is
 claimed for this classification-only change. Source links and documentation
 consistency are checked; production code and Claude's references are untouched.
 
+For the next codec investigation, also compare the relevant implementation in
+Open CAD Studio's actual codec dependency, resolving and recording its pinned
+revision first, as required by ADR 0017 D2. Check the MULTILEADERSTYLE version
+and dictionary handling first; inspect opaque DATATABLE/associative decoding
+and purge-preventer DXF handling when those groups are addressed. This is a
+future comparison requirement; no new Open CAD Studio codec comparison or
+source reuse is claimed by this triage.
+
 The next implementation should address one demonstrated preservation defect
 at a time, starting with the MULTILEADERSTYLE feasibility/reproduction above,
 with red regression evidence, a scoped codec change only if validated, native

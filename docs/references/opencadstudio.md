@@ -110,3 +110,20 @@ Proposal: build `arq-geometry` ourselves for the 2D basics in phase 2,
   relevant later for architecture/BIM. License not yet checked.
 - `docs/cadcodec-reader-gaps.md`, `docs/tessellation.md`,
   `docs/plugin-architecture.md` are worth reading before phases 7–8.
+
+## Continuing codec reference (maintainer, 2026-11-01)
+
+For future AcadRust-fork investigations, consult Open CAD Studio's actual
+codec dependency and its pinned revision, starting from the separate
+opencadcodec repository identified in this historical analysis. Record the
+revision/files inspected and compare the specific behavior with our current
+AcadRust base. Recheck dependency and per-file licensing facts rather than
+assuming this 2026-10-11 snapshot remains current. This documentation update
+has not performed a fresh upstream code comparison.
+
+[ADR 0017 D2](../architecture/adr/0017-dwg-dxf-engine-strategy.md)
+retains AcadRust as the production base and requires small validated changes.
+Related codecs are differential references, not independent CAD oracles;
+regression inputs, safe-save checks and external native validation remain
+necessary. Record any actual code/idea reuse and its exact license in
+THIRD_PARTY.md before integration.
