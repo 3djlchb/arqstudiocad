@@ -129,8 +129,14 @@ is published in fork `bd369d9`; its full default suite, 44 focused/native tests,
 product acceptance passes on main base `6962ae5`: 488 Rust and 808 Python tests, six external
 core corpus groups and eight optional document tests. The 34-drawing matrix now
 has 59 verified saves, nine declared-loss blocks and no semantic save errors;
-only the two corrected R2000 DWG rows change. Product adoption awaits PR review
-and merge.
+only the two corrected R2000 DWG rows change. Product adoption is merged in
+PR #108. The subsequent [loss triage](testing/compatibility-loss-triage.md) on
+main `fbf5b58` reproduces all 68 normal safe-save outcomes and classifies the
+nine remaining blocks: four dynamic-block DXF omissions, two opaque DATATABLE
+DXF losses, two legacy MULTILEADERSTYLE DWG losses and one Surface associative
+DXF loss. No intrinsic destination-format impossibility is established; guards
+remain unchanged. MULTILEADERSTYLE same-version preservation is the next
+focused reproduction/native-validation priority, not an implemented fix.
 Milestones 03.4 and 03.5 remain in progress.
 
 ## Phase 04 — Associative technical documentation ○

@@ -56,6 +56,31 @@ license recorded in `THIRD_PARTY.md`. *(Amended 2026-10-13, maintainer:)*
   changes, and its regression drawings, the round-trip corpus and the
   comparison bench must pass before it is adopted (D1).
 
+#### Continuing Open CAD Studio codec reference review
+
+Maintainer direction, 2026-11-01: use the codec used by Open CAD Studio as
+an ongoing reference for future changes in our AcadRust fork, not only for
+the initial 03.2 comparison. The existing [Open CAD Studio analysis](../../references/opencadstudio.md)
+identifies the separate `HakanSeven12/opencadcodec` repository. At each new
+investigation, verify the actual codec dependency/revision used by Open CAD
+Studio and record the exact source revision, files and relevant behavior;
+the historical analysis is not evidence of today's dependency or behavior.
+
+Compare the relevant reader/writer, version rules, object/reference handling
+and regression fixtures with the current AcadRust upstream and our pinned
+fork. These codecs share lineage: agreement is useful differential evidence,
+not independent external-CAD validation. Validate useful differences with a
+red reproduction, the affected corpus, read-back/loss guards and native
+ProgeCAD observations where applicable. No wholesale merge, automatic codec
+replacement or acceptance-policy relaxation follows from this reference.
+
+Before reusing any source, inspect the license and notices of the exact
+repository/files and record revision, provenance and modifications in
+THIRD_PARTY.md. Keep the application and codec licenses distinct; an
+application's license does not by itself establish the license of its codec
+or authorize copying into MPL-2.0 files. This instruction selects a research
+reference, not an unconditional source-code import.
+
 ### D3 — LibreDWG stays out of the product
 
 LibreDWG is not linked into the application. It stays an optional

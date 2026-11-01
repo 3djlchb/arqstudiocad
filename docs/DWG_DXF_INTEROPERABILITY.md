@@ -391,3 +391,24 @@ six external core corpus groups and eight optional document tests. The same
 34-drawing matrix now has 59 verified saves, nine declared-loss blocks and no
 semantic save errors, changing only the two R2000 DWG rows. Product adoption
 awaits PR review and merge; 03.4/03.5 remain open.
+
+### Remaining blocked-save classification (2026-11-01)
+
+The R2000 TABLESTYLE correction is merged in PR #108. A fresh current-main
+`arq-document` diagnostic on base `fbf5b58` reproduces all 68 safe-save outcomes
+on the same 34 unchanged sources: 59 verified saves, nine declared-loss blocks,
+no other failure. This is document-layer evidence, not a rebuilt Python matrix.
+All nine blocked destinations remain unchanged. The [detailed triage](testing/compatibility-loss-triage.md)
+identifies four groups: dynamic-block purge preventers deliberately skipped in
+four DXF exports; two decoded legacy MULTILEADERSTYLE pairs removed by the DWG
+writer; two opaque DATATABLE objects omitted from DXF; and two opaque associative
+edge records omitted from one Surface DXF, while five of that class survive.
+
+None is proved to be intrinsically unrepresentable by the destination format.
+The next scoped investigation is MULTILEADERSTYLE same-version preservation,
+with separate R2000/R14 evidence and native validation before any fix is adopted.
+DATATABLE and Surface need exact decode-failure analysis; the purge preventer
+needs fresh native DXF/audit controls before changing its deliberate skip rule.
+The inventory and semantic guards remain separate and enabled; empty geometric
+round-trip differences do not justify accepting missing object records.
+Milestones 03.4/03.5 remain open.
