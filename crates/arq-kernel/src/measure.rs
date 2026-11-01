@@ -347,12 +347,12 @@ struct Node {
 fn coedge_nodes(body: &Body, coedge: &Coedge, fine: usize, out: &mut Vec<Node>) {
     let edge = body.edge(coedge.edge);
     let (start, end) = (body.vertex(edge.start).point, body.vertex(edge.end).point);
-    // The curve from the edge's start (s = 0) to its end (s = 1), its
-    // derivative taken over `h` of s; and where its pieces join, in s.
+    // The curve from the edge's start (s = 0) to its end (s = 1) with its
+    // derivative, and where its pieces join, in s.
     let mut cuts = vec![0.0, 1.0];
-    let curve: Box<dyn Fn(f64, f64) -> (Point3, Vector3)> = match &edge.curve {
+    let curve: Box<dyn Fn(f64) -> (Point3, Vector3)> = match &edge.curve {
         None => return, // a degenerate edge (an apex) has no length
-        Some(Curve::Line(_)) => Box::new(move |s, _| (start.lerp(end, s), end - start)),
+        Some(Curve::Line(_)) => Box::new(move |s| (start.lerp(end, s), end - start)),
         Some(Curve::Ellipse(e)) => {
             let (ts, te) = (ellipse_parameter(e, start), ellipse_parameter(e, end));
             let sweep = if edge.start == edge.end {
@@ -365,7 +365,7 @@ fn coedge_nodes(body: &Body, coedge: &Coedge, fine: usize, out: &mut Vec<Node>) 
             let turn = if edge.reversed { -sweep } else { sweep };
             let (c, m) = (e.center(), e.major());
             let n = e.normal().cross(m) * e.ratio();
-            Box::new(move |s, _| {
+            Box::new(move |s| {
                 let (sin, cos) = (ts + turn * s).sin_cos();
                 (c + m * cos + n * sin, (n * cos - m * sin) * turn)
             })
@@ -385,11 +385,9 @@ fn coedge_nodes(body: &Body, coedge: &Coedge, fine: usize, out: &mut Vec<Node>) 
                     .map(|k| (k - ts) / (te - ts)),
             );
             let curve = curve.clone();
-            Box::new(move |s, h| {
+            Box::new(move |s| {
                 let t = ts + (te - ts) * s;
-                let (lo, hi) = (ts + (te - ts) * (s - h), ts + (te - ts) * (s + h));
-                let d = (curve.point_at(hi) - curve.point_at(lo)) / (hi - lo) * (te - ts);
-                (curve.point_at(t), d)
+                (curve.point_at(t), curve.derivative_at(t) * (te - ts))
             })
         }
     };
@@ -405,8 +403,7 @@ fn coedge_nodes(body: &Body, coedge: &Coedge, fine: usize, out: &mut Vec<Node>) 
         for i in 0..per_cut {
             for (x, w) in NODES {
                 let s = w2[0] + step * (i as f64 + (1.0 + x) / 2.0);
-                // Within the piece: the nodes stay 2 % of it from its ends.
-                let (p, d) = curve(s, 1e-4 * step);
+                let (p, d) = curve(s);
                 nodes.push(Node {
                     p,
                     dp: d * (w * step / 2.0),

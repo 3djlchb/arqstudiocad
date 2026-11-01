@@ -537,3 +537,263 @@ fn an_elliptic_cylinder() {
     same_point(m.bounds.min(), p(-a, -b, 0.0), 3.0);
     same_point(m.bounds.max(), p(a, b, h), 3.0);
 }
+
+#[test]
+fn an_arc_running_against_its_curve() {
+    // The half cylinder with its top arc drawn clockwise: the edge runs
+    // against its curve.
+    let (r, h) = (2.0, 3.0);
+    let z = v(0.0, 0.0, 1.0);
+    let mut b = BodyBuilder::new();
+    let (a0, b0, a1, b1) = (p(r, 0.0, 0.0), p(-r, 0.0, 0.0), p(r, 0.0, h), p(-r, 0.0, h));
+    let (va0, vb0, va1, vb1) = (b.vertex(a0), b.vertex(b0), b.vertex(a1), b.vertex(b1));
+    let arc = |zc: f64, normal: Vector3| {
+        Curve::Ellipse(EllipseCurve::new(p(0.0, 0.0, zc), normal, v(r, 0.0, 0.0), 1.0).unwrap())
+    };
+    let edge = |b: &mut BodyBuilder, curve, start, end, reversed| {
+        b.edge(Edge {
+            curve: Some(curve),
+            start,
+            end,
+            reversed,
+        })
+    };
+    let low = edge(&mut b, arc(0.0, z), va0, vb0, false);
+    let high = edge(&mut b, arc(h, -z), va1, vb1, true);
+    let right = edge(&mut b, line(a0, a1), va0, va1, false);
+    let left = edge(&mut b, line(b0, b1), vb0, vb1, false);
+    let floor = edge(&mut b, line(a0, b0), va0, vb0, false);
+    let roof = edge(&mut b, line(b1, a1), vb1, va1, false);
+    let side = loop_of(
+        &mut b,
+        &[(low, false), (left, false), (high, true), (right, true)],
+    );
+    let under = loop_of(&mut b, &[(low, true), (floor, false)]);
+    let over = loop_of(&mut b, &[(high, false), (roof, false)]);
+    let back = loop_of(
+        &mut b,
+        &[(floor, true), (right, false), (roof, true), (left, true)],
+    );
+    let surface = Surface::Cone(Cone::new(p(0.0, 0.0, 0.0), z, r, 0.0, 1.0).unwrap());
+    let faces = vec![
+        face(&mut b, surface, vec![side]),
+        face(&mut b, plane(a0, -z), vec![under]),
+        face(&mut b, plane(a1, z), vec![over]),
+        face(&mut b, plane(a0, v(0.0, -1.0, 0.0)), vec![back]),
+    ];
+    let m = measured(&finish(b, vec![faces]));
+    close(m.volume, PI * r * r * h / 2.0, 19.0, 1e-10);
+    same_point(m.centroid, p(0.0, 4.0 * r / (3.0 * PI), h / 2.0), 3.0);
+    close(m.bounds.max().y(), r, 3.0, 1e-9);
+}
+
+/// The torus around z of radii `big` and `small`, above z = 0: its face is
+/// bounded by the outer and inner equators, which wind around the axis.
+fn upper_torus(big: f64, small: f64) -> Body {
+    let z = v(0.0, 0.0, 1.0);
+    let (start, _) = crate::chart::frame(z);
+    let mut b = BodyBuilder::new();
+    let (outer_at, inner_at) = (
+        b.vertex(p(0.0, 0.0, 0.0) + start * (big + small)),
+        b.vertex(p(0.0, 0.0, 0.0) + start * (big - small)),
+    );
+    let outer = closed_edge(&mut b, circle(p(0.0, 0.0, 0.0), z, big + small), outer_at);
+    let inner = closed_edge(&mut b, circle(p(0.0, 0.0, 0.0), z, big - small), inner_at);
+    // The ring below, facing down: clockwise outside, counterclockwise in.
+    let ring = [
+        loop_of(&mut b, &[(outer, true)]),
+        loop_of(&mut b, &[(inner, false)]),
+    ];
+    // The torus above: the outer equator counterclockwise, the inner back.
+    let tube = [
+        loop_of(&mut b, &[(outer, false)]),
+        loop_of(&mut b, &[(inner, true)]),
+    ];
+    let torus = Surface::Torus(Torus::new(p(0.0, 0.0, 0.0), z, big, small).unwrap());
+    let faces = vec![
+        face(&mut b, plane(p(0.0, 0.0, 0.0), -z), ring.to_vec()),
+        face(&mut b, torus, tube.to_vec()),
+    ];
+    finish(b, vec![faces])
+}
+
+#[test]
+fn half_a_torus_either_way_up() {
+    let (big, small) = (3.0, 1.0);
+    let volume = PI * PI * big * small * small;
+    // The half tube's: the ring's width weighs both sides alike.
+    let rise = 4.0 * small / (3.0 * PI);
+    let m = measured(&upper_torus(big, small));
+    close(m.volume, volume, 30.0, 1e-10);
+    close(
+        m.area,
+        2.0 * PI * PI * big * small + PI * ((big + small).powi(2) - (big - small).powi(2)),
+        100.0,
+        1e-10,
+    );
+    same_point(m.centroid, p(0.0, 0.0, rise), 4.0);
+    same_point(m.bounds.max(), p(big + small, big + small, small), 4.0);
+    let flip = Transform3::rotation(v(1.0, 0.0, 0.0), PI).unwrap();
+    let m = measured(&upper_torus(big, small).transformed(flip, 1.0).unwrap());
+    close(m.volume, volume, 30.0, 1e-10);
+    same_point(m.centroid, p(0.0, 0.0, -rise), 4.0);
+    close(m.bounds.min().z(), -small, 4.0, 1e-9);
+}
+
+/// A cone cut short: radius `r0` at z = 0, `r1` at `height`.
+fn frustum(r0: f64, r1: f64, height: f64) -> Body {
+    let z = v(0.0, 0.0, 1.0);
+    let (start, _) = crate::chart::frame(z);
+    let slant = (r0 - r1).hypot(height);
+    let mut b = BodyBuilder::new();
+    let lo = b.vertex(p(0.0, 0.0, 0.0) + start * r0);
+    let hi = b.vertex(p(0.0, 0.0, height) + start * r1);
+    let bottom = closed_edge(&mut b, circle(p(0.0, 0.0, 0.0), z, r0), lo);
+    let top = closed_edge(&mut b, circle(p(0.0, 0.0, height), z, r1), hi);
+    let under = loop_of(&mut b, &[(bottom, true)]);
+    let over = loop_of(&mut b, &[(top, false)]);
+    let low = loop_of(&mut b, &[(bottom, false)]);
+    let high = loop_of(&mut b, &[(top, true)]);
+    let side = Cone::new(p(0.0, 0.0, 0.0), z, r0, (r1 - r0) / slant, height / slant).unwrap();
+    let faces = vec![
+        face(&mut b, plane(p(0.0, 0.0, 0.0), -z), vec![under]),
+        face(&mut b, plane(p(0.0, 0.0, height), z), vec![over]),
+        face(&mut b, Surface::Cone(side), vec![low, high]),
+    ];
+    finish(b, vec![faces])
+}
+
+#[test]
+fn a_frustum() {
+    let (r0, r1, h) = (2.0, 1.0, 1.5);
+    let m = measured(&frustum(r0, r1, h));
+    let volume = PI * h / 3.0 * (r0 * r0 + r0 * r1 + r1 * r1);
+    close(m.volume, volume, 12.0, 1e-10);
+    close(
+        m.area,
+        PI * (r0 + r1) * (r0 - r1).hypot(h) + PI * (r0 * r0 + r1 * r1),
+        30.0,
+        1e-10,
+    );
+    let z = h * (r0 * r0 + 2.0 * r0 * r1 + 3.0 * r1 * r1) / (4.0 * (r0 * r0 + r0 * r1 + r1 * r1));
+    same_point(m.centroid, p(0.0, 0.0, z), 2.0);
+}
+
+#[test]
+fn a_rim_drawn_as_a_spline() {
+    // A cylinder whose bottom rim is a rational spline circle: its
+    // parameter is not the angle, so the rules refine before settling.
+    let (r, h) = (2.0, 3.0);
+    let z = v(0.0, 0.0, 1.0);
+    let w = 0.5f64.sqrt();
+    let ring = [
+        (1.0, 0.0, 1.0),
+        (1.0, 1.0, w),
+        (0.0, 1.0, 1.0),
+        (-1.0, 1.0, w),
+        (-1.0, 0.0, 1.0),
+        (-1.0, -1.0, w),
+        (0.0, -1.0, 1.0),
+        (1.0, -1.0, w),
+        (1.0, 0.0, 1.0),
+    ];
+    let spline = crate::nurbs::NurbsCurve::new(
+        2,
+        vec![0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0, 4.0],
+        ring.iter().map(|&(x, y, _)| p(r * x, r * y, 0.0)).collect(),
+        ring.iter().map(|&(_, _, wt)| wt).collect(),
+    )
+    .unwrap();
+    let mut b = BodyBuilder::new();
+    let lo = b.vertex(p(r, 0.0, 0.0));
+    let hi = b.vertex(p(r, 0.0, h));
+    let bottom = closed_edge(&mut b, Curve::Nurbs(spline), lo);
+    let top = closed_edge(
+        &mut b,
+        Curve::Ellipse(EllipseCurve::new(p(0.0, 0.0, h), z, v(r, 0.0, 0.0), 1.0).unwrap()),
+        hi,
+    );
+    let under = loop_of(&mut b, &[(bottom, true)]);
+    let over = loop_of(&mut b, &[(top, false)]);
+    let low = loop_of(&mut b, &[(bottom, false)]);
+    let high = loop_of(&mut b, &[(top, true)]);
+    let side = Surface::Cone(Cone::new(p(0.0, 0.0, 0.0), z, r, 0.0, 1.0).unwrap());
+    let faces = vec![
+        face(&mut b, plane(p(0.0, 0.0, 0.0), -z), vec![under]),
+        face(&mut b, plane(p(0.0, 0.0, h), z), vec![over]),
+        face(&mut b, side, vec![low, high]),
+    ];
+    let m = measured(&finish(b, vec![faces]));
+    close(m.volume, PI * r * r * h, 40.0, 1e-10);
+    close(m.area, 2.0 * PI * r * (h + r), 65.0, 1e-10);
+    same_point(m.centroid, p(0.0, 0.0, h / 2.0), 3.0);
+}
+
+#[test]
+fn the_bounds_follow_what_a_cut_leaves() {
+    // Cut by x = x0, a ball keeps its poles only when x0 is past them.
+    let r = 2.0;
+    for x0 in [-1.6, -0.8, 0.3, 1.1, 1.7] {
+        let m = measured(&cut_ball(r, x0));
+        let top = if x0 >= 0.0 {
+            r
+        } else {
+            (r * r - x0 * x0).sqrt()
+        };
+        close(m.bounds.max().z(), top, 2.0, 1e-9);
+        close(m.bounds.min().z(), -top, 2.0, 1e-9);
+        close(m.bounds.min().x(), -r, 2.0, 1e-9);
+        close(m.bounds.max().x(), x0, 2.0, 1e-9);
+    }
+}
+
+/// The piece of a torus around z between the angles `from` and `to`
+/// around the axis, closed by its two round sections: the torus face's
+/// loops wind around the tube.
+fn torus_piece(big: f64, small: f64, from: f64, to: f64) -> Body {
+    let z = v(0.0, 0.0, 1.0);
+    let (e1, e2) = crate::chart::frame(z);
+    let dir = |u: f64| e1 * u.cos() + e2 * u.sin();
+    let turn = |u: f64| e2 * u.cos() - e1 * u.sin();
+    let mut b = BodyBuilder::new();
+    let origin = p(0.0, 0.0, 0.0);
+    let section = |b: &mut BodyBuilder, u: f64| {
+        let center = origin + dir(u) * big;
+        let at = b.vertex(center + dir(u) * small);
+        let curve = EllipseCurve::new(center, turn(u), dir(u) * small, 1.0).unwrap();
+        (closed_edge(b, Curve::Ellipse(curve), at), center)
+    };
+    let (start, start_center) = section(&mut b, from);
+    let (end, end_center) = section(&mut b, to);
+    // The end section faces on around the axis, the start one back.
+    let end_disk = loop_of(&mut b, &[(end, false)]);
+    let start_disk = loop_of(&mut b, &[(start, true)]);
+    let tube = [
+        loop_of(&mut b, &[(end, true)]),
+        loop_of(&mut b, &[(start, false)]),
+    ];
+    let torus = Surface::Torus(Torus::new(origin, z, big, small).unwrap());
+    let faces = vec![
+        face(&mut b, plane(end_center, turn(to)), vec![end_disk]),
+        face(&mut b, plane(start_center, -turn(from)), vec![start_disk]),
+        face(&mut b, torus, tube.to_vec()),
+    ];
+    finish(b, vec![faces])
+}
+
+#[test]
+fn pieces_of_a_torus_small_and_large() {
+    let (big, small) = (3.0, 1.0);
+    for (from, to) in [(0.3, 0.3 + PI / 2.0), (0.3, 0.3 + 1.5 * PI), (-2.0, 2.5)] {
+        let share = (to - from) / (2.0 * PI);
+        let m = measured(&torus_piece(big, small, from, to));
+        close(
+            m.volume,
+            share * 2.0 * PI * PI * big * small * small,
+            60.0,
+            1e-10,
+        );
+        let area = share * 4.0 * PI * PI * big * small + 2.0 * PI * small * small;
+        close(m.area, area, 120.0, 1e-10);
+    }
+}

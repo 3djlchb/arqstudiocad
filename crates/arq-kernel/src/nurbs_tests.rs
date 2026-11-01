@@ -192,3 +192,66 @@ fn nurbs_move_with_their_control_points() {
     ));
     assert_eq!(moved.weights(), quarter().weights());
 }
+
+/// The derivative by central differences, for comparison.
+fn numeric(f: impl Fn(f64) -> Point3, t: f64) -> Vector3 {
+    let h = 1e-5;
+    (f(t + h) - f(t - h)) / (2.0 * h)
+}
+
+#[test]
+fn a_curves_derivative_is_exact() {
+    let q = quarter();
+    for t in [0.1, 0.37, 0.5, 0.9] {
+        let d = q.derivative_at(t);
+        assert!(
+            (d - numeric(|s| q.point_at(s), t)).length() < 1e-8,
+            "at {t}"
+        );
+        // On the circle, the tangent is perpendicular to the radius.
+        assert!(d.dot(q.point_at(t).to_vector()).abs() < 1e-12, "at {t}");
+    }
+    // Degree one: each span's direction, scaled by its parameter length.
+    let polyline = NurbsCurve::new(
+        1,
+        vec![0.0, 0.0, 2.0, 3.0, 3.0],
+        vec![p(0.0, 0.0, 0.0), p(4.0, 0.0, 0.0), p(4.0, 3.0, 0.0)],
+        vec![1.0; 3],
+    )
+    .unwrap();
+    assert!((polyline.derivative_at(1.0) - Vector3::new(2.0, 0.0, 0.0).unwrap()).length() < 1e-12);
+    assert!((polyline.derivative_at(2.5) - Vector3::new(0.0, 3.0, 0.0).unwrap()).length() < 1e-12);
+}
+
+#[test]
+fn a_surfaces_derivatives_are_exact() {
+    // The quarter circle swept up z, rational in u, linear in v.
+    let w = FRAC_1_SQRT_2;
+    let surface = NurbsSurface::new(
+        2,
+        1,
+        vec![0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        vec![0.0, 0.0, 1.0, 1.0],
+        3,
+        2,
+        vec![
+            p(1.0, 0.0, 0.0),
+            p(1.0, 0.0, 2.0),
+            p(1.0, 1.0, 0.0),
+            p(1.0, 1.0, 2.0),
+            p(0.0, 1.0, 0.0),
+            p(0.0, 1.0, 2.0),
+        ],
+        vec![1.0, 1.0, w, w, 1.0, 1.0],
+    )
+    .unwrap();
+    for (u, v) in [(0.2, 0.3), (0.5, 0.5), (0.85, 0.1)] {
+        let (su, sv) = surface.derivatives(u, v);
+        assert!((su - numeric(|s| surface.point_at(s, v), u)).length() < 1e-8);
+        assert!((sv - numeric(|s| surface.point_at(u, s), v)).length() < 1e-8);
+        assert!(
+            (sv - Vector3::new(0.0, 0.0, 2.0).unwrap()).length() < 1e-12,
+            "straight up"
+        );
+    }
+}

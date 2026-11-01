@@ -151,6 +151,9 @@ part of this ADR.
     its power. The inner integrals are exact for planes, cones, spheres
     and tori; an elliptic section's settles on its own; a spline's is
     refined with the loops.
+  - NURBS curves and surfaces now give their derivatives exactly, from
+    their homogeneous form; the central differences they used before
+    carried rounding noise of `1e-9`, above what the rules settle to.
   - A closed body's outward vector area is nothing: one that is not
     (within `1e-6` of its area) is refused as not closed, as sheets are.
   - The bounds are the edges' (exact for lines and arcs, sampled for
@@ -159,9 +162,11 @@ part of this ADR.
     the isolines use; a spline face's own bulge is not sought yet.
   - **Checked:** solids built by hand with closed-form answers (a box,
     cylinders whole and halved, a cone to its apex, a sphere whole, as a
-    hemisphere either way up and cut off its axis, a torus, an elliptic
-    cylinder, a box with a spherical void, a box topped by a trimmed
-    NURBS patch) to `1e-10`; every 3DSOLID of LibreDWG's drawings (59)
+    hemisphere either way up and cut off its axis, a torus whole, halved
+    either way up and in pieces whose loops wind round the tube, a
+    frustum, an elliptic cylinder, a box with a spherical void, a box
+    topped by a trimmed NURBS patch, a cylinder with a spline rim, an arc
+    running against its curve) to `1e-10`; every 3DSOLID of LibreDWG's drawings (59)
     measures, and measures the same moved far away (to `2e-13`); the
     open sheets are refused. The maintainer's MASSPROP results on some of
     them are to be the reference values.

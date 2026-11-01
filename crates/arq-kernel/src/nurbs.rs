@@ -75,6 +75,16 @@ impl NurbsCurve {
         project(h)
     }
 
+    /// The curve's derivative at `t`, clamped to the domain: exact, from
+    /// the derivative of its homogeneous form.
+    pub(crate) fn derivative_at(&self, t: f64) -> Vector3 {
+        let point = |i: usize| homogeneous(self.points[i], self.weights[i]);
+        let count = self.points.len();
+        let a = de_boor(self.degree, &self.knots, count, t, point);
+        let da = de_boor_derivative(self.degree, &self.knots, count, t, point);
+        rational_derivative(a, da)
+    }
+
     /// The shortest distance from `p` to the curve, within its domain.
     pub fn distance(&self, p: Point3) -> f64 {
         self.point_at(self.closest_parameter(p)).distance_to(p)
@@ -285,16 +295,28 @@ impl NurbsSurface {
         )
     }
 
-    /// The partial derivatives at `(u, v)`, by central differences inside
-    /// the domain.
+    /// The partial derivatives at `(u, v)`, clamped to the domain: exact,
+    /// from the derivatives of the homogeneous form.
     pub(crate) fn derivatives(&self, u: f64, v: f64) -> (Vector3, Vector3) {
-        let ((u0, u1), (v0, v1)) = self.domain();
-        let (hu, hv) = ((u1 - u0) * 1e-7, (v1 - v0) * 1e-7);
-        let (ua, ub) = ((u - hu).max(u0), (u + hu).min(u1));
-        let (va, vb) = ((v - hv).max(v0), (v + hv).min(v1));
-        let su = (self.point_at(ub, v) - self.point_at(ua, v)) / (ub - ua).max(f64::MIN_POSITIVE);
-        let sv = (self.point_at(u, vb) - self.point_at(u, va)) / (vb - va).max(f64::MIN_POSITIVE);
-        (su, sv)
+        // Each row's curve at v, and its derivative in v.
+        let row = |i: usize, j: usize| {
+            let k = i * self.count_v + j;
+            homogeneous(self.points[k], self.weights[k])
+        };
+        let rows: Vec<[f64; 4]> = (0..self.count_u)
+            .map(|i| de_boor(self.degree_v, &self.knots_v, self.count_v, v, |j| row(i, j)))
+            .collect();
+        let rows_dv: Vec<[f64; 4]> = (0..self.count_u)
+            .map(|i| {
+                de_boor_derivative(self.degree_v, &self.knots_v, self.count_v, v, |j| row(i, j))
+            })
+            .collect();
+        let a = de_boor(self.degree_u, &self.knots_u, self.count_u, u, |i| rows[i]);
+        let a_u = de_boor_derivative(self.degree_u, &self.knots_u, self.count_u, u, |i| rows[i]);
+        let a_v = de_boor(self.degree_u, &self.knots_u, self.count_u, u, |i| {
+            rows_dv[i]
+        });
+        (rational_derivative(a, a_u), rational_derivative(a, a_v))
     }
 
     /// The surface moved by `t`.
@@ -356,6 +378,63 @@ fn homogeneous(p: Point3, w: f64) -> [f64; 4] {
 fn project(h: [f64; 4]) -> Point3 {
     Point3::new(h[0] / h[3], h[1] / h[3], h[2] / h[3])
         .expect("positive weights keep the point finite")
+}
+
+/// The derivative of the projected point of homogeneous `a`, `a'` its
+/// derivative: `(a'xyz − a'w · p) / aw`.
+fn rational_derivative(a: [f64; 4], da: [f64; 4]) -> Vector3 {
+    let w = a[3];
+    let p = [a[0] / w, a[1] / w, a[2] / w];
+    Vector3::new(
+        (da[0] - da[3] * p[0]) / w,
+        (da[1] - da[3] * p[1]) / w,
+        (da[2] - da[3] * p[2]) / w,
+    )
+    .expect("positive weights keep the derivative finite")
+}
+
+/// The derivative at `t` (clamped to the domain) of the B-spline with these
+/// knots and `count` control points: the B-spline of degree one less whose
+/// control points are the scaled differences of these.
+fn de_boor_derivative(
+    degree: usize,
+    knots: &[f64],
+    count: usize,
+    t: f64,
+    point: impl Fn(usize) -> [f64; 4],
+) -> [f64; 4] {
+    let (a, b) = domain(degree, knots, count);
+    let t = t.clamp(a, b);
+    let difference = |i: usize| {
+        let span = knots[i + degree + 1] - knots[i + 1];
+        let (p, q) = (point(i), point(i + 1));
+        if span > 0.0 {
+            let f = degree as f64 / span;
+            [
+                (q[0] - p[0]) * f,
+                (q[1] - p[1]) * f,
+                (q[2] - p[2]) * f,
+                (q[3] - p[3]) * f,
+            ]
+        } else {
+            [0.0; 4]
+        }
+    };
+    if degree == 1 {
+        // A constant on each span: the difference of the span's points.
+        let mut k = degree;
+        while k + 1 < count && knots[k + 1] <= t {
+            k += 1;
+        }
+        return difference(k - 1);
+    }
+    de_boor(
+        degree - 1,
+        &knots[1..knots.len() - 1],
+        count - 1,
+        t,
+        difference,
+    )
 }
 
 /// De Boor's algorithm: the homogeneous point at `t` (clamped to the
