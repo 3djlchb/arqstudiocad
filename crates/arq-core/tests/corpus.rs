@@ -49,51 +49,14 @@ fn observe(doc: &Document) -> Observed {
     }
 }
 
-/// These two R2000 fixtures carry a later TABLESTYLE and its companion map.
-/// DWG R2000 drops the style while retaining the map: safe saving must refuse,
-/// even if the caller accepts inventory losses. Never count this as a save.
-fn table_style_refusal(doc: &Document, path: &Path) -> Result<(), String> {
-    const REASON: &str = "Table style Standard companion conversion changed data or links";
-    std::fs::write(path, b"previous drawing").map_err(|e| e.to_string())?;
-    let kept = match doc.save_accepting(path, |_| true) {
-        Err(arq_document::DocumentError::NotVerified {
-            differences,
-            kept: Some(kept),
-            ..
-        }) if differences == [REASON] => kept,
-        result => return Err(format!("expected table-style refusal, got {result:?}")),
-    };
-    if std::fs::read(path).map_err(|e| e.to_string())? != b"previous drawing" {
-        return Err("refused save changed the destination".to_owned());
-    }
-    let back = Document::open(kept).map_err(|e| e.to_string())?;
-    if back.recovery().is_some()
-        || back.undecoded_objects() != doc.undecoded_objects()
-        || !doc
-            .losses_in(&back)
-            .iter()
-            .any(|loss| loss.kind() == "object TABLESTYLE")
-        || doc.validate_roundtrip(&back) != [REASON]
-    {
-        return Err("the refusal must identify an actual missing table style".to_owned());
-    }
-    println!("verified refusal: R2000 TABLESTYLE loss; destination unchanged");
-    Ok(())
-}
-
 /// Saves a copy of `cad` as `<stem>.<ext>` and reads it back.
 fn save_and_reopen(
     cad: &CadDocument,
     dir: &Path,
     stem: &str,
     ext: &str,
-    expect_table_style_refusal: bool,
 ) -> Result<Vec<String>, String> {
     let path = dir.join(format!("{stem}.{ext}"));
-    if expect_table_style_refusal && ext == "dwg" {
-        table_style_refusal(cad.document(), &path)?;
-        return Ok(Vec::new());
-    }
     // Losses of what the platform does not show (a format or version that
     // cannot keep some objects) stop a save until the user accepts them
     // (ADR 0017 D5.3); here they are accepted, as the user could, and
@@ -187,12 +150,12 @@ fn edit(cad: &mut CadDocument) -> Result<(), String> {
 }
 
 /// The whole check for one drawing; returns the problems found.
-fn round_trip(mut cad: CadDocument, dir: &Path, expect_table_style_refusal: bool) -> Vec<String> {
+fn round_trip(mut cad: CadDocument, dir: &Path) -> Vec<String> {
     let mut problems = Vec::new();
     let version = cad.document().version_code();
     let mut check_files = |cad: &CadDocument, stem: &str| {
         for ext in formats(&version) {
-            match save_and_reopen(cad, dir, stem, ext, expect_table_style_refusal) {
+            match save_and_reopen(cad, dir, stem, ext) {
                 Ok(differences) => problems.extend(
                     differences
                         .into_iter()
@@ -269,14 +232,6 @@ fn panic_message(panic: &Box<dyn std::any::Any + Send>) -> String {
 }
 
 fn check_file(path: PathBuf, dir: &Path) -> Result<String, Vec<String>> {
-    check_file_with_expectation(path, dir, false)
-}
-
-fn check_file_with_expectation(
-    path: PathBuf,
-    dir: &Path,
-    expect_table_style_refusal: bool,
-) -> Result<String, Vec<String>> {
     let cad = CadDocument::open(&path).map_err(|e| vec![format!("open: {e}")])?;
     let doc = cad.document();
     // The corpus holds intact drawings: none may read as damaged (ADR 0017 D5.1).
@@ -306,7 +261,7 @@ fn check_file_with_expectation(
     );
     let mut problems = drawing_problems;
     problems.extend(whole_transform_problems(&path));
-    problems.extend(round_trip(cad, dir, expect_table_style_refusal));
+    problems.extend(round_trip(cad, dir));
     if problems.is_empty() {
         Ok(summary)
     } else {
@@ -541,7 +496,7 @@ fn generated_drawings_round_trip_in_every_version() {
         if found != version {
             return Err(vec![format!("asked for {version}, got {found}")]);
         }
-        let problems = round_trip(cad, dir, false);
+        let problems = round_trip(cad, dir);
         if problems.is_empty() {
             Ok(String::new())
         } else {
@@ -609,12 +564,6 @@ fn codec_regression_constraints_read() {
         }
         // R14 and 2000 cannot hold the multileader styles the file carries.
         let saved = dir.path().join("saved.dwg");
-        if version == "2000" {
-            if let Err(e) = table_style_refusal(&doc, &saved) {
-                problems.push(format!("{name}: {e}"));
-            }
-            continue;
-        }
         if let Err(e) = doc.save_accepting(&saved, |l| l.kind() == "object MULTILEADERSTYLE") {
             problems.push(format!("{name}: {e}"));
             continue;
@@ -686,12 +635,7 @@ fn codec_regression_fork_fixes() {
         .filter(|(_, path)| path.file_name().is_some_and(|n| n != "Constraints.dwg"))
         .collect::<Vec<_>>();
     assert_eq!(others.len(), 7, "the seven drawings");
-    run_all(others, |path, dir| {
-        let expected_refusal = path
-            .file_name()
-            .is_some_and(|name| name == "example_2000.dwg");
-        check_file_with_expectation(path, dir, expected_refusal)
-    });
+    run_all(others, check_file);
 }
 
 /// Solids read into our own B-rep (ADR 0024, step "read", analytic and

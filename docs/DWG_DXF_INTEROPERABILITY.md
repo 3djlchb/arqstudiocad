@@ -374,3 +374,20 @@ corpus groups and seven optional document tests. The repeated integrated matrix
 retains 34 clean reads, 58 verified saves, eight blocked losses and the same two
 R2000 TABLESTYLE-owner refusals, with zero changed rows. Product adoption awaits
 PR review and merge; 03.4/03.5 remain open.
+
+### Same-version R2000 table-style follow-up
+
+The [R2000 preservation correction](testing/r2000-table-style-preservation.md),
+fork `bd369d9`, retains TABLESTYLE and its dictionary when rewriting existing
+class-bearing AC1015 drawings. The two known semantic save errors were caused
+by treating these rewrites as down-version conversions. Product verification
+and loss allowances are unchanged. Both native styles match 90 measured DXF
+pairs and their observed identities in ProgeCAD; codec and product checks
+separately prove complete companion ownership. The 940-job paired corpus has
+no success-state regressions; changed summaries only retain the intended style
+and dictionary. Genuine downgrades and unsupported multileader styles remain
+separate limits. Published Git-pin product acceptance passes: 488 Rust and 808 Python tests,
+six external core corpus groups and eight optional document tests. The same
+34-drawing matrix now has 59 verified saves, nine declared-loss blocks and no
+semantic save errors, changing only the two R2000 DWG rows. Product adoption
+awaits PR review and merge; 03.4/03.5 remain open.
