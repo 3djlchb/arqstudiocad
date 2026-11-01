@@ -251,6 +251,33 @@ script loading, errors, execution limits, cancellation, permissions and
 trust, transaction boundaries, event delivery and platform support. Every
 new runtime or dependency must pass section 16's technology review.
 
+**Portability acceptance criterion for both languages:** the language core
+and common CAD API must work on every supported application platform and
+architecture: Windows x86-64/ARM64, macOS Intel/Apple Silicon (universal2
+packaging), and Linux x86-64, with Linux ARM64 subject to the existing
+feasibility condition in [ADR 0003](architecture/adr/0003-target-platforms.md).
+A routine using only the declared portable subset must have equivalent
+observable results, within the API's documented numeric tolerances, on all
+supported targets. Runtime and dependency selection must support those
+targets; native dependencies must be built and bundled for each applicable
+architecture, without assuming x86 instruction sets or pointer sizes.
+
+Platform-specific extensions are separate optional capabilities, not
+requirements of the common language/CAD API. In particular, Windows
+COM/ActiveX, OCX controls, Windows API calls and platform-specific DLLs must
+not become dependencies of the portable subset. Scripts must be able to
+query capability availability; unsupported calls must produce clear
+diagnostics before the affected operation mutates the document, preserving
+the existing transaction rules. Document each extension's platform limits.
+
+Before claiming support, run the same portable routine regressions on the
+supported OS/architecture matrix, test both available and unavailable
+extension paths, and verify the packaged interpreter and native libraries
+on each target. Extend CI where coverage is missing and record untested
+targets explicitly. Existing application build jobs alone do not establish
+language compatibility or successful runtime packaging. ArqBasic's
+feasibility decision must include this same portability criterion.
+
 Future implementation code follows GPL-3.0-or-later; these planning documents
 remain CC BY-SA 4.0. Use original code or appropriately licensed compatible
 components, with provenance recorded in THIRD_PARTY.md. This plan does not
