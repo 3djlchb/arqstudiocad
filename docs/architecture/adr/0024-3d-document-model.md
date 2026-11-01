@@ -179,8 +179,9 @@ part of this ADR.
     `π · 7350 = 23090.7060` is met here to `1e-10`.
   - **Precision (maintainer, 2026-11-01):** the application keeps its own
     precision, the highest it reaches, in every measure it shows and
-    keeps. Only when importing from ProgeCAD or exporting to it are its
-    values compared, or written, at ProgeCAD's precision.
+    keeps. Only when importing from ProgeCAD or AutoCAD, or exporting to
+    them, are values compared, or written, at that application's
+    precision.
   - The kernel and `arq-geometry` are built optimized in development
     profiles too: the corpus test took minutes otherwise.
 
