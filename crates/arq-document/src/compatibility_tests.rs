@@ -47,20 +47,14 @@ fn legacy_multileaderstyle_refusals_exceed_the_default_allowance() {
         std::fs::write(&target, b"original").unwrap();
         let result = doc.save(&target);
         if version == "2000" {
-            // Verification runs before count-loss prompting: this file also
-            // loses the TABLESTYLE owner of its retained companion map.
             assert!(
-                doc.losses_in(&back)
+                !doc.losses_in(&back)
                     .iter()
-                    .any(|l| l.kind() == "object TABLESTYLE")
+                    .any(|loss| loss.kind() == "object TABLESTYLE")
             );
-            assert!(
-                matches!(result, Err(DocumentError::NotVerified { differences, .. })
-                if differences == ["Table style Standard companion conversion changed data or links"])
-            );
-        } else {
-            assert!(matches!(result, Err(DocumentError::Lossy { .. })));
         }
+        assert!(doc.validate_roundtrip(&back).is_empty());
+        assert!(matches!(result, Err(DocumentError::Lossy { .. })));
         assert_eq!(std::fs::read(target).unwrap(), b"original");
     }
 }

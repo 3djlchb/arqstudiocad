@@ -208,3 +208,35 @@ fn legacy_style_loss_is_refused_even_when_count_losses_are_accepted() {
     ));
     assert_eq!(fs::read(destination).unwrap(), b"previous drawing");
 }
+
+#[test]
+#[ignore = "needs tools/fetch_codec_samples.py"]
+fn existing_r2000_style_graph_survives_verified_saving() {
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    let scratch = tempfile::tempdir().unwrap();
+    for relative in ["example_2000.dwg", "2000/Constraints.dwg"] {
+        let source = Document::open(root.join(relative)).unwrap();
+        let destination = scratch.path().join(relative.replace('/', "-"));
+        std::fs::write(&destination, b"previous drawing").unwrap();
+        // The corpus already permits other declared inventory losses. It must
+        // still prove the complete style graph independently before saving.
+        source.save_accepting(&destination, |_| true).unwrap();
+        let written = Document::open(&destination).unwrap();
+        assert!(written.recovery().is_none());
+        assert!(source.validate_roundtrip(&written).is_empty());
+        assert!(
+            !source
+                .losses_in(&written)
+                .iter()
+                .any(|loss| loss.kind() == "object TABLESTYLE")
+        );
+        assert!(
+            written
+                .cad()
+                .objects
+                .values()
+                .any(|object| matches!(object, ObjectType::TableStyle(_)))
+        );
+    }
+}
