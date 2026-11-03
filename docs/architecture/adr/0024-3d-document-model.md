@@ -222,6 +222,19 @@ part of this ADR.
   - **Later:** moments of inertia, and writing the report to a file
     (AutoCAD's `.mpr`), in AutoCAD's and ProgeCAD's precision, since it
     is written for them (maintainer, 2026-11-03).
+- **Step 4, create, the plan (maintainer, 2026-11-03):**
+  - **Built by us:** a new solid is built in our B-rep, and our own
+    writer turns the B-rep into ACIS records, which AcadRust serializes
+    as SAT or SAB for the drawing's version (D2). AcadRust's own
+    primitives serve only as references in the tests, and each new kind
+    of solid is opened and measured in ProgeCAD before it is relied on.
+  - **Seen first:** wireframe views from AutoCAD's preset directions
+    come before the first solid is created ([ADR 0030](0030-wireframe-views.md)),
+    so a new solid is seen in 3D before the GPU viewport.
+  - **Order, one pull request each:** (4a) the ACIS writer and BOX
+    (Spanish PRISMARECT), checked both ways in ProgeCAD; (4b) CYLINDER,
+    CONE, SPHERE, TORUS and WEDGE; (4c) EXTRUDE; (4d) REVOLVE. Their
+    prompts follow AutoCAD's, and they go in the 3D tab's Modeling group.
 
 ## Consequences
 
