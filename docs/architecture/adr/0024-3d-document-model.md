@@ -184,6 +184,30 @@ part of this ADR.
     precision.
   - The kernel and `arq-geometry` are built optimized in development
     profiles too: the corpus test took minutes otherwise.
+- **Step 3, measure, the document and the Python API (2026-11-03):**
+  `Document::measure_solids` measures a selection together, as MASSPROP
+  reports it: volumes and areas added, the centroid weighted by volume,
+  the bounds joined.
+  - **Block references hold what they measure (maintainer, 2026-11-01):**
+    a reference counts the solids inside its block, nested blocks too,
+    placed where each copy puts them (a MINSERT's rows and columns
+    each), beyond AutoCAD, whose MASSPROP takes no block reference. One
+    scaled unevenly along its axes is refused (a sphere would become an
+    ellipsoid); a mirrored one is measured as its mirror image.
+  - **Mirrors:** `Body::transformed` now takes a mirror. The loops turn
+    the other way round their faces, a NURBS face's own normal is turned
+    against its image's outside, and an arc's normal turns over so each
+    parameter's point maps to its image; every solid of the kernel's
+    tests measures the same mirrored, with its centroid and bounds
+    mirrored.
+  - **What is refused, and why:** no solid; an ACIS body not read yet;
+    faces that do not close (sheets, regions) or cannot be integrated
+    yet; an uneven scale. Each refusal names the chosen entity, so the
+    command line can say which.
+  - **Python:** `CadDocument.measure_solids(ids)` gives a
+    `CadSolidMeasures` (the total as `CadMassProperties`, the count, the
+    refusals as `(id, why, detail)` with `why` a stable name for the
+    interface to translate), measured with the GIL released.
 
 ## Consequences
 

@@ -41,6 +41,14 @@ impl Transform3 {
         }
     }
 
+    /// The determinant of the linear part: negative when the map mirrors.
+    pub fn determinant(self) -> f64 {
+        let m = self.linear;
+        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    }
+
     /// Moves points by `offset` (translations do not affect vectors).
     pub fn translation(offset: Vector3) -> Self {
         Self {

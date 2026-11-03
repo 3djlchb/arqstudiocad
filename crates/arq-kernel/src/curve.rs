@@ -132,11 +132,18 @@ impl EllipseCurve {
         self.ratio
     }
 
-    /// The ellipse moved by `t`, a rigid motion with uniform scale.
+    /// The ellipse moved by `t`, a rigid motion with uniform scale, each
+    /// parameter's point carried to its image: a mirror turns the normal
+    /// over, since it turns the minor axis (`normal × major`) the other way.
     pub fn transformed(&self, t: Transform3) -> GeometryResult<Self> {
+        let normal = t.apply_vector(self.normal);
         Self::new(
             t.apply_point(self.center),
-            t.apply_vector(self.normal),
+            if t.determinant() < 0.0 {
+                -normal
+            } else {
+                normal
+            },
             t.apply_vector(self.major),
             self.ratio,
         )
