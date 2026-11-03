@@ -3,8 +3,11 @@
 //! query ran; later edits never change them. `CadBlockData` and
 //! `CadCurrency` are values too, made in Python to be written (ADR 0027).
 
-use arq_core::{BlockData, BlockInfo, Currency, Entity, Layer, TextData};
-use arq_geometry::Geometry2;
+use arq_core::{
+    BlockData, BlockInfo, Currency, Entity, EntityId, Layer, MassProperties, MeasureError,
+    SolidMeasures, TextData, Unmeasured,
+};
+use arq_geometry::{Geometry2, Point3};
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
@@ -528,7 +531,112 @@ impl CadCurrency {
     }
 }
 
+/// A solid's mass properties, or a selection's together (ADR 0024 step 3):
+/// volume, surface area, centroid and bounds, in model units.
+#[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, PartialEq)]
+pub struct CadMassProperties(pub MassProperties);
+
+#[pymethods]
+impl CadMassProperties {
+    /// The volume enclosed.
+    #[getter]
+    fn volume(&self) -> f64 {
+        self.0.volume
+    }
+
+    /// The area of the faces.
+    #[getter]
+    fn area(&self) -> f64 {
+        self.0.area
+    }
+
+    /// The center of the volume, `(x, y, z)`.
+    #[getter]
+    fn centroid(&self) -> (f64, f64, f64) {
+        xyz(self.0.centroid)
+    }
+
+    /// The smallest box around it, along the axes: its lowest and highest
+    /// corners.
+    #[getter]
+    fn bounds(&self) -> ((f64, f64, f64), (f64, f64, f64)) {
+        (xyz(self.0.bounds.min()), xyz(self.0.bounds.max()))
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadMassProperties(volume={:?}, area={:?})",
+            self.0.volume, self.0.area
+        )
+    }
+}
+
+fn xyz(p: Point3) -> (f64, f64, f64) {
+    (p.x(), p.y(), p.z())
+}
+
+/// What MASSPROP reports of a selection: the solids measured together, how
+/// many, and the entities refused, with why.
+#[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, PartialEq)]
+pub struct CadSolidMeasures(pub SolidMeasures);
+
+#[pymethods]
+impl CadSolidMeasures {
+    /// The solids measured together; None when none was.
+    #[getter]
+    fn total(&self) -> Option<CadMassProperties> {
+        self.0.total.map(CadMassProperties)
+    }
+
+    /// How many solids were measured, a block reference's counted once per
+    /// copy it places.
+    #[getter]
+    fn solids(&self) -> usize {
+        self.0.solids
+    }
+
+    /// The entities refused, each as `(id, why, detail)`: `why` is one of
+    /// `"not_a_solid"`, `"untranslated"`, `"not_closed"`, `"unsupported"`,
+    /// `"not_converged"`, `"uneven_scale"`, `"empty"`; `detail` says more,
+    /// in English.
+    #[getter]
+    fn refused(&self) -> Vec<(EntityId, &'static str, String)> {
+        self.0
+            .refused
+            .iter()
+            .map(|(id, why)| (*id, refusal(why), why.to_string()))
+            .collect()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadSolidMeasures(solids={}, refused={})",
+            self.0.solids,
+            self.0.refused.len()
+        )
+    }
+}
+
+/// The stable name of why a solid was not measured.
+fn refusal(why: &Unmeasured) -> &'static str {
+    match why {
+        Unmeasured::NotASolid => "not_a_solid",
+        Unmeasured::Untranslated(_) => "untranslated",
+        Unmeasured::UnevenScale => "uneven_scale",
+        Unmeasured::Measure(e) => match e {
+            MeasureError::Empty => "empty",
+            MeasureError::NotClosed { .. } => "not_closed",
+            MeasureError::Unsupported { .. } => "unsupported",
+            MeasureError::NotConverged { .. } => "not_converged",
+        },
+    }
+}
+
 pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<CadMassProperties>()?;
+    m.add_class::<CadSolidMeasures>()?;
     m.add_class::<CadBlockData>()?;
     m.add_class::<CadCurrency>()?;
     m.add_class::<CadEntityInfo>()?;

@@ -26,7 +26,9 @@ use pyo3::prelude::*;
 
 use crate::changes::{CadChangeSet, CadGroup};
 use crate::errors::IntoPy;
-use crate::info::{CadBlockData, CadBlockInfo, CadCurrency, CadEntityInfo, CadLayerInfo};
+use crate::info::{
+    CadBlockData, CadBlockInfo, CadCurrency, CadEntityInfo, CadLayerInfo, CadSolidMeasures,
+};
 use crate::values::{
     CadArc, CadBounds2, CadCircle, CadColor, CadGrip, CadLine, CadSnap, PyPoint, PyVector,
     snap_kinds,
@@ -563,6 +565,27 @@ impl CadDocument {
                 .map_err(arq_core::CadError::from)
         })?
         .py()
+    }
+
+    /// The solids among `entity_ids`, and those inside the block references
+    /// among them, measured together (MASSPROP, ADR 0024 step 3). Other
+    /// Python threads keep running while they are measured.
+    fn measure_solids(
+        &self,
+        py: Python<'_>,
+        entity_ids: Vec<EntityId>,
+    ) -> PyResult<CadSolidMeasures> {
+        let (store, id) = (Arc::clone(&self.store), self.id);
+        py.detach(move || {
+            store.read(id, |cad| {
+                cad.document()
+                    .measure_solids(&entity_ids)
+                    .map_err(arq_core::CadError::from)
+            })
+        })
+        .py()?
+        .py()
+        .map(CadSolidMeasures)
     }
 
     /// The blocks INSERT can place that nothing references, dynamic ones

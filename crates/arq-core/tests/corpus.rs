@@ -730,6 +730,61 @@ fn codec_solids_are_measured() {
     }
 }
 
+/// Solids measured through the document (MASSPROP's selection): every
+/// 3DSOLID of a drawing at once, as their own measures add up; regions
+/// refused, as open sheets.
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_solids_measured_together() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    let doc = Document::open(root.join("2007/ATMOS-DC22S.dwg")).expect("ATMOS");
+    let solids: Vec<EntityId> = doc
+        .entities()
+        .iter()
+        .filter(|e| e.kind() == "3DSOLID")
+        .map(Entity::id)
+        .collect();
+    let together = doc.measure_solids(&solids).expect("ids of the drawing");
+    assert_eq!((together.solids, together.refused.len()), (58, 0));
+    let total = together.total.expect("measured");
+    let (mut volume, mut area, mut moment) = (0.0, 0.0, 0.0);
+    for &id in &solids {
+        let one = doc
+            .measure_solids(&[id])
+            .expect("an id")
+            .total
+            .expect("measured");
+        volume += one.volume;
+        area += one.area;
+        moment += one.volume * one.centroid.z();
+    }
+    assert!((total.volume - volume).abs() < 1e-12 * volume);
+    assert!((total.area - area).abs() < 1e-12 * area);
+    assert!((total.centroid.z() - moment / volume).abs() < 1e-9 * total.bounds.size().length());
+
+    let doc = Document::open(root.join("example_2000.dwg")).expect("example");
+    let regions: Vec<EntityId> = doc
+        .entities()
+        .iter()
+        .filter(|e| e.kind() == "REGION")
+        .map(Entity::id)
+        .collect();
+    let refused = doc.measure_solids(&regions).expect("ids of the drawing");
+    assert_eq!(refused.solids, 0);
+    assert!(refused.total.is_none());
+    assert_eq!(refused.refused.len(), 2);
+    for (id, why) in &refused.refused {
+        assert!(regions.contains(id));
+        assert!(
+            matches!(
+                why,
+                arq_core::Unmeasured::Measure(arq_core::MeasureError::NotClosed { .. })
+            ),
+            "{why}"
+        );
+    }
+}
+
 /// One solid as another CAD application measured it: volume, centroid,
 /// bounds' corners.
 struct Reference {

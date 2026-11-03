@@ -444,9 +444,9 @@ fn half_a_cylinder() {
     same_point(m.bounds.max(), p(r, r, h), 3.0);
 }
 
-#[test]
-fn a_nurbs_face_trimmed_by_its_loop() {
-    // A box whose top lies on a bilinear NURBS patch wider than the face.
+/// A 2 × 3 × 4 box whose top lies on a bilinear NURBS patch wider than
+/// the face.
+fn nurbs_topped_box() -> Body {
     let mut b = BodyBuilder::new();
     let (points, faces) = box_parts(p(0.0, 0.0, 0.0), 2.0, 3.0, 4.0);
     let mut ids = flat_faces(&mut b, &points, &faces);
@@ -472,7 +472,12 @@ fn a_nurbs_face_trimmed_by_its_loop() {
     let replaced = b.face_mut(top);
     replaced.surface = Surface::Nurbs(patch);
     body_faces.insert(1, top);
-    let m = measured(&finish(b, vec![body_faces]));
+    finish(b, vec![body_faces])
+}
+
+#[test]
+fn a_nurbs_face_trimmed_by_its_loop() {
+    let m = measured(&nurbs_topped_box());
     close(m.volume, 24.0, 24.0, 1e-10);
     close(m.area, 52.0, 52.0, 1e-10);
     same_point(m.centroid, p(1.0, 1.5, 2.0), 4.0);
@@ -795,5 +800,63 @@ fn pieces_of_a_torus_small_and_large() {
         );
         let area = share * 4.0 * PI * PI * big * small + 2.0 * PI * small * small;
         close(m.area, area, 120.0, 1e-10);
+    }
+}
+
+#[test]
+fn a_mirrored_solid_measures_the_same_mirrored() {
+    // Reflected across x = 1 (as a block inserted with a negative scale),
+    // then turned: the volume and area stay, the centroid and the box follow.
+    let flip_x = [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let mirror = Transform3::new(flip_x, p(1.0, 0.0, 0.0), v(0.0, 0.0, 0.0)).unwrap();
+    let turn = Transform3::rotation(v(1.0, 1.0, 0.0).normalized().unwrap(), 0.7).unwrap();
+    let solids = [
+        ("box", cuboid(p(1.0, -2.0, 3.0), 2.0, 3.0, 4.0)),
+        ("cylinder", cylinder(1.5, 2.0)),
+        ("cone", cone(2.0, 3.0)),
+        ("frustum", frustum(2.0, 1.0, 1.5)),
+        ("hemisphere", hemisphere(2.0)),
+        ("cut ball", cut_ball(2.0, 1.2)),
+        ("half cylinder", half_cylinder(2.0, 3.0)),
+        ("elliptic cylinder", elliptic_cylinder(3.0, 1.5, 2.0)),
+        ("torus piece", torus_piece(3.0, 1.0, 0.3, 0.3 + 1.5 * PI)),
+        ("upper torus", upper_torus(3.0, 1.0)),
+        ("NURBS-topped box", nurbs_topped_box()),
+    ];
+    for (name, body) in solids {
+        let a = measured(&body);
+        let mirrored = body.transformed(mirror, 1.0).unwrap();
+        // Still a body: each loop runs end to start, its faces on the left.
+        mirrored
+            .check(tol())
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        let b = mirrored
+            .mass_properties()
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+        close(b.volume, a.volume, a.volume, 1e-10);
+        close(b.area, a.area, a.area, 1e-10);
+        same_point(b.centroid, mirror.apply_point(a.centroid), 10.0);
+        let (lo, hi) = (
+            mirror.apply_point(a.bounds.max()),
+            mirror.apply_point(a.bounds.min()),
+        );
+        same_point(
+            b.bounds.min(),
+            p(lo.x(), a.bounds.min().y(), a.bounds.min().z()),
+            10.0,
+        );
+        same_point(
+            b.bounds.max(),
+            p(hi.x(), a.bounds.max().y(), a.bounds.max().z()),
+            10.0,
+        );
+        let both = mirror.then(turn);
+        let c = body
+            .transformed(both, 1.0)
+            .unwrap()
+            .mass_properties()
+            .unwrap();
+        close(c.volume, a.volume, a.volume, 1e-10);
+        same_point(c.centroid, both.apply_point(a.centroid), 10.0);
     }
 }

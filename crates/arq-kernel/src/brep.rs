@@ -291,6 +291,22 @@ impl Body {
                 .transformed(t, scale)
                 .map_err(BrepError::Geometry)?;
         }
+        if t.determinant() < 0.0 {
+            // A mirror turns each loop the other way round its face, and a
+            // NURBS surface's own normal (∂S/∂u × ∂S/∂v) against its image's
+            // outside; the analytic surfaces' normals follow the map.
+            for lp in &mut body.loops {
+                lp.coedges.reverse();
+            }
+            for c in &mut body.coedges {
+                c.reversed = !c.reversed;
+            }
+            for f in &mut body.faces {
+                if matches!(f.surface, Surface::Nurbs(_)) {
+                    f.reversed = !f.reversed;
+                }
+            }
+        }
         Ok(body)
     }
 }

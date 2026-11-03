@@ -502,45 +502,18 @@ impl<'a> Painter<'a> {
             return;
         };
         let base = record.base_point;
-        let ocs = ocs_to_world(ins.normal);
-        let rows = ins.row_count.max(1);
-        let columns = ins.column_count.max(1);
-        for row in 0..rows {
-            for column in 0..columns {
-                let offset = Vector3::new(
-                    f64::from(column) * ins.column_spacing,
-                    f64::from(row) * ins.row_spacing,
-                    0.0,
-                );
-                let t = Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z))
-                    .then(&Transform::from_scaling(Vector3::new(
-                        ins.x_scale(),
-                        ins.y_scale(),
-                        ins.z_scale(),
-                    )))
-                    .then(&Transform::from_translation(offset))
-                    .then(&Transform::from_rotation(
-                        Vector3::new(0.0, 0.0, 1.0),
-                        ins.rotation,
-                    ))
-                    .then(&Transform::from_translation(ins.insert_point))
-                    .then(&ocs);
-                if record.flags.is_xref
-                    || record.flags.is_xref_overlay
-                    || record.flags.is_xref_unloaded
-                    || !record.xref_path.is_empty()
-                {
-                    if self.style(layer).shown {
-                        let label = record
-                            .xref_path
-                            .rsplit(['/', '\\'])
-                            .find(|part| !part.is_empty())
-                            .unwrap_or(&record.name);
-                        xref_marker(label, base, &t, color, out);
-                    }
-                } else {
-                    self.expand_block(&ins.block_name, &t, layer, color, ctx, out);
+        for t in insert_copies(ins, base) {
+            if is_xref(record) {
+                if self.style(layer).shown {
+                    let label = record
+                        .xref_path
+                        .rsplit(['/', '\\'])
+                        .find(|part| !part.is_empty())
+                        .unwrap_or(&record.name);
+                    xref_marker(label, base, &t, color, out);
                 }
+            } else {
+                self.expand_block(&ins.block_name, &t, layer, color, ctx, out);
             }
         }
         // Attribute values already sit in world coordinates.
@@ -590,6 +563,48 @@ impl<'a> Painter<'a> {
             }
         }
     }
+}
+
+/// Where a block reference places its block: from the block's `base`
+/// point, one transform per copy (a MINSERT's rows times columns), each
+/// scaled, offset in the array, turned, moved to the insertion point and
+/// set in the reference's coordinate system.
+pub(crate) fn insert_copies(ins: &Insert, base: Vector3) -> Vec<Transform> {
+    let ocs = ocs_to_world(ins.normal);
+    let mut copies = Vec::new();
+    for row in 0..ins.row_count.max(1) {
+        for column in 0..ins.column_count.max(1) {
+            let offset = Vector3::new(
+                f64::from(column) * ins.column_spacing,
+                f64::from(row) * ins.row_spacing,
+                0.0,
+            );
+            copies.push(
+                Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z))
+                    .then(&Transform::from_scaling(Vector3::new(
+                        ins.x_scale(),
+                        ins.y_scale(),
+                        ins.z_scale(),
+                    )))
+                    .then(&Transform::from_translation(offset))
+                    .then(&Transform::from_rotation(
+                        Vector3::new(0.0, 0.0, 1.0),
+                        ins.rotation,
+                    ))
+                    .then(&Transform::from_translation(ins.insert_point))
+                    .then(&ocs),
+            );
+        }
+    }
+    copies
+}
+
+/// Whether a block record is an external reference's.
+pub(crate) fn is_xref(record: &acadrust::tables::BlockRecord) -> bool {
+    record.flags.is_xref
+        || record.flags.is_xref_overlay
+        || record.flags.is_xref_unloaded
+        || !record.xref_path.is_empty()
 }
 
 /// A derived filename label, never inserted into the persistent document.

@@ -77,8 +77,8 @@ pub use app::{CadApplication, DocumentId};
 pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
     BlockData, BlockDefinition, BlockInfo, BlockObjects, ClashChoice, Color, Currencies, Currency,
-    Document, DrawItem, Entity, EntityId, FileFormat, Grip, GripKind, Layer, LayerId, Money,
-    PlanGeometry, Shape, TextData,
+    Document, DrawItem, Entity, EntityId, FileFormat, Grip, GripKind, Layer, LayerId,
+    MassProperties, MeasureError, Money, PlanGeometry, Shape, SolidMeasures, TextData, Unmeasured,
 };
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};
