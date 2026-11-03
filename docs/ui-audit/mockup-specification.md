@@ -94,7 +94,7 @@ technical contract §§1–3.
 | No document | Welcome, no document strip, disabled/empty document panels, command entry | `MainWindow._on_active_document_changed`, `_show_tabs_strip`; `LayersPanel.refresh`, `PropertiesPanel.refresh`, `HistoryPanel.refresh`, `BlocksPanel.refresh` |
 | Drawing open | One viewport per tab, active document synchronization, path tooltip and modified `*` | `MainWindow._on_document_opened`, `_update_tab_titles`; `DocumentTabs` |
 | Multiple documents | Switching updates panels and per-document selection; reorder tabs and close with save question | `Session.activate`, `selection`, `MainWindow._on_tab_chosen`, `_on_tab_close_requested`; `DocumentTabs._on_tab_moved` |
-| Ribbon / Classic | Same actions; Home, Insert, Annotate, View; conditional Block Editor tab; double-click fold | `workspaces.CAD`; `Ribbon.set_context`, `set_folded`; `WorkspaceSwitcher.show` |
+| Ribbon / Classic | Same actions; Home, Insert, Annotate, 3D, View; conditional Block Editor tab; double-click fold | `workspaces.CAD`; `Ribbon.set_context`, `set_folded`; `WorkspaceSwitcher.show` |
 | Dock state | Close/reopen, resize, tabify/float representation, hover overlay and pin; distinguish hidden from auto-hidden | `MainWindow.show_panel`, `panel_open`; `AutoHide.unpin`, `expand`, `_check_leave` |
 | Layers | Select/rename/new/delete/current, visibility/frozen/lock/plot toggles, color menu; refused-operation message | `LayersPanel` methods `new_layer`, `_on_click`, `_on_item_changed`, `_edit` |
 | Properties | Drawing vs selected entity; mixed layer/color; editable geometry/text, invalid-value feedback, folded section | `selection_properties`, `PropertiesPanel._edit_property`, `_edit_geometry`, `_edit_text`; `PropertyGrid._remember` |

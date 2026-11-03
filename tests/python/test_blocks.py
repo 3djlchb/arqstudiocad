@@ -172,7 +172,7 @@ def test_blocks_are_in_the_insert_tab_menus_and_toolbar(window: MainWindow) -> N
     assert (insert.text(), block.text()) == ("&Insert Block…", "Create &Block…")
     ribbon = window.findChildren(Ribbon)[0]
     tabs = [ribbon.tabText(i) for i in range(ribbon.count()) if ribbon.isTabVisible(i)]
-    assert tabs == ["Home", "Insert", "Annotate", "View"]
+    assert tabs == ["Home", "Insert", "Annotate", "3D", "View"]
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     bedit = window.command_actions["BEDIT"]
     assert [b.defaultAction() for b in groups["block"].buttons] == [insert, block, bedit]

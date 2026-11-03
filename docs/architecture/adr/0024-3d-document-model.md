@@ -208,6 +208,20 @@ part of this ADR.
     `CadSolidMeasures` (the total as `CadMassProperties`, the count, the
     refusals as `(id, why, detail)` with `why` a stable name for the
     interface to translate), measured with the GIL released.
+- **Step 3, measure, MASSPROP (2026-11-03):** MASSPROP (Spanish PROPFIS)
+  reports the solids selected, block references' too: their count,
+  volume, surface area (beyond AutoCAD's report), bounding box and
+  centroid (maintainer, 2026-11-03). It takes solids on locked layers, as
+  an inquiry, and says how many entities it left out and why.
+  - **Precision:** volumes and areas show ten significant digits of
+    their own value, coordinates ten of the selection's size, never more
+    than a double keeps of them. The kernel refines each measure until it
+    settles to 1e-11, so ten hold.
+  - **Where:** the ribbon's new 3D tab, its Analysis group, and Tools >
+    Inquiry, as AutoCAD's.
+  - **Later:** moments of inertia, and writing the report to a file
+    (AutoCAD's `.mpr`), in AutoCAD's and ProgeCAD's precision, since it
+    is written for them (maintainer, 2026-11-03).
 
 ## Consequences
 

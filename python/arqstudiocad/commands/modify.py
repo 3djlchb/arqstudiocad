@@ -35,9 +35,10 @@ type Ids = tuple[int, ...]
 type Selecting = Generator[Prompt | Background, Any, Ids]
 
 
-def select_objects(ctx: CommandContext, document: CadDocument) -> Selecting:
+def select_objects(ctx: CommandContext, document: CadDocument, *, edits: bool = True) -> Selecting:
     """The entities to edit: the selection, or what the user selects now.
-    Those on locked layers are left out; empty if nothing is left."""
+    Those on locked layers are left out when the command ``edits`` them;
+    an inquiry keeps them, as AutoCAD's. Empty if nothing is left."""
     if not ctx.session.selection(document):
         options = [Option("ALL", tr("All")), Option("L", tr("Last")), Option("P", tr("Previous"))]
         while (answer := (yield ctx.select(tr("Select objects"), options))) is not None:
@@ -54,6 +55,8 @@ def select_objects(ctx: CommandContext, document: CadDocument) -> Selecting:
             ctx.session.select(document, found)
             ctx.message(tr("{count} found", count=len(found)))
     chosen = ctx.session.selection(document)
+    if not edits:
+        return chosen
     locked = {layer.name for layer in document.get_layers() if layer.is_locked}
     on_locked = {e.id for e in document.get_entities(chosen) if e.layer in locked}
     if on_locked:
@@ -67,7 +70,7 @@ def erase(ctx: CommandContext) -> CommandScript:
     ids = yield from select_objects(ctx, document)
     if ids:
         ctx.session.report(document, document.delete_entities(ids))
-        _done(ctx, document, ids)
+        done_selecting(ctx, document, ids)
 
 
 def explode(ctx: CommandContext) -> CommandScript:
@@ -101,7 +104,7 @@ def explode(ctx: CommandContext) -> CommandScript:
     except InvalidOperationError as error:
         raise CommandCancelledError(tr("This block has nothing to explode.")) from error
     ctx.session.report(document, changes)
-    _done(ctx, document, ids)
+    done_selecting(ctx, document, ids)
 
 
 def move(ctx: CommandContext) -> CommandScript:
@@ -120,7 +123,7 @@ def move(ctx: CommandContext) -> CommandScript:
     )
     offset = base if second is None else _offset(base, second)
     ctx.session.report(document, document.move_entities(ids, offset))
-    _done(ctx, document, ids)
+    done_selecting(ctx, document, ids)
 
 
 def copy(ctx: CommandContext) -> CommandScript:
@@ -155,7 +158,7 @@ def copy(ctx: CommandContext) -> CommandScript:
             copies.append(new_ids)
     finally:
         document.end_group()
-    _done(ctx, document, ids)
+    done_selecting(ctx, document, ids)
 
 
 def rotate(ctx: CommandContext) -> CommandScript:
@@ -174,7 +177,7 @@ def rotate(ctx: CommandContext) -> CommandScript:
     )
     ctx.session.report(document, document.rotate_entities(ids, base, angle))
     ctx.remembered[ROTATION] = angle
-    _done(ctx, document, ids)
+    done_selecting(ctx, document, ids)
 
 
 def scale(ctx: CommandContext) -> CommandScript:
@@ -187,7 +190,7 @@ def scale(ctx: CommandContext) -> CommandScript:
     base = yield ctx.point(tr("Specify base point"))
     factor = yield ctx.distance(tr("Specify scale factor"), base=base, drag=Drag("scale", ids))
     ctx.session.report(document, document.scale_entities(ids, base, factor))
-    _done(ctx, document, ids)
+    done_selecting(ctx, document, ids)
 
 
 def mirror(ctx: CommandContext) -> CommandScript:
@@ -217,7 +220,7 @@ def mirror(ctx: CommandContext) -> CommandScript:
                 ctx.session.report(document, group.changes)
     except InvalidGeometryError:
         raise CommandCancelledError(tr("The two points must differ.")) from None
-    _done(ctx, document, ids)
+    done_selecting(ctx, document, ids)
 
 
 def _transformable(ctx: CommandContext, document: CadDocument) -> Selecting:
@@ -232,7 +235,7 @@ def _transformable(ctx: CommandContext, document: CadDocument) -> Selecting:
     return ids
 
 
-def _done(ctx: CommandContext, document: CadDocument, ids: Ids) -> None:
+def done_selecting(ctx: CommandContext, document: CadDocument, ids: Ids) -> None:
     """Remembers the selection for ``P`` and empties it."""
     ctx.remembered[_previous(document)] = ids
     ctx.session.clear_selection(document)
@@ -265,4 +268,4 @@ MODIFY_COMMANDS = (
     Command("MIRROR", mirror, ("MI",)),
 )
 
-__all__ = ["MODIFY_COMMANDS", "select_objects"]
+__all__ = ["MODIFY_COMMANDS", "done_selecting", "select_objects"]

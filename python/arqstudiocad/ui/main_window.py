@@ -291,6 +291,10 @@ class MainWindow(QMainWindow):
             self.theme_actions[theme] = action
         self.theme_actions[self.theme].setChecked(True)
         self._tools_menu.addSeparator()
+        # Measuring, as AutoCAD's Tools > Inquiry.
+        self._inquiry_menu = self._tools_menu.addMenu("")
+        self._inquiry_menu.addAction(self.command_actions["MASSPROP"])
+        self._tools_menu.addSeparator()
         self._tools_menu.addAction(self.command_actions["OPTIONS"])
 
         self.workspaces = WorkspaceSwitcher(
@@ -349,6 +353,7 @@ class MainWindow(QMainWindow):
         self._tools_menu.setTitle(tr("&Tools"))
         self._language_menu.setTitle(tr("&Language"))
         self._theme_menu.setTitle(tr("T&heme"))
+        self._inquiry_menu.setTitle(tr("&Inquiry"))
         for theme, theme_action in self.theme_actions.items():
             theme_action.setText(theme_title(theme))
         self._insert_menu.setTitle(tr("&Insert"))
