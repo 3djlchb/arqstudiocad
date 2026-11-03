@@ -185,6 +185,7 @@ def test_ribbon_tabs_groups_and_buttons(qtbot: QtBot) -> None:
         "Home",
         "Insert",
         "Annotate",
+        "3D",
         "View",
     ]
     titles = [group.title.text() for group in shown.groups]
@@ -196,6 +197,7 @@ def test_ribbon_tabs_groups_and_buttons(qtbot: QtBot) -> None:
         "Layers",
         "Block",
         "Text",
+        "Analysis",
         "Navigate",
         "Palettes",
         "Block Editor",
