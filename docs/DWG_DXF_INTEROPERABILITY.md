@@ -242,22 +242,21 @@ Follow-up investigation (2026-10-22), pinned AcadRust fork `5f473cc`:
   one such loss in an empty drawing of the same version. `save_losses`
   rejects the two-object loss because it exceeds that allowance. The
   diagnostic reports full before/after counts, not the excess alone.
-- `crates/arq-document/src/compatibility_tests.rs::legacy_multileaderstyle_refusals_exceed_the_default_allowance`
-  reproduces the counts and checks that a normal save refuses and leaves an
-  existing target untouched. Raw serialization is used only in a temporary
-  diagnostic file to inspect the rejected output; production saves retain
-  all guards. Run after fetching the existing corpus:
+- The original refusal regression established the loss and unchanged
+  destination. It is now replaced by
+  `crates/arq-document/src/compatibility_tests.rs::existing_legacy_multileader_styles_survive_verified_saving`,
+  requiring complete style retention and normal saving while retaining a
+  negative missing-style inventory check. Run after fetching the corpus:
 
   ```sh
-  cargo test -p arq-document legacy_multileaderstyle_refusals -- --ignored --nocapture
+  cargo test -p arq-document existing_legacy_multileader_styles -- --ignored --nocapture
   ```
 
-The existing `crates/arq-core/tests/corpus.rs::codec_regression_constraints_kept_undecoded`
-explicitly accepts `object MULTILEADERSTYLE` to inspect constraint preservation.
-Its success therefore does not contradict the strict matrix's refusal.
-No broader default allowance or automatic loss acceptance is justified by
-this evidence. Semantic use of these styles and external application behavior
-remain unverified; the refusal is retained, not relabeled as a verified save.
+The historical core constraint check accepted MULTILEADERSTYLE loss solely
+to inspect constraints. It now requires normal saving in
+`crates/arq-core/tests/corpus.rs::codec_regression_constraints_read`.
+The [2026-11-03 correction](testing/legacy-mleader-preservation.md) supplies
+separate codec and native R14/R2000 evidence; no default allowance is raised.
 
 #### Xref metadata corpus
 
@@ -405,10 +404,37 @@ writer; two opaque DATATABLE objects omitted from DXF; and two opaque associativ
 edge records omitted from one Surface DXF, while five of that class survive.
 
 None is proved to be intrinsically unrepresentable by the destination format.
-The next scoped investigation is MULTILEADERSTYLE same-version preservation,
-with separate R2000/R14 evidence and native validation before any fix is adopted.
+At that baseline, the next investigation was MULTILEADERSTYLE same-version
+preservation, requiring separate R2000/R14 evidence and native validation.
 DATATABLE and Surface need exact decode-failure analysis; the purge preventer
 needs fresh native DXF/audit controls before changing its deliberate skip rule.
 The inventory and semantic guards remain separate and enabled; empty geometric
 round-trip differences do not justify accepting missing object records.
 Milestones 03.4/03.5 remain open.
+
+### Same-version legacy multileader-style follow-up (2026-11-03)
+
+The [scoped correction](testing/legacy-mleader-preservation.md) in fork
+`c8f4b05` retains existing class-bearing MLEADERSTYLE dictionaries when the
+DWG source and destination are both AC1014 or both AC1015. It does not extend
+the genuine-downgrade or new-document policy. Both Constraints fixtures now
+save normally, without MULTILEADERSTYLE loss consent. The constraint corpus
+requires that normal save; the document test proves complete decoded style
+identity and retains its negative missing-style inventory check.
+
+Independent ProgeCAD 2026 observations match both original styles, all their
+observed non-transport properties, exact handles and owners, dictionary keys
+and current-style setting in each version. Native reopening of the previous
+codec output instead creates one replacement default style. The existing R14
+CTABLESTYLE warning also occurs in that baseline output; this change does not
+fix the separate R14 table-style policy. [Native observations](testing/legacy-mleader-native.json).
+
+The published Git-pin 34-drawing matrix improves from 59 verified / nine blocked to
+61 verified / seven blocked, with no semantic save errors and only the two
+intended DWG rows changed. The 940-job paired codec corpus has no status
+regressions; the forced-AC1032 profile is unchanged. Published-build acceptance
+on main base `226a2fb` passes 524 Rust and 812 Python tests, seven public
+core groups, both native corpus groups and eight optional document tests.
+Product adoption awaits PR review and merge. DATATABLE, Surface,
+dynamic-block DXF controls and broader external/version coverage remain open;
+03.4/03.5 are not closed by this correction.

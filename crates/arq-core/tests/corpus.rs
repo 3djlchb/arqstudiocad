@@ -562,9 +562,10 @@ fn codec_regression_constraints_read() {
         if doc.snapshot().undecoded_objects() != undecoded {
             problems.push(format!("{name}: a snapshot forgets what is undecoded"));
         }
-        // R14 and 2000 cannot hold the multileader styles the file carries.
+        // Existing class-bearing styles survive a same-version rewrite,
+        // including R14 and R2000; no loss consent is needed here.
         let saved = dir.path().join("saved.dwg");
-        if let Err(e) = doc.save_accepting(&saved, |l| l.kind() == "object MULTILEADERSTYLE") {
+        if let Err(e) = doc.save(&saved) {
             problems.push(format!("{name}: {e}"));
             continue;
         }

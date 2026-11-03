@@ -3,59 +3,44 @@
 use std::path::Path;
 
 use super::default_losses;
-use crate::{Document, DocumentError, FileFormat};
+use crate::{Document, FileFormat};
 
 #[test]
 #[ignore = "needs tools/fetch_codec_samples.py"]
-fn legacy_multileaderstyle_refusals_exceed_the_default_allowance() {
+fn existing_legacy_multileader_styles_survive_verified_saving() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
     let scratch = tempfile::tempdir().unwrap();
     for version in ["r14", "2000"] {
         let doc = Document::open(root.join(version).join("Constraints.dwg")).unwrap();
-        let raw = scratch.path().join("raw.dwg");
-        std::fs::write(&raw, doc.to_dwg_bytes().unwrap()).unwrap();
-        let back = Document::open(raw).unwrap();
-        let loss = doc
-            .losses_in(&back)
-            .into_iter()
-            .find(|l| l.kind() == "object MULTILEADERSTYLE")
-            .unwrap();
-        let allowance = default_losses(FileFormat::Dwg, &doc.version_code());
-        println!("{version}: {loss}; default allowance {allowance:?}");
-        let mut changed: Vec<bool> = doc
-            .cad()
-            .objects
-            .values()
-            .filter_map(|object| {
-                if let acadrust::objects::ObjectType::MultiLeaderStyle(style) = object {
-                    assert_eq!(style.description, "Standard");
-                    Some(style.property_changed)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        changed.sort();
-        assert_eq!(
-            changed,
-            [false, true],
-            "the two decoded styles are not identical"
-        );
-        assert_eq!((loss.before(), loss.after()), (2, 0));
-        assert_eq!(allowance.get("object MULTILEADERSTYLE"), Some(&1));
         let target = scratch.path().join(format!("{version}.dwg"));
         std::fs::write(&target, b"original").unwrap();
-        let result = doc.save(&target);
-        if version == "2000" {
-            assert!(
-                !doc.losses_in(&back)
-                    .iter()
-                    .any(|loss| loss.kind() == "object TABLESTYLE")
-            );
-        }
+        doc.save(&target).unwrap();
+        let back = Document::open(&target).unwrap();
+        assert!(back.recovery().is_none());
         assert!(doc.validate_roundtrip(&back).is_empty());
-        assert!(matches!(result, Err(DocumentError::Lossy { .. })));
-        assert_eq!(std::fs::read(target).unwrap(), b"original");
+        assert!(doc.save_losses(&back, FileFormat::Dwg).is_empty());
+        let mut count = 0;
+        for (handle, object) in &doc.cad().objects {
+            if let acadrust::objects::ObjectType::MultiLeaderStyle(style) = object {
+                assert_eq!(back.cad().objects.get(handle), Some(object));
+                assert_eq!(style.description, "Standard");
+                count += 1;
+            }
+        }
+        assert_eq!(count, 2);
+        // Retaining the styles is not a broader default-loss allowance.
+        let mut missing = Document::open(&target).unwrap();
+        missing.cad_mut().objects.retain(|_, object| {
+            !matches!(object, acadrust::objects::ObjectType::MultiLeaderStyle(_))
+        });
+        let losses = doc.save_losses(&missing, FileFormat::Dwg);
+        let loss = losses
+            .iter()
+            .find(|loss| loss.kind() == "object MULTILEADERSTYLE")
+            .unwrap();
+        assert_eq!((loss.before(), loss.after()), (2, 0));
+        let allowance = default_losses(FileFormat::Dwg, &doc.version_code());
+        assert_eq!(allowance.get("object MULTILEADERSTYLE"), Some(&1));
     }
 }
 
