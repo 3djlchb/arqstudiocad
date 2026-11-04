@@ -62,7 +62,7 @@ pub use block_data::{BlockData, Currencies, Currency, Money};
 pub use blocks::{BlockDefinition, BlockInfo, BlockObjects, BlockReferences};
 pub use change::{Change, ChangeSet};
 pub use document::Document;
-pub use drawing::{DrawItem, Shape};
+pub use drawing::{DrawItem, Shape, SpaceItem};
 pub use entity::{Color, Entity, EntityId, PlanGeometry, TextData};
 pub use error::{DocumentError, DocumentResult};
 pub use format::FileFormat;

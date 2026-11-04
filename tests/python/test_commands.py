@@ -89,6 +89,7 @@ def harness(ui: UiServices | None = None, registry: CommandRegistry | None = Non
 class FakeView:
     extents: int = 0
     zooms: list[float] = field(default_factory=list)
+    views: list[str] = field(default_factory=list)
 
     def zoom_extents(self) -> bool:
         self.extents += 1
@@ -96,6 +97,9 @@ class FakeView:
 
     def zoom(self, factor: float) -> None:
         self.zooms.append(factor)
+
+    def set_view(self, name: str) -> None:
+        self.views.append(name)
 
 
 @dataclass

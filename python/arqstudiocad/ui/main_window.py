@@ -27,6 +27,7 @@ from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, Vie
 from arqstudiocad.commands.blocks import edit_clicked
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry, open_command
 from arqstudiocad.commands.grips import grip_edit, shown_grips
+from arqstudiocad.commands.views import view_titles
 from arqstudiocad.core import (
     CadDocument,
     CadError,
@@ -258,6 +259,8 @@ class MainWindow(QMainWindow):
 
         self._view_menu = menu_bar.addMenu("")
         self._view_menu.addAction(self.command_actions["ZOOM"])
+        # AutoCAD's View > 3D Views (ADR 0030 D5).
+        self._view_menu.addMenu(self.command_actions.views_menu)
         self._view_menu.addSeparator()
         for panel in (*self.panels.values(), self.command_window):
             self._view_menu.addAction(panel.toggleViewAction())
@@ -496,6 +499,7 @@ class MainWindow(QMainWindow):
             lambda entity_id: self._edit_double_clicked(document, entity_id)
         )
         viewport.cursor_moved.connect(self._show_coordinates)
+        viewport.view_changed.connect(lambda _: self._show_view(viewport))
         viewport.point_picked.connect(self.runner.answer_point)
         viewport.key_typed.connect(self.command_window.type_key)
         viewport.grip_clicked.connect(self._edit_grip)
@@ -653,6 +657,7 @@ class MainWindow(QMainWindow):
         viewport = self.tabs.widget(index)
         if isinstance(viewport, Viewport) and viewport.document.is_open:
             self.session.activate(viewport.document)
+            self._show_view(viewport)
 
     def _on_tab_close_requested(self, index: int) -> None:
         viewport = self.tabs.widget(index)
@@ -795,6 +800,17 @@ class MainWindow(QMainWindow):
 
     def _show_coordinates(self, x: float, y: float) -> None:
         self._coordinates.setText(f"{x:.4f}, {y:.4f}")
+
+    def _show_view(self, viewport: Viewport) -> None:
+        """Outside the plan the status bar says what waits for it, in place
+        of the cursor's coordinates (ADR 0030 D4)."""
+        if viewport is not self.tabs.currentWidget():
+            return
+        if viewport.in_plan:
+            self._coordinates.clear()
+        else:
+            title = view_titles()[viewport.view_name].replace("&", "")
+            self._coordinates.setText(tr("{view}: snaps, ORTHO and grips in plan only", view=title))
 
     def _update_title(self, event: Event | None = None) -> None:
         """``name* — App``: the active drawing, starred while modified."""
