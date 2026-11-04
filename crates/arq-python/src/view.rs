@@ -171,6 +171,50 @@ impl CadView {
         self.state().camera.to_screen(x, y)
     }
 
+    /// The entity drawn under pixel `(x, y)`, within `aperture` pixels, in
+    /// any view (ADR 0030); `None` if none is that close.
+    fn pick(&self, x: f64, y: f64, aperture: f64) -> Option<u64> {
+        let state = self.state();
+        let (u, v) = state.camera.to_world(x, y);
+        let at = arq_geometry::Point2::new(u, v).ok()?;
+        state.scene.pick(at, aperture / state.camera.scale())
+    }
+
+    /// What a window from pixel `(x0, y0)` to `(x1, y1)` selects, or with
+    /// `crossing` a crossing, in any view (ADR 0030), in drawing order.
+    fn select_window(&self, x0: f64, y0: f64, x1: f64, y1: f64, crossing: bool) -> Vec<u64> {
+        let state = self.state();
+        let corner = |x, y| {
+            let (u, v) = state.camera.to_world(x, y);
+            arq_geometry::Point2::new(u, v).ok()
+        };
+        match (corner(x0, y0), corner(x1, y1)) {
+            (Some(a), Some(b)) => state
+                .scene
+                .select_window(arq_geometry::Bounds2::new(a, b), crossing),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The point of the XY plane (z = 0) under pixel `(x, y)`, where a
+    /// picked point falls in any view (ADR 0030 D4); in plan, as
+    /// `to_world`. `None` where the view sees the plane edge on.
+    fn plane_point(&self, x: f64, y: f64) -> Option<(f64, f64)> {
+        let state = self.state();
+        let (u, v) = state.camera.to_world(x, y);
+        state.scene.view().plane_point(u, v)
+    }
+
+    /// A point of the XY plane (z = 0) to pixels, in any view; in plan, as
+    /// `to_screen`.
+    fn plane_to_screen(&self, x: f64, y: f64) -> (f64, f64) {
+        let state = self.state();
+        let view = state.scene.view();
+        let (right, up) = view.axes();
+        let (u, v) = (x * right[0] + y * right[1], x * up[0] + y * up[1]);
+        state.camera.to_screen(u, v)
+    }
+
     /// The outlines of these entities in pixels, as polylines, for an
     /// overlay painted over the image (selection, highlight; ADR 0016 D4):
     /// curves fine enough for their size on screen, texts and entities not

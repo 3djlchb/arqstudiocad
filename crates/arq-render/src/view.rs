@@ -111,6 +111,21 @@ impl View {
         (right, up)
     }
 
+    /// The point of the XY plane (z = 0) seen at `(across, up)` on the
+    /// view's plane, along the line of sight: where a point picked in the
+    /// view falls (ADR 0030 D4). `None` where the plane is seen edge on
+    /// (Front, Back, Left, Right).
+    pub fn plane_point(self, across: f64, up: f64) -> Option<(f64, f64)> {
+        let d = unit(self.direction());
+        if d[2].abs() < 1e-9 {
+            return None;
+        }
+        let (right, top) = self.axes();
+        let at = |i: usize| across * right[i] + up * top[i];
+        let t = -at(2) / d[2];
+        Some((at(0) + t * d[0], at(1) + t * d[1]))
+    }
+
     /// Where a point falls on the view's plane: across, and up.
     pub fn project(self, p: Point3) -> (f64, f64) {
         let (right, up) = self.axes();

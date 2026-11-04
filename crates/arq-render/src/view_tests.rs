@@ -66,3 +66,35 @@ fn views_by_name() {
     }
     assert_eq!(View::default(), View::Top);
 }
+
+#[test]
+fn a_picked_point_falls_on_the_xy_plane() {
+    assert_eq!(View::Top.plane_point(3.0, 4.0), Some((3.0, 4.0)));
+    // Every view that sees the plane gives back the ground point it shows.
+    for view in [
+        View::Top,
+        View::Bottom,
+        View::SwIso,
+        View::SeIso,
+        View::NeIso,
+        View::NwIso,
+    ] {
+        let (across, up) = view.project(p(5.0, -7.0, 0.0));
+        let (x, y) = view.plane_point(across, up).unwrap();
+        assert!(
+            (x - 5.0).abs() < 1e-12 && (y + 7.0).abs() < 1e-12,
+            "{view:?}: {x} {y}"
+        );
+    }
+    // A point high up is seen where the plane lies farther along the line
+    // of sight: from the southwest, toward the northeast.
+    let (across, up) = View::SwIso.project(p(0.0, 0.0, 3.0));
+    let (x, y) = View::SwIso.plane_point(across, up).unwrap();
+    assert!(
+        (x - 3.0).abs() < 1e-12 && (y - 3.0).abs() < 1e-12,
+        "{x} {y}"
+    );
+    for view in [View::Front, View::Back, View::Left, View::Right] {
+        assert_eq!(view.plane_point(1.0, 2.0), None, "{view:?}: seen edge on");
+    }
+}

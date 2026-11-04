@@ -6,17 +6,20 @@ grips wait for it, for now."""
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QLabel, QMenu, QToolButton
 from pytestqt.qtbot import QtBot
 from test_commands import FakeUi, FakeView, harness, regression_drawing
-from test_selection import click, plan
+from test_selection import plan
 from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadApplication, CadView
+from arqstudiocad.events import CommandMessage
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.ribbon import RibbonGroupWidget
+from arqstudiocad.ui.viewport import Viewport
 
 ATMOS = Path(__file__).resolve().parents[2] / "target/corpus/libredwg/2007/ATMOS-DC22S.dwg"
 
@@ -73,11 +76,13 @@ def test_view_sees_the_model_from_a_preset_view() -> None:
     )
     h.run("swiso")
     assert view.views == ["swiso"]
-    assert h.messages()[-1] == (
-        "Type points in this view: object snaps, ORTHO and grips work in plan for now."
-    )
+    assert h.messages()[-1] == "Object snaps, ORTHO and grips work in plan only, for now."
     h.run("-V", "nowhere", "front")
-    assert h.messages()[-2] == "Invalid option."
+    assert h.messages()[-3:] == [
+        "Invalid option.",
+        "Type points in this view: it sees the XY plane edge on.",
+        "Object snaps, ORTHO and grips work in plan only, for now.",
+    ]
     h.run("PLAN")
     assert view.views == ["swiso", "front", "top"]
 
@@ -137,31 +142,98 @@ def test_the_views_are_in_the_view_menu_and_the_ribbon(window: MainWindow) -> No
     assert button.popupMode() == QToolButton.ToolButtonPopupMode.MenuButtonPopup
 
 
-def test_outside_the_plan_picking_and_grips_wait(window: MainWindow, tmp_path: Path) -> None:
+def at_pixel(viewport: Viewport, kind: QEvent.Type, pixel: tuple[float, float]) -> None:
+    """A mouse event at a pixel (the test screens have ratio 1)."""
+    point = QPointF(*pixel)
+    move = kind == QEvent.Type.MouseMove
+    button = Qt.MouseButton.NoButton if move else Qt.MouseButton.LeftButton
+    held = (
+        Qt.MouseButton.LeftButton
+        if kind == QEvent.Type.MouseButtonPress
+        else Qt.MouseButton.NoButton
+    )
+    event = QMouseEvent(
+        kind, point, viewport.mapToGlobal(point), button, held, Qt.KeyboardModifier.NoModifier
+    )
+    QApplication.sendEvent(viewport, event)
+
+
+def click_at(viewport: Viewport, ground: tuple[float, float]) -> None:
+    """A click where the point ``ground`` of the XY plane is seen."""
+    pixel = viewport.view.plane_to_screen(*ground)
+    at_pixel(viewport, QEvent.Type.MouseButtonPress, pixel)
+    at_pixel(viewport, QEvent.Type.MouseButtonRelease, pixel)
+
+
+def test_selecting_in_an_isometric_view(window: MainWindow, tmp_path: Path) -> None:
+    document, viewport, ids = plan(window, tmp_path)
+    window.command_actions.view_actions["swiso"].trigger()
+    click_at(viewport, (50.0, 0.0))
+    assert window.session.selection(document) == (ids[0],), "the line in front"
+    window.session.clear_selection(document)
+    click_at(viewport, (50.0, 35.0))
+    assert window.session.selection(document) == (ids[2],), "the circle's far side"
+    # A window around the whole view takes everything, in drawing order.
+    corner = QPointF(viewport.width(), viewport.height())
+    assert viewport.select_in(QPointF(0, 0), corner) == tuple(ids)
+    assert viewport.select_in(QPointF(0, 0), QPointF(1, 1)) == ()
+
+
+def test_a_picked_point_falls_on_the_xy_plane(window: MainWindow, tmp_path: Path) -> None:
+    _, viewport, _ = plan(window, tmp_path)
+    window.command_actions.view_actions["neiso"].trigger()
+    window.runner.execute("LINE")
+    click_at(viewport, (30.0, 50.0))
+    prompt = window.runner.prompt
+    assert prompt is not None and prompt.base == pytest.approx((30.0, 50.0))
+    at_pixel(viewport, QEvent.Type.MouseMove, viewport.view.plane_to_screen(70.0, 20.0))
+    assert viewport.target == pytest.approx((70.0, 20.0)) and viewport.snap is None
+    # The rubber band runs from where the first point is seen.
+    band = viewport.screen_point((30.0, 50.0))
+    seen = viewport.view.plane_to_screen(30.0, 50.0)
+    assert (band.x(), band.y()) == pytest.approx(seen)
+    assert seen != pytest.approx(viewport.view.to_screen(30.0, 50.0))
+    assert "70.0000, 20.0000" in status(window), "the cursor's point on the plane"
+    window.runner.cancel()
+    # From the front the plane is seen edge on: the point is typed.
+    window.command_actions.view_actions["front"].trigger()
+    said: list[str] = []
+    window.session.bus.subscribe(CommandMessage, lambda e: said.append(e.text))
+    window.runner.execute("LINE")
+    at_pixel(viewport, QEvent.Type.MouseButtonPress, (300.0, 200.0))
+    prompt = window.runner.prompt
+    assert prompt is not None and prompt.message == "Specify first point"
+    assert said == ["This view sees the XY plane edge on: type the point."]
+    window.runner.cancel()
+
+
+def test_the_drag_preview_follows_the_plane(window: MainWindow, tmp_path: Path) -> None:
+    document, viewport, ids = plan(window, tmp_path)
+    window.command_actions.view_actions["swiso"].trigger()
+    window.session.select(document, [ids[0]])
+    window.runner.execute("ROTATE")
+    window.runner.execute("0,0")
+    # A quarter turn: (100, 0) goes to (0, 100), where the view shows it.
+    at_pixel(viewport, QEvent.Type.MouseMove, viewport.view.plane_to_screen(0.0, 5.0))
+    preview = viewport.preview
+    assert preview is not None
+    turned = preview.map(QPointF(*viewport.view.plane_to_screen(100.0, 0.0)))
+    expected = viewport.view.plane_to_screen(0.0, 100.0)
+    assert (turned.x(), turned.y()) == pytest.approx(expected, abs=1e-6)
+    window.runner.cancel()
+
+
+def test_grips_and_snaps_wait_for_the_plan(window: MainWindow, tmp_path: Path) -> None:
     document, viewport, ids = plan(window, tmp_path)
     window.session.select(document, [ids[0]])
     QApplication.processEvents()
     grip = viewport.grips[0]
-    at = viewport.view.to_screen(*grip.point)
-    window.command_actions.view_actions["front"].trigger()
-    assert (viewport.view_name, viewport.in_plan) == ("front", False)
-    assert "Front: snaps, ORTHO and grips in plan only" in status(window)
+    window.command_actions.view_actions["seiso"].trigger()
+    assert (viewport.view_name, viewport.in_plan) == ("seiso", False)
+    assert "SE Isometric: snaps, ORTHO and grips in plan only" in status(window)
     assert viewport.grips, "kept for the plan"
-    # Neither where it was nor where its plan point falls now.
-    assert viewport.grip_at(QPointF(*at)) is None
-    assert viewport.grip_at(QPointF(*viewport.view.to_screen(*grip.point))) is None
-    window.session.clear_selection(document)
-    click(viewport, (50.0, 0.0))
-    assert window.session.selection(document) == (), "nothing picked"
-    assert viewport.select_in(QPointF(0, 0), QPointF(800, 500)) == ()
-    # A point prompt is answered by typing: a click gives no point.
-    window.runner.execute("LINE")
-    click(viewport, (50.0, 0.0))
-    assert viewport.target is None and window.runner.prompt is not None
-    assert window.runner.prompt.message == "Specify first point"
-    window.runner.cancel()
+    shown = viewport.view.plane_to_screen(*grip.point)
+    assert viewport.grip_at(QPointF(*shown)) is None
     window.runner.execute("PLAN")
-    assert viewport.in_plan and viewport.view_name == "top"
-    assert not any("plan only" in text for text in status(window))
-    click(viewport, (50.0, 0.0))
-    assert window.session.selection(document) == (ids[0],)
+    assert viewport.in_plan and not any("plan only" in text for text in status(window))
+    assert viewport.grip_at(QPointF(*viewport.view.to_screen(*grip.point))) == grip

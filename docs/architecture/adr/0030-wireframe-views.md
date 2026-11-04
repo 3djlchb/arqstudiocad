@@ -115,6 +115,20 @@ Each choice marked *(maintainer)* was made by the maintainer on
     ORTHO, grips and picked points wait; the status bar says so where
     the cursor's coordinates were, and -VIEW tells to type points.
   - **Not yet:** thickness (D1), kept for a later step.
+- **Step 2, working in a view (2026-11-03):**
+  - **Selection:** picking, windows and crossings run on the view's
+    projected scene (`Scene::pick`, `Scene::select_window`), by the
+    document's own rules (`pick_among`, `select_among`): the same
+    tolerances, ties and text boxes as in plan.
+  - **Picked points:** the line of sight through the cursor meets the XY
+    plane (`View::plane_point`); the status bar shows that point. From
+    Front, Back, Left and Right a click is refused and the command line
+    says to type the point; -VIEW says so on entering those views.
+  - **The drag preview** is computed on the XY plane about the base point
+    and carried to the screen by the plane's projection, so a rotation
+    in an isometric view looks as it will be.
+  - Object snaps, ORTHO and grips stay plan-only (D4); the status bar
+    says so beside the coordinates.
 
 ## Consequences
 

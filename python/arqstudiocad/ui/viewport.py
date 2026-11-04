@@ -34,9 +34,11 @@ ADR 0029 D6) over the cached image, the system cursor hidden; a mouse move
 repaints only the old and the new crosshair, never the drawing.
 
 The model can be seen from AutoCAD's preset views (ADR 0030), in
-wireframe: :meth:`Viewport.set_view`. Outside the plan, picking,
-selecting, object snaps, ORTHO, grips and picked points are suspended for
-now: they still work in plan coordinates. Points are typed there.
+wireframe: :meth:`Viewport.set_view`. In every view picking and selecting
+work on what it shows, and a picked point falls on the XY plane, as
+AutoCAD's with the World UCS; where the view sees that plane edge on, the
+point is typed (:attr:`Viewport.point_refused`). Object snaps, ORTHO and
+grips work in plan only, for now.
 
 A right-click, the Menu key or Shift+F10 asks for the context menu
 (:attr:`Viewport.context_requested`, ADR 0029 D1); the window decides what
@@ -185,6 +187,9 @@ class Viewport(QWidget):
     entity_double_clicked = Signal(int)
     #: The view changed (its name, ``"top"`` for the plan; ADR 0030).
     view_changed = Signal(str)
+    #: A click at a point prompt in a view that sees the XY plane edge on:
+    #: the point must be typed (ADR 0030 D4).
+    point_refused = Signal()
     #: A right-click, the Menu key or Shift+F10 (ADR 0029 D1): where the
     #: context menu would open, a ``QPoint`` on the screen, and whether the
     #: keyboard asked (True) or the right button (False).
@@ -264,8 +269,8 @@ class Viewport(QWidget):
 
     @property
     def in_plan(self) -> bool:
-        """Whether the model is seen in plan, where picking, selecting,
-        snaps, grips and picked points work."""
+        """Whether the model is seen in plan, where snaps, ORTHO and grips
+        work."""
         return self.view.view == "top"
 
     def set_view(self, name: str) -> None:
@@ -314,12 +319,17 @@ class Viewport(QWidget):
         transform the point under the cursor would apply to them."""
         if self._dragged is None or self._base is None or self._target is None:
             return None
-        return _screen_transform(
-            self._dragged.kind,
-            self.view.to_screen(*self._base),
-            self.view.to_screen(*self._target),
-            math.dist(self._base, self._target),
-        )
+        (bx, by), (tx, ty) = self._base, self._target
+        world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
+        if world is None:
+            return None
+        # From the screen to the XY plane about the base point, the drag
+        # there, and back: in plan only a scale, a flip and a shift; in a
+        # view, its projection. About the base, survey coordinates stay
+        # small.
+        plane = self._plane_transform(self._base)
+        to_plane, invertible = plane.inverted()
+        return to_plane * world * plane if invertible else None
 
     def ask_point(self, base: Point | None, drag: Drag | None = None) -> None:
         """A command asks for a point, from ``base`` if it has one; ``drag``
@@ -419,6 +429,8 @@ class Viewport(QWidget):
                 self._aim(event.position())
                 if self._target is not None:
                     self.point_picked.emit(self._target)
+                elif not self.in_plan:
+                    self.point_refused.emit()
                 event.accept()
                 return
             grip = self.grip_at(event.position())
@@ -451,11 +463,7 @@ class Viewport(QWidget):
             self._aim(position)
         else:
             self._set_hover(self.pick_at(position))
-        if self.in_plan:
-            world = self.view.to_world(*self._physical(position))
-            if self.drafting is not None:
-                self.drafting.cursor = world
-            self.cursor_moved.emit(*world)
+        self._follow_cursor(position)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.MouseButton.MiddleButton:
@@ -581,10 +589,7 @@ class Viewport(QWidget):
         self._move_crosshair(position)
         if self._asking:
             self._aim(position)
-        world = self.view.to_world(*self._physical(position))
-        if self.drafting is not None:
-            self.drafting.cursor = world
-        self.cursor_moved.emit(*world)
+        self._follow_cursor(position)
         self.update()
 
     def leaveEvent(self, event: object) -> None:  # noqa: N802 (Qt API)
@@ -666,30 +671,35 @@ class Viewport(QWidget):
     # Picking, in logical (widget) coordinates
 
     def pick_at(self, position: QPointF) -> int | None:
-        """The entity under ``position``, within the pick box; none
-        outside the plan, for now."""
-        if not self.in_plan:
-            return None
+        """The entity under ``position``, within the pick box, in any
+        view."""
         x, y = self._physical(position)
+        if not self.in_plan:
+            return self.view.pick(x, y, PICK_PIXELS * self.devicePixelRatioF())
         aperture = PICK_PIXELS * self.devicePixelRatioF() / self.view.scale
         return self.document.pick(self.view.to_world(x, y), aperture)
 
     def select_in(self, start: QPointF, end: QPointF) -> tuple[int, ...]:
         """What a window from ``start`` to ``end`` selects: left to right a
-        window, right to left a crossing; nothing outside the plan, for
-        now."""
+        window, right to left a crossing, in any view."""
+        crossing = end.x() < start.x()
         if not self.in_plan:
-            return ()
+            corners = (*self._physical(start), *self._physical(end))
+            return tuple(self.view.select_window(*corners, crossing))
         a = self.view.to_world(*self._physical(start))
         b = self.view.to_world(*self._physical(end))
-        crossing = end.x() < start.x()
         return tuple(self.document.select_window(CadBounds2(a, b), crossing=crossing))
 
     def _aim(self, position: QPointF) -> None:
         """Where a click at ``position`` puts the point: the snap found
-        there, else the cursor kept by ORTHO, else the cursor; nowhere
-        outside the plan, where points are typed, for now."""
+        there, else the cursor kept by ORTHO, else the cursor. In another
+        view, the point of the XY plane under the cursor, without snaps or
+        ORTHO for now; none where the plane is seen edge on."""
         if not self.in_plan:
+            point = self.view.plane_point(*self._physical(position))
+            if (point, None) != (self._target, self._snap):
+                self._target, self._snap = point, None
+                self.update()
             return
         world = self.view.to_world(*self._physical(position))
         snaps = self.drafting.active_snaps() if self.drafting is not None else ()
@@ -775,16 +785,10 @@ class Viewport(QWidget):
         """The rubber band from the last point and the snap marker."""
         if self._target is None:
             return
-        ratio = self.devicePixelRatioF()
-
-        def logical(p: Point) -> QPointF:
-            x, y = self.view.to_screen(*p)
-            return QPointF(x / ratio, y / ratio)
-
-        at = logical(self._target)
+        at = self.screen_point(self._target)
         if self._base is not None and (self._dragged is None or self._dragged.band):
             painter.setPen(QPen(self.palette().text().color(), 1, Qt.PenStyle.DashLine))
-            painter.drawLine(logical(self._base), at)
+            painter.drawLine(self.screen_point(self._base), at)
         if self._snap is not None:
             painter.setPen(QPen(self._marker, 2))
             painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -795,6 +799,32 @@ class Viewport(QWidget):
     def _draw_outlines(self, painter: QPainter, entity_ids: tuple[int, ...]) -> None:
         for polyline in self.view.outlines(entity_ids):
             painter.drawPolyline(QPolygonF([QPointF(x, y) for x, y in polyline]))
+
+    def screen_point(self, point: Point) -> QPointF:
+        """Where a point of the XY plane is seen, in logical pixels, in any
+        view: the rubber band's and the snap marker's place."""
+        ratio = self.devicePixelRatioF()
+        x, y = self.view.plane_to_screen(*point)
+        return QPointF(x / ratio, y / ratio)
+
+    def _follow_cursor(self, position: QPointF) -> None:
+        """The point of the XY plane under the cursor, for the status bar
+        and typed distances; none where the view sees the plane edge on."""
+        point = self.view.plane_point(*self._physical(position))
+        if point is None:
+            return
+        if self.drafting is not None:
+            self.drafting.cursor = point
+        self.cursor_moved.emit(*point)
+
+    def _plane_transform(self, origin: Point) -> QTransform:
+        """The XY plane, from ``origin``, to physical pixels: affine in
+        every view."""
+        x, y = origin
+        ox, oy = self.view.plane_to_screen(x, y)
+        xx, xy = self.view.plane_to_screen(x + 1.0, y)
+        yx, yy = self.view.plane_to_screen(x, y + 1.0)
+        return QTransform(xx - ox, xy - oy, yx - ox, yy - oy, ox, oy)
 
     def _shown_grips(self) -> tuple[CadGrip, ...]:
         """The grips drawn and clicked: none outside the plan, for now."""
@@ -851,16 +881,14 @@ def draw_marker(painter: QPainter, kind: str, at: QPointF, r: float) -> None:
         painter.drawPolygon(QPolygonF([p(-r, -r), p(r, -r), p(-r, r), p(r, r)]))
 
 
-def _screen_transform(
-    kind: str, base: tuple[float, float], target: tuple[float, float], distance: float
-) -> QTransform | None:
-    """The screen transform of a drag from ``base`` to ``target`` (screen
-    points; ``distance`` between them in the world). The view only scales,
-    flips and shifts, so moving, rotating, scaling and mirroring look on
-    screen as they do in the world, about the same points."""
+def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None:
+    """The transform of the XY plane a drag from ``base`` to ``target``
+    applies: moving, rotating, scaling or mirroring about the line between
+    them. None where they coincide and only a move has a meaning."""
     (bx, by), (tx, ty) = base, target
     if kind == "move":
         return QTransform.fromTranslate(tx - bx, ty - by)
+    distance = math.dist(base, target)
     if distance == 0.0:
         return None  # no direction, no factor
     t = QTransform()
