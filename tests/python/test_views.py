@@ -237,3 +237,36 @@ def test_grips_and_snaps_wait_for_the_plan(window: MainWindow, tmp_path: Path) -
     window.runner.execute("PLAN")
     assert viewport.in_plan and not any("plan only" in text for text in status(window))
     assert viewport.grip_at(QPointF(*viewport.view.to_screen(*grip.point))) == grip
+
+
+# The view kept in the drawing (ADR 0030 D2)
+
+
+def test_a_drawing_opens_in_the_view_it_keeps(tmp_path: Path) -> None:
+    app = CadApplication()
+    document = app.create_document("vista")
+    document.add_line((0, 0), (10, 0))
+    view = CadView(document, 200, 100)
+    view.view = "swiso"
+    # Not an edit: no undo step, and as modified as the line left it.
+    modified = document.is_modified
+    steps = document.can_undo
+    path = tmp_path / "vista.dwg"
+    document.save(path)
+    assert (document.can_undo, modified) == (steps, True)
+    reopened = app.open_document(path)
+    assert CadView(reopened, 200, 100).view == "swiso"
+    assert not reopened.is_modified
+    # Back to the plan, saved as DXF: it opens in plan again.
+    CadView(reopened, 200, 100).view = "top"
+    reopened.save(tmp_path / "planta.dxf")
+    assert CadView(app.open_document(tmp_path / "planta.dxf"), 200, 100).view == "top"
+
+
+def test_choosing_a_view_does_not_modify_the_drawing(tmp_path: Path) -> None:
+    app = CadApplication()
+    document = app.create_document("vista")
+    document.save(tmp_path / "limpio.dwg")
+    assert not document.is_modified
+    CadView(document, 200, 100).view = "front"
+    assert not document.is_modified and not document.can_undo

@@ -42,12 +42,18 @@ impl CadView {
 
 #[pymethods]
 impl CadView {
-    /// A `width` × `height` view of `document`, showing all of it.
+    /// A `width` × `height` view of `document`, showing all of it from the
+    /// view the drawing keeps (ADR 0030 D2).
     #[new]
     fn new(py: Python<'_>, document: Py<CadDocument>, width: u32, height: u32) -> PyResult<Self> {
         let doc = document.get();
         let scene = py
-            .detach(|| doc.read_core(|cad| Scene::build(cad.document())))
+            .detach(|| {
+                doc.read_core(|cad| {
+                    let doc = cad.document();
+                    Scene::build_in(doc, View::kept_in(doc))
+                })
+            })
             .py()?;
         let mut camera = Camera::new(width, height);
         if let Some(bounds) = scene.bounds() {
@@ -101,8 +107,9 @@ impl CadView {
         self.state().scene.view().name()
     }
 
-    /// Sees the model from another view, showing all of it; the same view
-    /// keeps the zoom. An unknown name raises `ValueError`.
+    /// Sees the model from another view, showing all of it, and keeps that
+    /// view in the drawing, saved with it (ADR 0030 D2; not an edit). The
+    /// same view keeps the zoom. An unknown name raises `ValueError`.
     #[setter]
     fn set_view(&self, py: Python<'_>, name: &str) -> PyResult<()> {
         let view = View::from_name(name)
@@ -117,7 +124,10 @@ impl CadView {
             if let Some(bounds) = state.scene.bounds() {
                 state.camera.fit(bounds);
             }
-            Ok::<_, arq_core::CadError>(())
+            // What is shown, as AutoCAD would show it on opening.
+            let camera = state.camera;
+            let height = f64::from(camera.size().1) / camera.scale();
+            doc.edit_core(|cad| cad.keep_view(view.direction(), camera.center(), height))
         })
         .py()
     }

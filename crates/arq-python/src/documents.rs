@@ -145,6 +145,15 @@ impl CadDocument {
         self.store.read(self.id, f)
     }
 
+    /// Like [`edit`](Self::edit) but touching no Python at all, so it can
+    /// run with the GIL released (inside `py.detach`).
+    pub fn edit_core<R>(
+        &self,
+        f: impl FnOnce(&mut CoreDocument) -> arq_core::CadResult<R>,
+    ) -> arq_core::CadResult<R> {
+        self.store.edit(self.id, f)
+    }
+
     /// Runs `f` with write access, for this call only.
     pub fn edit<R>(
         &self,

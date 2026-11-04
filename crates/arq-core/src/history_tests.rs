@@ -292,3 +292,31 @@ fn the_history_lists_its_steps_in_order() {
     assert_eq!(cad.redo_names(), ["MOVE", "COPY"], "next first");
     assert_eq!(cad.redo_name(), Some("MOVE"));
 }
+
+#[test]
+fn a_kept_view_is_no_step_and_survives_undo_and_redo() {
+    let mut cad = CadDocument::new();
+    cad.create_layer("MUROS").unwrap();
+    let saved = cad.snapshot();
+    cad.mark_saved(&saved);
+    cad.keep_view([-1.0, -1.0, 1.0], (2.0, 3.0), 40.0).unwrap();
+    assert!(!cad.is_modified(), "not an edit");
+    assert_eq!(cad.undo_name(), Some("LAYER"), "no step of its own");
+    // Undoing a table change brings back the tables as they were: the
+    // view stays the one kept since.
+    let kept = |cad: &CadDocument| cad.document().kept_view().unwrap().direction;
+    cad.undo().unwrap();
+    assert_eq!(kept(&cad), [-1.0, -1.0, 1.0]);
+    cad.redo().unwrap();
+    assert_eq!(kept(&cad), [-1.0, -1.0, 1.0]);
+    // A view kept after an undo outlives the redo too.
+    cad.undo().unwrap();
+    cad.keep_view([0.0, 1.0, 0.0], (0.0, 0.0), 10.0).unwrap();
+    cad.redo().unwrap();
+    assert_eq!(kept(&cad), [0.0, 1.0, 0.0]);
+    cad.begin_group("CAPAS");
+    cad.create_layer("PUERTAS").unwrap();
+    cad.keep_view([1.0, 0.0, 0.0], (0.0, 0.0), 10.0).unwrap();
+    cad.cancel_group().unwrap();
+    assert_eq!(kept(&cad), [1.0, 0.0, 0.0]);
+}
