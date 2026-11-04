@@ -13,7 +13,7 @@ use arq_geometry::snap::{
 use arq_geometry::{Bounds2, Geometry2, Line, Point2, Tolerance};
 
 use crate::document::Document;
-use crate::drawing::Shape;
+use crate::drawing::{DrawItem, Shape};
 use crate::entity::EntityId;
 
 const TOL: Tolerance = Tolerance::DEFAULT;
@@ -46,25 +46,15 @@ impl Document {
 
     fn pick_drawings(
         &self,
-        drawings: Vec<(EntityId, Vec<crate::drawing::DrawItem>)>,
+        drawings: Vec<(EntityId, Vec<DrawItem>)>,
         at: Point2,
         aperture: f64,
     ) -> Option<EntityId> {
-        let mut best: Option<(EntityId, f64)> = None;
-        for (id, items) in drawings {
-            let Some(d) = items
-                .iter()
-                .map(|item| distance(item.shape, at))
-                .min_by(f64::total_cmp)
-            else {
-                continue;
-            };
-            let tie = TOL.linear() * (1.0 + aperture);
-            if d <= aperture && best.is_none_or(|(_, b)| d <= b + tie) {
-                best = Some((id, d));
-            }
-        }
-        best.map(|(id, _)| id)
+        pick_among(
+            drawings.iter().map(|(id, items)| (*id, items.as_slice())),
+            at,
+            aperture,
+        )
     }
 
     /// The entities wholly inside `area` (a window), or, with `crossing`,
@@ -86,24 +76,15 @@ impl Document {
 
     fn select_drawings(
         &self,
-        drawings: Vec<(EntityId, Vec<crate::drawing::DrawItem>)>,
+        drawings: Vec<(EntityId, Vec<DrawItem>)>,
         area: Bounds2,
         crossing: bool,
     ) -> Vec<EntityId> {
-        drawings
-            .into_iter()
-            .filter(|(_, items)| !items.is_empty())
-            .filter(|(_, items)| {
-                if crossing {
-                    items.iter().any(|item| touches(item.shape, area))
-                } else {
-                    items
-                        .iter()
-                        .all(|item| area.contains(shape_bounds(item.shape), TOL))
-                }
-            })
-            .map(|(id, _)| id)
-            .collect()
+        select_among(
+            drawings.iter().map(|(id, items)| (*id, items.as_slice())),
+            area,
+            crossing,
+        )
     }
 
     /// The object snap for the cursor at `cursor`, among the active
@@ -222,6 +203,56 @@ impl Document {
         }
         None
     }
+}
+
+/// [`Document::pick`] among shapes drawn elsewhere: in a view's plane
+/// (ADR 0030), by the same rules. `drawings` in drawing order.
+pub fn pick_among<'a>(
+    drawings: impl IntoIterator<Item = (EntityId, &'a [DrawItem])>,
+    at: Point2,
+    aperture: f64,
+) -> Option<EntityId> {
+    if !(aperture.is_finite() && aperture >= 0.0) {
+        return None;
+    }
+    let mut best: Option<(EntityId, f64)> = None;
+    for (id, items) in drawings {
+        let Some(d) = items
+            .iter()
+            .map(|item| distance(item.shape, at))
+            .min_by(f64::total_cmp)
+        else {
+            continue;
+        };
+        let tie = TOL.linear() * (1.0 + aperture);
+        if d <= aperture && best.is_none_or(|(_, b)| d <= b + tie) {
+            best = Some((id, d));
+        }
+    }
+    best.map(|(id, _)| id)
+}
+
+/// [`Document::select_window`] among shapes drawn elsewhere: in a view's
+/// plane (ADR 0030), by the same rules. In drawing order.
+pub fn select_among<'a>(
+    drawings: impl IntoIterator<Item = (EntityId, &'a [DrawItem])>,
+    area: Bounds2,
+    crossing: bool,
+) -> Vec<EntityId> {
+    drawings
+        .into_iter()
+        .filter(|(_, items)| !items.is_empty())
+        .filter(|(_, items)| {
+            if crossing {
+                items.iter().any(|item| touches(item.shape, area))
+            } else {
+                items
+                    .iter()
+                    .all(|item| area.contains(shape_bounds(item.shape), TOL))
+            }
+        })
+        .map(|(id, _)| id)
+        .collect()
 }
 
 /// The geometry of a shape that is a curve.

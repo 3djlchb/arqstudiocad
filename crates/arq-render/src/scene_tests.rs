@@ -88,3 +88,33 @@ fn a_text_box_picks_but_is_not_drawn() {
     let around = Bounds2::new(p(0.0, 0.0), p(4.0, 1.0));
     assert_eq!(shapes, [Shape::Text(around)]);
 }
+
+#[test]
+fn picking_and_windows_work_in_a_view() {
+    let mut cad = CadDocument::new();
+    let (ground, _) = cad.add_line(p(1.0, 2.0), p(5.0, 2.0)).unwrap();
+    let (other, _) = cad.add_line(p(10.0, 0.0), p(12.0, 0.0)).unwrap();
+    // From the front both lie on the ground line, at x 1 to 5 and 10 to 12.
+    let front = Scene::build_in(cad.document(), View::Front);
+    assert_eq!(front.pick(p(3.0, 0.1), 0.2), Some(ground));
+    assert_eq!(front.pick(p(3.0, 0.5), 0.2), None);
+    assert_eq!(front.pick(p(3.0, 0.0), f64::NAN), None);
+    assert_eq!(
+        front.pick(p(300.0, 0.0), f64::INFINITY),
+        None,
+        "not anything"
+    );
+    let around = |a: (f64, f64), b: (f64, f64)| Bounds2::new(p(a.0, a.1), p(b.0, b.1));
+    assert_eq!(
+        front.select_window(around((0.0, -1.0), (6.0, 1.0)), false),
+        [ground]
+    );
+    assert_eq!(
+        front.select_window(around((4.0, -1.0), (11.0, 1.0)), false),
+        []
+    );
+    assert_eq!(
+        front.select_window(around((4.0, -1.0), (11.0, 1.0)), true),
+        [ground, other]
+    );
+}

@@ -204,11 +204,14 @@ class MainWindow(QMainWindow):
         self.tabs_strip.hide()
         self.setCentralWidget(self._stack)
         self._coordinates = QLabel()
+        #: What waits for the plan, in another view (ADR 0030 D4).
+        self._view_notice = QLabel()
         self._busy = QProgressBar()
         self._busy.setRange(0, 0)  # busy, without a percentage
         self._busy.setMaximumWidth(120)
         self._busy.hide()
         self.statusBar().addPermanentWidget(self._busy)
+        self.statusBar().addPermanentWidget(self._view_notice)
         self.statusBar().addPermanentWidget(self._coordinates)
         # Running snaps (F3) and ORTHO (F8): the window gets their shortcuts.
         self.drafting_bar = DraftingBar(self.session.drafting, self.events)
@@ -500,6 +503,11 @@ class MainWindow(QMainWindow):
         )
         viewport.cursor_moved.connect(self._show_coordinates)
         viewport.view_changed.connect(lambda _: self._show_view(viewport))
+        viewport.point_refused.connect(
+            lambda: self.runner.context.message(
+                tr("This view sees the XY plane edge on: type the point.")
+            )
+        )
         viewport.point_picked.connect(self.runner.answer_point)
         viewport.key_typed.connect(self.command_window.type_key)
         viewport.grip_clicked.connect(self._edit_grip)
@@ -802,15 +810,16 @@ class MainWindow(QMainWindow):
         self._coordinates.setText(f"{x:.4f}, {y:.4f}")
 
     def _show_view(self, viewport: Viewport) -> None:
-        """Outside the plan the status bar says what waits for it, in place
-        of the cursor's coordinates (ADR 0030 D4)."""
+        """Outside the plan the status bar says what waits for it, beside
+        the cursor's coordinates (ADR 0030 D4)."""
         if viewport is not self.tabs.currentWidget():
             return
+        self._coordinates.clear()
         if viewport.in_plan:
-            self._coordinates.clear()
+            self._view_notice.clear()
         else:
             title = view_titles()[viewport.view_name].replace("&", "")
-            self._coordinates.setText(tr("{view}: snaps, ORTHO and grips in plan only", view=title))
+            self._view_notice.setText(tr("{view}: snaps, ORTHO and grips in plan only", view=title))
 
     def _update_title(self, event: Event | None = None) -> None:
         """``name* — App``: the active drawing, starred while modified."""

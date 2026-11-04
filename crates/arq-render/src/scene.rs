@@ -8,7 +8,9 @@
 
 use std::collections::HashMap;
 
-use arq_core::{CadChangeSet, Document, DrawItem, EntityId, Shape, SpaceItem};
+use arq_core::{
+    CadChangeSet, Document, DrawItem, EntityId, Shape, SpaceItem, pick_among, select_among,
+};
 use arq_geometry::{Bounds2, Line, Point2};
 
 use crate::View;
@@ -129,6 +131,23 @@ impl Scene {
         self.index
             .get(&id)
             .map(|&i| self.entries[i].items.as_slice())
+    }
+
+    /// The entity drawn closest to `at`, within `aperture`, in the scene's
+    /// coordinates (the plan's, or its view's plane), by the document's
+    /// rules: picking in a view (ADR 0030).
+    pub fn pick(&self, at: Point2, aperture: f64) -> Option<EntityId> {
+        pick_among(self.drawings(), at, aperture)
+    }
+
+    /// What a window (or, with `crossing`, a crossing) over `area`
+    /// selects, in the scene's coordinates, by the document's rules.
+    pub fn select_window(&self, area: Bounds2, crossing: bool) -> Vec<EntityId> {
+        select_among(self.drawings(), area, crossing)
+    }
+
+    fn drawings(&self) -> impl Iterator<Item = (EntityId, &[DrawItem])> {
+        self.entries.iter().map(|e| (e.id, e.items.as_slice()))
     }
 
     /// What entity `id` draws in this scene's view.

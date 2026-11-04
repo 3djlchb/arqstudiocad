@@ -1,9 +1,10 @@
 """The view commands of ADR 0030: -VIEW sees the model from one of
 AutoCAD's preset views, PLAN from above again.
 
-The views are wireframe, projected by the core. Outside the plan, points
-are typed: picking, selecting, object snaps, ORTHO and grips still work in
-plan coordinates, so they wait for it, for now.
+The views are wireframe, projected by the core. In every view a picked
+point falls on the XY plane, except where the view sees it edge on (Front,
+Back, Left, Right): there points are typed. Object snaps, ORTHO and grips
+work in plan only, for now.
 """
 
 from arqstudiocad.commands import (
@@ -19,6 +20,8 @@ from arqstudiocad.i18n import tr
 
 #: The preset views, by the name the core takes, in AutoCAD's order.
 VIEWS = ("top", "bottom", "front", "back", "left", "right", "swiso", "seiso", "neiso", "nwiso")
+#: The views that see the XY plane edge on, where points are typed.
+EDGE_ON = ("front", "back", "left", "right")
 
 
 def view_options() -> list[Option]:
@@ -80,13 +83,13 @@ def _control(ctx: CommandContext, document: CadDocument) -> ViewControl:
 
 def _show(ctx: CommandContext, control: ViewControl, name: str) -> None:
     control.set_view(name)
+    if name in EDGE_ON:
+        ctx.message(tr("Type points in this view: it sees the XY plane edge on."))
     if name != "top":
-        ctx.message(
-            tr("Type points in this view: object snaps, ORTHO and grips work in plan for now.")
-        )
+        ctx.message(tr("Object snaps, ORTHO and grips work in plan only, for now."))
 
 
 #: The view commands, with AutoCAD's alias.
 VIEW_COMMANDS = (Command("-VIEW", view, ("-V",)), Command("PLAN", plan))
 
-__all__ = ["VIEWS", "VIEW_COMMANDS", "view_titles"]
+__all__ = ["EDGE_ON", "VIEWS", "VIEW_COMMANDS", "view_titles"]

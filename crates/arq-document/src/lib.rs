@@ -70,5 +70,6 @@ pub use grips::{Grip, GripKind};
 pub use inventory::Loss;
 pub use layers::{Layer, LayerId};
 pub use measuring::{SolidMeasures, Unmeasured};
+pub use pick::{pick_among, select_among};
 pub use reading::Recovery;
 pub use solid::Untranslated;
