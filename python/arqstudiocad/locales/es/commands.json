@@ -11,6 +11,9 @@
   "-RENAME": [
     "-CAMBIANOM"
   ],
+  "-VIEW": [
+    "-VISTA"
+  ],
   "ARC": [
     "ARCO"
   ],
@@ -96,6 +99,9 @@
   ],
   "OPTIONS": [
     "OPCIONES"
+  ],
+  "PLAN": [
+    "PLANTA"
   ],
   "PLINE": [
     "POLILINEA"

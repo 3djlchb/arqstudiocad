@@ -9,6 +9,7 @@
 //! |---|---|
 //! | What to draw, kept up to date from change sets | [`Scene`] |
 //! | Which part of the plan is shown | [`Camera`] |
+//! | Which way the model is seen | [`View`] |
 //! | Paint it into an image on the CPU | [`render`] → [`Image`], with a [`Style`] |
 //! | A block's preview, in its colors on transparency | [`preview`] |
 //! | ACI colors | [`aci_rgb`], [`aci_rgb_on`] |
@@ -19,6 +20,7 @@ mod gpu_probe;
 mod outline;
 mod raster;
 mod scene;
+mod view;
 
 pub use aci::{aci_rgb, aci_rgb_on, luminance};
 pub use camera::Camera;
@@ -26,3 +28,4 @@ pub use gpu_probe::{GpuBackend, GpuProbeResult, probe_gpu_backend};
 pub use outline::{Polyline, outline};
 pub use raster::{Image, Style, preview, render};
 pub use scene::Scene;
+pub use view::View;

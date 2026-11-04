@@ -162,6 +162,12 @@ class ViewControl(Protocol):
 
     def zoom_extents(self) -> bool: ...
     def zoom(self, factor: float) -> None: ...
+    def set_view(self, name: str) -> None:
+        """Sees the model from a preset view (ADR 0030): ``"top"`` (the
+        plan), ``"bottom"``, ``"front"``, ``"back"``, ``"left"``,
+        ``"right"``, ``"swiso"``, ``"seiso"``, ``"neiso"`` or
+        ``"nwiso"``."""
+        ...
 
 
 #: What the Block Definition dialog does with the objects (ADR 0023 D2a).

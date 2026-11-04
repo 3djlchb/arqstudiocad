@@ -154,6 +154,8 @@ CAD = Discipline(
             lambda: tr("View"),
             (
                 RibbonGroup("navigate", lambda: tr("Navigate"), ("ZOOM",)),
+                # AutoCAD's preset views, in a drop-down (ADR 0030 D5).
+                RibbonGroup("views", lambda: tr("Views"), ("-VIEW",)),
                 # Palettes, each button pressed while its palette is open (ADR 0025 D2).
                 RibbonGroup(
                     "palettes",

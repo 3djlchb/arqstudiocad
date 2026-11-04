@@ -91,6 +91,31 @@ Each choice marked *(maintainer)* was made by the maintainer on
   points in any view (ADR 0024 D5).
 - Viewports in paper space.
 
+## Implementation notes
+
+- **Step 1, the views (2026-11-03):** the views in three pull requests:
+  the views themselves, then selection and picked points in them, then
+  the view kept in the drawing (D2).
+  - **The core:** the painter that draws the plan also places in space
+    what it draws (`Document::space_drawing`): lines, circles, arcs,
+    ellipses and solids by their own 3D points (a circle on a tilted
+    plane where it lies), everything else by its plan shapes raised to
+    the height of its plane. A text's box stays, not drawn, to pick it
+    and count in the extent, as in plan.
+  - **The scene knows its view** (`arq-render`'s `View`): in plan it is
+    built as before; from another direction, of the polylines in space
+    projected onto the view's plane. Camera, zoom, pan, rendering and the
+    selection's outlines work on it unchanged.
+  - **Python:** `CadView.view` names the view; setting it shows the
+    whole model from there.
+  - **Commands and where:** `-VIEW` (alias `-V`, Spanish `-VISTA`) with
+    the ten views, `PLAN` (`PLANTA`); a Views group in the View tab, with
+    the views in its drop-down, and View > 3D Views.
+  - **Outside the plan, for now:** picking, selecting, object snaps,
+    ORTHO, grips and picked points wait; the status bar says so where
+    the cursor's coordinates were, and -VIEW tells to type points.
+  - **Not yet:** thickness (D1), kept for a later step.
+
 ## Consequences
 
 - ADR 0024's step 4 can show what it creates, before the GPU viewport,

@@ -5,7 +5,7 @@
 
 use std::f64::consts::PI;
 
-use arq_geometry::{Point2, Tolerance};
+use arq_geometry::{Point2, Point3, Tolerance};
 
 use super::*;
 use crate::test_dxf::{LAYERS, door_block, dxf};
@@ -836,4 +836,272 @@ fn xref_arrays_place_one_filename_at_each_instance() {
     assert!((bounds[1].min().x() - bounds[0].min().x() - 100.0 * (PI / 6.0).cos()).abs() < 1e-9);
     assert!((bounds[1].min().y() - bounds[0].min().y() - 50.0).abs() < 1e-9);
     assert!((bounds[3].min().x() - bounds[0].min().x() + 50.0).abs() < 1e-9);
+}
+
+// Seen in space (ADR 0030): what views from other directions project.
+
+fn engine(entities: Vec<EntityType>) -> Document {
+    let mut cad = acadrust::CadDocument::new();
+    for e in entities {
+        cad.add_entity(e).unwrap();
+    }
+    Document::from_engine(cad)
+}
+
+/// Every polyline in space of the whole drawing, in order.
+fn in_space(doc: &Document) -> Vec<SpaceItem> {
+    doc.space_drawing_all()
+        .into_iter()
+        .flat_map(|(_, items)| items)
+        .collect()
+}
+
+/// A point's coordinates, rounded for comparison.
+fn xyz(p: Point3) -> (f64, f64, f64) {
+    let r = |v: f64| (v * 1e6).round() / 1e6 + 0.0;
+    (r(p.x()), r(p.y()), r(p.z()))
+}
+
+fn v3(x: f64, y: f64, z: f64) -> Vector3 {
+    Vector3::new(x, y, z)
+}
+
+#[test]
+fn a_sloped_line_keeps_its_ends_in_space() {
+    let doc = engine(vec![EntityType::Line(
+        acadrust::entities::Line::from_points(v3(1.0, 2.0, 3.0), v3(4.0, 5.0, 6.0)),
+    )]);
+    let items = in_space(&doc);
+    assert_eq!(items.len(), 1);
+    let ends: Vec<_> = items[0].points.iter().map(|&p| xyz(p)).collect();
+    assert_eq!(ends, [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)]);
+    assert_eq!(items[0].color, Color::Index(7));
+    // In plan, as before.
+    assert_eq!(lines(&shapes(&doc)), [((1.0, 2.0), (4.0, 5.0))]);
+}
+
+fn square(elevation: f64, normal_z: f64) -> EntityType {
+    let mut square = LwPolyline::new();
+    for (x, y) in [(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0)] {
+        square.add_point(Vector2::new(x, y));
+    }
+    square.is_closed = true;
+    square.elevation = elevation;
+    square.normal = v3(0.0, 0.0, normal_z);
+    EntityType::LwPolyline(square)
+}
+
+#[test]
+fn a_polyline_is_raised_to_its_elevation() {
+    let up = in_space(&engine(vec![square(5.0, 1.0)]));
+    assert_eq!(up.len(), 4, "its four sides");
+    assert!(up.iter().flat_map(|i| &i.points).all(|p| xyz(*p).2 == 5.0));
+    // Seen from below its OCS, the elevation runs down and X turns over
+    // (ADR 0011 D3.3): drawn where it is, as in plan.
+    let down = in_space(&engine(vec![square(5.0, -1.0)]));
+    let points: Vec<_> = down
+        .iter()
+        .flat_map(|i| &i.points)
+        .map(|p| xyz(*p))
+        .collect();
+    assert!(
+        points.iter().all(|p| p.2 == -5.0 && p.0 <= 0.0),
+        "{points:?}"
+    );
+    assert!(points.contains(&(-2.0, 2.0, -5.0)));
+}
+
+#[test]
+fn a_circle_on_a_tilted_plane_is_drawn_where_it_lies() {
+    // Normal +X: the OCS's X is world Y and its Y world Z, so its center
+    // (0, 0, 7) is world (7, 0, 0).
+    let mut circle = acadrust::entities::Circle::new();
+    circle.center = v3(0.0, 0.0, 7.0);
+    circle.radius = 2.0;
+    circle.normal = v3(1.0, 0.0, 0.0);
+    let doc = engine(vec![EntityType::Circle(circle)]);
+    let items = in_space(&doc);
+    assert_eq!(items.len(), 1);
+    for p in &items[0].points {
+        let (x, y, z) = xyz(*p);
+        assert!(
+            x == 7.0 && ((y * y + z * z).sqrt() - 2.0).abs() < 1e-6,
+            "{p:?}"
+        );
+    }
+    // All the way round, not its box.
+    let zs: Vec<f64> = items[0].points.iter().map(|&p| xyz(p).2).collect();
+    assert!(
+        zs.contains(&2.0) && zs.contains(&-2.0) && zs.len() > 64,
+        "{zs:?}"
+    );
+    let first = items[0].points.first().map(|&p| xyz(p));
+    assert_eq!(first, items[0].points.last().map(|&p| xyz(p)), "closed");
+    assert!(
+        matches!(
+            shapes(&doc)[..],
+            [DrawItem {
+                shape: Shape::Placeholder(_),
+                ..
+            }]
+        ),
+        "in plan, still its box"
+    );
+}
+
+#[test]
+fn a_text_is_raised_with_its_letters_and_its_box() {
+    let mut text = acadrust::entities::Text::new();
+    text.value = "AB".into();
+    text.height = 1.0;
+    text.insertion_point = v3(0.0, 0.0, 4.0);
+    let doc = engine(vec![EntityType::Text(text)]);
+    let plan = shapes(&doc);
+    let items = in_space(&doc);
+    let strokes = plan
+        .iter()
+        .filter(|i| matches!(i.shape, Shape::Line(_)))
+        .count();
+    // First its box, which only picks it (as in plan), then its letters.
+    assert!(items[0].text_box && items[0].points.len() == 5);
+    assert!(
+        strokes > 0 && items[1..].iter().all(|i| !i.text_box) && items.len() == strokes + 1,
+        "{} {strokes}",
+        items.len()
+    );
+    assert!(
+        items
+            .iter()
+            .flat_map(|i| &i.points)
+            .all(|p| xyz(*p).2 == 4.0)
+    );
+}
+
+#[test]
+fn a_block_reference_places_its_contents_in_space() {
+    // PUERTA's first line, (1,1)-(2,1) from base (1,1), inserted at
+    // (10, 20, 30): (10, 20, 30)-(11, 20, 30).
+    let doc = dxf(
+        LAYERS,
+        &[&door_block()],
+        &[&[
+            "0", "INSERT", "8", "0", "2", "PUERTA", "10", "10", "20", "20", "30", "30",
+        ]],
+    );
+    let items = in_space(&doc);
+    let ends: Vec<_> = items[0].points.iter().map(|&p| xyz(p)).collect();
+    assert_eq!(ends, [(10.0, 20.0, 30.0), (11.0, 20.0, 30.0)]);
+    assert_eq!(items.len(), 2);
+}
+
+#[test]
+fn a_solid_is_drawn_in_space_by_its_edges() {
+    // A box 2 × 4 × 10 around (0, 0, 5): from z 0 to 10.
+    let sat = acadrust::entities::acis::primitives::build_box([0.0, 0.0, 5.0], 2.0, 4.0, 10.0);
+    let doc = engine(vec![EntityType::Solid3D(
+        acadrust::entities::Solid3D::from_sat(&sat.to_sat_string()),
+    )]);
+    let points: Vec<_> = in_space(&doc)
+        .iter()
+        .flat_map(|i| i.points.clone())
+        .map(xyz)
+        .collect();
+    let extent = |axis: fn(&(f64, f64, f64)) -> f64| {
+        let values: Vec<f64> = points.iter().map(axis).collect();
+        let low = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        (low, high)
+    };
+    assert_eq!(extent(|p| p.0), (-1.0, 1.0));
+    assert_eq!(extent(|p| p.1), (-2.0, 2.0));
+    assert_eq!(extent(|p| p.2), (0.0, 10.0));
+}
+
+#[test]
+fn hidden_layers_draw_nothing_in_space_either() {
+    let doc = dxf(
+        LAYERS,
+        &[],
+        &[&[
+            "0", "LINE", "8", "APAGADA", "10", "0", "20", "0", "30", "0", "11", "1", "21", "0",
+            "31", "0",
+        ]],
+    );
+    assert!(in_space(&doc).is_empty());
+    let id = doc.drawing_all()[0].0;
+    assert_eq!(doc.space_drawing(id), Some(vec![]));
+    assert_eq!(doc.space_drawing(999_999), None);
+}
+
+#[test]
+fn a_text_seen_from_below_lies_below() {
+    // Normal down: its OCS elevation 4 is world z -4 (ADR 0011 D3.3).
+    let mut text = acadrust::entities::Text::new();
+    text.value = "A".into();
+    text.height = 1.0;
+    text.insertion_point = v3(0.0, 0.0, 4.0);
+    text.normal = v3(0.0, 0.0, -1.0);
+    let items = in_space(&engine(vec![EntityType::Text(text)]));
+    assert!(!items.is_empty());
+    assert!(
+        items
+            .iter()
+            .flat_map(|i| &i.points)
+            .all(|p| xyz(*p).2 == -4.0)
+    );
+}
+
+#[test]
+fn an_arc_across_zero_degrees_keeps_its_side() {
+    // From 270° to 90° counterclockwise: the right half, at z 3.
+    let mut arc = acadrust::entities::Arc::new();
+    arc.center = v3(0.0, 0.0, 3.0);
+    arc.radius = 1.0;
+    arc.start_angle = 1.5 * PI;
+    arc.end_angle = 0.5 * PI;
+    let items = in_space(&engine(vec![EntityType::Arc(arc)]));
+    let points: Vec<_> = items[0].points.iter().map(|&p| xyz(p)).collect();
+    assert_eq!(
+        (points[0], *points.last().unwrap()),
+        ((0.0, -1.0, 3.0), (0.0, 1.0, 3.0))
+    );
+    assert!(
+        points.iter().all(|p| p.0 >= 0.0 && p.2 == 3.0),
+        "{points:?}"
+    );
+}
+
+#[test]
+fn an_ellipse_is_drawn_at_its_height() {
+    let mut ellipse = Ellipse::new();
+    ellipse.center = v3(0.0, 0.0, 5.0);
+    ellipse.major_axis = v3(2.0, 0.0, 0.0);
+    ellipse.minor_axis_ratio = 0.5;
+    let items = in_space(&engine(vec![EntityType::Ellipse(ellipse)]));
+    assert_eq!(items.len(), 1);
+    assert!(items[0].points.iter().all(|p| xyz(*p).2 == 5.0));
+    assert!(items[0].points.iter().any(|p| xyz(*p).0 == 2.0));
+}
+
+#[test]
+fn a_solid_in_a_block_is_placed_where_its_reference_puts_it() {
+    // A box from z 0 to 10 around the origin, in a block placed at (100, 0).
+    let sat = acadrust::entities::acis::primitives::build_box([0.0, 0.0, 5.0], 2.0, 4.0, 10.0);
+    let mut cad = acadrust::CadDocument::new();
+    let solid = cad
+        .add_entity(EntityType::Solid3D(acadrust::entities::Solid3D::from_sat(
+            &sat.to_sat_string(),
+        )))
+        .unwrap()
+        .value();
+    let mut doc = Document::from_engine(cad);
+    doc.create_block("CAJA", p(0.0, 0.0), &[solid]).unwrap();
+    let placed = doc.insert_block("CAJA", p(100.0, 0.0), 1.0, 0.0).unwrap();
+    let points = doc.space_drawing(placed).unwrap();
+    let xs: Vec<f64> = points
+        .iter()
+        .flat_map(|i| &i.points)
+        .map(|&q| xyz(q).0)
+        .collect();
+    assert!(xs.iter().all(|&x| (99.0..=101.0).contains(&x)), "{xs:?}");
 }

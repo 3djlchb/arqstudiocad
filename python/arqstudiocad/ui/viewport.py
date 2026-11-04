@@ -33,6 +33,11 @@ The viewport draws its own crosshair (:mod:`arqstudiocad.ui.crosshair`,
 ADR 0029 D6) over the cached image, the system cursor hidden; a mouse move
 repaints only the old and the new crosshair, never the drawing.
 
+The model can be seen from AutoCAD's preset views (ADR 0030), in
+wireframe: :meth:`Viewport.set_view`. Outside the plan, picking,
+selecting, object snaps, ORTHO, grips and picked points are suspended for
+now: they still work in plan coordinates. Points are typed there.
+
 A right-click, the Menu key or Shift+F10 asks for the context menu
 (:attr:`Viewport.context_requested`, ADR 0029 D1); the window decides what
 it does: the menu, a repeat (a right-click, by the user's preference), or
@@ -178,6 +183,8 @@ class Viewport(QWidget):
     #: An entity was double-clicked with the left button (its id), with no
     #: point asked for: it should be edited.
     entity_double_clicked = Signal(int)
+    #: The view changed (its name, ``"top"`` for the plan; ADR 0030).
+    view_changed = Signal(str)
     #: A right-click, the Menu key or Shift+F10 (ADR 0029 D1): where the
     #: context menu would open, a ``QPoint`` on the screen, and whether the
     #: keyboard asked (True) or the right button (False).
@@ -248,6 +255,27 @@ class Viewport(QWidget):
         """Zooms about the middle of the view."""
         self._auto_fit = False
         self.view.zoom_at(self.view.width / 2, self.view.height / 2, factor)
+        self._redraw()
+
+    @property
+    def view_name(self) -> str:
+        """Which way the model is seen: ``"top"`` (the plan), ``"swiso"``..."""
+        return self.view.view
+
+    @property
+    def in_plan(self) -> bool:
+        """Whether the model is seen in plan, where picking, selecting,
+        snaps, grips and picked points work."""
+        return self.view.view == "top"
+
+    def set_view(self, name: str) -> None:
+        """Sees the model from view ``name`` (ADR 0030), all of it."""
+        if name == self.view.view:
+            return
+        self.view.view = name
+        self._auto_fit = False
+        self._hover = self._target = self._snap = None
+        self.view_changed.emit(name)
         self._redraw()
 
     def apply(self, changes: CadChangeSet) -> None:
@@ -327,7 +355,7 @@ class Viewport(QWidget):
         """The grip under ``position`` (logical pixels), the closest."""
         ratio = self.devicePixelRatioF()
         best: tuple[float, CadGrip] | None = None
-        for grip in self._grips:
+        for grip in self._shown_grips():
             x, y = self.view.to_screen(*grip.point)
             d = max(abs(x / ratio - position.x()), abs(y / ratio - position.y()))
             if d <= GRIP_PIXELS and (best is None or d < best[0]):
@@ -423,10 +451,11 @@ class Viewport(QWidget):
             self._aim(position)
         else:
             self._set_hover(self.pick_at(position))
-        world = self.view.to_world(*self._physical(position))
-        if self.drafting is not None:
-            self.drafting.cursor = world
-        self.cursor_moved.emit(*world)
+        if self.in_plan:
+            world = self.view.to_world(*self._physical(position))
+            if self.drafting is not None:
+                self.drafting.cursor = world
+            self.cursor_moved.emit(*world)
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.MouseButton.MiddleButton:
@@ -637,14 +666,20 @@ class Viewport(QWidget):
     # Picking, in logical (widget) coordinates
 
     def pick_at(self, position: QPointF) -> int | None:
-        """The entity under ``position``, within the pick box."""
+        """The entity under ``position``, within the pick box; none
+        outside the plan, for now."""
+        if not self.in_plan:
+            return None
         x, y = self._physical(position)
         aperture = PICK_PIXELS * self.devicePixelRatioF() / self.view.scale
         return self.document.pick(self.view.to_world(x, y), aperture)
 
     def select_in(self, start: QPointF, end: QPointF) -> tuple[int, ...]:
         """What a window from ``start`` to ``end`` selects: left to right a
-        window, right to left a crossing."""
+        window, right to left a crossing; nothing outside the plan, for
+        now."""
+        if not self.in_plan:
+            return ()
         a = self.view.to_world(*self._physical(start))
         b = self.view.to_world(*self._physical(end))
         crossing = end.x() < start.x()
@@ -652,7 +687,10 @@ class Viewport(QWidget):
 
     def _aim(self, position: QPointF) -> None:
         """Where a click at ``position`` puts the point: the snap found
-        there, else the cursor kept by ORTHO, else the cursor."""
+        there, else the cursor kept by ORTHO, else the cursor; nowhere
+        outside the plan, where points are typed, for now."""
+        if not self.in_plan:
+            return
         world = self.view.to_world(*self._physical(position))
         snaps = self.drafting.active_snaps() if self.drafting is not None else ()
         found = None
@@ -727,7 +765,7 @@ class Viewport(QWidget):
         ratio = self.devicePixelRatioF()
         r = GRIP_PIXELS
         painter.setPen(QPen(self.palette().base().color(), 1))
-        for grip in self._grips:
+        for grip in self._shown_grips():
             x, y = self.view.to_screen(*grip.point)
             painter.setBrush(HOT if grip == self._hot else SELECTED)
             painter.drawRect(QRectF(x / ratio - r, y / ratio - r, 2 * r, 2 * r))
@@ -757,6 +795,10 @@ class Viewport(QWidget):
     def _draw_outlines(self, painter: QPainter, entity_ids: tuple[int, ...]) -> None:
         for polyline in self.view.outlines(entity_ids):
             painter.drawPolyline(QPolygonF([QPointF(x, y) for x, y in polyline]))
+
+    def _shown_grips(self) -> tuple[CadGrip, ...]:
+        """The grips drawn and clicked: none outside the plan, for now."""
+        return self._grips if self.in_plan else ()
 
     def _physical(self, point: QPointF) -> tuple[float, float]:
         ratio = self.devicePixelRatioF()

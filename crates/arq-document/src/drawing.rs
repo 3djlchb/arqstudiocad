@@ -10,7 +10,13 @@
 //! colors are resolved against the current layer table. Z is dropped: this is
 //! the plan view. What cannot be drawn yet becomes its bounding box, marked
 //! as a placeholder.
+//!
+//! The same painter places what it draws in space, for views from other
+//! directions than the plan (ADR 0030): lines, circles, arcs, ellipses and
+//! solids by their own 3D points, everything else by its plan shapes raised
+//! to the height of its plane.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64::consts::TAU;
 
@@ -75,6 +81,23 @@ pub struct DrawItem {
     pub color: Color,
 }
 
+/// One polyline to draw in space, in world coordinates: what a view from
+/// another direction than the plan projects (ADR 0030). A single point is
+/// a point.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpaceItem {
+    /// The points, joined in order.
+    pub points: Vec<Point3>,
+    /// Its resolved color.
+    pub color: Color,
+    /// A text's box, as [`Shape::Text`]: not drawn, it picks the text and
+    /// counts in the drawing's extent.
+    pub text_box: bool,
+}
+
+/// Segments a full circle is drawn with in space.
+const CIRCLE_SEGMENTS: f64 = 128.0;
+
 /// What the layer table says about drawing one layer.
 #[derive(Clone, Copy)]
 struct LayerStyle {
@@ -89,6 +112,8 @@ struct Painter<'a> {
     layers: HashMap<String, LayerStyle>,
     /// Draw what off and frozen layers hide too (an extent, not a picture).
     every_layer: bool,
+    /// Where what is drawn goes placed in space, when it is wanted there.
+    space: Option<RefCell<Vec<SpaceItem>>>,
 }
 
 /// Where an entity sits: inside which inserts.
@@ -169,6 +194,23 @@ impl Document {
             .collect()
     }
 
+    /// What one entity draws placed in space (ADR 0030), visible parts
+    /// only; `None` if no entity has this id.
+    pub fn space_drawing(&self, id: EntityId) -> Option<Vec<SpaceItem>> {
+        let entity = self.cad().get_entity(handle(id))?;
+        Some(Painter::in_space(self).space_of(entity))
+    }
+
+    /// What every model-space entity draws placed in space, in drawing
+    /// order.
+    pub fn space_drawing_all(&self) -> Vec<(EntityId, Vec<SpaceItem>)> {
+        let painter = Painter::in_space(self);
+        self.cad()
+            .model_space_entities()
+            .map(|e| (e.as_entity().handle().value(), painter.space_of(e)))
+            .collect()
+    }
+
     /// What to draw for model-space entities selected by a caller's broad
     /// phase, preserving the order of `ids`.
     pub(crate) fn drawing_entities(&self, ids: &[EntityId]) -> Vec<(EntityId, Vec<DrawItem>)> {
@@ -213,7 +255,23 @@ impl<'a> Painter<'a> {
             doc,
             layers,
             every_layer: false,
+            space: None,
         }
+    }
+
+    /// A painter that places what it draws in space.
+    fn in_space(doc: &'a Document) -> Self {
+        Self {
+            space: Some(RefCell::default()),
+            ..Self::new(doc)
+        }
+    }
+
+    /// What `e` draws placed in space; nothing unless painting in space.
+    fn space_of(&self, e: &EntityType) -> Vec<SpaceItem> {
+        let mut plan = Vec::new();
+        self.emit(e, &Context::top(), &mut plan);
+        self.space.as_ref().map(RefCell::take).unwrap_or_default()
     }
 
     fn style(&self, layer: &str) -> LayerStyle {
@@ -273,6 +331,20 @@ impl<'a> Painter<'a> {
             return;
         }
         let color = self.resolve_color(color_from_codec(e.as_entity().color()), &layer, ctx);
+        if let Some(space) = &self.space
+            && let Some(paths) = self.own_points(e, ctx)
+        {
+            let items = paths.into_iter().map(|points| SpaceItem {
+                points,
+                color,
+                text_box: false,
+            });
+            space.borrow_mut().extend(items);
+            return;
+        }
+        // In space, what this entity itself draws in plan is raised to its
+        // plane; what it holds (a block, its parts) was placed already.
+        let start = out.len();
         let mut push = |shape| out.push(DrawItem { shape, color });
 
         match e {
@@ -352,6 +424,55 @@ impl<'a> Painter<'a> {
             | EntityType::Seqend(_) => {}
             _ => self.emit_parts(e, ctx, out, color),
         }
+        if let Some(space) = &self.space {
+            let z = plane_z(e);
+            let items = out.drain(start..).filter_map(|item| raised(item, z));
+            space.borrow_mut().extend(items);
+        }
+    }
+
+    /// The polylines of `e` in space from its own 3D points, when it has
+    /// them: a line may slope, a circle, arc or ellipse may lie on any
+    /// plane, a solid is drawn by its edges and isolines (ADR 0024 step 2).
+    /// `None` for what is drawn by its plan shapes.
+    fn own_points(&self, e: &EntityType, ctx: &Context) -> Option<Vec<Vec<Point3>>> {
+        let paths = match e {
+            EntityType::Line(l) => vec![[l.start, l.end].into_iter().filter_map(point3).collect()],
+            EntityType::Point(p) => vec![point3(p.location).into_iter().collect()],
+            EntityType::Circle(c) => vec![ocs_arc(c.normal, c.center, c.radius, 0.0, TAU)],
+            EntityType::Arc(a) => {
+                let mut end = a.end_angle;
+                while end <= a.start_angle {
+                    end += TAU;
+                }
+                vec![ocs_arc(a.normal, a.center, a.radius, a.start_angle, end)]
+            }
+            EntityType::Ellipse(el) => {
+                vec![ellipse_points(el).into_iter().filter_map(point3).collect()]
+            }
+            EntityType::Solid3D(_)
+            | EntityType::Region(_)
+            | EntityType::Body(_)
+            | EntityType::Surface(_) => {
+                let wire = self.doc.wireframes.get(e, self.isolines())?;
+                let place = |p: &Point3| {
+                    let v = Vector3::new(p.x(), p.y(), p.z());
+                    point3(ctx.placement.map_or(v, |t| t.apply(v)))
+                };
+                wire.edges
+                    .iter()
+                    .chain(&wire.isolines)
+                    .map(|line| line.iter().filter_map(place).collect())
+                    .collect()
+            }
+            _ => return None,
+        };
+        Some(
+            paths
+                .into_iter()
+                .filter(|p: &Vec<Point3>| !p.is_empty())
+                .collect(),
+        )
     }
 
     /// The drawing's ISOLINES, the lines drawn on each curved face of a
@@ -662,9 +783,18 @@ fn segment(a: (f64, f64), b: (f64, f64)) -> Option<Shape> {
     })
 }
 
-/// An ellipse as segments between points on it, seen in plan (the codec
-/// would approximate it with a spline through points near it).
+/// An ellipse as segments between points on it, seen in plan.
 fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
+    for pair in ellipse_points(el).windows(2) {
+        if let Some(shape) = segment((pair[0].x, pair[0].y), (pair[1].x, pair[1].y)) {
+            out.push(DrawItem { shape, color });
+        }
+    }
+}
+
+/// Points along an ellipse, in world coordinates (the codec would
+/// approximate it with a spline through points near it).
+fn ellipse_points(el: &Ellipse) -> Vec<Vector3> {
     let major = el.major_axis;
     let minor = el.normal.cross(&major).normalize() * (major.length() * el.minor_axis_ratio);
     let (start, mut end) = if el.is_full() {
@@ -677,16 +807,98 @@ fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
     }
     let sweep = end - start;
     let steps = ((sweep * 16.0).ceil() as usize).clamp(8, 128);
-    let at = |i: usize| {
-        let t = start + sweep * i as f64 / steps as f64;
-        let p = el.center + major * t.cos() + minor * t.sin();
-        (p.x, p.y)
+    (0..=steps)
+        .map(|i| {
+            let t = start + sweep * i as f64 / steps as f64;
+            el.center + major * t.cos() + minor * t.sin()
+        })
+        .collect()
+}
+
+/// A point in space, `None` if not finite.
+fn point3(v: Vector3) -> Option<Point3> {
+    Point3::new(v.x, v.y, v.z).ok()
+}
+
+/// Points along an arc of a circle in the OCS of `normal`, from `start` to
+/// `end` (radians, counterclockwise), in world coordinates.
+fn ocs_arc(normal: Vector3, center: Vector3, radius: f64, start: f64, end: f64) -> Vec<Point3> {
+    let ocs = ocs_to_world(normal);
+    let sweep = end - start;
+    let steps = ((sweep / TAU * CIRCLE_SEGMENTS).ceil() as usize).max(4);
+    (0..=steps)
+        .filter_map(|i| {
+            let t = start + sweep * i as f64 / steps as f64;
+            let p = Vector3::new(
+                center.x + radius * t.cos(),
+                center.y + radius * t.sin(),
+                center.z,
+            );
+            point3(ocs.apply(p))
+        })
+        .collect()
+}
+
+/// The world height of the plane `e` draws in, for an entity in plan
+/// (normal up or down); 0 when it has none or lies on a tilted plane.
+fn plane_z(e: &EntityType) -> f64 {
+    let (normal, z) = match e {
+        EntityType::Text(t) => (t.normal, t.insertion_point.z),
+        EntityType::AttributeEntity(a) => (a.normal, a.insertion_point.z),
+        EntityType::AttributeDefinition(a) => (a.normal, a.insertion_point.z),
+        EntityType::Insert(i) => (i.normal, i.insert_point.z),
+        EntityType::LwPolyline(p) => (p.normal, p.elevation),
+        EntityType::Hatch(h) => (h.normal, h.elevation),
+        // In world coordinates already.
+        EntityType::MText(m) => return m.insertion_point.z,
+        _ => return 0.0,
     };
-    for i in 0..steps {
-        if let Some(shape) = segment(at(i), at(i + 1)) {
-            out.push(DrawItem { shape, color });
+    plan_normal(normal.x, normal.y, normal.z).map_or(0.0, |n| n.map_point(0.0, 0.0, z).2)
+}
+
+/// A plan shape raised to the height `z`.
+fn raised(item: DrawItem, z: f64) -> Option<SpaceItem> {
+    let at = |x: f64, y: f64| Point3::new(x, y, z).ok();
+    let up = Vector3::UNIT_Z;
+    let points: Vec<Point3> = match item.shape {
+        Shape::Line(l) => [l.start(), l.end()]
+            .into_iter()
+            .filter_map(|p| at(p.x(), p.y()))
+            .collect(),
+        Shape::Point(p) => at(p.x(), p.y()).into_iter().collect(),
+        Shape::Circle(c) => {
+            let center = Vector3::new(c.center().x(), c.center().y(), z);
+            ocs_arc(up, center, c.radius(), 0.0, TAU)
         }
-    }
+        Shape::Arc(a) => {
+            let center = Vector3::new(a.center().x(), a.center().y(), z);
+            ocs_arc(
+                up,
+                center,
+                a.radius(),
+                a.start_angle(),
+                a.start_angle() + a.sweep(),
+            )
+        }
+        Shape::Placeholder(b) | Shape::Text(b) => {
+            let (lo, hi) = (b.min(), b.max());
+            [
+                (lo.x(), lo.y()),
+                (hi.x(), lo.y()),
+                (hi.x(), hi.y()),
+                (lo.x(), hi.y()),
+                (lo.x(), lo.y()),
+            ]
+            .into_iter()
+            .filter_map(|(x, y)| at(x, y))
+            .collect()
+        }
+    };
+    (!points.is_empty()).then_some(SpaceItem {
+        points,
+        color: item.color,
+        text_box: matches!(item.shape, Shape::Text(_)),
+    })
 }
 
 /// An ACIS body's wireframe in plan (ADR 0024 D4, step 2): its edges and

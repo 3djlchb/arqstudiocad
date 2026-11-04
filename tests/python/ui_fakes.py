@@ -23,6 +23,7 @@ class Zooms:
 
     extents: int = 0
     factors: list[float] = field(default_factory=list)
+    views: list[str] = field(default_factory=list)
 
     def zoom_extents(self) -> bool:
         self.extents += 1
@@ -30,6 +31,9 @@ class Zooms:
 
     def zoom(self, factor: float) -> None:
         self.factors.append(factor)
+
+    def set_view(self, name: str) -> None:
+        self.views.append(name)
 
 
 @dataclass

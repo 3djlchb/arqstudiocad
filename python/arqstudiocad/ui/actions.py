@@ -8,9 +8,10 @@ command, cancelling any command already running, as AutoCAD's menus do.
 from collections.abc import Callable
 
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QMenu, QWidget
 
 from arqstudiocad.commands import CommandRunner
+from arqstudiocad.commands.views import VIEWS, view_titles
 from arqstudiocad.i18n import tr
 from arqstudiocad.ui.command_icons import command_icon
 from arqstudiocad.ui.theme import Theme
@@ -49,6 +50,7 @@ SHORTCUTS: dict[str, QKeySequence | QKeySequence.StandardKey | None] = {
     "MIRROR": None,
     "EXPLODE": None,
     "MASSPROP": None,
+    "-VIEW": None,
 }
 
 
@@ -88,6 +90,7 @@ def labels() -> dict[str, str]:
         "MIRROR": tr("M&irror"),
         "EXPLODE": tr("E&xplode"),
         "MASSPROP": tr("Mass &Properties"),
+        "-VIEW": tr("3D &Views"),
     }
 
 
@@ -107,6 +110,16 @@ class CommandActions:
             action.setStatusTip(name)
             action.triggered.connect(lambda checked=False, n=name: self._triggered(n, checked))
             self.by_command[name] = action
+        #: AutoCAD's preset views (ADR 0030 D5): -VIEW's drop-down in the
+        #: ribbon, View > 3D Views in the menu bar.
+        self.views_menu = QMenu(parent)
+        self.view_actions: dict[str, QAction] = {}
+        for name in VIEWS:
+            action = self.views_menu.addAction("")
+            action.setObjectName(f"action_view_{name}")
+            action.triggered.connect(lambda checked=False, n=name: self.show_view(n))
+            self.view_actions[name] = action
+        self.by_command["-VIEW"].setMenu(self.views_menu)
         self.retranslate()
 
     def __getitem__(self, name: str) -> QAction:
@@ -116,6 +129,12 @@ class CommandActions:
         command = self._runner.registry.find(name)
         if command is not None:
             self._runner.start(command)
+
+    def show_view(self, name: str) -> None:
+        """Sees the model from view ``name`` through -VIEW, as typing it."""
+        self.run("-VIEW")
+        if self._runner.active == "-VIEW":
+            self._runner.execute(name.upper())
 
     def toggle(self, name: str, close: Callable[[], None], is_open: Callable[[], bool]) -> None:
         """Makes ``name``'s action a toggle, as a palette's (ADR 0025 D2):
@@ -144,3 +163,6 @@ class CommandActions:
     def retranslate(self) -> None:
         for name, text in labels().items():
             self.by_command[name].setText(text)
+        self.views_menu.setTitle(labels()["-VIEW"])
+        for name, title in view_titles().items():
+            self.view_actions[name].setText(title)

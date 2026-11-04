@@ -8,7 +8,8 @@
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use arq_render::{Camera, Scene, Style, render};
+use arq_render::{Camera, Scene, Style, View, render};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -84,8 +85,38 @@ impl CadView {
     fn rebuild(&self, py: Python<'_>) -> PyResult<()> {
         let doc = self.document.get();
         py.detach(|| {
-            let scene = doc.read_core(|cad| Scene::build(cad.document()))?;
-            self.state().scene = scene;
+            let mut state = self.state();
+            let view = state.scene.view();
+            state.scene = doc.read_core(|cad| Scene::build_in(cad.document(), view))?;
+            Ok::<_, arq_core::CadError>(())
+        })
+        .py()
+    }
+
+    /// Which way the model is seen (ADR 0030): `"top"` (the plan),
+    /// `"bottom"`, `"front"`, `"back"`, `"left"`, `"right"`, `"swiso"`,
+    /// `"seiso"`, `"neiso"` or `"nwiso"`.
+    #[getter]
+    fn view(&self) -> &'static str {
+        self.state().scene.view().name()
+    }
+
+    /// Sees the model from another view, showing all of it; the same view
+    /// keeps the zoom. An unknown name raises `ValueError`.
+    #[setter]
+    fn set_view(&self, py: Python<'_>, name: &str) -> PyResult<()> {
+        let view = View::from_name(name)
+            .ok_or_else(|| PyValueError::new_err(format!("unknown view {name:?}")))?;
+        let doc = self.document.get();
+        py.detach(|| {
+            let mut state = self.state();
+            if state.scene.view() == view {
+                return Ok(());
+            }
+            state.scene = doc.read_core(|cad| Scene::build_in(cad.document(), view))?;
+            if let Some(bounds) = state.scene.bounds() {
+                state.camera.fit(bounds);
+            }
             Ok::<_, arq_core::CadError>(())
         })
         .py()
@@ -129,7 +160,8 @@ impl CadView {
         self.state().camera.pan(dx, dy);
     }
 
-    /// Pixel `(x, y)` to world coordinates.
+    /// Pixel `(x, y)` to world coordinates; outside the plan, to the
+    /// view's plane (across, up).
     fn to_world(&self, x: f64, y: f64) -> (f64, f64) {
         self.state().camera.to_world(x, y)
     }
