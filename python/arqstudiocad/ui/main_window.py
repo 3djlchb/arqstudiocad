@@ -322,6 +322,9 @@ class MainWindow(QMainWindow):
         self._draw_menu = menu_bar.addMenu("")
         for name in ("LINE", "PLINE", "CIRCLE", "ARC", "MTEXT", "TEXT", "BLOCK"):
             self._draw_menu.addAction(self.command_actions[name])
+        # Solids, as AutoCAD's Draw > Modeling.
+        self._modeling_menu = self._draw_menu.addMenu("")
+        self._modeling_menu.addAction(self.command_actions["BOX"])
         self._modify_menu = menu_bar.addMenu("")
         for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "EXPLODE"):
             self._modify_menu.addAction(self.command_actions[name])
@@ -360,6 +363,7 @@ class MainWindow(QMainWindow):
         self._language_menu.setTitle(tr("&Language"))
         self._theme_menu.setTitle(tr("T&heme"))
         self._inquiry_menu.setTitle(tr("&Inquiry"))
+        self._modeling_menu.setTitle(tr("&Modeling"))
         for theme, theme_action in self.theme_actions.items():
             theme_action.setText(theme_title(theme))
         self._insert_menu.setTitle(tr("&Insert"))

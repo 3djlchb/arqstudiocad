@@ -143,11 +143,15 @@ CAD = Discipline(
             (RibbonGroup("text", lambda: tr("Text"), ("MTEXT", "TEXT")),),
         ),
         # Measuring, creating and editing solids (maintainer, 2026-10-31):
-        # measuring first, as AutoCAD's Analysis group.
+        # making them first, then measuring, as AutoCAD's Modeling and
+        # Analysis groups.
         RibbonTab(
             "3d",
             lambda: tr("3D"),
-            (RibbonGroup("analysis", lambda: tr("Analysis"), ("MASSPROP",)),),
+            (
+                RibbonGroup("modeling", lambda: tr("Modeling"), ("BOX",)),
+                RibbonGroup("analysis", lambda: tr("Analysis"), ("MASSPROP",)),
+            ),
         ),
         RibbonTab(
             "view",

@@ -169,3 +169,94 @@ def test_massprop_is_in_the_3d_tab_and_the_tools_menu(qtbot: QtBot) -> None:
 @pytest.fixture(autouse=True)
 def english() -> None:
     set_language("en")
+
+
+# BOX (ADR 0024 step 4a)
+
+
+def corners(m: CadMassProperties) -> list[float]:
+    """The box around a solid: its low corner, then its high one."""
+    low, high = m.bounds
+    return [*low, *high]
+
+
+def boxed(*lines: str) -> tuple[Harness, CadDocument, list[CadMassProperties]]:
+    """A new drawing after ``lines``, and each solid's measures."""
+    h = harness()
+    h.session.new_document()
+    h.run(*lines)
+    document = h.session.active
+    assert document is not None
+    solids = [e.id for e in document.get_entities() if e.kind == "3DSOLID"]
+    measures = [document.measure_solids([i]).total for i in solids]
+    return h, document, [m for m in measures if m is not None]
+
+
+def test_box_between_two_corners_and_its_height() -> None:
+    h, document, (m,) = boxed("BOX", "0,0", "2,3", "4")
+    assert h.prompts()[:3] == [
+        "Specify first corner [Center(C)]:",
+        "Specify other corner [Cube(C)/Length(L)]:",
+        "Specify height [2Point(2P)]:",
+    ]
+    assert m.volume == pytest.approx(24.0) and m.centroid == pytest.approx((1.0, 1.5, 2.0))
+    # The height is remembered; down, it is negative.
+    h.run("BOX", "10,0", "11,1", "")
+    h.run("BOX", "20,0", "21,1", "-2")
+    zs = sorted(
+        total.centroid[2]
+        for e in document.get_entities()
+        if (total := document.measure_solids([e.id]).total) is not None
+    )
+    assert zs == pytest.approx([-1.0, 2.0, 2.0])
+    h.run("UNDO")
+    assert len([e for e in document.get_entities() if e.kind == "3DSOLID"]) == 2
+
+
+def test_box_about_its_center_is_centered_in_height_too() -> None:
+    _, _, (m,) = boxed("BOX", "C", "5,5", "6,7", "2")
+    assert m.volume == pytest.approx(16.0)
+    assert corners(m) == pytest.approx([4.0, 3.0, -1.0, 6.0, 7.0, 1.0])
+
+
+def test_box_as_a_cube_or_by_its_sides() -> None:
+    _, _, (cube,) = boxed("BOX", "0,0", "C", "3")
+    assert cube.volume == pytest.approx(27.0)
+    assert cube.centroid == pytest.approx((1.5, 1.5, 1.5))
+    _, _, (sides,) = boxed("BOX", "0,0", "L", "2", "3", "4")
+    assert corners(sides) == pytest.approx([0.0, 0.0, 0.0, 2.0, 3.0, 4.0])
+    _, _, (two,) = boxed("BOX", "0,0", "2,3", "2P", "0,0", "0,5")
+    assert two.bounds[1][2] == pytest.approx(5.0)
+
+
+def test_box_asks_again_for_what_makes_no_box() -> None:
+    h, _, solids = boxed("BOX", "0,0", "0,3", "2,3", "0", "high", "1")
+    assert h.messages()[:3] == [
+        "The box needs a length and a width.",
+        "The height cannot be zero.",
+        "The height must be a number.",
+    ]
+    assert [m.volume for m in solids] == pytest.approx([6.0])
+
+
+def test_prismarect_in_spanish() -> None:
+    set_language("es")
+    try:
+        h, _, (m,) = boxed("PRISMARECT", "C", "0,0", "Cubo", "2")
+        assert h.prompts()[0] == "Precise primera esquina [Centro(C)]:"
+    finally:
+        set_language("en")
+    assert corners(m) == pytest.approx([-1.0, -1.0, -1.0, 1.0, 1.0, 1.0])
+
+
+def test_box_is_in_the_3d_tab_and_the_draw_menu(qtbot: QtBot) -> None:
+    window = MainWindow(ui=QuietUi())
+    qtbot.addWidget(window)
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    box = window.command_actions["BOX"]
+    assert [b.defaultAction() for b in groups["modeling"].buttons] == [box]
+    titles = [g.title.text() for g in window.findChildren(RibbonGroupWidget)]
+    assert titles.index("Modeling") + 1 == titles.index("Analysis")
+    menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
+    assert box in menus["&Modeling"].actions()
+    assert menus["&Modeling"].menuAction() in menus["&Draw"].actions()

@@ -1,6 +1,6 @@
 # 0030. Wireframe views: the model seen from AutoCAD's preset directions
 
-Date: 2026-11-03 · Status: Proposed
+Date: 2026-11-03 · Status: Accepted (2026-11-03)
 
 ## Context
 
@@ -147,6 +147,10 @@ Each choice marked *(maintainer)* was made by the maintainer on
     tables as they were, the viewport's too; the document keeps the view
     chosen since and keeps it again after.
   - Zooms and pans after the view is chosen are not kept yet.
+
+- **Accepted (maintainer, 2026-11-03)** with two items still to do:
+  thickness (D1), and the zooms and pans made after a view is chosen,
+  which the drawing does not keep yet (D2).
 
 ## Consequences
 

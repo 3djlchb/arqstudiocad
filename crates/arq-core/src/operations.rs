@@ -11,7 +11,7 @@ use arq_document::{
     BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Currencies, Document,
     DocumentError, Entity, EntityId, LayerId, PlanGeometry,
 };
-use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Transform2, Vector2};
+use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Point3, Transform2, Vector2};
 
 use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
@@ -20,6 +20,16 @@ impl CadDocument {
     /// Draws a line on the current layer.
     pub fn add_line(&mut self, start: Point2, end: Point2) -> CadResult<(EntityId, ChangeSet)> {
         self.add_geometry(Line::new(start, end)?.into())
+    }
+
+    /// Makes a box between two opposite corners, its sides along the axes,
+    /// on the current layer (BOX, ADR 0024 step 4a).
+    pub fn add_box(
+        &mut self,
+        corner: Point3,
+        opposite: Point3,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("BOX", |doc| Ok(doc.add_box(corner, opposite)?))
     }
 
     /// Draws a circle on the current layer.

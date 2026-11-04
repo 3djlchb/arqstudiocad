@@ -118,7 +118,7 @@ pub(crate) fn body_of(e: &acadrust::EntityType) -> Option<Result<Body, Untransla
 }
 
 /// Every body of an ACIS document, as one body of the kernel.
-fn translate(doc: &SatDocument) -> Result<Body, Untranslated> {
+pub(crate) fn translate(doc: &SatDocument) -> Result<Body, Untranslated> {
     let mut reader = Reader {
         doc,
         builder: BodyBuilder::new(),
