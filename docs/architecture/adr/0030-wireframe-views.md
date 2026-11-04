@@ -129,6 +129,24 @@ Each choice marked *(maintainer)* was made by the maintainer on
     in an isometric view looks as it will be.
   - Object snaps, ORTHO and grips stay plan-only (D4); the status bar
     says so beside the coordinates.
+- **Step 3, the view kept in the drawing (2026-11-03):**
+  - **Opening:** a drawing opens in the view its `*Active` viewport
+    keeps, when that is one of the ten preset views without a turn; any
+    other view (AutoCAD's orbit, a turned view) opens in plan.
+  - **Choosing a view** keeps it in the viewport: its direction, the
+    target at the origin, no turn, and the center and height of what is
+    shown after the zoom to extents, so AutoCAD opens it on the same
+    picture. A view never chosen here leaves the viewport as the file
+    had it: nothing is rewritten unasked.
+  - **Not an edit:** keeping a view records no change, makes no undo
+    step and leaves the drawing as modified as it was; it is saved with
+    the drawing's next save. Our view axes are AutoCAD's display
+    coordinates (its arbitrary axis algorithm on the direction), so the
+    center needs no conversion.
+  - **Undo:** undoing or redoing a table change brings back all the
+    tables as they were, the viewport's too; the document keeps the view
+    chosen since and keeps it again after.
+  - Zooms and pans after the view is chosen are not kept yet.
 
 ## Consequences
 

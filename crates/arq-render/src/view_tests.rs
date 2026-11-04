@@ -98,3 +98,38 @@ fn a_picked_point_falls_on_the_xy_plane() {
         assert_eq!(view.plane_point(1.0, 2.0), None, "{view:?}: seen edge on");
     }
 }
+
+#[test]
+fn a_kept_direction_names_its_view() {
+    assert_eq!(
+        View::from_direction([2.0, 2.0, 2.0]),
+        Some(View::NeIso),
+        "any length"
+    );
+    assert_eq!(View::from_direction([0.0, -3.0, 0.0]), Some(View::Front));
+    assert_eq!(View::from_direction([1.0, 2.0, 3.0]), None);
+    assert_eq!(View::from_direction([0.0, 0.0, 0.0]), None);
+    assert_eq!(View::from_direction([f64::NAN, 0.0, 1.0]), None);
+    let mut doc = arq_core::Document::new();
+    assert_eq!(View::kept_in(&doc), View::Top);
+    doc.keep_view([-1.0, -1.0, 1.0], (0.0, 0.0), 10.0).unwrap();
+    assert_eq!(View::kept_in(&doc), View::SwIso);
+    // A free direction, as AutoCAD's orbit leaves: shown in plan.
+    doc.keep_view([1.0, 2.0, 3.0], (0.0, 0.0), 10.0).unwrap();
+    assert_eq!(View::kept_in(&doc), View::Top);
+    let turned = arq_core::KeptView {
+        direction: [-1.0, -1.0, 1.0],
+        target: [0.0; 3],
+        twist: 0.5,
+        center: (0.0, 0.0),
+        height: 1.0,
+    };
+    assert_eq!(View::of_kept(turned), View::Top, "turned: in plan");
+    assert_eq!(
+        View::of_kept(KeptView {
+            twist: 0.0,
+            ..turned
+        }),
+        View::SwIso
+    );
+}

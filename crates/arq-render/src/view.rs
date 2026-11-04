@@ -5,6 +5,7 @@
 //! play the part the plan's X and Y play in plan, so the camera, zoom and
 //! pan work alike in every view.
 
+use arq_core::{Document, KeptView};
 use arq_geometry::Point3;
 
 /// One of AutoCAD's preset views. `Top` is the plan.
@@ -69,6 +70,35 @@ impl View {
         View::ALL
             .into_iter()
             .find(|v| v.name().eq_ignore_ascii_case(name))
+    }
+
+    /// The preset view seen from `direction` (toward the viewer, of any
+    /// length); `None` for any other direction.
+    pub fn from_direction(direction: [f64; 3]) -> Option<View> {
+        let length = dot(direction, direction).sqrt();
+        if !(length.is_finite() && length > 0.0) {
+            return None;
+        }
+        let d = direction.map(|c| c / length);
+        View::ALL.into_iter().find(|view| {
+            let u = unit(view.direction());
+            (0..3).all(|i| (u[i] - d[i]).abs() < 1e-9)
+        })
+    }
+
+    /// The view `doc` keeps (ADR 0030 D2), as [`View::of_kept`]; the plan
+    /// when it keeps none.
+    pub fn kept_in(doc: &Document) -> View {
+        doc.kept_view().map_or_else(View::default, View::of_kept)
+    }
+
+    /// A kept view when it is a preset one, not turned; else the plan, the
+    /// drawing's own view left as it is.
+    pub fn of_kept(kept: KeptView) -> View {
+        if kept.twist.abs() >= 1e-9 {
+            return View::Top;
+        }
+        View::from_direction(kept.direction).unwrap_or_default()
     }
 
     /// From the model toward the viewer, as AutoCAD's VIEWDIR.

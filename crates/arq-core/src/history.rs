@@ -41,7 +41,14 @@ pub struct CadDocument {
     next_serial: u64,
     /// State last saved or opened (see [`CadDocument::state`]).
     saved: u64,
+    /// The view last kept (ADR 0030 D2): undoing or redoing a table change
+    /// brings back all the tables as they were, the viewport's too, so it
+    /// is kept again after.
+    kept_view: Option<KeptViewArgs>,
 }
+
+/// What [`CadDocument::keep_view`] was given.
+type KeptViewArgs = ([f64; 3], (f64, f64), f64);
 
 impl CadDocument {
     /// A new, empty drawing.
@@ -65,6 +72,7 @@ impl CadDocument {
             group: None,
             next_serial: 1,
             saved: 0,
+            kept_view: None,
         }
     }
 
@@ -109,6 +117,31 @@ impl CadDocument {
     /// Read access to the drawing. Changes go through this type's operations.
     pub fn document(&self) -> &Document {
         &self.doc
+    }
+
+    /// Keeps the view the drawing is seen from, saved with it (ADR 0030
+    /// D2; see `Document::keep_view`). Not an edit: no undo step, and the
+    /// drawing stays as modified as it was.
+    pub fn keep_view(
+        &mut self,
+        direction: [f64; 3],
+        center: (f64, f64),
+        height: f64,
+    ) -> CadResult<()> {
+        self.doc.keep_view(direction, center, height)?;
+        self.kept_view = Some((direction, center, height));
+        Ok(())
+    }
+
+    /// The view last kept, again: undone or redone changes may have brought
+    /// back the viewport as it was before it.
+    fn keep_view_again(&mut self) -> CadResult<()> {
+        match self.kept_view {
+            Some((direction, center, height)) => {
+                Ok(self.doc.keep_view(direction, center, height)?)
+            }
+            None => Ok(()),
+        }
     }
 
     /// Runs `f` as one transaction named `name` (the undo step's name, an
@@ -220,6 +253,7 @@ impl CadDocument {
         for change in group.step.changes.iter_mut().rev() {
             self.doc.undo_change(change)?;
         }
+        self.keep_view_again()?;
         let summary = group.step.summary.inverted();
         self.spatial_index.apply_change(&self.doc, &summary);
         Ok(summary)
@@ -235,6 +269,7 @@ impl CadDocument {
         for change in step.changes.iter_mut().rev() {
             self.doc.undo_change(change)?;
         }
+        self.keep_view_again()?;
         check_model(&self.doc);
         let summary = step.summary.inverted();
         self.spatial_index.apply_change(&self.doc, &summary);
@@ -252,6 +287,7 @@ impl CadDocument {
         for change in &mut step.changes {
             self.doc.redo_change(change)?;
         }
+        self.keep_view_again()?;
         check_model(&self.doc);
         let summary = step.summary.clone();
         self.spatial_index.apply_change(&self.doc, &summary);
