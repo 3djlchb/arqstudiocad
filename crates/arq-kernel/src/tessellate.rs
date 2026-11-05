@@ -271,7 +271,7 @@ fn isolines(surface: &Surface, boundary: &[(Point3, Point3)], count: usize) -> V
             let Some((h0, h1)) = height_range(boundary, o, a) else {
                 return out;
             };
-            let (e1, e2) = frame(a);
+            let (e1, e2) = (cone.reference(), a.cross(cone.reference()));
             let slope = cone.sin_half_angle() / cone.cos_half_angle();
             let r0 = cone.radius();
             for k in 0..count {
@@ -296,7 +296,7 @@ fn isolines(surface: &Surface, boundary: &[(Point3, Point3)], count: usize) -> V
         Surface::Sphere(sphere) => {
             let (c, r) = (sphere.center(), sphere.radius());
             let z = sphere.pole();
-            let (e1, e2) = frame(z);
+            let (e1, e2) = (sphere.reference(), z.cross(sphere.reference()));
             for k in 0..count {
                 let dir = e1 * angles(k).cos() + e2 * angles(k).sin();
                 out.push(Box::new(move |t| {
@@ -312,7 +312,7 @@ fn isolines(surface: &Surface, boundary: &[(Point3, Point3)], count: usize) -> V
         Surface::Torus(torus) => {
             let (c, a) = (torus.center(), torus.axis());
             let (big, small) = (torus.major_radius(), torus.minor_radius());
-            let (e1, e2) = frame(a);
+            let (e1, e2) = (torus.reference(), a.cross(torus.reference()));
             for k in 0..count {
                 // Around the tube at an angle about the axis.
                 let dir = e1 * angles(k).cos() + e2 * angles(k).sin();
@@ -341,18 +341,6 @@ fn isolines(surface: &Surface, boundary: &[(Point3, Point3)], count: usize) -> V
         }
     }
     out
-}
-
-/// Two unit vectors perpendicular to unit `axis` and to each other.
-fn frame(axis: Vector3) -> (Vector3, Vector3) {
-    let helper = if axis.x().abs() < 0.9 {
-        Vector3::new(1.0, 0.0, 0.0)
-    } else {
-        Vector3::new(0.0, 1.0, 0.0)
-    }
-    .expect("finite");
-    let e1 = axis.cross(helper).normalized().expect("not parallel");
-    (e1, axis.cross(e1))
 }
 
 /// How far along `axis` from `origin` the boundary reaches; `None` without

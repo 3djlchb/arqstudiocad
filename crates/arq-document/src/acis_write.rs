@@ -177,7 +177,7 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
             }
             Surface::Cone(cone) => {
                 let axis = components(cone.axis());
-                let major = across(axis).map(|c| c * cone.radius());
+                let major = components(cone.reference()).map(|c| c * cone.radius());
                 // AcadRust takes the cosine first and writes the sine first.
                 sat.add_cone_surface(
                     xyz(cone.origin()),
@@ -204,7 +204,7 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
                     axis,
                     torus.major_radius(),
                     torus.minor_radius(),
-                    across(axis),
+                    components(torus.reference()),
                 )
             }
             Surface::Nurbs(_) => return Err(Unwritable::Unsupported("NURBS surface")),

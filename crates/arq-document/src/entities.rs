@@ -240,7 +240,32 @@ impl Document {
         }
         // Kinds transformed whole are not owned by the model: nothing to sync.
         transform_whole(raw, t);
+        if let Some(history) = crate::acis::history_of(raw) {
+            self.drop_history(history);
+        }
         Ok(())
+    }
+
+    /// Sets a moved solid's construction history to none, as AutoCAD's
+    /// History property does: its steps no longer say where it is
+    /// (maintainer, 2026-11-05). Undone with the change.
+    fn drop_history(&mut self, history: Handle) {
+        use acadrust::objects::{DynamicBlockData, ObjectType};
+        let recording = matches!(
+            self.cad().objects.get(&history),
+            Some(ObjectType::DynamicBlock(o))
+                if matches!(&o.data, DynamicBlockData::SolidHistory(h) if h.record_history || h.show_history)
+        );
+        if !recording {
+            return;
+        }
+        self.touch_structure();
+        if let Some(ObjectType::DynamicBlock(o)) = self.cad_mut().objects.get_mut(&history)
+            && let DynamicBlockData::SolidHistory(h) = &mut o.data
+        {
+            h.record_history = false;
+            h.show_history = false;
+        }
     }
 
     /// Adds a copy of a transformable entity to model space, with the same

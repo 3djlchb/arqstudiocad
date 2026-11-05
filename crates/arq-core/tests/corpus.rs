@@ -291,7 +291,9 @@ fn drawn_points(doc: &Document, id: EntityId) -> Vec<Point2> {
 }
 
 /// Rotates and moves every block and polyline of the drawing (ADR 0016,
-/// D1) and checks each is drawn where the transformation puts it.
+/// D1) and checks each is drawn where the transformation puts it. ACIS
+/// bodies are drawn again where they go, their lines sampled anew, so
+/// `codec_solids_transformed_as_a_whole` checks them within a chord.
 fn whole_transform_problems(path: &Path) -> Vec<String> {
     let Ok(mut cad) = CadDocument::open(path) else {
         return Vec::new(); // reported by the round trip
@@ -305,6 +307,7 @@ fn whole_transform_problems(path: &Path) -> Vec<String> {
         .entities()
         .iter()
         .filter(|e| e.is_transformable() && !e.is_editable() && !locked(e))
+        .filter(|e| !matches!(e.kind(), "3DSOLID" | "REGION" | "BODY" | "SURFACE"))
         .map(Entity::id)
         .collect();
     let t = arq_geometry::Transform2::rotation(center, 0.4)
@@ -734,6 +737,106 @@ fn codec_solids_are_measured() {
 /// Solids measured through the document (MASSPROP's selection): every
 /// 3DSOLID of a drawing at once, as their own measures add up; regions
 /// refused, as open sheets.
+/// AutoCAD's and LibreDWG's solids moved, turned, scaled and mirrored as
+/// a whole (ADR 0024 step 5a): each measures where the change puts it,
+/// and is saved and reopened so, SAT (ATMOS, DWG 2007) and SAB (2013).
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_solids_transformed_as_a_whole() {
+    use arq_geometry::{Line, Transform2};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    let dir = tempfile::tempdir().unwrap();
+    let t = Transform2::translation(Vector2::new(7.0, -3.0).unwrap())
+        .then(Transform2::rotation(p(1.0, 2.0), 0.5).unwrap())
+        .then(Transform2::scaling(p(0.0, 0.0), 1.5).unwrap())
+        .then(Transform2::mirror(
+            Line::new(p(0.0, 0.0), p(1.0, 1.0)).unwrap(),
+        ));
+    let mut counts = Vec::new();
+    for name in [
+        "2007/ATMOS-DC22S.dwg",
+        "example_2000.dwg",
+        "example_2013.dwg",
+    ] {
+        let mut doc = Document::open(root.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let mut before = Vec::new();
+        for e in doc.entities() {
+            if let Some(Ok(body)) = doc.solid(e.id())
+                && let Ok(m) = body.mass_properties()
+            {
+                // Its lines as drawn, where the change will put them.
+                let drawn = drawn_points(&doc, e.id())
+                    .into_iter()
+                    .map(|q| t.apply_point(q))
+                    .collect::<Vec<_>>();
+                before.push((e.id(), m, drawn));
+            }
+        }
+        for (id, _, _) in &before {
+            let id = *id;
+            doc.transform_entity(id, t)
+                .unwrap_or_else(|e| panic!("{name} {id:X}: {e}"));
+        }
+        let path = dir.path().join(name.replace('/', "-"));
+        doc.save(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let back = Document::open(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        for (id, a, drawn) in &before {
+            let what = format!("{name} {id:X}");
+            // Drawn there: the same box, within the chords it is drawn by.
+            let boxed = |points: &[Point2]| {
+                points.iter().fold(None, |b: Option<(Point2, Point2)>, q| {
+                    Some(b.map_or((*q, *q), |(lo, hi)| {
+                        (
+                            p(lo.x().min(q.x()), lo.y().min(q.y())),
+                            p(hi.x().max(q.x()), hi.y().max(q.y())),
+                        )
+                    }))
+                })
+            };
+            if let (Some((lo, hi)), Some((lo2, hi2))) =
+                (boxed(drawn), boxed(&drawn_points(&doc, *id)))
+            {
+                let chord = 2e-3 * a.bounds.size().length() * 1.5;
+                let off = lo.distance_to(lo2).max(hi.distance_to(hi2));
+                assert!(off <= chord, "{what}: drawn {off} away");
+            }
+            let goes = t.apply_point(p(a.centroid.x(), a.centroid.y()));
+            let size = a.bounds.size().length() * 1.5;
+            for (when, d) in [("moved", &doc), ("reopened", &back)] {
+                let b = d
+                    .solid(*id)
+                    .expect("a solid")
+                    .unwrap_or_else(|e| panic!("{what} {when}: {e}"))
+                    .mass_properties()
+                    .unwrap_or_else(|e| panic!("{what} {when}: {e}"));
+                assert!(
+                    (b.volume - a.volume * 3.375).abs() < 1e-9 * b.volume,
+                    "{what} {when}: {} {}",
+                    a.volume,
+                    b.volume
+                );
+                assert!(
+                    (b.area - a.area * 2.25).abs() < 1e-9 * b.area,
+                    "{what} {when}"
+                );
+                let off = (b.centroid.x() - goes.x())
+                    .hypot(b.centroid.y() - goes.y())
+                    .hypot(b.centroid.z() - a.centroid.z() * 1.5);
+                assert!(off < 1e-9 * size.max(1.0), "{what} {when}: {off}");
+            }
+        }
+        counts.push((name, before.len()));
+    }
+    assert_eq!(
+        counts,
+        [
+            ("2007/ATMOS-DC22S.dwg", 58),
+            ("example_2000.dwg", 1),
+            ("example_2013.dwg", 1),
+        ]
+    );
+}
+
 #[test]
 #[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
 fn codec_solids_written_by_us_read_back() {

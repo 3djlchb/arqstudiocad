@@ -45,27 +45,36 @@ impl Surface {
                 t.apply_point(s.origin),
                 t.apply_vector(s.normal),
             )?),
-            Self::Cone(s) => Self::Cone(Cone::new(
-                t.apply_point(s.origin),
-                t.apply_vector(s.axis),
-                s.radius * scale,
-                s.sin_half_angle,
-                s.cos_half_angle,
-            )?),
+            Self::Cone(s) => Self::Cone(
+                Cone::new(
+                    t.apply_point(s.origin),
+                    t.apply_vector(s.axis),
+                    s.radius * scale,
+                    s.sin_half_angle,
+                    s.cos_half_angle,
+                )?
+                .with_reference(t.apply_vector(s.reference))?,
+            ),
             Self::EllipticCylinder(s) => {
                 Self::EllipticCylinder(EllipticCylinder::new(s.section.transformed(t)?))
             }
-            Self::Sphere(s) => Self::Sphere(Sphere::with_pole(
-                t.apply_point(s.center),
-                s.radius * scale,
-                t.apply_vector(s.pole),
-            )?),
-            Self::Torus(s) => Self::Torus(Torus::new(
-                t.apply_point(s.center),
-                t.apply_vector(s.axis),
-                s.major_radius * scale,
-                s.minor_radius * scale,
-            )?),
+            Self::Sphere(s) => Self::Sphere(
+                Sphere::with_pole(
+                    t.apply_point(s.center),
+                    s.radius * scale,
+                    t.apply_vector(s.pole),
+                )?
+                .with_reference(t.apply_vector(s.reference))?,
+            ),
+            Self::Torus(s) => Self::Torus(
+                Torus::new(
+                    t.apply_point(s.center),
+                    t.apply_vector(s.axis),
+                    s.major_radius * scale,
+                    s.minor_radius * scale,
+                )?
+                .with_reference(t.apply_vector(s.reference))?,
+            ),
             Self::Nurbs(s) => Self::Nurbs(s.transformed(t)),
         })
     }
@@ -113,6 +122,7 @@ pub struct Cone {
     radius: f64,
     sin_half_angle: f64,
     cos_half_angle: f64,
+    reference: Vector3,
 }
 
 impl Cone {
@@ -132,13 +142,31 @@ impl Cone {
         if !(cos_half_angle > 0.0 && (unit - 1.0).abs() < 1e-9) {
             return Err(GeometryError::OutOfRange { what: "half angle" });
         }
+        let axis = axis.normalized()?;
         Ok(Self {
             origin,
-            axis: axis.normalized()?,
+            axis,
             radius,
             sin_half_angle,
             cos_half_angle,
+            reference: crate::chart::frame(axis).0,
         })
+    }
+
+    /// Its reference: the unit direction square to its axis where its
+    /// angle around it starts, as ACIS keeps it; its isolines and its
+    /// chart turn with it.
+    pub fn reference(&self) -> Vector3 {
+        self.reference
+    }
+
+    /// The same surface, its angle around the axis counted from
+    /// `reference` (made square to the axis); an error when it lies along
+    /// the axis.
+    pub fn with_reference(mut self, reference: Vector3) -> GeometryResult<Self> {
+        let axis = self.axis;
+        self.reference = (reference - axis * reference.dot(axis)).normalized()?;
+        Ok(self)
     }
 
     /// Whether it is a cylinder (no half angle).
@@ -215,6 +243,7 @@ pub struct Sphere {
     center: Point3,
     radius: f64,
     pole: Vector3,
+    reference: Vector3,
 }
 
 impl Sphere {
@@ -229,10 +258,12 @@ impl Sphere {
         if !(radius.is_finite() && radius > 0.0) {
             return Err(GeometryError::InvalidRadius);
         }
+        let pole = pole.normalized()?;
         Ok(Self {
             center,
             radius,
-            pole: pole.normalized()?,
+            pole,
+            reference: crate::chart::frame(pole).0,
         })
     }
 
@@ -241,10 +272,20 @@ impl Sphere {
         self.pole
     }
 
-    /// The unit direction square to the pole its meridians are counted
-    /// from.
+    /// Its reference: the unit direction square to its pole where its
+    /// meridians starts, as ACIS keeps it; its isolines and its
+    /// chart turn with it.
     pub fn reference(&self) -> Vector3 {
-        crate::chart::frame(self.pole).0
+        self.reference
+    }
+
+    /// The same surface, its angle of longitude counted from
+    /// `reference` (made square to the pole); an error when it lies along
+    /// the pole.
+    pub fn with_reference(mut self, reference: Vector3) -> GeometryResult<Self> {
+        let axis = self.pole;
+        self.reference = (reference - axis * reference.dot(axis)).normalized()?;
+        Ok(self)
     }
 
     /// Its center.
@@ -271,6 +312,7 @@ pub struct Torus {
     axis: Vector3,
     major_radius: f64,
     minor_radius: f64,
+    reference: Vector3,
 }
 
 impl Torus {
@@ -285,12 +327,30 @@ impl Torus {
         if !(major_radius.is_finite() && minor_radius.is_finite() && minor_radius > 0.0) {
             return Err(GeometryError::InvalidRadius);
         }
+        let axis = axis.normalized()?;
         Ok(Self {
             center,
-            axis: axis.normalized()?,
+            axis,
             major_radius,
             minor_radius,
+            reference: crate::chart::frame(axis).0,
         })
+    }
+
+    /// Its reference: the unit direction square to its axis where its
+    /// angle around it starts, as ACIS keeps it; its isolines and its
+    /// chart turn with it.
+    pub fn reference(&self) -> Vector3 {
+        self.reference
+    }
+
+    /// The same surface, its angle around the axis counted from
+    /// `reference` (made square to the axis); an error when it lies along
+    /// the axis.
+    pub fn with_reference(mut self, reference: Vector3) -> GeometryResult<Self> {
+        let axis = self.axis;
+        self.reference = (reference - axis * reference.dot(axis)).normalized()?;
+        Ok(self)
     }
 
     /// Its center.

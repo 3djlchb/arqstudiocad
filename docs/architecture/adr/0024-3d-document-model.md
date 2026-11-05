@@ -353,6 +353,36 @@ part of this ADR.
   - **REVOLVE** (alias REV, Spanish REVOLUCION) selects, then asks for
     the axis and the angle, remembered. With it step 4 is complete;
     step 5, editing solids, follows.
+- **Step 5a, solids moved as a whole (2026-11-05):** MOVE, COPY,
+  ROTATE, SCALE and MIRROR take 3DSOLID, REGION, BODY and SURFACE, in
+  plan, as they take blocks (maintainer, 2026-11-05). AutoCAD's 3D
+  commands (3DMOVE with a height, 3DROTATE, MIRROR3D) wait for entities
+  with Z and user coordinate systems; solids get no grips yet.
+  - **The body's placement takes the change** (maintainer, 2026-11-05):
+    its geometry stays byte for byte, so every solid moves, those not
+    translated yet too (NURBS, offset surfaces); SAT stays SAT and SAB
+    SAB. The codec composes it, with the wires and silhouettes the
+    drawing keeps; the placement is then stated as ACIS states it, a
+    matrix of unit rows and the size in the scale. A body whose data does
+    not read is left alone, said why.
+  - **SCALE scales the height too,** about the base point on the XY
+    plane, as AutoCAD's does.
+  - **The reader** takes a size folded into the matrix as well as the
+    scale, and reads a transform in each encoding (SAT numbers, SAB
+    rows); a body's box from its vertices follows its placement.
+  - **History:** a moved solid's AutoCAD construction history is set to
+    none, as its History property does, since its steps no longer say
+    where it is (maintainer, 2026-11-05; 42 of ATMOS's 58 solids have
+    one); undone with the change. A copy leaves the history with the
+    original.
+  - **Drawn where it went:** cones, spheres and tori keep their
+    reference, the direction ACIS counts their angle around from; read,
+    written and turned with the body, it sets their isolines, so these
+    turn with the solid as in AutoCAD. The chords a solid is drawn by
+    follow its size as its vertices span it, the same however it turns.
+  - **Checked:** every solid of ATMOS (DWG 2007, SAT) and of LibreDWG's
+    examples (DWG 2000, and 2013 in SAB) moved, turned, scaled and
+    mirrored measures where the change puts it, saved and reopened.
 
 ## Consequences
 

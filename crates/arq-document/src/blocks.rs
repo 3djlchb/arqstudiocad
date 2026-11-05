@@ -586,6 +586,14 @@ impl Document {
         common.reactors.clear();
         common.xdictionary_handle = None;
         common.graphic_data = None;
+        // A solid's construction history stays with the original.
+        match &mut copy {
+            EntityType::Solid3D(s) => s.history_handle = None,
+            EntityType::Region(r) => r.history_handle = None,
+            EntityType::Surface(s) => s.history_handle = None,
+            EntityType::Body(b) => b.history_handle = None,
+            _ => {}
+        }
         if let EntityType::Insert(insert) = &mut copy {
             for attribute in &mut insert.attributes {
                 let h = self.cad_mut().allocate_handle();
