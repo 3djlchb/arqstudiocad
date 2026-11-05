@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use arq_document::{
     BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Currencies, Document,
-    DocumentError, Entity, EntityId, LayerId, PlanGeometry,
+    DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Point3, Transform2, Vector2};
 
@@ -57,6 +57,17 @@ impl CadDocument {
         height: f64,
     ) -> CadResult<(EntityId, ChangeSet)> {
         self.transact("CONE", |doc| Ok(doc.add_cone(center, base, top, height)?))
+    }
+
+    /// Extrudes the closed profiles among `ids` `height` along Z into
+    /// solids on their layers, erasing them (EXTRUDE, ADR 0024 step 4c);
+    /// one undo step, none when nothing was extruded.
+    pub fn extrude_entities(
+        &mut self,
+        ids: &[EntityId],
+        height: f64,
+    ) -> CadResult<(Extruded, ChangeSet)> {
+        self.transact("EXTRUDE", |doc| Ok(doc.extrude_entities(ids, height)?))
     }
 
     /// Makes a sphere around `center` on the current layer (SPHERE, ADR

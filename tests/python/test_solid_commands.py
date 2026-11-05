@@ -433,7 +433,103 @@ def test_all_six_primitives_in_the_modeling_group(qtbot: QtBot) -> None:
     qtbot.addWidget(window)
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     actions = window.command_actions
-    names = ["BOX", "WEDGE", "CYLINDER", "CONE", "SPHERE", "TORUS"]
+    names = ["BOX", "WEDGE", "CYLINDER", "CONE", "SPHERE", "TORUS", "EXTRUDE"]
     assert [b.defaultAction() for b in groups["modeling"].buttons] == [actions[n] for n in names]
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
     assert menus["&Modeling"].actions() == [actions[n] for n in names]
+
+
+# EXTRUDE (ADR 0024 step 4c)
+
+
+def profiles() -> tuple[Harness, CadDocument, list[int]]:
+    """A drawing with a closed 4 x 2 polyline, a slot (two half circles),
+    a circle of radius 1, an open polyline and a line."""
+    h = harness()
+    h.session.new_document()
+    document = h.session.active
+    assert document is not None
+    square, _ = document.add_polyline([((0, 0), 0), ((4, 0), 0), ((4, 2), 0), ((0, 2), 0)], True)
+    slot, _ = document.add_polyline(
+        [((10, -1), 0), ((14, -1), 1), ((14, 1), 0), ((10, 1), 1)], closed=True
+    )
+    circle, _ = document.add_circle((20, 0), 1)
+    open_, _ = document.add_polyline([((30, 0), 0), ((32, 0), 0), ((32, 2), 0)])
+    line, _ = document.add_line((40, 0), (41, 0))
+    return h, document, [square, slot, circle, open_, line]
+
+
+def solids_of(document: CadDocument) -> list[CadMassProperties]:
+    found = (document.measure_solids([e.id]).total for e in document.get_entities())
+    return sorted((m for m in found if m is not None), key=lambda m: m.centroid[0])
+
+
+def test_extrude_makes_solids_of_closed_profiles() -> None:
+    h, document, ids = profiles()
+    h.session.select(document, ids)
+    h.run("EXTRUDE", "3")
+    assert h.prompts()[-1] == "Specify height [2Point(2P)]:"
+    assert h.messages()[-2:] == [
+        "1 were not closed polylines or circles.",
+        "1 polylines were not closed.",
+    ]
+    square, slot, cylinder = solids_of(document)
+    assert square.volume == pytest.approx(24.0)
+    assert slot.volume == pytest.approx((8 + math.pi) * 3)
+    assert cylinder.volume == pytest.approx(3 * math.pi)
+    # The closed profiles are erased; the rest stay, and one undo puts back
+    # what was.
+    kinds = sorted(e.kind for e in document.get_entities())
+    assert kinds == ["3DSOLID", "3DSOLID", "3DSOLID", "LINE", "LWPOLYLINE"]
+    assert h.session.selection(document) == ()
+    h.run("UNDO")
+    kinds = sorted(e.kind for e in document.get_entities())
+    assert kinds == ["CIRCLE", "LINE", "LWPOLYLINE", "LWPOLYLINE", "LWPOLYLINE"]
+
+
+def test_extrude_selects_then_asks_the_height_down_or_by_two_points() -> None:
+    h, document, ids = profiles()
+    h.run("EXT")
+    assert h.prompts()[-1] == "Select objects [All/Last(L)/Previous(P)]:"
+    h.session.select(document, [ids[0]])
+    h.run("", "-2")
+    (box,) = solids_of(document)
+    assert corners(box)[2] == pytest.approx(-2.0)
+    h.session.select(document, [ids[2]])
+    h.run("EXTRUDE", "2P", "0,0", "0,5")
+    _, cylinder = solids_of(document)
+    assert corners(cylinder)[5] == pytest.approx(5.0)
+    # The last height is offered again.
+    h.session.select(document, [ids[1]])
+    h.run("EXTRUDE", "")
+    assert solids_of(document)[1].volume == pytest.approx((8 + math.pi) * 5)
+
+
+def test_extrude_with_nothing_to_extrude_says_so() -> None:
+    h, document, ids = profiles()
+    h.session.select(document, [ids[4]])
+    h.run("EXTRUDE", "1")
+    assert h.messages()[-2:] == [
+        "1 were not closed polylines or circles.",
+        "Nothing could be extruded.",
+    ]
+    assert h.of(CommandCancelled)[-1].name == "EXTRUDE"
+    assert len(document.get_entities()) == 5
+
+
+def test_extrusion_in_spanish() -> None:
+    h, document, ids = profiles()
+    set_language("es")
+    try:
+        h.session.select(document, [ids[0]])
+        h.run("EXTRUSION", "1")
+        assert h.prompts()[-1] == "Precise altura [2Puntos(2P)]:"
+    finally:
+        set_language("en")
+    assert solids_of(document)[0].volume == pytest.approx(8.0)
+
+
+def test_every_extrusion_reason_is_said() -> None:
+    from arqstudiocad.commands.solids import extrusion_refusals
+
+    assert set(extrusion_refusals()) == {"not_a_profile", "open", "tilted", "crossing", "flat"}

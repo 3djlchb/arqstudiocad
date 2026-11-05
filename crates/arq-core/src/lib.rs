@@ -81,7 +81,9 @@ pub use arq_document::{
     MassProperties, MeasureError, Money, PlanGeometry, Shape, SolidMeasures, SpaceItem, TextData,
     Unmeasured,
 };
-pub use arq_document::{KeptView, Unwritable, pick_among, select_among};
+pub use arq_document::{
+    Extruded, KeptView, ProfileError, Unextruded, Unwritable, pick_among, select_among,
+};
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};
 pub use history::{CadDocument, Snapshot};

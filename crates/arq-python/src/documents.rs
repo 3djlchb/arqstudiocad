@@ -125,6 +125,10 @@ fn save(
     py.detach(move || store.save_document(id, path)).py()
 }
 
+/// What `extrude` gives back: the solids made, the entities left with
+/// why, and what changed.
+type Extrusions = (Vec<EntityId>, Vec<(EntityId, &'static str)>, CadChangeSet);
+
 /// One open drawing, by id. Calls on a closed document raise
 /// `DocumentNotFoundError`.
 #[pyclass(frozen, module = "arqstudiocad._core")]
@@ -446,6 +450,30 @@ impl CadDocument {
     ) -> PyResult<(EntityId, CadChangeSet)> {
         let (x, y, z) = center;
         self.create(|cad| cad.add_cone(arq_geometry::Point3::new(x, y, z)?, base, top, height))
+    }
+
+    /// Extrudes the closed polylines and circles among `entity_ids`
+    /// `height` along Z (negative: downward) into solids on their layers,
+    /// erasing them (EXTRUDE, ADR 0024 step 4c): the solids made, the
+    /// entities left as `(id, why)` (`"not_a_profile"`, `"open"`,
+    /// `"tilted"`, `"crossing"`, `"flat"`), and what changed.
+    fn extrude(&self, entity_ids: Vec<EntityId>, height: f64) -> PyResult<Extrusions> {
+        let (out, changes) = self.edit(|cad| cad.extrude_entities(&entity_ids, height))?;
+        let refused = out
+            .refused
+            .iter()
+            .map(|(id, why)| {
+                let code = match why {
+                    arq_core::Unextruded::NotAProfile => "not_a_profile",
+                    arq_core::Unextruded::Open => "open",
+                    arq_core::Unextruded::Tilted => "tilted",
+                    arq_core::Unextruded::Profile(arq_core::ProfileError::Crossing) => "crossing",
+                    arq_core::Unextruded::Profile(_) => "flat",
+                };
+                (*id, code)
+            })
+            .collect();
+        Ok((out.solids, refused, CadChangeSet(changes)))
     }
 
     /// Makes a sphere around `center` `(x, y, z)` (SPHERE, ADR 0024 step

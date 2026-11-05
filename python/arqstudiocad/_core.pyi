@@ -309,6 +309,9 @@ class CadDocument:
     def add_sphere(
         self, center: tuple[float, float, float], radius: float
     ) -> tuple[int, CadChangeSet]: ...
+    def extrude(
+        self, entity_ids: _Ids, height: float
+    ) -> tuple[list[int], list[tuple[int, str]], CadChangeSet]: ...
     def add_torus(
         self, center: tuple[float, float, float], radius: float, tube: float
     ) -> tuple[int, CadChangeSet]: ...

@@ -1,6 +1,7 @@
 """The 3D commands of milestone 02.8 (ADR 0024), in the ribbon's 3D tab:
 BOX, WEDGE, CYLINDER, CONE, SPHERE and TORUS, which make solids (steps 4a
-and 4b), and MASSPROP, which measures them.
+and 4b), EXTRUDE, which makes them of closed profiles (step 4c), and
+MASSPROP, which measures them.
 
 MASSPROP reports the volume, surface area, bounding box and centroid of the
 solids selected, together, as AutoCAD's MASSPROP reports a selection;
@@ -127,6 +128,7 @@ CYLINDER_RADIUS, CYLINDER_HEIGHT = "CYLINDER_RADIUS", "CYLINDER_HEIGHT"
 CONE_RADIUS, CONE_HEIGHT = "CONE_RADIUS", "CONE_HEIGHT"
 SPHERE_RADIUS = "SPHERE_RADIUS"
 TORUS_RADIUS, TUBE_RADIUS = "TORUS_RADIUS", "TUBE_RADIUS"
+EXTRUDE_HEIGHT = "EXTRUDE_HEIGHT"
 
 #: Makes a solid in ``document`` between two opposite corners ``(x, y, z)``.
 type Maker = Callable[[CadDocument, tuple[float, float, float], tuple[float, float, float]], Any]
@@ -220,6 +222,41 @@ def cone(ctx: CommandContext) -> CommandScript:
         top = yield from _top_radius(ctx, top)
     assert isinstance(height, float)
     _, changes = document.add_cone((*center, 0.0), base, top, height)
+    ctx.session.report(document, changes)
+
+
+def extrusion_refusals() -> dict[str, Callable[[int], str]]:
+    """Why profiles were not extruded, by the API's reason, in the order
+    said. Written as literal tr() calls so the translation test sees every
+    one."""
+    return {
+        "not_a_profile": lambda n: tr("{count} were not closed polylines or circles.", count=n),
+        "open": lambda n: tr("{count} polylines were not closed.", count=n),
+        "tilted": lambda n: tr("{count} were not in plan.", count=n),
+        "crossing": lambda n: tr("{count} cross themselves.", count=n),
+        "flat": lambda n: tr("{count} enclose no area.", count=n),
+    }
+
+
+def extrude(ctx: CommandContext) -> CommandScript:
+    """EXTRUDE, AutoCAD's (Spanish EXTRUSION), with its height: the closed
+    polylines and circles selected made solids on their layers, and
+    erased, as AutoCAD's DELOBJ does (ADR 0024 step 4c). Direction, Path
+    and Taper angle come later."""
+    document = ctx.document()
+    ids = yield from select_objects(ctx, document)
+    if not ids:
+        return
+    height = yield from _height(ctx, EXTRUDE_HEIGHT)
+    assert isinstance(height, float)
+    made, refused, changes = document.extrude(list(ids), height)
+    done_selecting(ctx, document, ids)
+    reasons = [why for _, why in refused]
+    for why, said in extrusion_refusals().items():
+        if count := reasons.count(why):
+            ctx.message(said(count))
+    if not made:
+        raise CommandCancelledError(tr("Nothing could be extruded."))
     ctx.session.report(document, changes)
 
 
@@ -339,6 +376,7 @@ SOLID_COMMANDS = (
     Command("CONE", cone),
     Command("SPHERE", sphere),
     Command("TORUS", torus, ("TOR",)),
+    Command("EXTRUDE", extrude, ("EXT",)),
     Command("MASSPROP", massprop),
 )
 
