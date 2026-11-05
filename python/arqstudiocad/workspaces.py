@@ -149,7 +149,9 @@ CAD = Discipline(
             "3d",
             lambda: tr("3D"),
             (
-                RibbonGroup("modeling", lambda: tr("Modeling"), ("BOX", "WEDGE")),
+                RibbonGroup(
+                    "modeling", lambda: tr("Modeling"), ("BOX", "WEDGE", "CYLINDER", "CONE")
+                ),
                 RibbonGroup("analysis", lambda: tr("Analysis"), ("MASSPROP",)),
             ),
         ),

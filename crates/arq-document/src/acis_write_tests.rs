@@ -258,3 +258,176 @@ fn a_wedge_is_saved_and_reads_back() {
         Err(DocumentError::Geometry(_))
     ));
 }
+
+/// A cylinder, a cone to a point, a frustum, one downward and one upside
+/// down, each standing on (2, 3, 0).
+fn round_solids() -> Vec<(&'static str, Body)> {
+    let at = p(2.0, 3.0, 0.0);
+    vec![
+        ("cylinder", Body::cylinder(at, 1.5, 4.0).unwrap()),
+        ("cone", Body::cone(at, 3.0, 0.0, 4.0).unwrap()),
+        ("frustum", Body::cone(at, 3.0, 1.0, 4.0).unwrap()),
+        ("downward", Body::cone(at, 3.0, 1.0, -4.0).unwrap()),
+        ("upside down", Body::cone(at, 0.0, 2.0, 4.0).unwrap()),
+    ]
+}
+
+#[test]
+fn cylinders_and_cones_read_back_the_same() {
+    for (name, body) in round_solids() {
+        let sat = sat_of(&body).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let measures = body.mass_properties().unwrap();
+        for back in read_back(&sat) {
+            back.check(Tolerance::DEFAULT)
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert_eq!(back.faces().len(), body.faces().len(), "{name}");
+            same(&back.mass_properties().unwrap(), &measures);
+        }
+    }
+}
+
+#[test]
+fn circles_span_a_turn_and_an_apex_nothing() {
+    let sat = sat_of(&Body::cone(p(0.0, 0.0, 0.0), 3.0, 0.0, 4.0).unwrap()).unwrap();
+    let edges: Vec<_> = sat.records.iter().filter(|r| r.is_a("edge")).collect();
+    assert_eq!(edges.len(), 2);
+    for edge in edges {
+        let (from, to) = (edge.token_float(2).unwrap(), edge.token_float(4).unwrap());
+        if edge.token_pointer(6).unwrap().is_null() {
+            assert_eq!((from, to), (1.0, 0.0), "the apex");
+        } else {
+            assert!(
+                (to - from - std::f64::consts::TAU).abs() < 1e-12,
+                "{from} {to}"
+            );
+        }
+    }
+    let cones = sat
+        .records
+        .iter()
+        .filter(|r| r.is_a("cone-surface"))
+        .count();
+    assert_eq!(cones, 1);
+}
+
+#[test]
+fn cylinders_and_cones_are_saved_and_read_back() {
+    use acadrust::types::DxfVersion;
+    let dir = tempfile::tempdir().unwrap();
+    for version in [DxfVersion::AC1015, DxfVersion::AC1024, DxfVersion::AC1032] {
+        let mut doc = Document::new();
+        doc.cad_mut().version = version;
+        let mut volumes = Vec::new();
+        for (_, body) in round_solids() {
+            volumes.push(body.mass_properties().unwrap().volume);
+            doc.add_solid(&body).unwrap();
+        }
+        for ext in ["dwg", "dxf"] {
+            let path = dir.path().join(format!("redondos-{version:?}.{ext}"));
+            doc.save(&path)
+                .unwrap_or_else(|e| panic!("{version:?} {ext}: {e}"));
+            let back = Document::open(&path).unwrap();
+            let read: Vec<f64> = back
+                .entities()
+                .into_iter()
+                .filter(|e| e.kind() == "3DSOLID")
+                .map(|e| {
+                    back.solid(e.id())
+                        .unwrap()
+                        .unwrap()
+                        .mass_properties()
+                        .unwrap()
+                        .volume
+                })
+                .collect();
+            assert_eq!(read.len(), volumes.len(), "{version:?} {ext}");
+            for (a, b) in read.iter().zip(&volumes) {
+                assert!((a - b).abs() < 1e-9 * b, "{version:?} {ext}: {a} {b}");
+            }
+        }
+    }
+}
+
+#[test]
+fn an_edge_against_its_circle_is_written_the_way_it_runs() {
+    // A cylinder whose base circle is defined turned over, its edge marked
+    // as running against it: the same cylinder, written along the edge.
+    use arq_kernel::{
+        BodyBuilder, Coedge, Cone, Edge, EllipseCurve, Face, Loop, Lump, Plane, Shell,
+    };
+    let z = Vector3::new(0.0, 0.0, 1.0).unwrap();
+    let x = Vector3::new(1.0, 0.0, 0.0).unwrap();
+    let (r, h) = (1.5, 2.0);
+    let mut b = BodyBuilder::new();
+    let low = b.vertex(p(r, 0.0, 0.0));
+    let high = b.vertex(p(r, 0.0, h));
+    let circle = |center: Point3, normal: Vector3| {
+        Some(Curve::Ellipse(
+            EllipseCurve::new(center, normal, x * r, 1.0).unwrap(),
+        ))
+    };
+    let bottom = b.edge(Edge {
+        curve: circle(p(0.0, 0.0, 0.0), -z),
+        start: low,
+        end: low,
+        reversed: true,
+    });
+    let top = b.edge(Edge {
+        curve: circle(p(0.0, 0.0, h), z),
+        start: high,
+        end: high,
+        reversed: false,
+    });
+    let mut one = |edge, reversed| {
+        let c = b.coedge(Coedge { edge, reversed });
+        b.add_loop(Loop { coedges: vec![c] })
+    };
+    let (under, over, side_low, side_high) = (
+        one(bottom, true),
+        one(top, false),
+        one(bottom, false),
+        one(top, true),
+    );
+    let plane = |at: Point3, n: Vector3| Surface::Plane(Plane::new(at, n).unwrap());
+    let faces = vec![
+        b.face(Face {
+            surface: plane(p(0.0, 0.0, 0.0), -z),
+            loops: vec![under],
+            reversed: false,
+        }),
+        b.face(Face {
+            surface: plane(p(0.0, 0.0, h), z),
+            loops: vec![over],
+            reversed: false,
+        }),
+        b.face(Face {
+            surface: Surface::Cone(Cone::new(p(0.0, 0.0, 0.0), z, r, 0.0, 1.0).unwrap()),
+            loops: vec![side_low, side_high],
+            reversed: false,
+        }),
+    ];
+    let shell = b.shell(Shell { faces });
+    b.lump(Lump {
+        shells: vec![shell],
+    });
+    let body = b.build(Tolerance::DEFAULT).unwrap();
+    let measures = body.mass_properties().unwrap();
+    assert!((measures.volume - std::f64::consts::PI * r * r * h).abs() < 1e-9);
+    for back in read_back(&sat_of(&body).unwrap()) {
+        same(&back.mass_properties().unwrap(), &measures);
+    }
+}
+
+#[test]
+fn no_cone_is_written_with_a_circle_of_no_size() {
+    // An upside-down cone's base is a point: its surface is written from
+    // its top circle, which ACIS needs a size for.
+    for (name, body) in round_solids() {
+        let sat = sat_of(&body).unwrap();
+        for cone in sat.records.iter().filter(|r| r.is_a("cone-surface")) {
+            let major = [7, 8, 9].map(|i| cone.token_float(i).unwrap());
+            let length = major.iter().map(|c| c * c).sum::<f64>().sqrt();
+            assert!(length > 0.0, "{name}");
+        }
+    }
+}

@@ -50,6 +50,9 @@
   "CLOSE": [
     "CERRAR"
   ],
+  "CONE": [
+    "CONO"
+  ],
   "COPY": [
     "COPIA"
   ],
@@ -58,6 +61,9 @@
   ],
   "CURRENCIES": [
     "MONEDAS"
+  ],
+  "CYLINDER": [
+    "CILINDRO"
   ],
   "DISTANCE": [
     "DISTANCIA"

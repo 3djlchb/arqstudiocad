@@ -118,3 +118,96 @@ fn a_flat_wedge_is_refused() {
         );
     }
 }
+
+#[track_caller]
+fn about(a: f64, b: f64) {
+    assert!((a - b).abs() <= 1e-10 * b.abs().max(1.0), "{a} != {b}");
+}
+
+#[test]
+fn a_cylinder_on_its_base() {
+    use std::f64::consts::PI;
+    let (r, h) = (1.5, 2.0);
+    let body = Body::cylinder(p(3.0, -1.0, 4.0), r, h).unwrap();
+    // Two circles, each with its vertex; the ends and the side.
+    assert_eq!(
+        (
+            body.vertices().len(),
+            body.edges().len(),
+            body.faces().len()
+        ),
+        (2, 2, 3)
+    );
+    let m = body.mass_properties().unwrap();
+    about(m.volume, PI * r * r * h);
+    about(m.area, 2.0 * PI * r * (r + h));
+    about(m.centroid.z(), 5.0);
+    about(m.bounds.max().x(), 4.5);
+}
+
+#[test]
+fn a_cone_to_a_point_and_a_frustum() {
+    use std::f64::consts::PI;
+    let (r, h) = (3.0, 4.0);
+    let cone = Body::cone(p(0.0, 0.0, 0.0), r, 0.0, h).unwrap();
+    // The base circle and the apex, each an edge with its vertex.
+    assert_eq!((cone.edges().len(), cone.faces().len()), (2, 2));
+    assert!(cone.edges().iter().any(|e| e.curve.is_none()), "the apex");
+    let m = cone.mass_properties().unwrap();
+    about(m.volume, PI * r * r * h / 3.0);
+    // The base, and the side: π r times the slant height, 5.
+    about(m.area, PI * r * r + PI * r * 5.0);
+    about(m.centroid.z(), h / 4.0);
+    let (big, small) = (3.0, 1.0);
+    let frustum = Body::cone(p(0.0, 0.0, 0.0), big, small, h).unwrap();
+    let m = frustum.mass_properties().unwrap();
+    about(
+        m.volume,
+        PI * h / 3.0 * (big * big + big * small + small * small),
+    );
+    about(m.bounds.max().z(), h);
+}
+
+#[test]
+fn a_cone_down_or_upside_down() {
+    use std::f64::consts::PI;
+    // Downward: below its base, the same cone turned over.
+    let down = Body::cone(p(0.0, 0.0, 0.0), 3.0, 0.0, -4.0).unwrap();
+    let m = down.mass_properties().unwrap();
+    about(m.volume, PI * 12.0);
+    about(m.centroid.z(), -1.0);
+    // A point at its base, widening up to its top.
+    let inverted = Body::cone(p(0.0, 0.0, 0.0), 0.0, 3.0, 4.0).unwrap();
+    let m = inverted.mass_properties().unwrap();
+    about(m.volume, PI * 12.0);
+    about(m.centroid.z(), 3.0);
+    // A cylinder downward, and one wider at the top than the base.
+    let m = Body::cylinder(p(0.0, 0.0, 1.0), 1.0, -2.0)
+        .unwrap()
+        .mass_properties()
+        .unwrap();
+    about(m.volume, PI * 2.0);
+    about(m.centroid.z(), 0.0);
+    let m = Body::cone(p(0.0, 0.0, 0.0), 1.0, 2.0, 3.0)
+        .unwrap()
+        .mass_properties()
+        .unwrap();
+    about(m.volume, PI * 3.0 / 3.0 * (1.0 + 2.0 + 4.0));
+}
+
+#[test]
+fn impossible_cones_are_refused() {
+    let origin = p(0.0, 0.0, 0.0);
+    for (base, top, height, why) in [
+        (0.0, 0.0, 1.0, GeometryError::InvalidRadius),
+        (-1.0, 0.0, 1.0, GeometryError::InvalidRadius),
+        (1.0, f64::NAN, 1.0, GeometryError::InvalidRadius),
+        (1.0, 0.0, 0.0, GeometryError::ZeroLength),
+        (1.0, 1.0, f64::INFINITY, GeometryError::ZeroLength),
+    ] {
+        assert_eq!(
+            Body::cone(origin, base, top, height),
+            Err(BrepError::Geometry(why))
+        );
+    }
+}

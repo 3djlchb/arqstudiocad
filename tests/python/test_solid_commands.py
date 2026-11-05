@@ -311,9 +311,73 @@ def test_wedge_is_beside_box(qtbot: QtBot) -> None:
     qtbot.addWidget(window)
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     actions = window.command_actions
-    assert [b.defaultAction() for b in groups["modeling"].buttons] == [
-        actions["BOX"],
-        actions["WEDGE"],
-    ]
+    first_two = [b.defaultAction() for b in groups["modeling"].buttons][:2]
+    assert first_two == [actions["BOX"], actions["WEDGE"]]
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
-    assert menus["&Modeling"].actions() == [actions["BOX"], actions["WEDGE"]]
+    assert menus["&Modeling"].actions()[:2] == [actions["BOX"], actions["WEDGE"]]
+
+
+# CYLINDER and CONE (ADR 0024 step 4b-2)
+
+
+def test_cylinder_by_radius_or_diameter() -> None:
+    h, document, (m,) = boxed("CYLINDER", "2,3", "1.5", "4")
+    assert h.prompts()[:3] == [
+        "Specify center point of base:",
+        "Specify base radius [Diameter(D)]:",
+        "Specify height [2Point(2P)]:",
+    ]
+    assert m.volume == pytest.approx(math.pi * 1.5**2 * 4)
+    assert m.centroid == pytest.approx((2.0, 3.0, 2.0))
+    # The last radius and height are offered again; a diameter is halved.
+    h.run("CYL", "10,0", "", "")
+    h.run("CYLINDER", "20,0", "D", "1", "-2")
+    volumes = sorted(
+        total.volume
+        for e in document.get_entities()
+        if (total := document.measure_solids([e.id]).total) is not None
+    )
+    assert volumes == pytest.approx(sorted([9 * math.pi, 9 * math.pi, 0.5 * math.pi]))
+
+
+def test_cone_to_a_point_or_a_top_radius() -> None:
+    h, _, (pointed,) = boxed("CONE", "0,0", "3", "4")
+    assert pointed.volume == pytest.approx(12 * math.pi)
+    assert pointed.centroid[2] == pytest.approx(1.0)
+    assert h.prompts()[2] == "Specify height [2Point(2P)/Top radius(T)]:"
+    h, _, (frustum,) = boxed("CONE", "0,0", "3", "T", "1", "4")
+    assert h.prompts()[3] == "Specify top radius <0>:"
+    assert frustum.volume == pytest.approx(math.pi * 4 / 3 * (9 + 3 + 1))
+    # Wider at the top than at the base, and downward.
+    _, _, (flared,) = boxed("CONE", "0,0", "1", "T", "2", "-3")
+    assert flared.volume == pytest.approx(7 * math.pi)
+    assert corners(flared)[2] == pytest.approx(-3.0)
+
+
+def test_a_top_radius_must_be_a_number_not_below_zero() -> None:
+    h, _, (m,) = boxed("CONE", "0,0", "3", "T", "wide", "-1", "0", "4")
+    assert h.messages()[:2] == ["The radius must be a number.", "The radius cannot be negative."]
+    assert m.volume == pytest.approx(12 * math.pi)
+
+
+def test_cilindro_and_cono_in_spanish() -> None:
+    set_language("es")
+    try:
+        h, _, (m,) = boxed("CILINDRO", "0,0", "Diámetro", "2", "1")
+        assert h.prompts()[1] == "Precise el radio de la base [Diámetro(D)]:"
+        _, _, (c,) = boxed("CONO", "0,0", "1", "Radio superior", "1", "1")
+    finally:
+        set_language("en")
+    assert m.volume == pytest.approx(math.pi)
+    assert c.volume == pytest.approx(math.pi), "equal radii: a cylinder"
+
+
+def test_round_solids_follow_wedge(qtbot: QtBot) -> None:
+    window = MainWindow(ui=QuietUi())
+    qtbot.addWidget(window)
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    actions = window.command_actions
+    names = ["BOX", "WEDGE", "CYLINDER", "CONE"]
+    assert [b.defaultAction() for b in groups["modeling"].buttons] == [actions[n] for n in names]
+    menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
+    assert menus["&Modeling"].actions() == [actions[n] for n in names]

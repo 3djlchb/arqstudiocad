@@ -3,12 +3,15 @@
 //! builders write it; the codec turns it into the binary form the drawing's
 //! version expects when it saves (SAB from DWG 2004 on, ADR 0024 step 4a).
 //!
-//! Planes bounded by straight edges so far, all a box needs; the other
-//! surfaces and curves come with the solids that use them. Each straight
-//! edge gets a line of its own, from its start to its end, so it always
-//! runs along its curve.
+//! Planes and cones (cylinders among them) bounded by straight and
+//! circular edges, and a cone's apex, so far; spheres, tori and NURBS come
+//! with the solids that use them. Every edge runs forward along a curve of
+//! its own: a straight edge gets a line from its start to its end, a
+//! circular one an ellipse turned the way it runs, its parameters the
+//! angles of its ends.
 
 use std::collections::HashMap;
+use std::f64::consts::TAU;
 use std::fmt;
 
 use acadrust::EntityType;
@@ -63,6 +66,24 @@ impl Document {
         self.add_solid(&body)
     }
 
+    /// Adds a cone standing on its base circle at `center`, of radius
+    /// `base`, `height` along Z (negative: downward), its top of radius
+    /// `top` (0: a point), on the current layer (CONE, and CYLINDER with
+    /// equal radii; ADR 0024 step 4b); returns its id.
+    pub fn add_cone(
+        &mut self,
+        center: Point3,
+        base: f64,
+        top: f64,
+        height: f64,
+    ) -> DocumentResult<EntityId> {
+        let body = Body::cone(center, base, top, height).map_err(|e| match e {
+            BrepError::Geometry(g) => DocumentError::Geometry(g),
+            other => DocumentError::UnsupportedOperation(other.to_string()),
+        })?;
+        self.add_solid(&body)
+    }
+
     /// Adds a wedge in the box between two opposite corners, upright at
     /// `first`'s X and sloping down toward `opposite`'s, on the current
     /// layer (WEDGE, ADR 0024 step 4b); returns its id.
@@ -74,6 +95,10 @@ impl Document {
         self.add_solid(&body)
     }
 }
+
+/// The parameter range of an edge that is a point, a cone's apex: empty,
+/// from 1 to 0, as AcadRust's own cone writes it.
+const APEX_RANGE: (f64, f64) = (1.0, 0.0);
 
 /// Record indices laid out before writing, so every pointer is known when
 /// its record is written: geometry, vertices and edges first, then
@@ -117,7 +142,19 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
                 let normal = components(plane.normal());
                 sat.add_plane_surface(xyz(plane.origin()), normal, across(normal))
             }
-            Surface::Cone(_) => return Err(Unwritable::Unsupported("cone")),
+            Surface::Cone(cone) => {
+                let axis = components(cone.axis());
+                let major = across(axis).map(|c| c * cone.radius());
+                // AcadRust takes the cosine first and writes the sine first.
+                sat.add_cone_surface(
+                    xyz(cone.origin()),
+                    axis,
+                    major,
+                    1.0,
+                    cone.cos_half_angle(),
+                    cone.sin_half_angle(),
+                )
+            }
             Surface::EllipticCylinder(_) => {
                 return Err(Unwritable::Unsupported("elliptic cylinder"));
             }
@@ -138,29 +175,54 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
     // Edges, each on a line of its own from its start to its end.
     let mut edges = Vec::with_capacity(body.edges().len());
     for edge in body.edges() {
-        match &edge.curve {
-            Some(Curve::Line(_)) => {}
-            Some(Curve::Ellipse(_)) => return Err(Unwritable::Unsupported("ellipse")),
-            Some(Curve::Nurbs(_)) => return Err(Unwritable::Unsupported("NURBS curve")),
-            None => return Err(Unwritable::Unsupported("degenerate edge")),
-        }
         let start = body.vertex(edge.start).point;
         let end = body.vertex(edge.end).point;
-        let run = [
-            end.x() - start.x(),
-            end.y() - start.y(),
-            end.z() - start.z(),
-        ];
-        let length = (run[0] * run[0] + run[1] * run[1] + run[2] * run[2]).sqrt();
-        let direction = run.map(|c| c / length);
-        let line = sat.add_straight_curve(xyz(start), direction);
+        let (curve, from, to) = match &edge.curve {
+            Some(Curve::Line(_)) => {
+                let run = [
+                    end.x() - start.x(),
+                    end.y() - start.y(),
+                    end.z() - start.z(),
+                ];
+                let length = (run[0] * run[0] + run[1] * run[1] + run[2] * run[2]).sqrt();
+                let direction = run.map(|c| c / length);
+                (
+                    ptr(sat.add_straight_curve(xyz(start), direction)),
+                    0.0,
+                    length,
+                )
+            }
+            Some(Curve::Ellipse(e)) => {
+                // Turned over, an ellipse runs the other way round.
+                let normal = if edge.reversed {
+                    -e.normal()
+                } else {
+                    e.normal()
+                };
+                let from = angle_on(e.center(), normal, e.major(), e.ratio(), start);
+                let mut to = angle_on(e.center(), normal, e.major(), e.ratio(), end);
+                while to <= from {
+                    to += TAU;
+                }
+                let curve = sat.add_ellipse_curve(
+                    xyz(e.center()),
+                    components(normal),
+                    components(e.major()),
+                    e.ratio(),
+                );
+                (ptr(curve), from, to)
+            }
+            Some(Curve::Nurbs(_)) => return Err(Unwritable::Unsupported("NURBS curve")),
+            // A point the face closes on, a cone's apex: no curve.
+            None => (SatPointer::NULL, APEX_RANGE.0, APEX_RANGE.1),
+        };
         edges.push(sat.add_edge(
             ptr(vertices[edge.start.index()]),
-            0.0,
+            from,
             ptr(vertices[edge.end.index()]),
-            length,
+            to,
             SatPointer::NULL,
-            ptr(line),
+            curve,
             Sense::Forward,
         ));
     }
@@ -317,6 +379,15 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
     set_pointer(&mut sat, 0, 1, ptr(layout.lumps));
     sat.complete_brep_links();
     Ok(sat)
+}
+
+/// Where `p` lies on the ellipse round `center` with unit `normal`,
+/// semi-major axis `major` and `ratio`: its angle from the major axis,
+/// toward `normal × major`.
+fn angle_on(center: Point3, normal: Vector3, major: Vector3, ratio: f64, p: Point3) -> f64 {
+    let d = p - center;
+    let minor = normal.cross(major) * ratio;
+    (d.dot(minor) / minor.length_squared()).atan2(d.dot(major) / major.length_squared())
 }
 
 /// Sets pointer `token` of record `at`.

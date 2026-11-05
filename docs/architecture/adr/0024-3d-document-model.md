@@ -269,6 +269,32 @@ part of this ADR.
   down), its faces still outward. Its height is remembered apart from
   BOX's. Saved as DWG 2000 and 2018 and as DXF it reopens as the same
   solid.
+- **Step 4b-2, CYLINDER and CONE (2026-11-04):**
+  - **The kernel** builds both from one cone (`Body::cone`; a cylinder
+    has equal radii): its base circle, its top circle or apex (an edge
+    without a curve, as ACIS has it), the axis up or down with the
+    height. The cone's surface takes its larger end as reference, so its
+    radius there is never 0.
+  - **The writer** adds cone surfaces, circular edges and an apex. A
+    circular edge runs forward along an ellipse of its own, turned over
+    when the edge runs against its curve, its parameters its ends'
+    angles (a whole circle from t to t + 2π); an apex has AcadRust's
+    empty range, 1 to 0, AutoCAD's not met in the corpus, whose drawings
+    hold no cone to a point.
+  - **Seen:** a face closing on an apex had no isolines, AutoCAD's own
+    cones read from a file too: its boundary, the base circle alone,
+    gave its isolines no height to run. The apex now sets it.
+  - **CYLINDER** (alias CYL, Spanish CILINDRO) and **CONE** (Spanish
+    CONO): the base's center and radius or diameter, then the height up
+    or down or two points; CONE's Top radius makes a frustum. Each
+    remembers its radius and height. Saved as DWG 2000, 2010 and 2018
+    and as DXF, cylinders, cones, frustums, downward and upside-down
+    cones reopen as the same solids.
+  - **AutoCAD's own solids, written again:** 47 of ATMOS's 58 are
+    written by our writer and read back measuring the same; the other
+    eleven hold what it does not write yet. AutoCAD writes every
+    circular edge forward; one running against its circle is checked on
+    a body built so.
 
 ## Consequences
 

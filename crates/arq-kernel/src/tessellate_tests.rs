@@ -179,3 +179,31 @@ fn far_from_the_boundary_the_state_is_carried_not_guessed() {
     assert_eq!(pieces[0][0], p(0.0, 0.0, 0.0));
     assert_eq!(pieces[0][pieces[0].len() - 1], p(1.0, 0.0, 0.0));
 }
+
+#[test]
+fn a_cone_draws_its_isolines_up_to_its_apex() {
+    // The side of a cone to a point is bounded by its base circle alone:
+    // its apex, an edge without a curve, still sets how far they run.
+    let cone = Body::cone(p(0.0, 0.0, 0.0), 2.0, 0.0, 4.0).unwrap();
+    let wire = cone.wireframe(0.01, 4);
+    assert_eq!(wire.isolines.len(), 4);
+    for line in &wire.isolines {
+        let (first, last) = (line[0], line[line.len() - 1]);
+        let (low, high) = if first.z() < last.z() {
+            (first, last)
+        } else {
+            (last, first)
+        };
+        assert!(
+            low.z().abs() < 1e-9 && (high.z() - 4.0).abs() < 1e-9,
+            "{low:?} {high:?}"
+        );
+        assert!(
+            high.x().abs() < 1e-9 && high.y().abs() < 1e-9,
+            "to the apex"
+        );
+    }
+    // Upside down, from its apex at the base up to its top circle.
+    let inverted = Body::cone(p(0.0, 0.0, 0.0), 0.0, 2.0, 4.0).unwrap();
+    assert_eq!(inverted.wireframe(0.01, 4).isolines.len(), 4);
+}
