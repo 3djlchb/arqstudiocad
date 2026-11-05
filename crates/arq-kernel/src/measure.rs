@@ -23,10 +23,16 @@
 //!   the sums. Where the surface collapses (a sphere's pole, a cone's apex)
 //!   `ω` is not defined; a pole inside the face adds the line around it.
 //!   Which poles a face holds follows from how often its loops wind round
-//!   the axis, and, when that is zero, from the sign of its area.
+//!   the axis, and, when that is zero, from the sign of its area. A loop
+//!   passing through a pole (a sphere cut along its meridians, a cone's
+//!   apex at a corner) runs along the pole's line from the meridian it
+//!   arrives by to the one it leaves by: that stretch adds its part of the
+//!   line around the pole, and of the turn round the axis.
 //! - **Closed both ways** (tori): the same with `G`'s overall mean `c`
 //!   taken out first; `c` times the face's parameter area is added, that
-//!   area taken modulo the whole torus's.
+//!   area taken modulo the whole torus's. A spindle torus (one crossing
+//!   its axis) has an area element with corners at its poles; the face's
+//!   is taken signed instead, which is smooth and right within it.
 //!
 //! The 1-dimensional integrals use Gauss–Legendre rules, doubled until
 //! the result settles.
@@ -203,6 +209,11 @@ struct FaceIntegral<'a> {
     v_poly: Option<Vec<(f64, Sums)>>,
     /// Where `H` starts.
     v_base: f64,
+    /// A spindle torus's (one crossing its axis): the sign its distance
+    /// from the axis has in the face. Its area element, that distance
+    /// times the minor radius, then taken signed, not by its length, which
+    /// has a corner at the poles no rule integrates exactly.
+    tube_side: Option<f64>,
 }
 
 impl FaceIntegral<'_> {
@@ -214,8 +225,14 @@ impl FaceIntegral<'_> {
         let out = n * self.sigma;
         let x = p - self.origin;
         let (xx, xy, xz) = (x.x(), x.y(), x.z());
+        let area = match (self.tube_side, &self.chart) {
+            (Some(side), &Chart::Torus { big, small, .. }) => {
+                side * (big + small * v.cos()) * small
+            }
+            _ => n.length(),
+        };
         [
-            n.length(),
+            area,
             x.dot(out) / 3.0,
             0.5 * xx * xx * out.x(),
             0.5 * xy * xy * out.y(),
@@ -425,6 +442,9 @@ struct Lifted {
     nodes: Vec<(Node, f64, f64)>,
     /// How many periods the loop turns through in `u` and in `v`.
     winding: (i64, i64),
+    /// Where it passes through a pole: the node it leaves by, and the
+    /// pole's `v`.
+    passages: Vec<(usize, f64)>,
 }
 
 fn lift(chart: &Chart, nodes: Vec<Node>) -> Lifted {
@@ -454,7 +474,17 @@ fn lift(chart: &Chart, nodes: Vec<Node>) -> Lifted {
     Lifted {
         nodes: lifted,
         winding,
+        passages: Vec::new(),
     }
+}
+
+/// The `v` of the pole `p` lies on, if it lies on one.
+fn pole_at(chart: &Chart, p: Point3) -> Option<f64> {
+    let scale = 1.0 + p.x().abs().max(p.y().abs()).max(p.z().abs());
+    chart
+        .poles()
+        .into_iter()
+        .find(|&v| chart.point(0.0, v).distance_to(p) <= 1e-9 * scale)
 }
 
 /// `(du/ds, dv/ds)` along `dp` at `(u, v)`.
@@ -499,10 +529,29 @@ fn integrate_face(
         .iter()
         .map(|lp| {
             let mut nodes = Vec::new();
+            let mut passages: Vec<(usize, f64)> = Vec::new();
             for &c in &body.loops()[lp.index()].coedges {
-                coedge_nodes(body, &body.coedges()[c.index()], fine, &mut nodes);
+                let coedge = &body.coedges()[c.index()];
+                let edge = body.edge(coedge.edge);
+                let from = if coedge.reversed {
+                    edge.end
+                } else {
+                    edge.start
+                };
+                if let Some(v) = pole_at(&chart, body.vertex(from).point)
+                    && passages.last().is_none_or(|&(at, _)| at != nodes.len())
+                {
+                    passages.push((nodes.len(), v));
+                }
+                coedge_nodes(body, coedge, fine, &mut nodes);
             }
-            lift(&chart, nodes)
+            let count = nodes.len();
+            let mut lifted = lift(&chart, nodes);
+            lifted.passages = passages
+                .into_iter()
+                .map(|(at, v)| (if count == 0 { 0 } else { at % count }, v))
+                .collect();
+            lifted
         })
         .filter(|l| !l.nodes.is_empty())
         .collect();
@@ -567,7 +616,19 @@ fn integrate_face(
         overall: [0.0; 8],
         v_poly: None,
         v_base: low.or(high).unwrap_or(v_mean),
+        tube_side: None,
     };
+    // Its side, at one of its points (a mean of v would not do: v turns).
+    let first = loops.iter().find_map(|l| l.nodes.first());
+    if let (Chart::Torus { big, small, .. }, Some(&(_, _, v))) = (&integral.chart, first)
+        && big.abs() < *small
+    {
+        integral.tube_side = Some(if big + small * v.cos() < 0.0 {
+            -1.0
+        } else {
+            1.0
+        });
+    }
     if analytic && !v_angle && periods.0.is_some() {
         // A cone's or cylinder's: polynomial in v over the face's span.
         let vs = loops.iter().flat_map(|l| l.nodes.iter().map(|n| n.2));
@@ -607,8 +668,49 @@ fn integrate_face(
                 }
             }
             sums = scaled(sums, sigma);
+            // Through a pole, along its line: in the face's own sense, from
+            // the meridian it arrives by (a) to the one it leaves by (b),
+            // the face's opening there; above, back in u, below, on.
+            let mut winding = 0;
+            for l in &loops {
+                let n = l.nodes.len();
+                if l.passages.is_empty() {
+                    winding += sigma as i64 * l.winding.0;
+                    continue;
+                }
+                // The turn round the axis, step by step: the nodes' own, the
+                // way back to the first, and each stretch along a pole.
+                let step = |i: usize| {
+                    let d = l.nodes[i].1 - l.nodes[(i + n - 1) % n].1;
+                    d - pu * (d / pu).round()
+                };
+                let mut turned: f64 = (0..n).map(step).sum();
+                for &(at, v) in &l.passages {
+                    let (before, after) = (l.nodes[(at + n - 1) % n].1, l.nodes[at].1);
+                    let (a, b) = if sigma > 0.0 {
+                        (before, after)
+                    } else {
+                        (after, before)
+                    };
+                    let above = high.is_some_and(|h| (v - h).abs() < 1e-9);
+                    let opening = if above {
+                        (a - b).rem_euclid(pu)
+                    } else {
+                        (b - a).rem_euclid(pu)
+                    };
+                    // Below, the pole is where H starts: the stretch adds
+                    // nothing there.
+                    if above {
+                        add(&mut sums, integral.h(v), opening);
+                    }
+                    // In the loop's own sense this stretch turns by the
+                    // opening, not by the step between its meridians.
+                    let along = if above { -opening } else { opening };
+                    turned += sigma * along - step(at);
+                }
+                winding += sigma as i64 * (turned / pu).round() as i64;
+            }
             // The poles the face holds: from how its loops wind around.
-            let winding = sigma as i64 * loops.iter().map(|l| l.winding.0).sum::<i64>();
             let (high_in, low_in) = match winding {
                 _ if loops.is_empty() => (true, true),
                 1 => (true, false),

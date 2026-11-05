@@ -55,9 +55,11 @@ impl Surface {
             Self::EllipticCylinder(s) => {
                 Self::EllipticCylinder(EllipticCylinder::new(s.section.transformed(t)?))
             }
-            Self::Sphere(s) => {
-                Self::Sphere(Sphere::new(t.apply_point(s.center), s.radius * scale)?)
-            }
+            Self::Sphere(s) => Self::Sphere(Sphere::with_pole(
+                t.apply_point(s.center),
+                s.radius * scale,
+                t.apply_vector(s.pole),
+            )?),
             Self::Torus(s) => Self::Torus(Torus::new(
                 t.apply_point(s.center),
                 t.apply_vector(s.axis),
@@ -206,20 +208,43 @@ impl EllipticCylinder {
     }
 }
 
-/// A sphere.
+/// A sphere, with the unit direction of its pole: where its meridians
+/// meet, as in ACIS (a revolved sphere's along the axis it turned about).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Sphere {
     center: Point3,
     radius: f64,
+    pole: Vector3,
 }
 
 impl Sphere {
-    /// The sphere of positive `radius` around `center`.
+    /// The sphere of positive `radius` around `center`, its pole up `z`.
     pub fn new(center: Point3, radius: f64) -> GeometryResult<Self> {
+        Self::with_pole(center, radius, Vector3::new(0.0, 0.0, 1.0)?)
+    }
+
+    /// The sphere of positive `radius` around `center`, its pole along
+    /// `pole`.
+    pub fn with_pole(center: Point3, radius: f64, pole: Vector3) -> GeometryResult<Self> {
         if !(radius.is_finite() && radius > 0.0) {
             return Err(GeometryError::InvalidRadius);
         }
-        Ok(Self { center, radius })
+        Ok(Self {
+            center,
+            radius,
+            pole: pole.normalized()?,
+        })
+    }
+
+    /// Its pole's unit direction.
+    pub fn pole(&self) -> Vector3 {
+        self.pole
+    }
+
+    /// The unit direction square to the pole its meridians are counted
+    /// from.
+    pub fn reference(&self) -> Vector3 {
+        crate::chart::frame(self.pole).0
     }
 
     /// Its center.
@@ -288,12 +313,15 @@ impl Torus {
         self.minor_radius
     }
 
-    /// The distance from `p` to the torus.
+    /// The distance from `p` to the torus: to the nearer of the tube's
+    /// circles in the plane through `p` and the axis, the one on `p`'s side
+    /// or, past the axis, the other (which a spindle torus reaches across).
     pub fn distance(&self, p: Point3) -> f64 {
         let d = p - self.center;
         let h = d.dot(self.axis);
         let rho = (d - self.axis * h).length();
-        ((rho - self.major_radius).hypot(h) - self.minor_radius).abs()
+        let to = |center: f64| ((rho - center).hypot(h) - self.minor_radius).abs();
+        to(self.major_radius).min(to(-self.major_radius))
     }
 }
 

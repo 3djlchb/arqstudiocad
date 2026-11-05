@@ -269,6 +269,52 @@ fn a_whole_sphere() {
 }
 
 #[test]
+fn a_lemon_on_the_far_side_of_its_torus() {
+    // A spindle torus round z, major radius 0.2 and minor 1: its far part,
+    // v from 120° to 240°, is a lemon from radius 0.3 to 0.8, there taken
+    // as distance -(0.2 + cos v). Closed inside by a cylinder of radius
+    // 0.3, between z ±h.
+    let (big, small) = (0.2, 1.0);
+    let h = 3f64.sqrt() / 2.0;
+    let z = v(0.0, 0.0, 1.0);
+    let (start, _) = crate::chart::frame(z);
+    let mut b = BodyBuilder::new();
+    let lo = b.vertex(p(0.0, 0.0, -h) + start * 0.3);
+    let hi = b.vertex(p(0.0, 0.0, h) + start * 0.3);
+    let bottom = closed_edge(&mut b, circle(p(0.0, 0.0, -h), z, 0.3), lo);
+    let top = closed_edge(&mut b, circle(p(0.0, 0.0, h), z, 0.3), hi);
+    let (lemon_low, lemon_high) = (
+        loop_of(&mut b, &[(bottom, false)]),
+        loop_of(&mut b, &[(top, true)]),
+    );
+    let (core_low, core_high) = (
+        loop_of(&mut b, &[(bottom, true)]),
+        loop_of(&mut b, &[(top, false)]),
+    );
+    let torus = Surface::Torus(Torus::new(p(0.0, 0.0, 0.0), z, big, small).unwrap());
+    let core = Surface::Cone(Cone::new(p(0.0, 0.0, -h), z, 0.3, 0.0, 1.0).unwrap());
+    let lemon = b.face(Face {
+        surface: torus,
+        loops: vec![lemon_low, lemon_high],
+        reversed: false,
+    });
+    let inside = b.face(Face {
+        surface: core,
+        loops: vec![core_low, core_high],
+        reversed: true,
+    });
+    let m = measured(&finish(b, vec![vec![lemon, inside]]));
+    let c = -big;
+    let volume = PI
+        * (2.0 * h * c * c + 2.0 * c * (h / 2.0 + PI / 3.0) + 2.0 * h
+            - 2.0 * h.powi(3) / 3.0
+            - 2.0 * h * (c + 0.5).powi(2));
+    close(m.volume, volume, 1.0, 1e-10);
+    let area = 2.0 * PI * (c * 2.0 * PI / 3.0 + 3f64.sqrt()) + 2.0 * PI * 0.3 * 2.0 * h;
+    close(m.area, area, 1.0, 1e-10);
+}
+
+#[test]
 fn a_whole_torus() {
     let (big, small) = (3.0, 1.0);
     let c = p(1.0, 2.0, 3.0);

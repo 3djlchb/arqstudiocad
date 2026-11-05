@@ -324,7 +324,16 @@ class MainWindow(QMainWindow):
             self._draw_menu.addAction(self.command_actions[name])
         # Solids, as AutoCAD's Draw > Modeling.
         self._modeling_menu = self._draw_menu.addMenu("")
-        for name in ("BOX", "WEDGE", "CYLINDER", "CONE", "SPHERE", "TORUS", "EXTRUDE"):
+        for name in (
+            "BOX",
+            "WEDGE",
+            "CYLINDER",
+            "CONE",
+            "SPHERE",
+            "TORUS",
+            "EXTRUDE",
+            "REVOLVE",
+        ):
             self._modeling_menu.addAction(self.command_actions[name])
         self._modify_menu = menu_bar.addMenu("")
         for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "EXPLODE"):

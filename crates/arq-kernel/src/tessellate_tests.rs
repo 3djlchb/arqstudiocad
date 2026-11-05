@@ -207,3 +207,52 @@ fn a_cone_draws_its_isolines_up_to_its_apex() {
     let inverted = Body::cone(p(0.0, 0.0, 0.0), 0.0, 2.0, 4.0).unwrap();
     assert_eq!(inverted.wireframe(0.01, 4).isolines.len(), 4);
 }
+
+#[test]
+fn a_ball_turned_about_x_draws_its_meridians_to_its_poles_there() {
+    use std::f64::consts::{FRAC_PI_2, TAU};
+    // A half disc of radius 2 turned about world X: its pole along X, as
+    // AutoCAD draws it, its meridians from (-2, 0, 0) to (2, 0, 0).
+    let arc = arq_geometry::Arc::new(
+        arq_geometry::Point2::new(0.0, 0.0).unwrap(),
+        2.0,
+        -FRAC_PI_2,
+        FRAC_PI_2,
+    )
+    .unwrap();
+    let chord = arq_geometry::Line::new(
+        arq_geometry::Point2::new(0.0, 2.0).unwrap(),
+        arq_geometry::Point2::new(0.0, -2.0).unwrap(),
+    )
+    .unwrap();
+    let half = [
+        crate::ProfilePiece {
+            curve: arq_geometry::Geometry2::Arc(arc),
+            backward: false,
+        },
+        crate::ProfilePiece {
+            curve: arq_geometry::Geometry2::Line(chord),
+            backward: false,
+        },
+    ];
+    let frame = crate::RevolutionFrame {
+        origin: p(0.0, 0.0, 0.0),
+        axis: v(1.0, 0.0, 0.0),
+        radial: v(0.0, 1.0, 0.0),
+    };
+    let ball = Body::revolution(&half, frame, TAU).unwrap();
+    // Meridians from pole to pole, and parallels square to X.
+    let wire = ball.wireframe(0.01, 4);
+    let (mut meridians, mut parallels) = (0, 0);
+    for line in &wire.isolines {
+        let (first, last) = (line[0], line[line.len() - 1]);
+        if line.iter().all(|q| (q.x() - first.x()).abs() < 1e-9) {
+            parallels += 1;
+        } else {
+            assert!((first.x().abs() - 2.0).abs() < 1e-9, "{first:?}");
+            assert!((last.x() + first.x()).abs() < 1e-9, "{last:?}");
+            meridians += 1;
+        }
+    }
+    assert!(meridians > 0 && parallels > 0, "{meridians} {parallels}");
+}

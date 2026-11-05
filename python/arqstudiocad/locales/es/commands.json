@@ -130,6 +130,9 @@
   "RENAME": [
     "CAMBIANOM"
   ],
+  "REVOLVE": [
+    "REVOLUCION"
+  ],
   "ROTATE": [
     "GIRA",
     "GI"

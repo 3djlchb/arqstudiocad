@@ -312,6 +312,9 @@ class CadDocument:
     def extrude(
         self, entity_ids: _Ids, height: float
     ) -> tuple[list[int], list[tuple[int, str]], CadChangeSet]: ...
+    def revolve(
+        self, entity_ids: _Ids, axis_start: _PointLike, axis_end: _PointLike, angle: float
+    ) -> tuple[list[int], list[tuple[int, str]], CadChangeSet]: ...
     def add_torus(
         self, center: tuple[float, float, float], radius: float, tube: float
     ) -> tuple[int, CadChangeSet]: ...

@@ -295,7 +295,7 @@ fn isolines(surface: &Surface, boundary: &[(Point3, Point3)], count: usize) -> V
         }
         Surface::Sphere(sphere) => {
             let (c, r) = (sphere.center(), sphere.radius());
-            let z = Vector3::new(0.0, 0.0, 1.0).expect("finite");
+            let z = sphere.pole();
             let (e1, e2) = frame(z);
             for k in 0..count {
                 let dir = e1 * angles(k).cos() + e2 * angles(k).sin();

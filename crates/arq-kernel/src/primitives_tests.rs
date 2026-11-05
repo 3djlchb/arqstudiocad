@@ -2,7 +2,7 @@
 
 use arq_geometry::{GeometryError, Point3};
 
-use super::{ExtrusionError, ProfileError, ProfilePiece};
+use super::{ExtrusionError, ProfileError, ProfilePiece, RevolutionError, RevolutionFrame};
 use crate::brep::{Body, BrepError};
 
 fn p(x: f64, y: f64, z: f64) -> Point3 {
@@ -426,5 +426,342 @@ fn two_half_circles_make_a_round_profile_either_way() {
             .mass_properties()
             .unwrap();
         about(m.volume, 12.0 * PI);
+    }
+}
+
+/// The Z axis through the origin, the profile's x along world X.
+fn upright() -> RevolutionFrame {
+    RevolutionFrame {
+        origin: p(0.0, 0.0, 0.0),
+        axis: arq_geometry::Vector3::new(0.0, 0.0, 1.0).unwrap(),
+        radial: arq_geometry::Vector3::new(1.0, 0.0, 0.0).unwrap(),
+    }
+}
+
+fn polygon(corners: &[(f64, f64)]) -> Vec<ProfilePiece> {
+    (0..corners.len())
+        .map(|i| segment(corners[i], corners[(i + 1) % corners.len()]))
+        .collect()
+}
+
+fn turned(profile: &[ProfilePiece], angle: f64) -> crate::MassProperties {
+    turned_in(profile, upright(), angle)
+}
+
+/// Turned in `frame`, checked, closed (each edge between two faces, an
+/// apex in its cone's alone), and measured.
+fn turned_in(
+    profile: &[ProfilePiece],
+    frame: RevolutionFrame,
+    angle: f64,
+) -> crate::MassProperties {
+    let body = Body::revolution(profile, frame, angle).unwrap();
+    body.check(arq_geometry::Tolerance::DEFAULT).unwrap();
+    let mut uses = vec![0; body.edges().len()];
+    for c in body.coedges() {
+        uses[c.edge.index()] += 1;
+    }
+    for (i, e) in body.edges().iter().enumerate() {
+        let apex = e.curve.is_none();
+        assert_eq!(uses[i], if apex { 1 } else { 2 }, "edge {i}, apex {apex}");
+    }
+    body.mass_properties().unwrap()
+}
+
+/// A tube's section from x 1 to 3, 2 high, its outer side grooved by a
+/// half circle of radius 1 round (3, 1): a concave arc.
+fn grooved() -> Vec<ProfilePiece> {
+    use std::f64::consts::FRAC_PI_2;
+    vec![
+        segment((1.0, 0.0), (3.0, 0.0)),
+        arc((3.0, 1.0), 1.0, FRAC_PI_2, 3.0 * FRAC_PI_2, true),
+        segment((3.0, 2.0), (1.0, 2.0)),
+        segment((1.0, 2.0), (1.0, 0.0)),
+    ]
+}
+
+#[test]
+fn whole_turns_make_cylinders_tubes_cones_spheres_and_tori() {
+    use std::f64::consts::{FRAC_PI_2, PI, TAU};
+    // A rectangle against the axis: a cylinder of radius 2, 3 high.
+    let m = turned(
+        &polygon(&[(0.0, 0.0), (2.0, 0.0), (2.0, 3.0), (0.0, 3.0)]),
+        TAU,
+    );
+    about(m.volume, 12.0 * PI);
+    about(m.area, 2.0 * PI * 2.0 * 5.0);
+    about(m.centroid.z(), 1.5);
+    // Away from it: a tube from radius 1 to 2.
+    let m = turned(
+        &polygon(&[(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0)]),
+        TAU,
+    );
+    about(m.volume, 3.0 * PI);
+    // A triangle: a cone of radius 3, 4 high.
+    let m = turned(&polygon(&[(0.0, 0.0), (3.0, 0.0), (0.0, 4.0)]), TAU);
+    about(m.volume, 12.0 * PI);
+    about(m.centroid.z(), 1.0);
+    // A half disc against the axis: a ball of radius 2.
+    let half = vec![
+        arc((0.0, 0.0), 2.0, -FRAC_PI_2, FRAC_PI_2, false),
+        segment((0.0, 2.0), (0.0, -2.0)),
+    ];
+    let m = turned(&half, TAU);
+    about(m.volume, 32.0 / 3.0 * PI);
+    // A circle 3 from the axis: a torus.
+    let ring = vec![
+        arc((3.0, 0.0), 1.0, 0.0, PI, false),
+        arc((3.0, 0.0), 1.0, PI, 0.0, false),
+    ];
+    let m = turned(&ring, TAU);
+    about(m.volume, 6.0 * PI * PI);
+    // Drawn the other way round: the same solids.
+    let back: Vec<_> = polygon(&[(0.0, 0.0), (2.0, 0.0), (2.0, 3.0), (0.0, 3.0)])
+        .into_iter()
+        .rev()
+        .map(|p| ProfilePiece {
+            backward: !p.backward,
+            ..p
+        })
+        .collect();
+    about(turned(&back, TAU).volume, 12.0 * PI);
+    // The cone drawn clockwise: its slant runs down.
+    let down: Vec<_> = polygon(&[(0.0, 0.0), (0.0, 4.0), (3.0, 0.0)]);
+    let m = turned(&down, TAU);
+    about(m.volume, 12.0 * PI);
+    about(m.area, PI * 9.0 + PI * 3.0 * 5.0);
+    // Its side closes on the apex: a loop there, as AutoCAD writes it.
+    let body = Body::revolution(&down, upright(), TAU).unwrap();
+    let side = body
+        .faces()
+        .iter()
+        .find(|f| matches!(f.surface, crate::Surface::Cone(_)))
+        .unwrap();
+    assert_eq!(side.loops.len(), 2);
+    // A square on its corner, beside the axis: its sides nearer the axis
+    // run down, inside cones narrowing upward and downward.
+    let m = turned(
+        &polygon(&[(2.0, 0.0), (3.0, 1.0), (2.0, 2.0), (1.0, 1.0)]),
+        TAU,
+    );
+    about(m.volume, 8.0 * PI);
+    about(m.area, 16.0 * 2f64.sqrt() * PI);
+    // A corner a hair past the axis counts as on it: the cone's apex.
+    let m = turned(&polygon(&[(0.0, 0.0), (3.0, 0.0), (-1e-13, 4.0)]), TAU);
+    assert!((m.volume - 12.0 * PI).abs() < 1e-9);
+    // A groove: a concave arc sweeps the inside of a torus.
+    let m = turned(&grooved(), TAU);
+    about(m.volume, 16.0 * PI - 3.0 * PI * PI + 4.0 * PI / 3.0);
+    about(m.area, 16.0 * PI + 6.0 * PI * PI);
+}
+
+#[test]
+fn part_turns_are_capped_by_the_profile() {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    // A quarter of the tube, and of the cylinder.
+    let m = turned(
+        &polygon(&[(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0)]),
+        FRAC_PI_2,
+    );
+    about(m.volume, 3.0 * PI / 4.0);
+    // Two flat caps (1 each) and quarters of the sides.
+    about(
+        m.area,
+        2.0 + (2.0 * PI * 2.0 + 2.0 * PI * 1.0) / 4.0 + 2.0 * 3.0 * PI / 4.0,
+    );
+    let m = turned(
+        &polygon(&[(0.0, 0.0), (2.0, 0.0), (2.0, 3.0), (0.0, 3.0)]),
+        FRAC_PI_2,
+    );
+    about(m.volume, 3.0 * PI);
+    // Half a ball: a half disc turned half way.
+    let half = vec![
+        arc((0.0, 0.0), 2.0, -FRAC_PI_2, FRAC_PI_2, false),
+        segment((0.0, 2.0), (0.0, -2.0)),
+    ];
+    let m = turned(&half, PI);
+    about(m.volume, 16.0 / 3.0 * PI);
+    // Its boundary runs through both poles: a quarter and three quarters.
+    about(turned(&half, FRAC_PI_2).volume, 8.0 / 3.0 * PI);
+    let m = turned(&half, 1.5 * PI);
+    about(m.volume, 8.0 * PI);
+    about(m.area, 12.0 * PI + 2.0 * 2.0 * PI);
+    // A quarter of a cone, an arc's quarter torus.
+    about(
+        turned(&polygon(&[(0.0, 0.0), (3.0, 0.0), (0.0, 4.0)]), FRAC_PI_2).volume,
+        3.0 * PI,
+    );
+    let ring = vec![
+        arc((3.0, 0.0), 1.0, 0.0, PI, false),
+        arc((3.0, 0.0), 1.0, PI, 0.0, false),
+    ];
+    about(turned(&ring, FRAC_PI_2).volume, 1.5 * PI * PI);
+    // Three quarters of a cone: its apex a corner of both caps.
+    let cone = polygon(&[(0.0, 0.0), (3.0, 0.0), (0.0, 4.0)]);
+    about(turned(&cone, 1.5 * PI).volume, 9.0 * PI);
+    // A quarter of the groove, capped by its section (4 less half a disc).
+    let m = turned(&grooved(), FRAC_PI_2);
+    about(m.volume, (16.0 * PI - 3.0 * PI * PI + 4.0 * PI / 3.0) / 4.0);
+    about(
+        m.area,
+        (16.0 * PI + 6.0 * PI * PI) / 4.0 + 2.0 * (4.0 - PI / 2.0),
+    );
+}
+
+#[test]
+fn a_frame_places_the_axis_anywhere() {
+    use std::f64::consts::TAU;
+    // The axis along world X through (5, 0, 0): a cylinder lying down.
+    let frame = RevolutionFrame {
+        origin: p(5.0, 0.0, 0.0),
+        axis: arq_geometry::Vector3::new(1.0, 0.0, 0.0).unwrap(),
+        radial: arq_geometry::Vector3::new(0.0, 1.0, 0.0).unwrap(),
+    };
+    let rect = polygon(&[(0.0, 0.0), (2.0, 0.0), (2.0, 3.0), (0.0, 3.0)]);
+    let m = Body::revolution(&rect, frame, TAU)
+        .unwrap()
+        .mass_properties()
+        .unwrap();
+    about(m.volume, 12.0 * std::f64::consts::PI);
+    about(m.centroid.x(), 6.5);
+    about(m.bounds.max().z(), 2.0);
+    // The axis down: the parameters run the other way round the faces.
+    let down = RevolutionFrame {
+        origin: p(0.0, 0.0, 0.0),
+        axis: arq_geometry::Vector3::new(0.0, 0.0, -1.0).unwrap(),
+        radial: arq_geometry::Vector3::new(1.0, 0.0, 0.0).unwrap(),
+    };
+    let pi = std::f64::consts::PI;
+    let half = vec![
+        arc((0.0, 0.0), 2.0, -pi / 2.0, pi / 2.0, false),
+        segment((0.0, 2.0), (0.0, -2.0)),
+    ];
+    about(turned_in(&half, down, 1.5 * pi).volume, 8.0 * pi);
+    let cone = polygon(&[(0.0, 0.0), (3.0, 0.0), (0.0, 4.0)]);
+    about(turned_in(&cone, down, 1.5 * pi).volume, 9.0 * pi);
+    about(turned_in(&cone, down, 0.5 * pi).volume, 3.0 * pi);
+    // A quarter disc, turned three quarters: through one pole only, the
+    // other's half of the face's line.
+    let quarter = vec![
+        segment((0.0, 0.0), (2.0, 0.0)),
+        arc((0.0, 0.0), 2.0, 0.0, pi / 2.0, false),
+        segment((0.0, 2.0), (0.0, 0.0)),
+    ];
+    // A cylinder 2 round and 2 high with a half ball of radius 1 hollowed
+    // from its base: the hollow, inside out, through its upper pole.
+    let hollowed = vec![
+        segment((1.0, 0.0), (2.0, 0.0)),
+        segment((2.0, 0.0), (2.0, 2.0)),
+        segment((2.0, 2.0), (0.0, 2.0)),
+        segment((0.0, 2.0), (0.0, 1.0)),
+        arc((0.0, 0.0), 1.0, 0.0, pi / 2.0, true),
+    ];
+    for frame in [upright(), down] {
+        about(
+            turned_in(&hollowed, frame, 1.5 * pi).volume,
+            0.75 * (8.0 * pi - 2.0 * pi / 3.0),
+        );
+        let m = turned_in(&quarter, frame, 1.5 * pi);
+        about(m.volume, 4.0 * pi);
+        about(m.area, 0.75 * (8.0 * pi + 4.0 * pi) + 2.0 * pi);
+    }
+}
+
+#[test]
+fn what_cannot_be_turned_is_refused() {
+    use std::f64::consts::{PI, TAU};
+    let across = polygon(&[(-1.0, 0.0), (1.0, 0.0), (1.0, 1.0), (-1.0, 1.0)]);
+    assert_eq!(
+        Body::revolution(&across, upright(), TAU),
+        Err(RevolutionError::CrossesAxis)
+    );
+    // An arc round (0.5, 0), radius 1, clear of the axis (x from 1 to
+    // 1.5) and closed by its chord: its circle's torus would cross itself.
+    let bow = arc((0.5, 0.0), 1.0, -PI / 3.0, PI / 3.0, false);
+    let (top, bottom) = (bow.end(), bow.start());
+    let chord = segment((top.x(), top.y()), (bottom.x(), bottom.y()));
+    let thick = vec![bow, chord];
+    assert_eq!(
+        Body::revolution(&thick, upright(), TAU),
+        Err(RevolutionError::SelfCrossingTorus)
+    );
+    let rect = polygon(&[(1.0, 0.0), (2.0, 0.0), (2.0, 1.0), (1.0, 1.0)]);
+    assert!(matches!(
+        Body::revolution(&rect, upright(), 0.0),
+        Err(RevolutionError::Geometry(_))
+    ));
+    let mut open = rect.clone();
+    open.pop();
+    assert_eq!(
+        Body::revolution(&open, upright(), TAU),
+        Err(RevolutionError::Profile(ProfileError::Open))
+    );
+}
+
+#[test]
+fn an_arc_centered_beyond_the_axis_sweeps_a_lemon() {
+    use std::f64::consts::{PI, TAU};
+    // An arc of radius 1 round (-0.2, 0), x from 0.3 to 0.8, closed by
+    // its chord: a spindle torus's lemon, measured exactly although its
+    // whole torus passes through the axis.
+    let c: f64 = -0.2;
+    let bow = arc((c, 0.0), 1.0, -PI / 3.0, PI / 3.0, false);
+    let (top, bottom) = (bow.end(), bow.start());
+    let chord = segment((top.x(), top.y()), (bottom.x(), bottom.y()));
+    let m = turned(&[bow, chord], TAU);
+    let h = 3f64.sqrt() / 2.0;
+    let volume = PI
+        * (2.0 * h * c * c + 2.0 * c * (h / 2.0 + PI / 3.0) + 2.0 * h
+            - 2.0 * h.powi(3) / 3.0
+            - 2.0 * h * (c + 0.5).powi(2));
+    about(m.volume, volume);
+    about(
+        m.area,
+        TAU * (c * TAU / 3.0 + 3f64.sqrt()) + TAU * (c + 0.5) * 2.0 * h,
+    );
+}
+
+#[test]
+fn every_axis_measures_alike_through_the_poles() {
+    let pi = std::f64::consts::PI;
+    let hollowed = vec![
+        segment((1.0, 0.0), (2.0, 0.0)),
+        segment((2.0, 0.0), (2.0, 2.0)),
+        segment((2.0, 2.0), (0.0, 2.0)),
+        segment((0.0, 2.0), (0.0, 1.0)),
+        arc((0.0, 0.0), 1.0, 0.0, pi / 2.0, true),
+    ];
+    let quarter = vec![
+        segment((0.0, 0.0), (2.0, 0.0)),
+        arc((0.0, 0.0), 2.0, 0.0, pi / 2.0, false),
+        segment((0.0, 2.0), (0.0, 0.0)),
+    ];
+    // A sphere's pole lies along the axis it was turned about, whichever:
+    // its faces then reach their poles only at their corners.
+    let v = |x, y, z| arq_geometry::Vector3::new(x, y, z).unwrap();
+    for (name, axis, radial) in [
+        ("z/x", v(0.0, 0.0, 1.0), v(1.0, 0.0, 0.0)),
+        ("z/y", v(0.0, 0.0, 1.0), v(0.0, 1.0, 0.0)),
+        ("y/x", v(0.0, 1.0, 0.0), v(1.0, 0.0, 0.0)),
+        ("x/y", v(1.0, 0.0, 0.0), v(0.0, 1.0, 0.0)),
+        ("y/-x", v(0.0, 1.0, 0.0), v(-1.0, 0.0, 0.0)),
+    ] {
+        let frame = RevolutionFrame {
+            origin: p(0.0, 0.0, 0.0),
+            axis,
+            radial,
+        };
+        for (prof, whole) in [
+            (&hollowed, 8.0 * pi - 2.0 * pi / 3.0),
+            (&quarter, 16.0 * pi / 3.0),
+        ] {
+            for t in [0.5 * pi, pi, 1.5 * pi] {
+                let m = turned_in(prof, frame, t);
+                assert!(
+                    (m.volume - whole * t / (2.0 * pi)).abs() < 1e-9,
+                    "{name} {t}"
+                );
+            }
+        }
     }
 }

@@ -194,8 +194,8 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
             Surface::Sphere(sphere) => sat.add_sphere_surface(
                 xyz(sphere.center()),
                 sphere.radius(),
-                [1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0],
+                components(sphere.reference()),
+                components(sphere.pole()),
             ),
             Surface::Torus(torus) => {
                 let axis = components(torus.axis());
