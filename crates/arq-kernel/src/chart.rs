@@ -105,7 +105,7 @@ impl<'a> Chart<'a> {
                 }
             }
             Surface::Cone(c) => {
-                let (e1, e2) = frame(c.axis());
+                let (e1, e2) = (c.reference(), c.axis().cross(c.reference()));
                 Self::Cone {
                     o: c.origin(),
                     a: c.axis(),
@@ -126,7 +126,7 @@ impl<'a> Chart<'a> {
             }
             Surface::Sphere(s) => {
                 let z = s.pole();
-                let (e1, e2) = frame(z);
+                let (e1, e2) = (s.reference(), z.cross(s.reference()));
                 Self::Sphere {
                     c: s.center(),
                     r: s.radius(),
@@ -136,7 +136,7 @@ impl<'a> Chart<'a> {
                 }
             }
             Surface::Torus(t) => {
-                let (e1, e2) = frame(t.axis());
+                let (e1, e2) = (t.reference(), t.axis().cross(t.reference()));
                 Self::Torus {
                     c: t.center(),
                     a: t.axis(),

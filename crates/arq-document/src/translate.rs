@@ -103,6 +103,12 @@ pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
         EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
         EntityType::Text(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
         EntityType::MText(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
+        // ACIS bodies whose data reads: their placement takes the change
+        // (maintainer, 2026-11-05).
+        EntityType::Solid3D(_)
+        | EntityType::Region(_)
+        | EntityType::Body(_)
+        | EntityType::Surface(_) => crate::acis::parsed(e).is_some(),
         _ => false,
     }
 }
@@ -477,19 +483,29 @@ pub(crate) fn whole_grip(e: &EntityType) -> Option<(bool, Point2)> {
 /// Applies a plan transformation to a block or a lightweight polyline as a
 /// whole, through the codec: a block's attributes follow it, a polyline's
 /// bulges flip under a mirror (the codec's mirror path does the same for
-/// these two kinds). Elevations are kept.
+/// these two kinds). Elevations are kept. An ACIS body's placement takes
+/// it, with the wires and silhouettes the drawing keeps for it (ADR 0024
+/// step 5a).
 pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
     let reading = text_data(e).map(|text| text.rotation());
     let [[a, b, tx], [c, d, ty]] = t.affine();
+    // A solid scales in height too, as AutoCAD's SCALE does, about the
+    // base point on the XY plane.
+    let height = if crate::acis::is_body(e) {
+        t.scale_factor()
+    } else {
+        1.0
+    };
     let codec = Transform::from_matrix(Matrix4 {
         m: [
             [a, b, 0.0, tx],
             [c, d, 0.0, ty],
-            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, height, 0.0],
             [0.0, 0.0, 0.0, 1.0],
         ],
     });
     e.apply_transform(&codec);
+    crate::acis::tidy_placement(e);
     if let Some(before) = reading {
         // The codec turns a TEXT's stored angle as a world angle, wrong in a
         // mirrored OCS, and reflects texts: we set the reading direction.

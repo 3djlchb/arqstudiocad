@@ -106,4 +106,46 @@ fn surfaces_move_with_a_transform() {
         "{:?}",
         turned.pole()
     );
+    // Its reference turns with it, and a cone's and a torus's about z.
+    let marked = Surface::Sphere(
+        Sphere::new(p(0.0, 0.0, 0.0), 1.0)
+            .unwrap()
+            .with_reference(v(0.0, 1.0, 0.0))
+            .unwrap(),
+    );
+    let Surface::Sphere(turned) = marked.transformed(quarter, 1.0).unwrap() else {
+        panic!("a sphere");
+    };
+    assert!((turned.reference() - v(0.0, 0.0, 1.0)).length() < 1e-12);
+    let eighth = Transform3::rotation(v(0.0, 0.0, 1.0), std::f64::consts::FRAC_PI_4).unwrap();
+    let cone = Cone::new(p(0.0, 0.0, 0.0), v(0.0, 0.0, 1.0), 1.0, 0.0, 1.0)
+        .unwrap()
+        .with_reference(v(1.0, 0.0, 0.0))
+        .unwrap();
+    let Surface::Cone(c) = Surface::Cone(cone).transformed(eighth, 1.0).unwrap() else {
+        panic!("a cone");
+    };
+    let h = 0.5f64.sqrt();
+    assert!((c.reference() - v(h, h, 0.0)).length() < 1e-12);
+    let torus = Torus::new(p(0.0, 0.0, 0.0), v(0.0, 0.0, 1.0), 3.0, 1.0)
+        .unwrap()
+        .with_reference(v(0.0, 1.0, 0.0))
+        .unwrap();
+    let Surface::Torus(t) = Surface::Torus(torus).transformed(eighth, 1.0).unwrap() else {
+        panic!("a torus");
+    };
+    assert!((t.reference() - v(-h, h, 0.0)).length() < 1e-12);
+}
+
+#[test]
+fn a_reference_is_made_square_to_the_axis_and_never_along_it() {
+    let z = v(0.0, 0.0, 1.0);
+    let cone = Cone::new(p(0.0, 0.0, 0.0), z, 1.0, 0.0, 1.0).unwrap();
+    let tilted = cone.with_reference(v(1.0, 0.0, 5.0)).unwrap();
+    assert!((tilted.reference() - v(1.0, 0.0, 0.0)).length() < 1e-12);
+    assert!(cone.with_reference(z).is_err());
+    let sphere = Sphere::new(p(0.0, 0.0, 0.0), 1.0).unwrap();
+    assert!(sphere.with_reference(v(0.0, 0.0, -2.0)).is_err());
+    let torus = Torus::new(p(0.0, 0.0, 0.0), z, 3.0, 1.0).unwrap();
+    assert!(torus.with_reference(v(0.0, 0.0, 1.0)).is_err());
 }

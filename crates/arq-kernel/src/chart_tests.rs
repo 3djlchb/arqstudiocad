@@ -137,3 +137,39 @@ fn a_nurbs_surface_closed_one_way_puts_that_way_first() {
         assert!(chart.point(5.5, 0.25).distance_to(at) < 1e-12);
     }
 }
+
+#[test]
+fn angles_around_are_counted_from_the_reference() {
+    // Half a turn from u = 0 at v = 0 crosses the surface along its
+    // reference, as ACIS counts it.
+    let tilted = v(1.0, -2.0, 0.5).normalized().unwrap();
+    let r = v(0.0, 0.0, 1.0);
+    let flat = (r - tilted * r.dot(tilted)).normalized().unwrap();
+    let surfaces = [
+        Surface::Cone(
+            Cone::new(p(1.0, 2.0, 3.0), tilted, 2.0, 0.6, 0.8)
+                .unwrap()
+                .with_reference(r)
+                .unwrap(),
+        ),
+        Surface::Sphere(
+            Sphere::with_pole(p(1.0, 2.0, 3.0), 2.5, tilted)
+                .unwrap()
+                .with_reference(r)
+                .unwrap(),
+        ),
+        Surface::Torus(
+            Torus::new(p(1.0, 2.0, 3.0), tilted, 4.0, 1.5)
+                .unwrap()
+                .with_reference(r)
+                .unwrap(),
+        ),
+    ];
+    for surface in &surfaces {
+        let chart = Chart::new(surface);
+        let across = (chart.point(0.0, 0.0) - chart.point(std::f64::consts::PI, 0.0))
+            .normalized()
+            .unwrap();
+        assert!((across - flat).length() < 1e-12, "{surface:?}");
+    }
+}

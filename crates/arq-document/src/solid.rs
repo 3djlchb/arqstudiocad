@@ -15,7 +15,7 @@ use acadrust::entities::acis::types::{
     SatBSplineSurface, SatBody, SatCoedge, SatConeSurface, SatDocument, SatEdge, SatEllipseCurve,
     SatFace, SatIntCurve, SatLoop, SatLump, SatPlaneSurface, SatPoint, SatPointer, SatRecord,
     SatShell, SatSphereSurface, SatSplineSurface, SatSplineSurfaceKind, SatStraightCurve,
-    SatTorusSurface, SatTransform, SatVertex, Sense,
+    SatTorusSurface, SatVertex, Sense,
 };
 use arq_geometry::{Point3, Tolerance, Transform3, Vector3};
 use arq_kernel::{
@@ -88,11 +88,7 @@ impl WireframeCache {
             return found.clone();
         }
         let wire = body_of(e).and_then(Result::ok).map(|body| {
-            let size = body
-                .vertex_bounds()
-                .map(|b| b.size().length())
-                .filter(|s| *s > 0.0)
-                .unwrap_or(1.0);
+            let size = reach(&body).filter(|s| *s > 0.0).unwrap_or(1.0);
             Arc::new(body.wireframe(size * 1e-3, isolines))
         });
         if entries.len() >= CACHED_WIREFRAMES {
@@ -101,6 +97,27 @@ impl WireframeCache {
         entries.insert(key, wire.clone());
         wire
     }
+}
+
+/// A body's size as its vertices span it: twice the furthest from their
+/// mean. Unlike a box along the axes it does not change when the body
+/// turns, so a solid moved or turned is drawn with the same lines moved
+/// or turned.
+fn reach(body: &Body) -> Option<f64> {
+    let points: Vec<Point3> = body.vertices().iter().map(|v| v.point).collect();
+    let n = points.len() as f64;
+    let first = *points.first()?;
+    let mean = points
+        .iter()
+        .fold(Vector3::ZERO, |sum, p| sum + (*p - first))
+        / n;
+    let center = first + mean;
+    Some(
+        2.0 * points
+            .iter()
+            .map(|p| p.distance_to(center))
+            .fold(0.0, f64::max),
+    )
 }
 
 /// An engine entity as a body of the kernel, if it is an ACIS body.
@@ -176,26 +193,29 @@ fn tolerance(points: &[Point3]) -> Tolerance {
 }
 
 /// A body's placement: its transform, rows applied to row vectors as ACIS
-/// does, and uniform scale; `None` without one.
+/// does, and the uniform scale it gives sizes (radii); `None` without one.
+/// The scale is the record's times the matrix's own, so a size folded
+/// into the matrix still scales the radii.
 fn placement(doc: &SatDocument, body: &SatBody) -> Result<Option<(Transform3, f64)>, Untranslated> {
     let Some(record) = doc.resolve(body.transform()) else {
         return Ok(None);
     };
-    let t = SatTransform::from_record(record).ok_or_else(|| invalid("a transform"))?;
-    let scale = t.scale();
-    let rows = [t.row0(), t.row1(), t.row2()];
-    let column = |r: (f64, f64, f64), i: usize| [r.0, r.1, r.2][i] * scale;
+    if record.entity_type != "transform" {
+        return Err(invalid("a transform"));
+    }
+    let (rows, (x, y, z), scale) = crate::acis::transform_numbers(record)
+        .map(|(m, t, s)| (m, (t[0], t[1], t[2]), s))
+        .ok_or_else(|| invalid("a transform"))?;
     // p' = p · R · s + t, so the matrix acting on column vectors is Rᵀ · s.
-    let linear = [
-        [column(rows[0], 0), column(rows[1], 0), column(rows[2], 0)],
-        [column(rows[0], 1), column(rows[1], 1), column(rows[2], 1)],
-        [column(rows[0], 2), column(rows[1], 2), column(rows[2], 2)],
-    ];
-    let (x, y, z) = t.translation();
+    let linear = [0, 1, 2].map(|i| [0, 1, 2].map(|j| rows[j][i] * scale));
     let offset = Vector3::new(x, y, z).map_err(|_| invalid("a transform"))?;
     let transform =
         Transform3::new(linear, Point3::ORIGIN, offset).map_err(|_| invalid("a transform"))?;
-    Ok(Some((transform, scale)))
+    let size = scale * crate::acis::determinant(rows).abs().cbrt();
+    if !(size.is_finite() && size > 0.0) {
+        return Err(invalid("a transform"));
+    }
+    Ok(Some((transform, size)))
 }
 
 /// The walk through one ACIS document, record by record.
@@ -347,13 +367,22 @@ fn surface(doc: &SatDocument, record: &SatRecord) -> Result<(Surface, bool), Unt
                 inward,
             ));
         }
-        let cone = Cone::new(center, axis, major.length(), sin, cos).map_err(bad)?;
+        let mut cone = Cone::new(center, axis, major.length(), sin, cos).map_err(bad)?;
+        // Its angle around starts along the major axis, when it has one.
+        if let Ok(turned) = cone.with_reference(major) {
+            cone = turned;
+        }
         return Ok((Surface::Cone(cone), inward));
     }
     if let Some(s) = SatSphereSurface::from_record(record) {
         let radius = s.radius();
-        let sphere = Sphere::with_pole(point3(s.center())?, radius.abs(), vector3(s.pole())?)
+        let mut sphere = Sphere::with_pole(point3(s.center())?, radius.abs(), vector3(s.pole())?)
             .map_err(bad)?;
+        if let Ok(turned) =
+            vector3(s.u_direction()).and_then(|u| sphere.with_reference(u).map_err(bad))
+        {
+            sphere = turned;
+        }
         return Ok((Surface::Sphere(sphere), radius < 0.0));
     }
     if let Some(s) = SatTorusSurface::from_record(record) {
@@ -365,6 +394,9 @@ fn surface(doc: &SatDocument, record: &SatRecord) -> Result<(Surface, bool), Unt
             minor.abs(),
         )
         .map_err(bad)?;
+        let torus = vector3(s.u_direction())
+            .and_then(|u| torus.with_reference(u).map_err(bad))
+            .unwrap_or(torus);
         return Ok((Surface::Torus(torus), minor < 0.0));
     }
     if let Some(s) = SatSplineSurface::from_record(record)

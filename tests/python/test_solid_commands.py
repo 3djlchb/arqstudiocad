@@ -650,3 +650,43 @@ def test_every_revolution_reason_is_said() -> None:
         "crosses_axis",
         "self_crossing_torus",
     }
+
+
+# Solids moved, copied, turned, scaled and mirrored (ADR 0024 step 5a)
+
+
+def test_solids_move_copy_rotate_scale_and_mirror_as_a_whole() -> None:
+    # A 2 x 3 x 4 box from the origin: centroid (1, 1.5, 2), volume 24.
+    h, document, _ = boxed("BOX", "0,0", "2,3", "4")
+    (box,) = [e.id for e in document.get_entities() if e.kind == "3DSOLID"]
+
+    def measure() -> CadMassProperties:
+        total = document.measure_solids([box]).total
+        assert total is not None
+        return total
+
+    h.session.select(document, [box])
+    h.run("MOVE", "", "0,0", "10,0")
+    assert measure().centroid == pytest.approx((11.0, 1.5, 2.0))
+    h.session.select(document, [box])
+    h.run("ROTATE", "", "10,0", "90")
+    assert measure().centroid == pytest.approx((8.5, 1.0, 2.0))
+    h.session.select(document, [box])
+    h.run("SCALE", "", "10,0", "2")
+    m = measure()
+    assert m.volume == pytest.approx(192.0)
+    assert m.centroid == pytest.approx((7.0, 2.0, 4.0)), "taller too"
+    h.session.select(document, [box])
+    h.run("MIRROR", "", "0,0", "0,1", "Y")
+    assert measure().centroid == pytest.approx((-7.0, 2.0, 4.0))
+    assert measure().volume == pytest.approx(192.0)
+    h.session.select(document, [box])
+    h.run("COPY", "", "0,0", "0,20", "")
+    copies = solids_of(document)
+    assert len(copies) == 2
+    assert sorted(c.centroid[1] for c in copies) == pytest.approx([2.0, 22.0])
+    # Each a step of its own: undone back to where the box was made.
+    for _ in range(5):
+        h.run("UNDO")
+    assert measure().centroid == pytest.approx((1.0, 1.5, 2.0))
+    assert measure().volume == pytest.approx(24.0)

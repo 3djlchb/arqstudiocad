@@ -1001,7 +1001,7 @@ fn standing_out(face: &Face) -> Vec<(Isoline, f64)> {
                 for u in us {
                     // Where the tube's circle at u reaches furthest along d.
                     let (s, c) = u.sin_cos();
-                    let (e1, e2) = crate::chart::frame(a);
+                    let (e1, e2) = (t.reference(), a.cross(t.reference()));
                     let v = along.atan2((e1 * c + e2 * s).dot(d));
                     for v in [v, v + PI] {
                         let chart = chart.clone();

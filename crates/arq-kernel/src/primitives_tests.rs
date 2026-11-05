@@ -765,3 +765,39 @@ fn every_axis_measures_alike_through_the_poles() {
         }
     }
 }
+
+#[test]
+fn a_turned_torus_is_bounded_where_it_went() {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    // A quarter ring turned 30° about z, and the same ring made there:
+    // the same box, though their tori count angles from other places;
+    // upright, and tilted, where the box needs the angles right.
+    let ring = vec![
+        arc((3.0, 0.0), 1.0, 0.0, PI, false),
+        arc((3.0, 0.0), 1.0, PI, 0.0, false),
+    ];
+    let vector = |x, y, z| arq_geometry::Vector3::new(x, y, z).unwrap();
+    let turn = arq_geometry::Transform3::rotation(vector(0.0, 0.0, 1.0), PI / 6.0).unwrap();
+    let h = 0.5f64.sqrt();
+    let tilted = RevolutionFrame {
+        origin: p(1.0, 2.0, 0.0),
+        axis: vector(h, 0.0, h),
+        radial: vector(h, 0.0, -h),
+    };
+    for frame in [upright(), tilted] {
+        let made = Body::revolution(&ring, frame, FRAC_PI_2).unwrap();
+        let turned = made.transformed(turn, 1.0).unwrap();
+        let there = RevolutionFrame {
+            origin: turn.apply_point(frame.origin),
+            axis: turn.apply_vector(frame.axis),
+            radial: turn.apply_vector(frame.radial),
+        };
+        let direct = Body::revolution(&ring, there, FRAC_PI_2).unwrap();
+        let (a, b) = (
+            turned.mass_properties().unwrap().bounds,
+            direct.mass_properties().unwrap().bounds,
+        );
+        assert!(a.min().distance_to(b.min()) < 1e-9, "{a:?} {b:?}");
+        assert!(a.max().distance_to(b.max()) < 1e-9, "{a:?} {b:?}");
+    }
+}
