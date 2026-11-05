@@ -2,6 +2,7 @@
 
 use arq_geometry::{GeometryError, Point3};
 
+use super::{ExtrusionError, ProfileError, ProfilePiece};
 use crate::brep::{Body, BrepError};
 
 fn p(x: f64, y: f64, z: f64) -> Point3 {
@@ -250,5 +251,180 @@ fn impossible_spheres_and_tori_are_refused() {
         (f64::INFINITY, 1.0),
     ] {
         assert_eq!(Body::torus(at, radius, tube), invalid, "{radius} {tube}");
+    }
+}
+
+fn q(x: f64, y: f64) -> arq_geometry::Point2 {
+    arq_geometry::Point2::new(x, y).unwrap()
+}
+
+fn segment(a: (f64, f64), b: (f64, f64)) -> ProfilePiece {
+    let line = arq_geometry::Line::new(q(a.0, a.1), q(b.0, b.1)).unwrap();
+    ProfilePiece {
+        curve: arq_geometry::Geometry2::Line(line),
+        backward: false,
+    }
+}
+
+fn arc(center: (f64, f64), radius: f64, from: f64, to: f64, backward: bool) -> ProfilePiece {
+    let a = arq_geometry::Arc::new(q(center.0, center.1), radius, from, to).unwrap();
+    ProfilePiece {
+        curve: arq_geometry::Geometry2::Arc(a),
+        backward,
+    }
+}
+
+fn rectangle(w: f64, h: f64) -> Vec<ProfilePiece> {
+    vec![
+        segment((0.0, 0.0), (w, 0.0)),
+        segment((w, 0.0), (w, h)),
+        segment((w, h), (0.0, h)),
+        segment((0.0, h), (0.0, 0.0)),
+    ]
+}
+
+#[test]
+fn a_rectangle_extruded_is_a_box() {
+    let body = Body::extrusion(&rectangle(4.0, 2.0), 1.0, 3.0).unwrap();
+    assert_eq!(
+        (
+            body.faces().len(),
+            body.edges().len(),
+            body.vertices().len()
+        ),
+        (6, 12, 8)
+    );
+    let m = body.mass_properties().unwrap();
+    about(m.volume, 24.0);
+    about(m.area, 2.0 * 8.0 + 2.0 * 12.0 + 2.0 * 6.0);
+    about(m.centroid.z(), 2.5);
+    // Drawn clockwise, or extruded downward: the same box, outward.
+    let clockwise: Vec<_> = rectangle(4.0, 2.0)
+        .into_iter()
+        .rev()
+        .map(|p| ProfilePiece {
+            backward: !p.backward,
+            ..p
+        })
+        .collect();
+    about(
+        Body::extrusion(&clockwise, 1.0, 3.0)
+            .unwrap()
+            .mass_properties()
+            .unwrap()
+            .volume,
+        24.0,
+    );
+    let down = Body::extrusion(&rectangle(4.0, 2.0), 1.0, -3.0)
+        .unwrap()
+        .mass_properties()
+        .unwrap();
+    about(down.volume, 24.0);
+    about(down.centroid.z(), -0.5);
+}
+
+#[test]
+fn a_slot_has_round_ends() {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    // Four long and two wide, its ends half circles.
+    let slot = vec![
+        segment((0.0, -1.0), (4.0, -1.0)),
+        arc((4.0, 0.0), 1.0, -FRAC_PI_2, FRAC_PI_2, false),
+        segment((4.0, 1.0), (0.0, 1.0)),
+        arc((0.0, 0.0), 1.0, FRAC_PI_2, 3.0 * FRAC_PI_2, false),
+    ];
+    let body = Body::extrusion(&slot, 0.0, 2.0).unwrap();
+    assert_eq!(body.faces().len(), 6);
+    let m = body.mass_properties().unwrap();
+    about(m.volume, (8.0 + PI) * 2.0);
+    about(m.area, 2.0 * (8.0 + PI) + 2.0 * (8.0 + 2.0 * PI));
+    about(m.bounds.min().x(), -1.0);
+    about(m.bounds.max().x(), 5.0);
+}
+
+#[test]
+fn a_concave_arc_cuts_into_the_profile() {
+    use std::f64::consts::PI;
+    // A 4 square whose top dips: an arc round (2, 6) from (4, 4) to (0, 4),
+    // run clockwise; it takes away a segment of 2π - 4.
+    let r = 8.0f64.sqrt();
+    let dipped = vec![
+        segment((0.0, 0.0), (4.0, 0.0)),
+        segment((4.0, 0.0), (4.0, 4.0)),
+        arc((2.0, 6.0), r, 1.25 * PI, 1.75 * PI, true),
+        segment((0.0, 4.0), (0.0, 0.0)),
+    ];
+    let m = Body::extrusion(&dipped, 0.0, 1.0)
+        .unwrap()
+        .mass_properties()
+        .unwrap();
+    about(m.volume, 20.0 - 2.0 * PI);
+    about(m.bounds.max().y(), 4.0);
+}
+
+#[test]
+fn profiles_that_make_no_solid_are_refused() {
+    let profile = |e| Err(ExtrusionError::Profile(e));
+    let mut open = rectangle(4.0, 2.0);
+    open.pop();
+    assert_eq!(
+        Body::extrusion(&open, 0.0, 1.0),
+        profile(ProfileError::Open)
+    );
+    assert_eq!(
+        Body::extrusion(&open[..1], 0.0, 1.0),
+        profile(ProfileError::Open)
+    );
+    // A bow tie crosses itself in its middle.
+    let bow = vec![
+        segment((0.0, 0.0), (2.0, 2.0)),
+        segment((2.0, 2.0), (2.0, 0.0)),
+        segment((2.0, 0.0), (0.0, 2.0)),
+        segment((0.0, 2.0), (0.0, 0.0)),
+    ];
+    assert_eq!(
+        Body::extrusion(&bow, 0.0, 1.0),
+        profile(ProfileError::Crossing)
+    );
+    // Out and back along one line: no area, and its pieces overlap.
+    let back = vec![
+        segment((0.0, 0.0), (2.0, 0.0)),
+        segment((2.0, 0.0), (0.0, 0.0)),
+    ];
+    assert_eq!(
+        Body::extrusion(&back, 0.0, 1.0),
+        profile(ProfileError::Crossing)
+    );
+    assert_eq!(
+        Body::extrusion(&rectangle(1.0, 1.0), 0.0, 0.0),
+        Err(ExtrusionError::Geometry(BrepError::Geometry(
+            GeometryError::ZeroLength
+        )))
+    );
+    assert_eq!(
+        ProfileError::Crossing.to_string(),
+        "the profile crosses itself"
+    );
+}
+
+#[test]
+fn two_half_circles_make_a_round_profile_either_way() {
+    use std::f64::consts::PI;
+    // A circle drawn as two half circles: its chords enclose nothing, its
+    // arcs all of it; clockwise too.
+    let ccw = vec![
+        arc((0.0, 0.0), 2.0, 0.0, PI, false),
+        arc((0.0, 0.0), 2.0, PI, 0.0, false),
+    ];
+    let cw = vec![
+        arc((0.0, 0.0), 2.0, 0.0, PI, true),
+        arc((0.0, 0.0), 2.0, PI, 0.0, true),
+    ];
+    for profile in [ccw, cw] {
+        let m = Body::extrusion(&profile, 0.0, 3.0)
+            .unwrap()
+            .mass_properties()
+            .unwrap();
+        about(m.volume, 12.0 * PI);
     }
 }

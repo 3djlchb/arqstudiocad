@@ -47,10 +47,17 @@ impl Document {
     /// from it (ADR 0024 step 4); returns its id. A body not written as
     /// ACIS yet is [`DocumentError::UnsupportedOperation`].
     pub fn add_solid(&mut self, body: &Body) -> DocumentResult<EntityId> {
+        let layer = self.current_layer().name().to_owned();
+        self.add_solid_on(body, &layer)
+    }
+
+    /// Adds `body` as a 3DSOLID on `layer` (EXTRUDE puts it on its
+    /// profile's); returns its id.
+    pub(crate) fn add_solid_on(&mut self, body: &Body, layer: &str) -> DocumentResult<EntityId> {
         let sat =
             sat_of(body).map_err(|why| DocumentError::UnsupportedOperation(why.to_string()))?;
         let mut solid = Solid3D::from_sat(&sat.to_sat_string());
-        solid.common.layer = self.current_layer().name().to_owned();
+        solid.common.layer = layer.to_owned();
         let h = self.cad_mut().add_entity(EntityType::Solid3D(solid))?;
         self.sync_entity(h.value());
         Ok(h.value())

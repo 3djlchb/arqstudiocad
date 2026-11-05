@@ -9,6 +9,7 @@
 //! | A box or a wedge between two corners | [`Body::cuboid`], [`Body::wedge`] |
 //! | A cylinder or a cone on its base | [`Body::cylinder`], [`Body::cone`] |
 //! | A sphere or a torus round its center | [`Body::sphere`], [`Body::torus`] |
+//! | A closed profile extruded | [`Body::extrusion`] of [`ProfilePiece`]s |
 //! | Its parts | [`Vertex`], [`Edge`], [`Coedge`], [`Loop`], [`Face`], [`Shell`], [`Lump`] |
 //! | An edge's curve | [`Curve`]: [`LineCurve`], [`EllipseCurve`], [`NurbsCurve`] |
 //! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |
@@ -35,5 +36,6 @@ pub use brep::{
 pub use curve::{Curve, EllipseCurve, LineCurve};
 pub use measure::{MassProperties, MeasureError};
 pub use nurbs::{NurbsCurve, NurbsSurface};
+pub use primitives::{ExtrusionError, ProfileError, ProfilePiece};
 pub use surface::{Cone, EllipticCylinder, Plane, Sphere, Surface, Torus};
 pub use tessellate::Wireframe;

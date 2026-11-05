@@ -305,6 +305,23 @@ part of this ADR.
   AutoCAD solids are written again by our writer and read back
   measuring the same; the other two hold NURBS or elliptic cylinders.
   Step 4b is complete; EXTRUDE (4c) and REVOLVE (4d) follow.
+- **Step 4c, EXTRUDE (2026-11-05):** AutoCAD's EXTRUDE with its height
+  (maintainer, 2026-11-05): a height typed, up or down, or two points;
+  Direction, Path and Taper angle later.
+  - **What extrudes:** closed polylines of segments and arcs, and
+    circles, in plan at any elevation, their OCS mirrored or not;
+    ellipses, splines and regions wait for NURBS in the ACIS writer.
+  - **The kernel** (`Body::extrusion`) takes the profile as pieces,
+    segments and arcs each run forward or backward; it refuses one that
+    does not close, crosses itself or encloses nothing, turns a clockwise
+    one round, and gives each segment a flat side and each arc a piece of
+    a cylinder, inside out where the arc is concave.
+  - **The document** turns a polyline's bulges into arcs, extrudes each
+    profile selected into a 3DSOLID on its own layer and erases the
+    profile, as AutoCAD's DELOBJ does (maintainer, 2026-11-05); the rest
+    stay, each with why. One undo step.
+  - **EXTRUDE** (alias EXT, Spanish EXTRUSION) selects, then asks for the
+    height, remembered; it says how many were left and why.
 
 ## Consequences
 

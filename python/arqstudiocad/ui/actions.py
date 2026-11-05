@@ -55,6 +55,7 @@ SHORTCUTS: dict[str, QKeySequence | QKeySequence.StandardKey | None] = {
     "CONE": None,
     "SPHERE": None,
     "TORUS": None,
+    "EXTRUDE": None,
     "MASSPROP": None,
     "-VIEW": None,
 }
@@ -101,6 +102,7 @@ def labels() -> dict[str, str]:
         "CONE": tr("Co&ne"),
         "SPHERE": tr("Sp&here"),
         "TORUS": tr("&Torus"),
+        "EXTRUDE": tr("E&xtrude"),
         "MASSPROP": tr("Mass &Properties"),
         "-VIEW": tr("3D &Views"),
     }

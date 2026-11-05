@@ -1,12 +1,15 @@
 //! Solids built from a few numbers (ADR 0024 step 4): the primitives the
-//! 3D commands create: a box, a wedge, a cylinder, a cone, a sphere and a
-//! torus.
+//! 3D commands create: a box, a wedge, a cylinder, a cone, a sphere, a
+//! torus, and a closed profile extruded.
 
 use std::collections::HashMap;
+use std::fmt;
 
-use arq_geometry::{GeometryError, Point3, Tolerance, Vector3};
+use arq_geometry::{Geometry2, GeometryError, Point2, Point3, Tolerance, Vector3, intersect};
 
-use crate::brep::{Body, BodyBuilder, BrepError, Coedge, Edge, EdgeId, Face, Loop, Lump, Shell};
+use crate::brep::{
+    Body, BodyBuilder, BrepError, Coedge, Edge, EdgeId, Face, Loop, Lump, Shell, VertexId,
+};
 use crate::curve::{Curve, EllipseCurve, LineCurve};
 use crate::surface::{Cone, Plane, Sphere, Surface, Torus};
 
@@ -244,6 +247,309 @@ fn whole(surface: Surface, extent: &[Point3]) -> Result<Body, BrepError> {
         shells: vec![shell],
     });
     b.build(tolerance(extent)?)
+}
+
+/// A piece of a closed profile in plan: a segment or an arc (stored
+/// counterclockwise, as [`Arc`] is), run from its start to its end, or
+/// `backward`, from its end to its start.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ProfilePiece {
+    /// The segment or arc.
+    pub curve: Geometry2,
+    /// Whether the profile runs it from its end to its start.
+    pub backward: bool,
+}
+
+impl ProfilePiece {
+    /// Where the profile enters it.
+    pub fn start(&self) -> Point2 {
+        let (a, b) = ends(self.curve);
+        if self.backward { b } else { a }
+    }
+
+    /// Where the profile leaves it.
+    pub fn end(&self) -> Point2 {
+        let (a, b) = ends(self.curve);
+        if self.backward { a } else { b }
+    }
+
+    /// The same piece run the other way.
+    fn reversed(self) -> Self {
+        Self {
+            backward: !self.backward,
+            ..self
+        }
+    }
+
+    /// Twice the area it sweeps about the origin, counterclockwise
+    /// positive, with an arc's bulge beyond its chord.
+    fn swept(&self) -> f64 {
+        let (p, q) = (self.start(), self.end());
+        let chord = p.x() * q.y() - q.x() * p.y();
+        let bulge = match self.curve {
+            Geometry2::Arc(a) => {
+                let t = a.sweep();
+                let segment = a.radius() * a.radius() * (t - t.sin());
+                if self.backward { -segment } else { segment }
+            }
+            _ => 0.0,
+        };
+        chord + bulge
+    }
+}
+
+/// Why a profile cannot be extruded.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ProfileError {
+    /// Fewer than two pieces, or one not starting where the last ends.
+    Open,
+    /// It crosses or touches itself away from its corners.
+    Crossing,
+    /// It encloses no area.
+    Flat,
+}
+
+impl fmt::Display for ProfileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Open => write!(f, "the profile does not close"),
+            Self::Crossing => write!(f, "the profile crosses itself"),
+            Self::Flat => write!(f, "the profile encloses no area"),
+        }
+    }
+}
+
+impl std::error::Error for ProfileError {}
+
+impl Body {
+    /// A closed profile in plan, at height `elevation`, extruded `height`
+    /// along Z (negative: downward): AutoCAD's EXTRUDE of a closed
+    /// polyline. Each segment makes a flat side, each arc a piece of a
+    /// cylinder. Its pieces must chain end to start, back to the first, and
+    /// not cross; a height of 0 is [`GeometryError::ZeroLength`].
+    pub fn extrusion(
+        pieces: &[ProfilePiece],
+        elevation: f64,
+        height: f64,
+    ) -> Result<Body, ExtrusionError> {
+        let tol = Tolerance::DEFAULT;
+        let profile = closed_profile(pieces, tol)?;
+        if !(height.is_finite() && height != 0.0 && elevation.is_finite()) {
+            return Err(ExtrusionError::Geometry(BrepError::Geometry(
+                GeometryError::ZeroLength,
+            )));
+        }
+        // Extruded upward from the lower of the two levels.
+        let (base, top) = if height > 0.0 {
+            (elevation, elevation + height)
+        } else {
+            (elevation + height, elevation)
+        };
+        let geometry = |e| ExtrusionError::Geometry(BrepError::Geometry(e));
+        let at = |p: Point2, z: f64| Point3::new(p.x(), p.y(), z).map_err(geometry);
+        let up = Vector3::new(0.0, 0.0, 1.0).map_err(geometry)?;
+        let n = profile.len();
+        let mut b = BodyBuilder::new();
+        let mut points = Vec::with_capacity(2 * n);
+        let (mut low, mut high) = (Vec::with_capacity(n), Vec::with_capacity(n));
+        for piece in &profile {
+            let (a, t) = (at(piece.start(), base)?, at(piece.start(), top)?);
+            points.extend([a, t]);
+            low.push(b.vertex(a));
+            high.push(b.vertex(t));
+        }
+        // The profile's edges at both levels, and the upright ones at its
+        // corners, each running up.
+        let along = |b: &mut BodyBuilder,
+                     z: f64,
+                     ring: &[VertexId]|
+         -> Result<Vec<EdgeId>, ExtrusionError> {
+            let mut edges = Vec::with_capacity(n);
+            for (i, piece) in profile.iter().enumerate() {
+                let (start, end) = (ring[i], ring[(i + 1) % n]);
+                let (curve, reversed) = match piece.curve {
+                    Geometry2::Arc(a) => {
+                        let center = at(a.center(), z)?;
+                        let major = at(a.start_point(), z)? - center;
+                        let circle = EllipseCurve::new(center, up, major, 1.0).map_err(geometry)?;
+                        (Curve::Ellipse(circle), piece.backward)
+                    }
+                    _ => {
+                        let (p, q) = (at(piece.start(), z)?, at(piece.end(), z)?);
+                        (
+                            Curve::Line(LineCurve::new(p, q - p).map_err(geometry)?),
+                            false,
+                        )
+                    }
+                };
+                edges.push(b.edge(Edge {
+                    curve: Some(curve),
+                    start,
+                    end,
+                    reversed,
+                }));
+            }
+            Ok(edges)
+        };
+        let bottom = along(&mut b, base, &low)?;
+        let roof = along(&mut b, top, &high)?;
+        let mut uprights = Vec::with_capacity(n);
+        for i in 0..n {
+            let (p, q) = (points[2 * i], points[2 * i + 1]);
+            let line = LineCurve::new(p, q - p).map_err(geometry)?;
+            uprights.push(b.edge(Edge {
+                curve: Some(Curve::Line(line)),
+                start: low[i],
+                end: high[i],
+                reversed: false,
+            }));
+        }
+        let ring = |b: &mut BodyBuilder, uses: &[(EdgeId, bool)]| {
+            let coedges = uses
+                .iter()
+                .map(|&(edge, reversed)| b.coedge(Coedge { edge, reversed }))
+                .collect();
+            b.add_loop(Loop { coedges })
+        };
+        // Seen from outside: the base clockwise about Z, the top
+        // counterclockwise; each side along the base, up, back along the
+        // top and down.
+        let under: Vec<_> = bottom.iter().rev().map(|&e| (e, true)).collect();
+        let over: Vec<_> = roof.iter().map(|&e| (e, false)).collect();
+        let mut faces = Vec::with_capacity(n + 2);
+        let base_loop = ring(&mut b, &under);
+        let floor = Plane::new(points[0], -up).map_err(geometry)?;
+        faces.push(b.face(Face {
+            surface: Surface::Plane(floor),
+            loops: vec![base_loop],
+            reversed: false,
+        }));
+        let top_loop = ring(&mut b, &over);
+        let ceiling = Plane::new(points[1], up).map_err(geometry)?;
+        faces.push(b.face(Face {
+            surface: Surface::Plane(ceiling),
+            loops: vec![top_loop],
+            reversed: false,
+        }));
+        for (i, piece) in profile.iter().enumerate() {
+            let next = (i + 1) % n;
+            let side = ring(
+                &mut b,
+                &[
+                    (bottom[i], false),
+                    (uprights[next], false),
+                    (roof[i], true),
+                    (uprights[i], true),
+                ],
+            );
+            let (surface, reversed) = match piece.curve {
+                // Outside a convex arc lies away from its axis; outside a
+                // concave one (run clockwise), toward it.
+                Geometry2::Arc(a) => {
+                    let cylinder = Cone::new(at(a.center(), base)?, up, a.radius(), 0.0, 1.0)
+                        .map_err(geometry)?;
+                    (Surface::Cone(cylinder), piece.backward)
+                }
+                _ => {
+                    let d = piece.end() - piece.start();
+                    let outward = Vector3::new(d.y(), -d.x(), 0.0).map_err(geometry)?;
+                    let wall = Plane::new(points[2 * i], outward).map_err(geometry)?;
+                    (Surface::Plane(wall), false)
+                }
+            };
+            faces.push(b.face(Face {
+                surface,
+                loops: vec![side],
+                reversed,
+            }));
+        }
+        let shell = b.shell(Shell { faces });
+        b.lump(Lump {
+            shells: vec![shell],
+        });
+        b.build(tolerance(&points).map_err(ExtrusionError::Geometry)?)
+            .map_err(ExtrusionError::Geometry)
+    }
+}
+
+/// Why an extrusion cannot be made.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExtrusionError {
+    /// The profile is not a closed, simple loop.
+    Profile(ProfileError),
+    /// A size or a value is invalid.
+    Geometry(BrepError),
+}
+
+impl fmt::Display for ExtrusionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Profile(e) => write!(f, "{e}"),
+            Self::Geometry(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for ExtrusionError {}
+
+/// `pieces` as a closed, simple profile running counterclockwise.
+fn closed_profile(
+    pieces: &[ProfilePiece],
+    tol: Tolerance,
+) -> Result<Vec<ProfilePiece>, ExtrusionError> {
+    let n = pieces.len();
+    let open = || ExtrusionError::Profile(ProfileError::Open);
+    if n < 2 {
+        return Err(open());
+    }
+    for i in 0..n {
+        if !pieces[i].end().approx_eq(pieces[(i + 1) % n].start(), tol) {
+            return Err(open());
+        }
+    }
+    // Neighbours meet only at their shared corners; others, nowhere.
+    for i in 0..n {
+        for j in i + 1..n {
+            let meet = intersect(pieces[i].curve, pieces[j].curve, tol);
+            if !meet.overlaps().is_empty() {
+                return Err(ExtrusionError::Profile(ProfileError::Crossing));
+            }
+            let mut corners = Vec::new();
+            if j == i + 1 {
+                corners.push(pieces[i].end());
+            }
+            if (j + 1) % n == i {
+                corners.push(pieces[j].end());
+            }
+            let stray = meet
+                .points()
+                .iter()
+                .any(|p| !corners.iter().any(|c| c.approx_eq(*p, tol)));
+            if stray {
+                return Err(ExtrusionError::Profile(ProfileError::Crossing));
+            }
+        }
+    }
+    // A closed profile that does not cross itself encloses some area.
+    let area: f64 = pieces.iter().map(ProfilePiece::swept).sum();
+    // Clockwise: run it the other way round.
+    Ok(if area > 0.0 {
+        pieces.to_vec()
+    } else {
+        pieces.iter().rev().map(|p| p.reversed()).collect()
+    })
+}
+
+/// A segment's or an arc's two ends, as stored.
+fn ends(curve: Geometry2) -> (Point2, Point2) {
+    match curve {
+        Geometry2::Line(l) => (l.start(), l.end()),
+        Geometry2::Arc(a) => (a.start_point(), a.end_point()),
+        Geometry2::Circle(c) => {
+            let p = c.point_at_angle(0.0);
+            (p, p)
+        }
+    }
 }
 
 /// How close a vertex must be to its curves and surfaces: a billionth of
