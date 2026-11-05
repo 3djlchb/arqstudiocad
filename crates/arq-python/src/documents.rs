@@ -421,6 +421,33 @@ impl CadDocument {
         self.create(|cad| cad.add_box(point(corner)?, point(opposite)?))
     }
 
+    /// Makes a cylinder standing on its base circle at `center` `(x, y,
+    /// z)`, `height` along Z (negative: downward) (CYLINDER, ADR 0024 step
+    /// 4b).
+    fn add_cylinder(
+        &self,
+        center: (f64, f64, f64),
+        radius: f64,
+        height: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        let (x, y, z) = center;
+        self.create(|cad| cad.add_cylinder(arq_geometry::Point3::new(x, y, z)?, radius, height))
+    }
+
+    /// Makes a cone standing on its base circle at `center`, of radius
+    /// `base`, its top of radius `top` (0: a point), `height` along Z
+    /// (CONE, ADR 0024 step 4b).
+    fn add_cone(
+        &self,
+        center: (f64, f64, f64),
+        base: f64,
+        top: f64,
+        height: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        let (x, y, z) = center;
+        self.create(|cad| cad.add_cone(arq_geometry::Point3::new(x, y, z)?, base, top, height))
+    }
+
     /// Makes a wedge in the box between two opposite corners `(x, y, z)`:
     /// its base at `first`'s height, upright at `first`'s X, sloping down
     /// toward `opposite`'s X, as tall as `opposite`'s height (WEDGE, ADR

@@ -1,13 +1,13 @@
 //! Solids built from a few numbers (ADR 0024 step 4): the primitives the
-//! 3D commands create. A box and a wedge so far.
+//! 3D commands create: a box, a wedge, a cylinder and a cone so far.
 
 use std::collections::HashMap;
 
-use arq_geometry::{GeometryError, Point3, Tolerance};
+use arq_geometry::{GeometryError, Point3, Tolerance, Vector3};
 
-use crate::brep::{Body, BodyBuilder, BrepError, Coedge, Edge, Face, Loop, Lump, Shell};
-use crate::curve::{Curve, LineCurve};
-use crate::surface::{Plane, Surface};
+use crate::brep::{Body, BodyBuilder, BrepError, Coedge, Edge, EdgeId, Face, Loop, Lump, Shell};
+use crate::curve::{Curve, EllipseCurve, LineCurve};
+use crate::surface::{Cone, Plane, Surface};
 
 impl Body {
     /// A box with its edges along the axes, between two opposite
@@ -91,6 +91,113 @@ impl Body {
         }
         let faces: Vec<&[usize]> = faces.iter().map(Vec::as_slice).collect();
         planar(&corners, &faces, tolerance(&corners)?)
+    }
+}
+
+impl Body {
+    /// A cylinder standing on its base circle, centered at `center` with
+    /// `radius`, `height` along Z (negative: downward): AutoCAD's
+    /// CYLINDER.
+    pub fn cylinder(center: Point3, radius: f64, height: f64) -> Result<Body, BrepError> {
+        Self::cone(center, radius, radius, height)
+    }
+
+    /// A cone standing on its base circle, centered at `center` with
+    /// radius `base`, `height` along Z (negative: downward), its top circle
+    /// of radius `top`: AutoCAD's CONE. A radius of 0 is a point (the
+    /// apex), not both; equal radii make a cylinder. A radius below 0 is
+    /// [`GeometryError::InvalidRadius`], a height of 0
+    /// [`GeometryError::ZeroLength`].
+    pub fn cone(center: Point3, base: f64, top: f64, height: f64) -> Result<Body, BrepError> {
+        let radii_ok = base.is_finite() && top.is_finite() && base >= 0.0 && top >= 0.0;
+        if !radii_ok || base.max(top) == 0.0 {
+            return Err(BrepError::Geometry(GeometryError::InvalidRadius));
+        }
+        if !height.is_finite() || height == 0.0 {
+            return Err(BrepError::Geometry(GeometryError::ZeroLength));
+        }
+        let geometry = BrepError::Geometry;
+        let axis = Vector3::new(0.0, 0.0, height.signum()).map_err(geometry)?;
+        let across = Vector3::new(1.0, 0.0, 0.0).map_err(geometry)?;
+        let rise = height.abs();
+        let top_center = center + axis * rise;
+        // The side, from the larger end so its reference circle has a size:
+        // widening by (top - base) per rise along the axis.
+        let slant = (top - base).hypot(rise);
+        let (origin, radius) = if base >= top {
+            (center, base)
+        } else {
+            (top_center, top)
+        };
+        let side = Cone::new(origin, axis, radius, (top - base) / slant, rise / slant)
+            .map_err(geometry)?;
+
+        let mut b = BodyBuilder::new();
+        let mut points = vec![center, top_center];
+        // An end: a circle, its vertex at parameter 0, or the apex.
+        let mut end = |b: &mut BodyBuilder, at: Point3, r: f64| -> Result<EdgeId, BrepError> {
+            if r > 0.0 {
+                let start = at + across * r;
+                points.push(start);
+                let vertex = b.vertex(start);
+                let circle = EllipseCurve::new(at, axis, across * r, 1.0).map_err(geometry)?;
+                Ok(b.edge(Edge {
+                    curve: Some(Curve::Ellipse(circle)),
+                    start: vertex,
+                    end: vertex,
+                    reversed: false,
+                }))
+            } else {
+                let apex = b.vertex(at);
+                Ok(b.edge(Edge {
+                    curve: None,
+                    start: apex,
+                    end: apex,
+                    reversed: false,
+                }))
+            }
+        };
+        let low = end(&mut b, center, base)?;
+        let high = end(&mut b, top_center, top)?;
+        let one = |b: &mut BodyBuilder, edge: EdgeId, reversed: bool| {
+            let coedge = b.coedge(Coedge { edge, reversed });
+            b.add_loop(Loop {
+                coedges: vec![coedge],
+            })
+        };
+        // Seen from outside, the base circle turns clockwise about the axis
+        // and the top one counterclockwise; the side runs them the other
+        // way, the base forward and the top back.
+        let mut faces = Vec::new();
+        if base > 0.0 {
+            let lp = one(&mut b, low, true);
+            let plane = Plane::new(center, -axis).map_err(geometry)?;
+            faces.push(b.face(Face {
+                surface: Surface::Plane(plane),
+                loops: vec![lp],
+                reversed: false,
+            }));
+        }
+        if top > 0.0 {
+            let lp = one(&mut b, high, false);
+            let plane = Plane::new(top_center, axis).map_err(geometry)?;
+            faces.push(b.face(Face {
+                surface: Surface::Plane(plane),
+                loops: vec![lp],
+                reversed: false,
+            }));
+        }
+        let loops = vec![one(&mut b, low, false), one(&mut b, high, true)];
+        faces.push(b.face(Face {
+            surface: Surface::Cone(side),
+            loops,
+            reversed: false,
+        }));
+        let shell = b.shell(Shell { faces });
+        b.lump(Lump {
+            shells: vec![shell],
+        });
+        b.build(tolerance(&points)?)
     }
 }
 

@@ -736,6 +736,67 @@ fn codec_solids_are_measured() {
 /// refused, as open sheets.
 #[test]
 #[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_solids_written_by_us_read_back() {
+    // AutoCAD's and LibreDWG's solids, written again by our ACIS writer
+    // (ADR 0024 step 4), read back as the same bodies: what the writer
+    // writes so far (planes, cones, circles, apexes), the rest refused.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    let mut counts = Vec::new();
+    for name in [
+        "2007/ATMOS-DC22S.dwg",
+        "example_2000.dwg",
+        "example_2013.dwg",
+    ] {
+        let doc = Document::open(root.join(name)).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let (mut written, mut refused) = (0, 0);
+        for e in doc.entities() {
+            let Some(Ok(body)) = doc.solid(e.id()) else {
+                continue;
+            };
+            // Only closed bodies: a region measures nothing to compare.
+            let Ok(a) = body.mass_properties() else {
+                continue;
+            };
+            let what = format!("{name} {:X}", e.id());
+            let mut ours = Document::new();
+            let Ok(id) = ours.add_solid(&body) else {
+                refused += 1;
+                continue;
+            };
+            written += 1;
+            let back = ours
+                .solid(id)
+                .expect("a solid")
+                .unwrap_or_else(|e| panic!("{what}: {e}"));
+            let b = back
+                .mass_properties()
+                .unwrap_or_else(|e| panic!("{what}: {e}"));
+            let size = a.bounds.size().length();
+            assert!(
+                (a.volume - b.volume).abs() < 1e-9 * a.volume,
+                "{what}: {a:?} {b:?}"
+            );
+            assert!(
+                (a.area - b.area).abs() < 1e-9 * a.area,
+                "{what}: {a:?} {b:?}"
+            );
+            assert!(a.centroid.distance_to(b.centroid) < 1e-9 * size, "{what}");
+        }
+        counts.push((name, written, refused));
+    }
+    // ATMOS's other eleven hold what the writer does not write yet.
+    assert_eq!(
+        counts,
+        [
+            ("2007/ATMOS-DC22S.dwg", 47, 11),
+            ("example_2000.dwg", 1, 0),
+            ("example_2013.dwg", 1, 0),
+        ]
+    );
+}
+
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
 fn codec_solids_measured_together() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
     let doc = Document::open(root.join("2007/ATMOS-DC22S.dwg")).expect("ATMOS");

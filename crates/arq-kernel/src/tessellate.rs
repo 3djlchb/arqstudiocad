@@ -135,7 +135,19 @@ fn face_isolines(
     count: usize,
 ) -> Vec<Vec<Point3>> {
     let boundary = boundary_of(body, face, edges);
-    let lines = isolines(&face.surface, &boundary, count);
+    // A point the face closes on (a cone's apex) bounds how far its
+    // isolines run, though no segment of the boundary reaches it.
+    let mut extent = boundary.clone();
+    for lp in &face.loops {
+        for &c in &body.loops()[lp.index()].coedges {
+            let edge = &body.edges()[body.coedges()[c.index()].edge.index()];
+            if edge.curve.is_none() {
+                let apex = body.vertex(edge.start).point;
+                extent.push((apex, apex));
+            }
+        }
+    }
+    let lines = isolines(&face.surface, &extent, count);
     let Some((guides, reach)) = guides_of(face, &boundary) else {
         // No loops: the whole surface (a sphere, a torus).
         return lines

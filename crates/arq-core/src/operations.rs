@@ -32,6 +32,33 @@ impl CadDocument {
         self.transact("BOX", |doc| Ok(doc.add_box(corner, opposite)?))
     }
 
+    /// Makes a cylinder standing on its base circle at `center`, `height`
+    /// along Z (negative: downward), on the current layer (CYLINDER, ADR
+    /// 0024 step 4b).
+    pub fn add_cylinder(
+        &mut self,
+        center: Point3,
+        radius: f64,
+        height: f64,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("CYLINDER", |doc| {
+            Ok(doc.add_cone(center, radius, radius, height)?)
+        })
+    }
+
+    /// Makes a cone standing on its base circle at `center`, its top of
+    /// radius `top` (0: a point), on the current layer (CONE, ADR 0024
+    /// step 4b).
+    pub fn add_cone(
+        &mut self,
+        center: Point3,
+        base: f64,
+        top: f64,
+        height: f64,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("CONE", |doc| Ok(doc.add_cone(center, base, top, height)?))
+    }
+
     /// Makes a wedge in the box between two opposite corners, upright at
     /// `first`'s X, on the current layer (WEDGE, ADR 0024 step 4b).
     pub fn add_wedge(

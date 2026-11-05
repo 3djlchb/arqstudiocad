@@ -1,6 +1,6 @@
 """The 3D commands of milestone 02.8 (ADR 0024), in the ribbon's 3D tab:
-BOX and WEDGE, which make solids (steps 4a and 4b), and MASSPROP, which
-measures them.
+BOX, WEDGE, CYLINDER and CONE, which make solids (steps 4a and 4b), and
+MASSPROP, which measures them.
 
 MASSPROP reports the volume, surface area, bounding box and centroid of the
 solids selected, together, as AutoCAD's MASSPROP reports a selection;
@@ -122,6 +122,9 @@ def _fixed(value: float, places: int) -> str:
 BOX_HEIGHT = "BOX_HEIGHT"
 #: The last wedge height.
 WEDGE_HEIGHT = "WEDGE_HEIGHT"
+#: The last radius and height of each round solid.
+CYLINDER_RADIUS, CYLINDER_HEIGHT = "CYLINDER_RADIUS", "CYLINDER_HEIGHT"
+CONE_RADIUS, CONE_HEIGHT = "CONE_RADIUS", "CONE_HEIGHT"
 
 #: Makes a solid in ``document`` between two opposite corners ``(x, y, z)``.
 type Maker = Callable[[CadDocument, tuple[float, float, float], tuple[float, float, float]], Any]
@@ -180,11 +183,74 @@ def _between(ctx: CommandContext, make: Maker, remembered: str, flat: str) -> Co
         ctx.message(flat)
     if height is None:
         height = yield from _height(ctx, remembered)
+        assert isinstance(height, float)
     ctx.remembered[remembered] = height
     # About its center the solid is centered in height too, as AutoCAD's.
     bottom = -height / 2 if center is not None else 0.0
     _, changes = make(document, (*low, bottom), (*high, bottom + height))
     ctx.session.report(document, changes)
+
+
+def cylinder(ctx: CommandContext) -> CommandScript:
+    """CYLINDER, AutoCAD's (Spanish CILINDRO), its basic options: a base
+    circle on the XY plane, by its center and radius or diameter, and a
+    height up or down (ADR 0024 step 4b). 3P, 2P, Ttr, Elliptical and Axis
+    endpoint wait for the user coordinate systems."""
+    document = ctx.document()
+    center = yield ctx.point(tr("Specify center point of base"))
+    radius = yield from _radius(ctx, center, CYLINDER_RADIUS)
+    height = yield from _height(ctx, CYLINDER_HEIGHT)
+    assert isinstance(height, float)
+    _, changes = document.add_cylinder((*center, 0.0), radius, height)
+    ctx.session.report(document, changes)
+
+
+def cone(ctx: CommandContext) -> CommandScript:
+    """CONE, AutoCAD's (Spanish CONO), its basic options: as CYLINDER, to a
+    point or, given a top radius, to a smaller or larger circle (a
+    frustum; ADR 0024 step 4b)."""
+    document = ctx.document()
+    center = yield ctx.point(tr("Specify center point of base"))
+    base = yield from _radius(ctx, center, CONE_RADIUS)
+    top = 0.0
+    top_radius = Option("T", tr("Top radius"))
+    while (height := (yield from _height(ctx, CONE_HEIGHT, (top_radius,)))) == "T":
+        top = yield from _top_radius(ctx, top)
+    assert isinstance(height, float)
+    _, changes = document.add_cone((*center, 0.0), base, top, height)
+    ctx.session.report(document, changes)
+
+
+def _radius(
+    ctx: CommandContext, center: tuple[float, float], remembered: str
+) -> Generator[Prompt, Any, float]:
+    """A base radius, or a diameter halved, from ``center``; the last one,
+    kept as ``remembered``, by default."""
+    answer = yield ctx.distance(
+        tr("Specify base radius"),
+        base=center,
+        options=[Option("D", tr("Diameter"))],
+        default=ctx.remembered.get(remembered),
+    )
+    if answer == "D":
+        diameter = yield ctx.distance(tr("Specify diameter"), base=center)
+        answer = diameter / 2
+    ctx.remembered[remembered] = answer
+    return float(answer)
+
+
+def _top_radius(ctx: CommandContext, last: float) -> Generator[Prompt, Any, float]:
+    """A cone's top radius: 0 or more, typed; ``last`` by default."""
+    while True:
+        typed = yield ctx.ask(tr("Specify top radius"), default=f"{last:.10g}")
+        try:
+            radius = float(typed)
+        except ValueError:
+            ctx.message(tr("The radius must be a number."))
+            continue
+        if math.isfinite(radius) and radius >= 0.0:
+            return radius
+        ctx.message(tr("The radius cannot be negative."))
 
 
 def _sized(
@@ -203,14 +269,21 @@ def _mirror(point: tuple[float, float], center: tuple[float, float]) -> tuple[fl
     return (2 * center[0] - point[0], 2 * center[1] - point[1])
 
 
-def _height(ctx: CommandContext, remembered: str) -> Generator[Prompt, Any, float]:
+def _height(
+    ctx: CommandContext, remembered: str, more: tuple[Option, ...] = ()
+) -> Generator[Prompt, Any, float | str]:
     """A height, typed (negative: down) or the distance between two points
-    (2Point); the last one, kept as ``remembered``, by default."""
+    (2Point); the last one, kept as ``remembered``, by default; or the key
+    of one of ``more`` options."""
     last = ctx.remembered.get(remembered)
     shown = None if last is None else f"{last:.10g}"
     two_points = Option("2P", tr("2Point"))
     while True:
-        typed = yield Prompt(tr("Specify height"), "text", (two_points,), shown)
+        typed = yield Prompt(tr("Specify height"), "text", (two_points, *more), shown)
+        chosen = typed.strip().upper()
+        for option in more:
+            if chosen in (option.key, option.label.upper()):
+                return option.key
         if typed.strip().upper() in (two_points.key, two_points.label.upper()):
             a = yield ctx.point(tr("Specify first point"))
             b = yield ctx.point(tr("Specify second point"), base=a)
@@ -222,6 +295,7 @@ def _height(ctx: CommandContext, remembered: str) -> Generator[Prompt, Any, floa
                 ctx.message(tr("The height must be a number."))
                 continue
         if math.isfinite(height) and height != 0.0:
+            ctx.remembered[remembered] = height
             return height
         ctx.message(tr("The height cannot be zero."))
 
@@ -230,6 +304,8 @@ def _height(ctx: CommandContext, remembered: str) -> Generator[Prompt, Any, floa
 SOLID_COMMANDS = (
     Command("BOX", box),
     Command("WEDGE", wedge, ("WE",)),
+    Command("CYLINDER", cylinder, ("CYL",)),
+    Command("CONE", cone),
     Command("MASSPROP", massprop),
 )
 
