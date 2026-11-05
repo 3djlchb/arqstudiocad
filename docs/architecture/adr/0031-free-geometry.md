@@ -1,6 +1,6 @@
-# 0031. Free Geometry: a workspace for organic forms, by subdivision
+# 0031. Free Geometry: a workspace for organic forms, by flat faces, subdivision and NURBS
 
-Date: 2026-11-05 · Status: Proposed
+Date: 2026-11-05 · Status: Proposed · Amended 2026-11-05 (D10 to D13: three ways of modeling)
 
 ## Context
 
@@ -28,6 +28,31 @@ viewport draws wireframes only, the GPU viewport (02.7) waiting for the
 reference machine. DWG has an entity for exactly this: **MESH**,
 AutoCAD's subdivision mesh, with smoothing levels and creased edges;
 AcadRust reads and writes it.
+
+The first draft modeled free forms by subdivision only. The maintainer
+then asked for the three ways of modeling the field knows, each with its
+own programs: **flat faces** pushed and pulled (SketchUp, IngeTrazo),
+**subdivision** (Blender, Rhino's SubD, AutoCAD's MESH) and **NURBS**
+surfaces (Rhino, AutoCAD's surface modeling), to be used one at a time or
+mixed (maintainer, 2026-11-05). D10 to D13 add them; D1 to D8 stand, and
+D13 replaces D9's order.
+
+What other programs teach about mixing them:
+
+- **AutoCAD** keeps 3DSOLID, SURFACE (NURBS) and MESH in one drawing,
+  each object of one kind, converted by commands (CONVTOSOLID,
+  CONVTOSURFACE, MESHSMOOTH): the format we read and write.
+- **Rhino** (7 and later) keeps NURBS, SubD and meshes as kinds of object
+  in one file; its tools act on the kind selected; `ToNURBS` makes a SubD
+  exact NURBS, the direction that loses nothing.
+- **Fusion 360** models subdivision in an environment of its own (Form):
+  entered to edit, left to come back to solids, so tools that do not fit
+  together are never offered together.
+- **Maya** had a separate subdivision-surface kind and gave it up for a
+  smoothed preview of polygon meshes: each extra kind of data costs
+  conversions and upkeep.
+- **SketchUp, Plasticity, MoI** keep one way only: simple to learn, while
+  what it cannot do is left to plug-ins or to other programs.
 
 ## Decision
 
@@ -121,7 +146,7 @@ Each choice marked *(maintainer)* was made by the maintainer on
   their planned DWG support, their push/pull experience for ours) is the
   maintainer's to propose.
 
-### D9 — Order
+### D9 — Order (replaced by D13)
 
 1. **Shading** on the CPU (D5), for solids first.
 2. **Read and see MESH**: AutoCAD's meshes drawn smoothed, selected,
@@ -136,6 +161,70 @@ Each choice marked *(maintainer)* was made by the maintainer on
 8. Later, each its own step: symmetry, sweeping (follow me), deformers
    (bend, twist, lattice), sculpting brushes, materials.
 
+### D10 — Three ways of modeling *(maintainer)*
+
+Free Geometry models in three ways; each makes objects of its own kind.
+
+- **Flat faces**, as SketchUp and IngeTrazo: drawing on faces with
+  inference, push/pull, offset, follow me, typed lengths. The data is the
+  B-rep of the solids (ADR 0024) with plane surfaces: exact, in `f64`, a
+  solid (3DSOLID) as soon as it closes a volume, a surface while it is
+  open. It is measured and combined like any solid, with no conversion.
+- **Subdivision**, as D2 to D4 describe: a control cage smoothed
+  (Catmull-Clark) with creases, saved as MESH.
+- **NURBS**, as Rhino: curves through or controlled by points, and
+  surfaces made from them (loft, sweep along one or two rails, network of
+  curves, revolve, patch), edited by their control points, trimmed by
+  curves and by other surfaces, joined, filleted. The data is the B-rep
+  with NURBS surfaces, which the kernel already reads, draws and measures
+  (ADR 0024 step 1b); saved as SURFACE or, closed, as 3DSOLID, with ACIS
+  `spline-surface` records, so AutoCAD and ProgeCAD edit them.
+- Two of the three are the solids' own B-rep, faces flat or NURBS: only
+  subdivision lives as a mesh, and meets the B-rep in conversions (D3).
+
+### D11 — Mixed by object, a mode filter for who wants one *(maintainer)*
+
+- One drawing holds the three kinds together, each object of one kind,
+  as AutoCAD and Rhino do. Commands convert between them, explicitly:
+  flat faces to a cage (to smooth them), a cage to NURBS or to a solid
+  (D3, the direction that loses nothing), NURBS to a mesh (a
+  tessellation, for display or export).
+- A **mode** chosen in the workspace (*All*, *Flat faces*,
+  *Subdivision*, *NURBS*) filters the tabs and tools shown, for who wants
+  to work one way only, as in SketchUp or in Rhino. It only filters:
+  objects of every kind stay seen, selected and measured, and the mode
+  is a preference, not part of the drawing.
+
+### D12 — An environment to edit an object *(maintainer)*
+
+- A subdivision mesh or a NURBS surface is edited in an **environment**
+  entered on the object (double-click, or a command), as Fusion 360's
+  Form and our block editor (ADR 0023) work: its cage or its control
+  points shown, its own tools in the ribbon, the rest of the drawing seen
+  but not edited. Closing it returns to the drawing; what was done there
+  is one change of the drawing, undone as one.
+- Flat faces are edited in the drawing itself, as in SketchUp: push/pull
+  acts on the face under the cursor, with no environment to enter.
+- The working plane, picking in 3D and typed values (D6) are the same in
+  the three ways and in their environments.
+
+### D13 — Order, replacing D9
+
+1. **Shading** on the CPU (D5), for solids first.
+2. **Picking in 3D and the working plane** (D6).
+3. **The workspace, its mode filter** (D11), and **flat faces**: drawing
+   on faces, push/pull, offset, follow me; solids made and edited by
+   faces, in the drawing.
+4. **Read and see MESH**; then the subdivision environment (D12): mesh
+   primitives, flat faces or a solid made a cage, the smoothing level,
+   creases, editing the cage and its face tools.
+5. **NURBS in the ACIS writer**, and a mesh made a solid (D3).
+6. **NURBS modeling** in its environment: curves, surfaces from curves,
+   control points; then trims, joins and fillets, which need surfaces
+   intersected, as booleans do (ADR 0024 step 5): after them.
+7. Later, each its own step: symmetry, deformers, sculpting brushes,
+   materials, and the conversions not needed before.
+
 ## Consequences
 
 - Organic forms get a way of working of their own without loosening the
@@ -143,8 +232,14 @@ Each choice marked *(maintainer)* was made by the maintainer on
 - A free form travels to AutoCAD and ProgeCAD as their own MESH, and as an
   exact solid when made one.
 - The kernel gains a second kind of geometry, meshes, beside the B-rep;
-  the two meet only in conversions.
+  the two meet only in conversions. Flat faces and NURBS add no kind of
+  data: they are the solids' B-rep, so whatever they make is measured,
+  saved and combined as solids are.
+- Three ways of modeling, one drawing: who wants one way only filters
+  the others out (D11), and nothing made one way is closed to the others.
 - Shading on the CPU arrives before the GPU viewport and serves CAD's
   solids too.
-- 02.14 depends on no backend: Truck's booleans (ADR 0024 step 5) are not
-  needed to model free forms, only to combine them once solids.
+- 02.14 depends on no backend for flat faces and subdivision: Truck's
+  booleans (ADR 0024 step 5) are not needed to model them, only to
+  combine them once solids. NURBS trims, joins and fillets need surfaces
+  intersected, as booleans do, and so come after them.
