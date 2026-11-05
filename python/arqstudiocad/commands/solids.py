@@ -1,7 +1,7 @@
 """The 3D commands of milestone 02.8 (ADR 0024), in the ribbon's 3D tab:
 BOX, WEDGE, CYLINDER, CONE, SPHERE and TORUS, which make solids (steps 4a
-and 4b), EXTRUDE, which makes them of closed profiles (step 4c), and
-MASSPROP, which measures them.
+and 4b), EXTRUDE and REVOLVE, which make them of closed profiles (steps
+4c and 4d), and MASSPROP, which measures them.
 
 MASSPROP reports the volume, surface area, bounding box and centroid of the
 solids selected, together, as AutoCAD's MASSPROP reports a selection;
@@ -25,7 +25,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
-from arqstudiocad.core import CadDocument, CadMassProperties, CadSolidMeasures
+from arqstudiocad.core import CadDocument, CadLine, CadMassProperties, CadSolidMeasures
 from arqstudiocad.i18n import tr
 
 #: Significant digits shown: the kernel refines each measure until it
@@ -129,6 +129,7 @@ CONE_RADIUS, CONE_HEIGHT = "CONE_RADIUS", "CONE_HEIGHT"
 SPHERE_RADIUS = "SPHERE_RADIUS"
 TORUS_RADIUS, TUBE_RADIUS = "TORUS_RADIUS", "TUBE_RADIUS"
 EXTRUDE_HEIGHT = "EXTRUDE_HEIGHT"
+REVOLVE_ANGLE = "REVOLVE_ANGLE"
 
 #: Makes a solid in ``document`` between two opposite corners ``(x, y, z)``.
 type Maker = Callable[[CadDocument, tuple[float, float, float], tuple[float, float, float]], Any]
@@ -260,6 +261,95 @@ def extrude(ctx: CommandContext) -> CommandScript:
     ctx.session.report(document, changes)
 
 
+def revolution_refusals() -> dict[str, Callable[[int], str]]:
+    """Why profiles were not revolved, by the API's reason, in the order
+    said: EXTRUDE's, and the axis's. Literal tr() calls so the translation
+    test sees every one."""
+    return {
+        **extrusion_refusals(),
+        "crosses_axis": lambda n: tr("{count} reach across the axis.", count=n),
+        "self_crossing_torus": lambda n: tr(
+            "{count} have an arc that would sweep a torus crossing itself.", count=n
+        ),
+    }
+
+
+def revolve(ctx: CommandContext) -> CommandScript:
+    """REVOLVE, AutoCAD's (Spanish REVOLUCION): the closed polylines and
+    circles selected turned about an axis in plan, given by two points, a
+    line (Object) or the X or Y axis, by an angle in degrees, 360 a whole
+    turn and negative the other way (ADR 0024 step 4d). Each solid is on
+    its profile's layer; the profiles are erased, as EXTRUDE does."""
+    document = ctx.document()
+    ids = yield from select_objects(ctx, document)
+    if not ids:
+        return
+    done_selecting(ctx, document, ids)
+    axis = yield from _axis(ctx, document)
+    angle = yield from _revolution_angle(ctx)
+    made, refused, changes = document.revolve(list(ids), axis[0], axis[1], angle)
+    reasons = [why for _, why in refused]
+    for why, said in revolution_refusals().items():
+        if count := reasons.count(why):
+            ctx.message(said(count))
+    if not made:
+        raise CommandCancelledError(tr("Nothing could be revolved."))
+    ctx.session.report(document, changes)
+
+
+def _axis(
+    ctx: CommandContext, document: CadDocument
+) -> Generator[Prompt, Any, tuple[tuple[float, float], tuple[float, float]]]:
+    """The axis: two points, a line picked (Object), or X or Y through the
+    origin."""
+    options = [Option("O", tr("Object")), Option("X", "X"), Option("Y", "Y")]
+    start = yield ctx.point(tr("Specify axis start point"), options=options)
+    if start == "X":
+        return (0.0, 0.0), (1.0, 0.0)
+    if start == "Y":
+        return (0.0, 0.0), (0.0, 1.0)
+    if start == "O":
+        axis = yield from _axis_line(ctx, document)
+        return axis
+    end = yield ctx.point(tr("Specify axis endpoint"), base=start)
+    while end == start:
+        ctx.message(tr("The axis needs two different points."))
+        end = yield ctx.point(tr("Specify axis endpoint"), base=start)
+    return start, end
+
+
+def _axis_line(
+    ctx: CommandContext, document: CadDocument
+) -> Generator[Prompt, Any, tuple[tuple[float, float], tuple[float, float]]]:
+    """A line selected as the axis."""
+    while True:
+        ctx.session.clear_selection(document)
+        yield ctx.select(tr("Select a line for the axis"))
+        chosen = ctx.session.selection(document)
+        lines = [document.get_entity(i).geometry for i in chosen]
+        ctx.session.clear_selection(document)
+        if len(lines) == 1 and isinstance(lines[0], CadLine):
+            return lines[0].start, lines[0].end
+        ctx.message(tr("Select one line."))
+
+
+def _revolution_angle(ctx: CommandContext) -> Generator[Prompt, Any, float]:
+    """The angle in degrees, typed; 360 by default, the last one after; its
+    radians (ADR 0010)."""
+    last = ctx.remembered.get(REVOLVE_ANGLE, 360.0)
+    while True:
+        typed = yield ctx.ask(tr("Specify angle of revolution"), default=f"{last:.10g}")
+        try:
+            degrees = float(typed)
+        except ValueError:
+            ctx.message(tr("The angle must be a number."))
+            continue
+        if math.isfinite(degrees) and degrees != 0.0:
+            ctx.remembered[REVOLVE_ANGLE] = degrees
+            return math.radians(max(-360.0, min(360.0, degrees)))
+        ctx.message(tr("The angle cannot be zero."))
+
+
 def sphere(ctx: CommandContext) -> CommandScript:
     """SPHERE, AutoCAD's (Spanish ESFERA), its basic options: a center on
     the XY plane and a radius or diameter (ADR 0024 step 4b). 3P, 2P and
@@ -377,6 +467,7 @@ SOLID_COMMANDS = (
     Command("SPHERE", sphere),
     Command("TORUS", torus, ("TOR",)),
     Command("EXTRUDE", extrude, ("EXT",)),
+    Command("REVOLVE", revolve, ("REV",)),
     Command("MASSPROP", massprop),
 )
 

@@ -46,6 +46,14 @@ fn distance_to_each_surface() {
     let torus = Torus::new(p(0.0, 0.0, 0.0), v(0.0, 0.0, 1.0), 3.0, 1.0).unwrap();
     assert!(close(torus.distance(p(3.0, 0.0, 1.0)), 0.0), "on the top");
     assert!(close(torus.distance(p(0.0, 6.0, 0.0)), 2.0));
+    // A spindle one, major radius 0.2 and minor 1: past the axis, the
+    // far circle's lemon; (0.3, 0, h) lies on it, h = sin 60°.
+    let spindle = Torus::new(p(0.0, 0.0, 0.0), v(0.0, 0.0, 1.0), 0.2, 1.0).unwrap();
+    assert!(
+        close(spindle.distance(p(0.3, 0.0, 0.75f64.sqrt())), 0.0),
+        "the lemon"
+    );
+    assert!(close(spindle.distance(p(1.2, 0.0, 0.0)), 0.0), "the apple");
     // An elliptic cylinder along z, section semi-axes 4 (x) and 2 (y).
     let section =
         EllipseCurve::new(p(0.0, 0.0, 0.0), v(0.0, 0.0, 1.0), v(4.0, 0.0, 0.0), 0.5).unwrap();
@@ -88,4 +96,14 @@ fn surfaces_move_with_a_transform() {
     let torus = Surface::Torus(Torus::new(p(0.0, 0.0, 0.0), v(0.0, 0.0, 1.0), 3.0, 1.0).unwrap());
     let big = torus.transformed(doubled, 2.0).unwrap();
     assert!(close(big.distance(p(8.0, 0.0, 0.0)), 0.0), "radii 6 and 2");
+    // A sphere's pole turns with it: up z, a quarter turn about x, along -y.
+    let quarter = Transform3::rotation(v(1.0, 0.0, 0.0), std::f64::consts::FRAC_PI_2).unwrap();
+    let Surface::Sphere(turned) = sphere.transformed(quarter, 1.0).unwrap() else {
+        panic!("a sphere");
+    };
+    assert!(
+        (turned.pole() - v(0.0, -1.0, 0.0)).length() < 1e-12,
+        "{:?}",
+        turned.pole()
+    );
 }

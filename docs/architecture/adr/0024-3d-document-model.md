@@ -322,6 +322,37 @@ part of this ADR.
     stay, each with why. One undo step.
   - **EXTRUDE** (alias EXT, Spanish EXTRUSION) selects, then asks for the
     height, remembered; it says how many were left and why.
+- **Step 4d, REVOLVE (2026-11-05):** AutoCAD's REVOLVE (maintainer,
+  2026-11-05): any angle, 360° a whole turn and less closed by flat caps
+  from the profile, turned back when negative; the axis by two points, a
+  line (Object), or the X or Y axis through the origin.
+  - **What revolves:** the profiles EXTRUDE takes, with the axis drawn
+    in plan at the profile's elevation; the profile may touch the axis,
+    never reach across it.
+  - **The kernel** (`Body::revolution`) takes the profile in its
+    half-plane, distance from the axis and height along it, with a frame
+    that places the axis anywhere. A segment square to the axis sweeps a
+    plane, any other a cylinder or cone, one on the axis nothing; an arc
+    centered on the axis sweeps a sphere, any other a torus, a lemon one
+    when its center lies beyond the axis. An arc whose center is nearer
+    the axis than its radius, on its side, would sweep a torus crossing
+    itself and is refused with a message (maintainer, 2026-11-05).
+  - **The measure** learnt two cases revolutions bring: a loop passing
+    through a pole (a sphere cut along two meridians, a cone's apex at a
+    cap's corner) adds its stretch of the line around the pole, and a
+    spindle torus's area element is taken signed, being smooth only so;
+    its far side, past the axis, is found on it as well (AutoCAD's
+    lemons and apples). A sphere now has its pole, as ACIS's has, read,
+    written and drawn: a revolved one's along the axis, so its faces
+    reach their poles only at their corners, whichever way the axis
+    runs.
+  - **The profile's side** is taken from its corners off the axis, or,
+    all on it, from an arc's middle.
+  - **The document** erases each profile revolved, as EXTRUDE does; the
+    rest stay, each with why. One undo step.
+  - **REVOLVE** (alias REV, Spanish REVOLUCION) selects, then asks for
+    the axis and the angle, remembered. With it step 4 is complete;
+    step 5, editing solids, follows.
 
 ## Consequences
 

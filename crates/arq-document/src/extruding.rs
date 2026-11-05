@@ -112,6 +112,33 @@ fn extrusion_of(e: &EntityType, height: f64) -> Result<Body, Unextruded> {
     }
 }
 
+/// A closed profile's pieces in plan, and its elevation: a closed
+/// polyline's, or a circle as two half circles (REVOLVE turns either).
+pub(crate) fn plan_profile(e: &EntityType) -> Result<(Vec<ProfilePiece>, f64), Unextruded> {
+    match e {
+        EntityType::Circle(_) => {
+            let plan = plan_of(e).ok_or(Unextruded::Tilted)?;
+            let Geometry2::Circle(c) = plan.geometry() else {
+                return Err(Unextruded::NotAProfile);
+            };
+            let half = |from: f64, to: f64| {
+                Arc::new(c.center(), c.radius(), from, to)
+                    .map(|arc| ProfilePiece {
+                        curve: Geometry2::Arc(arc),
+                        backward: false,
+                    })
+                    .map_err(|_| Unextruded::NotAProfile)
+            };
+            Ok((
+                vec![half(0.0, TAU / 2.0)?, half(TAU / 2.0, 0.0)?],
+                plan.elevation(),
+            ))
+        }
+        EntityType::LwPolyline(p) => pieces_of(p),
+        _ => Err(Unextruded::NotAProfile),
+    }
+}
+
 /// A closed polyline's pieces in world coordinates, and its elevation.
 fn pieces_of(p: &LwPolyline) -> Result<(Vec<ProfilePiece>, f64), Unextruded> {
     let normal = plan_normal(p.normal.x, p.normal.y, p.normal.z).ok_or(Unextruded::Tilted)?;

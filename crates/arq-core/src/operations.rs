@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use arq_document::{
     BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Currencies, Document,
-    DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry,
+    DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, Revolved,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Point3, Transform2, Vector2};
 
@@ -68,6 +68,21 @@ impl CadDocument {
         height: f64,
     ) -> CadResult<(Extruded, ChangeSet)> {
         self.transact("EXTRUDE", |doc| Ok(doc.extrude_entities(ids, height)?))
+    }
+
+    /// Turns the closed profiles among `ids` `angle` radians about the axis
+    /// from `axis_start` to `axis_end` into solids on their layers, erasing
+    /// them (REVOLVE, ADR 0024 step 4d); one undo step.
+    pub fn revolve_entities(
+        &mut self,
+        ids: &[EntityId],
+        axis_start: Point2,
+        axis_end: Point2,
+        angle: f64,
+    ) -> CadResult<(Revolved, ChangeSet)> {
+        self.transact("REVOLVE", |doc| {
+            Ok(doc.revolve_entities(ids, axis_start, axis_end, angle)?)
+        })
     }
 
     /// Makes a sphere around `center` on the current layer (SPHERE, ADR

@@ -51,6 +51,7 @@ mod pick;
 mod purge;
 mod quantities;
 mod reading;
+mod revolving;
 mod solid;
 mod table_style_verify;
 #[cfg(test)]
@@ -79,4 +80,5 @@ pub use layers::{Layer, LayerId};
 pub use measuring::{SolidMeasures, Unmeasured};
 pub use pick::{pick_among, select_among};
 pub use reading::Recovery;
+pub use revolving::{Revolved, Unrevolved};
 pub use solid::Untranslated;

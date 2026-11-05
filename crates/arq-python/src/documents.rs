@@ -125,8 +125,8 @@ fn save(
     py.detach(move || store.save_document(id, path)).py()
 }
 
-/// What `extrude` gives back: the solids made, the entities left with
-/// why, and what changed.
+/// What `extrude` and `revolve` give back: the solids made, the entities
+/// left with why, and what changed.
 type Extrusions = (Vec<EntityId>, Vec<(EntityId, &'static str)>, CadChangeSet);
 
 /// One open drawing, by id. Calls on a closed document raise
@@ -469,6 +469,41 @@ impl CadDocument {
                     arq_core::Unextruded::Tilted => "tilted",
                     arq_core::Unextruded::Profile(arq_core::ProfileError::Crossing) => "crossing",
                     arq_core::Unextruded::Profile(_) => "flat",
+                };
+                (*id, code)
+            })
+            .collect();
+        Ok((out.solids, refused, CadChangeSet(changes)))
+    }
+
+    /// Turns the closed polylines and circles among `entity_ids` `angle`
+    /// radians about the axis from `axis_start` to `axis_end` (in plan;
+    /// negative the other way) into solids on their layers, erasing them
+    /// (REVOLVE, ADR 0024 step 4d): the solids made, the entities left as
+    /// `(id, why)` (`"not_a_profile"`, `"open"`, `"tilted"`, `"crossing"`,
+    /// `"flat"`, `"crosses_axis"`, `"self_crossing_torus"`), and what
+    /// changed.
+    fn revolve(
+        &self,
+        entity_ids: Vec<EntityId>,
+        axis_start: PyPoint,
+        axis_end: PyPoint,
+        angle: f64,
+    ) -> PyResult<Extrusions> {
+        let (out, changes) =
+            self.edit(|cad| cad.revolve_entities(&entity_ids, axis_start.0, axis_end.0, angle))?;
+        let refused = out
+            .refused
+            .iter()
+            .map(|(id, why)| {
+                let code = match why {
+                    arq_core::Unrevolved::NotAProfile => "not_a_profile",
+                    arq_core::Unrevolved::Open => "open",
+                    arq_core::Unrevolved::Tilted => "tilted",
+                    arq_core::Unrevolved::Profile(arq_core::ProfileError::Crossing) => "crossing",
+                    arq_core::Unrevolved::Profile(_) => "flat",
+                    arq_core::Unrevolved::CrossesAxis => "crosses_axis",
+                    arq_core::Unrevolved::SelfCrossingTorus => "self_crossing_torus",
                 };
                 (*id, code)
             })

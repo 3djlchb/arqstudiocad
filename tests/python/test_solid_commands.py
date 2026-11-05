@@ -433,7 +433,7 @@ def test_all_six_primitives_in_the_modeling_group(qtbot: QtBot) -> None:
     qtbot.addWidget(window)
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     actions = window.command_actions
-    names = ["BOX", "WEDGE", "CYLINDER", "CONE", "SPHERE", "TORUS", "EXTRUDE"]
+    names = ["BOX", "WEDGE", "CYLINDER", "CONE", "SPHERE", "TORUS", "EXTRUDE", "REVOLVE"]
     assert [b.defaultAction() for b in groups["modeling"].buttons] == [actions[n] for n in names]
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
     assert menus["&Modeling"].actions() == [actions[n] for n in names]
@@ -533,3 +533,120 @@ def test_every_extrusion_reason_is_said() -> None:
     from arqstudiocad.commands.solids import extrusion_refusals
 
     assert set(extrusion_refusals()) == {"not_a_profile", "open", "tilted", "crossing", "flat"}
+
+
+# REVOLVE (ADR 0024 step 4d)
+
+
+def revolvable() -> tuple[Harness, CadDocument, list[int]]:
+    """A 1 x 1 square from x 1 to 2, a square across the Y axis, a circle
+    of radius 1 round (3, 10), and a line along Y from (0, 20)."""
+    h = harness()
+    h.session.new_document()
+    document = h.session.active
+    assert document is not None
+    square, _ = document.add_polyline([((1, 0), 0), ((2, 0), 0), ((2, 1), 0), ((1, 1), 0)], True)
+    across, _ = document.add_polyline(
+        [((-1, 5), 0), ((1, 5), 0), ((1, 6), 0), ((-1, 6), 0)], closed=True
+    )
+    circle, _ = document.add_circle((3, 10), 1)
+    line, _ = document.add_line((0, 20), (0, 30))
+    return h, document, [square, across, circle, line]
+
+
+def test_revolve_turns_a_profile_about_two_points() -> None:
+    h, document, ids = revolvable()
+    h.session.select(document, [ids[0]])
+    h.run("REVOLVE", "0,0", "0,1", "")
+    assert h.prompts()[-3:] == [
+        "Specify axis start point [Object(O)/X/Y]:",
+        "Specify axis endpoint:",
+        "Specify angle of revolution <360>:",
+    ]
+    (tube,) = solids_of(document)
+    assert tube.volume == pytest.approx(3 * math.pi)
+    assert corners(tube)[2] == pytest.approx(-2.0) and corners(tube)[5] == pytest.approx(2.0)
+    h.run("UNDO")
+    assert sorted(e.kind for e in document.get_entities()).count("3DSOLID") == 0
+
+
+def test_revolve_about_an_axis_or_a_line_by_part_of_a_turn() -> None:
+    h, document, ids = revolvable()
+    # The circle about the Y axis by its option: a torus 3 round, at y 10.
+    h.session.select(document, [ids[2]])
+    h.run("REV", "Y", "360")
+    # The square about the line, a quarter turn back: x 1 to 2 from it.
+    h.session.select(document, [ids[0]])
+    h.run("REVOLVE", "O")
+    assert h.prompts()[-1] == "Select a line for the axis:"
+    # Not a line, or two: asked again.
+    h.session.select(document, [ids[1]])
+    h.run("")
+    assert h.messages()[-1] == "Select one line."
+    other, _ = document.add_line((5, 0), (5, 1))
+    h.session.select(document, [ids[3], other])
+    h.run("")
+    assert h.messages()[-2:] == ["Select one line.", "Select one line."]
+    h.session.select(document, [ids[3]])
+    h.run("", "-90")
+    torus, quarter = sorted(solids_of(document), key=lambda m: m.volume, reverse=True)
+    assert torus.volume == pytest.approx(6 * math.pi**2)
+    assert torus.centroid[1] == pytest.approx(10.0)
+    assert quarter.volume == pytest.approx(3 * math.pi / 4)
+    assert corners(quarter)[2] == pytest.approx(0.0), "turned back: above the plan"
+    assert h.prompts()[-1] == "Specify angle of revolution <360>:"
+    # The last angle is offered again.
+    h.session.select(document, [ids[1]])
+    h.run("REVOLVE", "X")
+    assert h.prompts()[-1] == "Specify angle of revolution <-90>:"
+    # About X the square across Y, 5 to 6 from it, 2 long: a quarter tube.
+    h.run("")
+    (across,) = [m for m in solids_of(document) if m.volume not in (torus.volume, quarter.volume)]
+    assert across.volume == pytest.approx(22 * math.pi / 4)
+
+
+def test_revolve_says_why_it_left_profiles() -> None:
+    h, document, ids = revolvable()
+    h.session.select(document, [ids[1], ids[3]])
+    h.run("REVOLVE", "0,0", "0,1", "180")
+    assert h.messages()[-3:] == [
+        "1 were not closed polylines or circles.",
+        "1 reach across the axis.",
+        "Nothing could be revolved.",
+    ]
+    h.session.select(document, [ids[0]])
+    h.run("REVOLVE", "0,0", "0,0", "0,1", "cero", "0", "45")
+    assert h.messages()[-3:] == [
+        "The axis needs two different points.",
+        "The angle must be a number.",
+        "The angle cannot be zero.",
+    ]
+    (eighth,) = solids_of(document)
+    assert eighth.volume == pytest.approx(3 * math.pi / 8)
+
+
+def test_revolucion_in_spanish() -> None:
+    h, document, ids = revolvable()
+    set_language("es")
+    try:
+        h.session.select(document, [ids[0]])
+        h.run("REVOLUCION", "Y")
+        assert h.prompts()[-1] == "Precise el ángulo de revolución <360>:"
+        h.run("")
+    finally:
+        set_language("en")
+    assert solids_of(document)[0].volume == pytest.approx(3 * math.pi)
+
+
+def test_every_revolution_reason_is_said() -> None:
+    from arqstudiocad.commands.solids import revolution_refusals
+
+    assert set(revolution_refusals()) == {
+        "not_a_profile",
+        "open",
+        "tilted",
+        "crossing",
+        "flat",
+        "crosses_axis",
+        "self_crossing_torus",
+    }

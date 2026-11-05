@@ -352,7 +352,8 @@ fn surface(doc: &SatDocument, record: &SatRecord) -> Result<(Surface, bool), Unt
     }
     if let Some(s) = SatSphereSurface::from_record(record) {
         let radius = s.radius();
-        let sphere = Sphere::new(point3(s.center())?, radius.abs()).map_err(bad)?;
+        let sphere = Sphere::with_pole(point3(s.center())?, radius.abs(), vector3(s.pole())?)
+            .map_err(bad)?;
         return Ok((Surface::Sphere(sphere), radius < 0.0));
     }
     if let Some(s) = SatTorusSurface::from_record(record) {

@@ -125,7 +125,7 @@ impl<'a> Chart<'a> {
                 }
             }
             Surface::Sphere(s) => {
-                let z = Vector3::new(0.0, 0.0, 1.0).expect("finite");
+                let z = s.pole();
                 let (e1, e2) = frame(z);
                 Self::Sphere {
                     c: s.center(),
@@ -266,12 +266,25 @@ impl<'a> Chart<'a> {
                 (d.dot(e2).atan2(d.dot(e1)), d.dot(z).clamp(-1.0, 1.0).asin())
             }
             Self::Torus {
-                c, a, e1, e2, big, ..
+                c,
+                a,
+                e1,
+                e2,
+                big,
+                small,
             } => {
                 let d = p - c;
                 let h = d.dot(a);
                 let (x, y) = (d.dot(e1), d.dot(e2));
-                (y.atan2(x), h.atan2(x.hypot(y) - big))
+                let rho = x.hypot(y);
+                // On the tube's circle on p's side, or, a spindle torus's
+                // past the axis, on the other's, half a turn round.
+                let off = |r: f64| ((r - big).hypot(h) - small).abs();
+                if off(-rho) < off(rho) {
+                    ((-y).atan2(-x), h.atan2(-rho - big))
+                } else {
+                    (y.atan2(x), h.atan2(rho - big))
+                }
             }
             Self::Nurbs { surface, swap, .. } => {
                 let (u, v) = surface.closest_parameters(p);

@@ -1,8 +1,9 @@
 //! Solids built from a few numbers (ADR 0024 step 4): the primitives the
 //! 3D commands create: a box, a wedge, a cylinder, a cone, a sphere, a
-//! torus, and a closed profile extruded.
+//! torus, and a closed profile extruded or turned about an axis.
 
 use std::collections::HashMap;
+use std::f64::consts::{PI, TAU};
 use std::fmt;
 
 use arq_geometry::{Geometry2, GeometryError, Point2, Point3, Tolerance, Vector3, intersect};
@@ -550,6 +551,366 @@ fn ends(curve: Geometry2) -> (Point2, Point2) {
             (p, p)
         }
     }
+}
+
+/// Why a revolution cannot be made.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RevolutionError {
+    /// The profile is not a closed, simple loop.
+    Profile(ProfileError),
+    /// The profile reaches across the axis.
+    CrossesAxis,
+    /// An arc whose center is nearer the axis than its radius would sweep
+    /// a torus crossing itself, which waits.
+    SelfCrossingTorus,
+    /// A size, an angle or a direction is invalid.
+    Geometry(BrepError),
+}
+
+impl fmt::Display for RevolutionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Profile(e) => write!(f, "{e}"),
+            Self::CrossesAxis => write!(f, "the profile reaches across the axis"),
+            Self::SelfCrossingTorus => write!(f, "an arc would sweep a torus crossing itself"),
+            Self::Geometry(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for RevolutionError {}
+
+/// Where a revolution happens: the axis through `origin` along `axis`,
+/// and the `radial` direction, square to it, the profile's x runs along
+/// at the start; the profile's y runs along the axis.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RevolutionFrame {
+    /// A point of the axis, the profile's (0, 0).
+    pub origin: Point3,
+    /// The axis's direction, the profile's y.
+    pub axis: Vector3,
+    /// Square to the axis: the profile's x, the distance from it.
+    pub radial: Vector3,
+}
+
+impl Body {
+    /// A closed profile turned `angle` radians about an axis: AutoCAD's
+    /// REVOLVE. The profile is given in its half-plane, x the distance from
+    /// the axis (never below 0) and y the position along it, as
+    /// [`ProfilePiece`]s; `frame` places it. A whole turn (2π or more)
+    /// closes on itself; less, the profile at both ends caps it. Segments
+    /// sweep planes, cylinders and cones, arcs spheres and tori; a segment
+    /// on the axis sweeps nothing.
+    pub fn revolution(
+        pieces: &[ProfilePiece],
+        frame: RevolutionFrame,
+        angle: f64,
+    ) -> Result<Body, RevolutionError> {
+        let geometry = |e| RevolutionError::Geometry(BrepError::Geometry(e));
+        if !(angle.is_finite() && angle > 0.0) {
+            return Err(geometry(GeometryError::ZeroSweep));
+        }
+        let tol = Tolerance::DEFAULT;
+        let profile = closed_profile(pieces, tol).map_err(|e| match e {
+            ExtrusionError::Profile(p) => RevolutionError::Profile(p),
+            ExtrusionError::Geometry(g) => RevolutionError::Geometry(g),
+        })?;
+        let a = frame.axis.normalized().map_err(geometry)?;
+        let u = (frame.radial - a * frame.radial.dot(a))
+            .normalized()
+            .map_err(geometry)?;
+        let reach = profile
+            .iter()
+            .flat_map(|p| {
+                [
+                    p.start().x().hypot(p.start().y()),
+                    p.end().x().hypot(p.end().y()),
+                ]
+            })
+            .fold(0.0, f64::max);
+        let near = tol.linear() * reach.max(1.0);
+        // Nothing across the axis; tori only as rings.
+        for piece in &profile {
+            if lowest_x(piece) < -near {
+                return Err(RevolutionError::CrossesAxis);
+            }
+            if let Geometry2::Arc(arc) = piece.curve {
+                let off = arc.center().x();
+                if off > near && off < arc.radius() + near {
+                    return Err(RevolutionError::SelfCrossingTorus);
+                }
+            }
+        }
+        let whole = angle >= TAU - 1e-12;
+        let turn = if whole { TAU } else { angle };
+        let on_axis = |p: Point2| p.x().abs() <= near;
+        // The profile's point (x, y) turned `t` about the axis.
+        let place = |p: Point2, t: f64| -> Result<Point3, RevolutionError> {
+            let out = u * t.cos() + a.cross(u) * t.sin();
+            Ok(frame.origin + a * p.y() + out * p.x())
+        };
+        let n = profile.len();
+        let corners: Vec<Point2> = profile.iter().map(ProfilePiece::start).collect();
+
+        let mut b = BodyBuilder::new();
+        let mut points = Vec::new();
+        // Each corner at the start, and at the end of the turn (the same
+        // vertex on the axis, or all round a whole turn). Round a whole
+        // turn a corner on the axis bounds nothing but a cone's apex, made
+        // with it.
+        let mut first = Vec::with_capacity(n);
+        let mut last = Vec::with_capacity(n);
+        for &c in &corners {
+            let s = place(c, 0.0)?;
+            points.push(s);
+            if whole && on_axis(c) {
+                first.push(None);
+                last.push(None);
+                continue;
+            }
+            let start = b.vertex(s);
+            first.push(Some(start));
+            last.push(Some(if whole || on_axis(c) {
+                start
+            } else {
+                let e = place(c, turn)?;
+                points.push(e);
+                b.vertex(e)
+            }));
+        }
+        let vertex = |v: Option<VertexId>| v.expect("a corner off the axis, or a part turn");
+        // The circle or arc each corner off the axis sweeps, from the start
+        // round to the end.
+        let mut swept: Vec<Option<EdgeId>> = Vec::with_capacity(n);
+        for (k, &c) in corners.iter().enumerate() {
+            if on_axis(c) {
+                swept.push(None);
+                continue;
+            }
+            let center = frame.origin + a * c.y();
+            let circle = EllipseCurve::new(center, a, u * c.x(), 1.0).map_err(geometry)?;
+            swept.push(Some(b.edge(Edge {
+                curve: Some(Curve::Ellipse(circle)),
+                start: vertex(first[k]),
+                end: vertex(last[k]),
+                reversed: false,
+            })));
+        }
+        // A part turn: the profile's edges at both ends, one edge where a
+        // piece lies on the axis, which both caps share.
+        let mut at_start = Vec::with_capacity(n);
+        let mut at_end = Vec::with_capacity(n);
+        if !whole {
+            for (i, piece) in profile.iter().enumerate() {
+                let j = (i + 1) % n;
+                let start_edge = cap_edge(
+                    &mut b,
+                    piece,
+                    (vertex(first[i]), vertex(first[j])),
+                    0.0,
+                    &place,
+                    a,
+                    u,
+                )?;
+                let lies_on_axis = on_axis(piece.start())
+                    && on_axis(piece.end())
+                    && matches!(piece.curve, Geometry2::Line(_));
+                let end_edge = if lies_on_axis {
+                    start_edge
+                } else {
+                    cap_edge(
+                        &mut b,
+                        piece,
+                        (vertex(last[i]), vertex(last[j])),
+                        turn,
+                        &place,
+                        a,
+                        u,
+                    )?
+                };
+                at_start.push(start_edge);
+                at_end.push(end_edge);
+            }
+        }
+        let ring = |b: &mut BodyBuilder, uses: &[(EdgeId, bool)]| {
+            let coedges = uses
+                .iter()
+                .map(|&(edge, reversed)| b.coedge(Coedge { edge, reversed }))
+                .collect();
+            b.add_loop(Loop { coedges })
+        };
+        let mut faces = Vec::new();
+        for (i, piece) in profile.iter().enumerate() {
+            let j = (i + 1) % n;
+            let (p, q) = (piece.start(), piece.end());
+            if on_axis(p) && on_axis(q) && matches!(piece.curve, Geometry2::Line(_)) {
+                continue; // on the axis: it sweeps nothing
+            }
+            let (surface, reversed, apex_loops) = swept_surface(piece, frame.origin, a, near)?;
+            let mut loops = Vec::new();
+            if whole {
+                // A circle at each end off the axis: the start's along, the
+                // end's back; at an apex, a point.
+                for (k, back) in [(i, false), (j, true)] {
+                    match swept[k] {
+                        Some(edge) => loops.push(ring(&mut b, &[(edge, back)])),
+                        None if apex_loops => {
+                            let point = b.vertex(place(corners[k], 0.0)?);
+                            let apex = b.edge(Edge {
+                                curve: None,
+                                start: point,
+                                end: point,
+                                reversed: false,
+                            });
+                            loops.push(ring(&mut b, &[(apex, back)]));
+                        }
+                        None => {}
+                    }
+                }
+            } else {
+                // Along the start's arc, the piece at the end, back along
+                // the end's arc, back along the piece at the start.
+                let mut uses = Vec::with_capacity(4);
+                if let Some(edge) = swept[i] {
+                    uses.push((edge, false));
+                }
+                uses.push((at_end[i], false));
+                if let Some(edge) = swept[j] {
+                    uses.push((edge, true));
+                }
+                uses.push((at_start[i], true));
+                loops.push(ring(&mut b, &uses));
+            }
+            faces.push(b.face(Face {
+                surface,
+                loops,
+                reversed,
+            }));
+        }
+        if !whole {
+            // The caps: seen from outside, the profile counterclockwise at
+            // the start, clockwise at the end.
+            let start_normal = u.cross(a);
+            let end_out = u * turn.cos() + a.cross(u) * turn.sin();
+            let end_normal = a.cross(end_out);
+            let start_uses: Vec<_> = at_start.iter().map(|&e| (e, false)).collect();
+            let end_uses: Vec<_> = at_end.iter().rev().map(|&e| (e, true)).collect();
+            for (normal, uses) in [(start_normal, start_uses), (end_normal, end_uses)] {
+                let lp = ring(&mut b, &uses);
+                let plane = Plane::new(frame.origin, normal).map_err(geometry)?;
+                faces.push(b.face(Face {
+                    surface: Surface::Plane(plane),
+                    loops: vec![lp],
+                    reversed: false,
+                }));
+            }
+        }
+        let shell = b.shell(Shell { faces });
+        b.lump(Lump {
+            shells: vec![shell],
+        });
+        b.build(tolerance(&points).map_err(RevolutionError::Geometry)?)
+            .map_err(RevolutionError::Geometry)
+    }
+}
+
+/// How near the axis a piece comes: its least x.
+fn lowest_x(piece: &ProfilePiece) -> f64 {
+    let ends = piece.start().x().min(piece.end().x());
+    match piece.curve {
+        Geometry2::Arc(arc) if arc.contains_angle(PI, Tolerance::DEFAULT) => {
+            arc.center().x() - arc.radius()
+        }
+        _ => ends,
+    }
+}
+
+/// The surface a piece sweeps about the axis through `origin` along `a`,
+/// whether the face's outside is against the surface's
+/// normal, and whether an end on the axis is an apex (a cone's) and so a
+/// loop of its own. Inside lies to the left of a counterclockwise profile.
+fn swept_surface(
+    piece: &ProfilePiece,
+    origin: Point3,
+    a: Vector3,
+    near: f64,
+) -> Result<(Surface, bool, bool), RevolutionError> {
+    let geometry = |e| RevolutionError::Geometry(BrepError::Geometry(e));
+    let (p, q) = (piece.start(), piece.end());
+    match piece.curve {
+        Geometry2::Arc(arc) => {
+            let c = arc.center();
+            let center = origin + a * c.y();
+            // A convex arc (run counterclockwise) has the solid inside.
+            let surface = if c.x().abs() <= near {
+                Surface::Sphere(Sphere::with_pole(center, arc.radius(), a).map_err(geometry)?)
+            } else {
+                Surface::Torus(Torus::new(center, a, c.x(), arc.radius()).map_err(geometry)?)
+            };
+            Ok((surface, piece.backward, false))
+        }
+        _ => {
+            let (dx, dy) = (q.x() - p.x(), q.y() - p.y());
+            if dy.abs() <= near {
+                // Square to the axis: a disc or a ring; outward against the
+                // axis when it runs out from it.
+                let normal = if dx > 0.0 { -a } else { a };
+                let plane = Plane::new(origin + a * p.y(), normal).map_err(geometry)?;
+                return Ok((Surface::Plane(plane), false, false));
+            }
+            // Along the axis, or slanted: a cylinder or a cone, its axis
+            // the way the piece runs; inside to the left when it runs up.
+            let up = if dy > 0.0 { a } else { -a };
+            let length = dx.hypot(dy);
+            // Widening by dx over |dy| along the way the piece runs.
+            let (sin, cos) = (dx / length, dy.abs() / length);
+            let (from, radius) = if p.x() >= q.x() {
+                (p, p.x())
+            } else {
+                (q, q.x())
+            };
+            let cone = Cone::new(origin + a * from.y(), up, radius, sin, cos).map_err(geometry)?;
+            Ok((Surface::Cone(cone), dy < 0.0, true))
+        }
+    }
+}
+
+/// A piece's edge on the cap at angle `t`, between `ends`.
+fn cap_edge(
+    b: &mut BodyBuilder,
+    piece: &ProfilePiece,
+    ends: (VertexId, VertexId),
+    t: f64,
+    place: &dyn Fn(Point2, f64) -> Result<Point3, RevolutionError>,
+    a: Vector3,
+    u: Vector3,
+) -> Result<EdgeId, RevolutionError> {
+    let geometry = |e| RevolutionError::Geometry(BrepError::Geometry(e));
+    let (curve, reversed) = match piece.curve {
+        Geometry2::Arc(arc) => {
+            let center = place(arc.center(), t)?;
+            let out = u * t.cos() + a.cross(u) * t.sin();
+            // The profile's (x, y) frame turned to `t`: x along `out`, y
+            // along the axis; counterclockwise in it is about out × a.
+            let normal = out.cross(a);
+            let major = place(arc.start_point(), t)? - center;
+            let circle = EllipseCurve::new(center, normal, major, 1.0).map_err(geometry)?;
+            (Curve::Ellipse(circle), piece.backward)
+        }
+        _ => {
+            let (p, q) = (place(piece.start(), t)?, place(piece.end(), t)?);
+            (
+                Curve::Line(LineCurve::new(p, q - p).map_err(geometry)?),
+                false,
+            )
+        }
+    };
+    Ok(b.edge(Edge {
+        curve: Some(curve),
+        start: ends.0,
+        end: ends.1,
+        reversed,
+    }))
 }
 
 /// How close a vertex must be to its curves and surfaces: a billionth of
