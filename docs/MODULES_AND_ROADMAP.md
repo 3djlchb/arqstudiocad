@@ -161,6 +161,11 @@ on updated main `226a2fb` passes 524 Rust and 812 Python tests, seven public
 core groups, both native corpus groups and eight optional document tests.
 Adoption awaits PR review and merge; production loss guards and
 genuine-downgrade policy are unchanged.
+The next [DATATABLE investigation](testing/datatable-dxf-preservation.md)
+reproduces unsupported hard-owned cells and the legacy DXF subclass mismatch;
+its isolated codec candidate is not adopted. A separate native R14 `Invalid
+ResBuf` rejection is also reproduced with the published codec and remains
+under investigation. No additional compatibility row is declared fixed.
 Milestones 03.4 and 03.5 remain in progress.
 
 ## Phase 04 — Associative technical documentation ○
