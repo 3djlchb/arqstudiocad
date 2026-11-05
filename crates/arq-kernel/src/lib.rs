@@ -8,6 +8,7 @@
 //! | A solid, sheet or region | [`Body`], built with [`BodyBuilder`] |
 //! | A box or a wedge between two corners | [`Body::cuboid`], [`Body::wedge`] |
 //! | A cylinder or a cone on its base | [`Body::cylinder`], [`Body::cone`] |
+//! | A sphere or a torus round its center | [`Body::sphere`], [`Body::torus`] |
 //! | Its parts | [`Vertex`], [`Edge`], [`Coedge`], [`Loop`], [`Face`], [`Shell`], [`Lump`] |
 //! | An edge's curve | [`Curve`]: [`LineCurve`], [`EllipseCurve`], [`NurbsCurve`] |
 //! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |

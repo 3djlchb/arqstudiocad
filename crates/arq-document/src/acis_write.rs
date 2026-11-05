@@ -4,8 +4,8 @@
 //! version expects when it saves (SAB from DWG 2004 on, ADR 0024 step 4a).
 //!
 //! Planes and cones (cylinders among them) bounded by straight and
-//! circular edges, and a cone's apex, so far; spheres, tori and NURBS come
-//! with the solids that use them. Every edge runs forward along a curve of
+//! circular edges, a cone's apex, and whole spheres and tori, so far;
+//! NURBS come with the solids that use them. Every edge runs forward along a curve of
 //! its own: a straight edge gets a line from its start to its end, a
 //! circular one an ellipse turned the way it runs, its parameters the
 //! angles of its ends.
@@ -78,6 +78,32 @@ impl Document {
         height: f64,
     ) -> DocumentResult<EntityId> {
         let body = Body::cone(center, base, top, height).map_err(|e| match e {
+            BrepError::Geometry(g) => DocumentError::Geometry(g),
+            other => DocumentError::UnsupportedOperation(other.to_string()),
+        })?;
+        self.add_solid(&body)
+    }
+
+    /// Adds a sphere around `center` on the current layer (SPHERE, ADR
+    /// 0024 step 4b); returns its id.
+    pub fn add_sphere(&mut self, center: Point3, radius: f64) -> DocumentResult<EntityId> {
+        let body = Body::sphere(center, radius).map_err(|e| match e {
+            BrepError::Geometry(g) => DocumentError::Geometry(g),
+            other => DocumentError::UnsupportedOperation(other.to_string()),
+        })?;
+        self.add_solid(&body)
+    }
+
+    /// Adds a torus around the Z axis through `center`, a tube of radius
+    /// `tube` swept round at `radius`, on the current layer (TORUS, ADR
+    /// 0024 step 4b); returns its id.
+    pub fn add_torus(
+        &mut self,
+        center: Point3,
+        radius: f64,
+        tube: f64,
+    ) -> DocumentResult<EntityId> {
+        let body = Body::torus(center, radius, tube).map_err(|e| match e {
             BrepError::Geometry(g) => DocumentError::Geometry(g),
             other => DocumentError::UnsupportedOperation(other.to_string()),
         })?;
@@ -158,8 +184,22 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
             Surface::EllipticCylinder(_) => {
                 return Err(Unwritable::Unsupported("elliptic cylinder"));
             }
-            Surface::Sphere(_) => return Err(Unwritable::Unsupported("sphere")),
-            Surface::Torus(_) => return Err(Unwritable::Unsupported("torus")),
+            Surface::Sphere(sphere) => sat.add_sphere_surface(
+                xyz(sphere.center()),
+                sphere.radius(),
+                [1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ),
+            Surface::Torus(torus) => {
+                let axis = components(torus.axis());
+                sat.add_torus_surface(
+                    xyz(torus.center()),
+                    axis,
+                    torus.major_radius(),
+                    torus.minor_radius(),
+                    across(axis),
+                )
+            }
             Surface::Nurbs(_) => return Err(Unwritable::Unsupported("NURBS surface")),
         });
     }

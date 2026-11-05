@@ -211,3 +211,44 @@ fn impossible_cones_are_refused() {
         );
     }
 }
+
+#[test]
+fn a_sphere_and_a_torus() {
+    use std::f64::consts::PI;
+    let ball = Body::sphere(p(1.0, 2.0, 3.0), 2.0).unwrap();
+    assert_eq!(
+        (ball.faces().len(), ball.edges().len(), ball.loops().len()),
+        (1, 0, 0)
+    );
+    let m = ball.mass_properties().unwrap();
+    about(m.volume, 4.0 / 3.0 * PI * 8.0);
+    about(m.area, 4.0 * PI * 4.0);
+    about(m.centroid.z(), 3.0);
+    about(m.bounds.max().x(), 3.0);
+    // A ring 3 round with a tube 1 thick: 2π²Rr² and 4π²Rr.
+    let ring = Body::torus(p(0.0, 0.0, 5.0), 3.0, 1.0).unwrap();
+    let m = ring.mass_properties().unwrap();
+    about(m.volume, 2.0 * PI * PI * 3.0);
+    about(m.area, 4.0 * PI * PI * 3.0);
+    about(m.centroid.z(), 5.0);
+    about(m.bounds.max().x(), 4.0);
+    about(m.bounds.max().z(), 6.0);
+}
+
+#[test]
+fn impossible_spheres_and_tori_are_refused() {
+    let at = p(0.0, 0.0, 0.0);
+    let invalid = Err(BrepError::Geometry(GeometryError::InvalidRadius));
+    assert_eq!(Body::sphere(at, 0.0), invalid);
+    assert_eq!(Body::sphere(at, f64::NAN), invalid);
+    // A tube as thick as the ring is wide, or thicker, crosses itself.
+    for (radius, tube) in [
+        (1.0, 1.0),
+        (1.0, 2.0),
+        (3.0, 0.0),
+        (3.0, -1.0),
+        (f64::INFINITY, 1.0),
+    ] {
+        assert_eq!(Body::torus(at, radius, tube), invalid, "{radius} {tube}");
+    }
+}

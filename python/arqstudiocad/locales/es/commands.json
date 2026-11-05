@@ -144,8 +144,14 @@
   "SELECTBLOCK": [
     "SELECBLOQUE"
   ],
+  "SPHERE": [
+    "ESFERA"
+  ],
   "TEXT": [
     "TEXTO"
+  ],
+  "TORUS": [
+    "TOROIDE"
   ],
   "UNDO": [
     "DESHACER"

@@ -3,7 +3,7 @@
 
 use acadrust::entities::acis::types::SatDocument;
 use arq_geometry::{Point3, Tolerance, Transform3, Vector3};
-use arq_kernel::{Body, MassProperties, Sphere, Surface};
+use arq_kernel::{Body, MassProperties, Surface};
 
 use super::*;
 use crate::solid::translate;
@@ -107,10 +107,18 @@ fn each_coedge_has_its_edge_partner() {
 #[test]
 fn what_cannot_be_written_yet_says_why() {
     assert_eq!(sat_of(&Body::default()).err(), Some(Unwritable::Empty));
+    // A whole elliptic cylinder's side: not written yet.
     let mut b = arq_kernel::BodyBuilder::new();
-    let ball = Surface::Sphere(Sphere::new(p(0.0, 0.0, 0.0), 1.0).unwrap());
+    let section = arq_kernel::EllipseCurve::new(
+        p(0.0, 0.0, 0.0),
+        Vector3::new(0.0, 0.0, 1.0).unwrap(),
+        Vector3::new(2.0, 0.0, 0.0).unwrap(),
+        0.5,
+    )
+    .unwrap();
+    let side = Surface::EllipticCylinder(arq_kernel::EllipticCylinder::new(section));
     let face = b.face(arq_kernel::Face {
-        surface: ball,
+        surface: side,
         loops: vec![],
         reversed: false,
     });
@@ -118,10 +126,10 @@ fn what_cannot_be_written_yet_says_why() {
     b.lump(arq_kernel::Lump {
         shells: vec![shell],
     });
-    let sphere = b.build(Tolerance::DEFAULT).unwrap();
+    let oval = b.build(Tolerance::DEFAULT).unwrap();
     assert_eq!(
-        sat_of(&sphere).err(),
-        Some(Unwritable::Unsupported("sphere"))
+        sat_of(&oval).err(),
+        Some(Unwritable::Unsupported("elliptic cylinder"))
     );
     assert_eq!(
         Unwritable::Unsupported("sphere").to_string(),
@@ -430,4 +438,56 @@ fn no_cone_is_written_with_a_circle_of_no_size() {
             assert!(length > 0.0, "{name}");
         }
     }
+}
+
+#[test]
+fn spheres_and_tori_read_back_and_are_saved() {
+    use acadrust::types::DxfVersion;
+    let solids = [
+        Body::sphere(p(1.0, 2.0, 3.0), 2.0).unwrap(),
+        Body::torus(p(10.0, 0.0, 0.0), 3.0, 1.0).unwrap(),
+    ];
+    for body in &solids {
+        let measures = body.mass_properties().unwrap();
+        for back in read_back(&sat_of(body).unwrap()) {
+            assert_eq!((back.faces().len(), back.loops().len()), (1, 0));
+            same(&back.mass_properties().unwrap(), &measures);
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    for version in [DxfVersion::AC1015, DxfVersion::AC1032] {
+        let mut doc = Document::new();
+        doc.cad_mut().version = version;
+        doc.add_sphere(p(1.0, 2.0, 3.0), 2.0).unwrap();
+        doc.add_torus(p(10.0, 0.0, 0.0), 3.0, 1.0).unwrap();
+        for ext in ["dwg", "dxf"] {
+            let path = dir.path().join(format!("esfera-{version:?}.{ext}"));
+            doc.save(&path)
+                .unwrap_or_else(|e| panic!("{version:?} {ext}: {e}"));
+            let back = Document::open(&path).unwrap();
+            let volumes: Vec<f64> = back
+                .entities()
+                .into_iter()
+                .filter(|e| e.kind() == "3DSOLID")
+                .map(|e| {
+                    back.solid(e.id())
+                        .unwrap()
+                        .unwrap()
+                        .mass_properties()
+                        .unwrap()
+                        .volume
+                })
+                .collect();
+            let pi = std::f64::consts::PI;
+            let expected = [32.0 / 3.0 * pi, 6.0 * pi * pi];
+            assert_eq!(volumes.len(), 2, "{version:?} {ext}");
+            for (a, b) in volumes.iter().zip(expected) {
+                assert!((a - b).abs() < 1e-9 * b, "{version:?} {ext}: {a} {b}");
+            }
+        }
+    }
+    assert!(matches!(
+        Document::new().add_torus(p(0.0, 0.0, 0.0), 1.0, 2.0),
+        Err(DocumentError::Geometry(_))
+    ));
 }

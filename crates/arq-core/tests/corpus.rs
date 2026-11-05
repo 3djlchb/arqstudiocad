@@ -784,11 +784,11 @@ fn codec_solids_written_by_us_read_back() {
         }
         counts.push((name, written, refused));
     }
-    // ATMOS's other eleven hold what the writer does not write yet.
+    // ATMOS's other two hold what the writer does not write yet.
     assert_eq!(
         counts,
         [
-            ("2007/ATMOS-DC22S.dwg", 47, 11),
+            ("2007/ATMOS-DC22S.dwg", 56, 2),
             ("example_2000.dwg", 1, 0),
             ("example_2013.dwg", 1, 0),
         ]

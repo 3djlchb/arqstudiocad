@@ -448,6 +448,29 @@ impl CadDocument {
         self.create(|cad| cad.add_cone(arq_geometry::Point3::new(x, y, z)?, base, top, height))
     }
 
+    /// Makes a sphere around `center` `(x, y, z)` (SPHERE, ADR 0024 step
+    /// 4b).
+    fn add_sphere(
+        &self,
+        center: (f64, f64, f64),
+        radius: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        let (x, y, z) = center;
+        self.create(|cad| cad.add_sphere(arq_geometry::Point3::new(x, y, z)?, radius))
+    }
+
+    /// Makes a torus around the Z axis through `center` `(x, y, z)`: a tube
+    /// of radius `tube` swept round at `radius` (TORUS, ADR 0024 step 4b).
+    fn add_torus(
+        &self,
+        center: (f64, f64, f64),
+        radius: f64,
+        tube: f64,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        let (x, y, z) = center;
+        self.create(|cad| cad.add_torus(arq_geometry::Point3::new(x, y, z)?, radius, tube))
+    }
+
     /// Makes a wedge in the box between two opposite corners `(x, y, z)`:
     /// its base at `first`'s height, upright at `first`'s X, sloping down
     /// toward `opposite`'s X, as tall as `opposite`'s height (WEDGE, ADR
