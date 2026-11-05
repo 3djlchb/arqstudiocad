@@ -6,6 +6,7 @@
 //! | Need | Use |
 //! |---|---|
 //! | A solid, sheet or region | [`Body`], built with [`BodyBuilder`] |
+//! | A box between two corners | [`Body::cuboid`] |
 //! | Its parts | [`Vertex`], [`Edge`], [`Coedge`], [`Loop`], [`Face`], [`Shell`], [`Lump`] |
 //! | An edge's curve | [`Curve`]: [`LineCurve`], [`EllipseCurve`], [`NurbsCurve`] |
 //! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |
@@ -21,6 +22,7 @@ mod chart;
 mod curve;
 mod measure;
 mod nurbs;
+mod primitives;
 mod surface;
 mod tessellate;
 

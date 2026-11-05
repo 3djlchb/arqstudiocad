@@ -27,6 +27,7 @@
 //! | Errors | [`DocumentError`] |
 
 mod acis;
+mod acis_write;
 mod block_copy;
 mod block_data;
 mod block_editor;
@@ -57,6 +58,7 @@ mod text_layout;
 mod translate;
 mod verify;
 
+pub use acis_write::Unwritable;
 pub use arq_kernel::{MassProperties, MeasureError};
 pub use block_copy::ClashChoice;
 pub use block_data::{BlockData, Currencies, Currency, Money};

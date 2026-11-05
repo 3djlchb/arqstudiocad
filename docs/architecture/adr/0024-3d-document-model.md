@@ -235,6 +235,27 @@ part of this ADR.
     (Spanish PRISMARECT), checked both ways in ProgeCAD; (4b) CYLINDER,
     CONE, SPHERE, TORUS and WEDGE; (4c) EXTRUDE; (4d) REVOLVE. Their
     prompts follow AutoCAD's, and they go in the 3D tab's Modeling group.
+- **Step 4a, the ACIS writer and BOX (2026-11-03):**
+  - **The writer** turns a body of the kernel into ACIS records
+    (AcadRust's `SatDocument`), ACIS 7.0 as AcadRust's own builders
+    write it; the codec saves it as each version expects, SAT or the SAB
+    it converts to (maintainer, 2026-11-03). Planes bounded by straight
+    edges so far; the other surfaces and curves come with the solids
+    that use them, and a body holding them is refused, said why. Each
+    straight edge gets a line of its own, from its start to its end, so
+    it always runs along its curve; each edge's coedges are partners in a
+    ring.
+  - **Checked:** a box, and its mirror image, read back the same through
+    SAT text and SAB binary; saved as DWG 2000, 2004, 2010, 2013 and 2018
+    and as DXF, through the safe save's own check, it reopens as the same
+    solid, measured. Opening and measuring in ProgeCAD is the next check.
+  - **BOX** (Spanish PRISMARECT), in the 3D tab's Modeling group and
+    Draw > Modeling: AutoCAD's prompts (first corner or Center, other
+    corner or Cube or Length, height or 2Point), the base on the XY plane,
+    the height up or down and remembered; about its center the box is
+    centered in height too. One undo step, on the current layer. The box
+    has its sides along the axes: AutoCAD turns it to follow the cursor
+    given a length, which waits for transforming solids (step 5).
 
 ## Consequences
 

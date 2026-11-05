@@ -32,6 +32,9 @@
   "BLOCKSPALETTE": [
     "PALETABLOQUES"
   ],
+  "BOX": [
+    "PRISMARECT"
+  ],
   "BSAVE": [
     "GUARDARBLOQUE"
   ],

@@ -34,7 +34,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0027](0027-block-data.md) | Block data for budgets: category, type, material, supplier and a cost on each block definition, in an XRECORD; the cost in a currency from the drawing's register (several active, one principal, ISO 4217 catalog or the user's own); BLOCKDATA and CURRENCIES | Accepted |
 | [0028](0028-budget-table.md) | The budget table: a dockable Budget panel grouped by category, model-space quantities with nested references multiplied, blocks without cost apart, totals per currency, export to CSV and Excel (openpyxl) | Accepted |
 | [0029](0029-context-menu-and-options.md) | The model-space context menu (Repeat, Options…; right-click acts as Enter during a command) and the Options dialog: only working settings shown, user settings in QSettings, a crosshair drawn by the viewport | Accepted |
-| [0030](0030-wireframe-views.md) | Wireframe views: AutoCAD's preset views (Top to Right, four isometric) projected in Rust in the present viewport, kept in the drawing's active viewport; selection and typed points in every view, picked points on the XY plane; snaps, ORTHO and grips plan-only until the user coordinate systems; -VIEW and PLAN | Proposed |
+| [0030](0030-wireframe-views.md) | Wireframe views: AutoCAD's preset views (Top to Right, four isometric) projected in Rust in the present viewport, kept in the drawing's active viewport; selection and typed points in every view, picked points on the XY plane; snaps, ORTHO and grips plan-only until the user coordinate systems; -VIEW and PLAN | Accepted |
 
 Template:
 
