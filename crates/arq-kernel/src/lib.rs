@@ -6,7 +6,7 @@
 //! | Need | Use |
 //! |---|---|
 //! | A solid, sheet or region | [`Body`], built with [`BodyBuilder`] |
-//! | A box between two corners | [`Body::cuboid`] |
+//! | A box or a wedge between two corners | [`Body::cuboid`], [`Body::wedge`] |
 //! | Its parts | [`Vertex`], [`Edge`], [`Coedge`], [`Loop`], [`Face`], [`Shell`], [`Lump`] |
 //! | An edge's curve | [`Curve`]: [`LineCurve`], [`EllipseCurve`], [`NurbsCurve`] |
 //! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |

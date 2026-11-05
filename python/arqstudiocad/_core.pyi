@@ -297,6 +297,9 @@ class CadDocument:
     def add_box(
         self, corner: tuple[float, float, float], opposite: tuple[float, float, float]
     ) -> tuple[int, CadChangeSet]: ...
+    def add_wedge(
+        self, first: tuple[float, float, float], opposite: tuple[float, float, float]
+    ) -> tuple[int, CadChangeSet]: ...
     def add_text(
         self, content: str, anchor: _PointLike, height: float, rotation: float
     ) -> tuple[int, CadChangeSet]: ...

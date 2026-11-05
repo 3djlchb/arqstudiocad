@@ -62,6 +62,17 @@ impl Document {
         })?;
         self.add_solid(&body)
     }
+
+    /// Adds a wedge in the box between two opposite corners, upright at
+    /// `first`'s X and sloping down toward `opposite`'s, on the current
+    /// layer (WEDGE, ADR 0024 step 4b); returns its id.
+    pub fn add_wedge(&mut self, first: Point3, opposite: Point3) -> DocumentResult<EntityId> {
+        let body = Body::wedge(first, opposite).map_err(|e| match e {
+            BrepError::Geometry(g) => DocumentError::Geometry(g),
+            other => DocumentError::UnsupportedOperation(other.to_string()),
+        })?;
+        self.add_solid(&body)
+    }
 }
 
 /// Record indices laid out before writing, so every pointer is known when
