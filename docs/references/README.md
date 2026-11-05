@@ -9,6 +9,7 @@ reused is recorded in [THIRD_PARTY.md](../../THIRD_PARTY.md).
 | Open CAD Studio | Rust, iced, wgpu | GPL-3.0 (app) / MPL-2.0 (codec, kernel) | [opencadstudio.md](opencadstudio.md) |
 | IngeCAD | Python, PySide6, ezdxf, OpenGL | GPL-3.0-or-later | [ingecad.md](ingecad.md), [what to port from its core](ingecad-core-port.md) |
 | opencadcodec | Rust (DWG/DXF engine, ADR 0008) | MPL-2.0 | [internals](opencadcodec-internals.md) |
+| IngeTrazo | Python, PySide6, OpenGL, small Rust core | GPL-3.0-or-later | [ingetrazo.md](ingetrazo.md) — free (push/pull) modeling, the reference for [ADR 0031](../architecture/adr/0031-free-geometry.md) |
 | Rhino 3D (openNURBS, rhino3dm) | C++ / Python / JS, `.3dm` | open parts MIT; kernel proprietary | [rhino.md](rhino.md) — for the 3D phase and `.3dm` interop |
 
 Background: [geometry representations](geometry-representations.md):
