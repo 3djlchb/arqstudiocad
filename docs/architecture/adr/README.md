@@ -35,7 +35,7 @@ that changes gets a new ADR that supersedes the old one.
 | [0028](0028-budget-table.md) | The budget table: a dockable Budget panel grouped by category, model-space quantities with nested references multiplied, blocks without cost apart, totals per currency, export to CSV and Excel (openpyxl) | Accepted |
 | [0029](0029-context-menu-and-options.md) | The model-space context menu (Repeat, Options…; right-click acts as Enter during a command) and the Options dialog: only working settings shown, user settings in QSettings, a crosshair drawn by the viewport | Accepted |
 | [0030](0030-wireframe-views.md) | Wireframe views: AutoCAD's preset views (Top to Right, four isometric) projected in Rust in the present viewport, kept in the drawing's active viewport; selection and typed points in every view, picked points on the XY plane; snaps, ORTHO and grips plan-only until the user coordinate systems; -VIEW and PLAN | Accepted |
-| [0031](0031-free-geometry.md) | Free Geometry (milestone 02.14): a workspace of its own for organic forms, subdivision meshes with push/pull face tools after IngeTrazo, saved as DWG MESH and made exact solids on request, simple shading on the CPU, picking in 3D and a working plane; commands typed everywhere | Proposed |
+| [0031](0031-free-geometry.md) | Free Geometry (milestone 02.14): a workspace of its own for organic forms in three ways mixed by object, with a mode filter: flat faces pushed and pulled (after SketchUp and IngeTrazo), subdivision meshes saved as DWG MESH, NURBS surfaces as in Rhino; meshes and NURBS edited in an environment of their own; simple shading on the CPU, picking in 3D and a working plane; commands typed everywhere | Proposed |
 
 Template:
 
