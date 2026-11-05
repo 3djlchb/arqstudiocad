@@ -1,5 +1,5 @@
 //! Solids built from a few numbers (ADR 0024 step 4): the primitives the
-//! 3D commands create. A box so far.
+//! 3D commands create. A box and a wedge so far.
 
 use std::collections::HashMap;
 
@@ -43,34 +43,80 @@ impl Body {
         ];
         // Each face's corners counterclockwise seen from outside, so its
         // outside is the plane's normal: bottom, top, then round the sides.
-        let faces: [[usize; 4]; 6] = [
-            [0, 3, 2, 1],
-            [4, 5, 6, 7],
-            [0, 1, 5, 4],
-            [1, 2, 6, 5],
-            [2, 3, 7, 6],
-            [3, 0, 4, 7],
+        let faces: [&[usize]; 6] = [
+            &[0, 3, 2, 1],
+            &[4, 5, 6, 7],
+            &[0, 1, 5, 4],
+            &[1, 2, 6, 5],
+            &[2, 3, 7, 6],
+            &[3, 0, 4, 7],
         ];
-        let size = (0..3).map(|i| hi[i] - lo[i]).fold(0.0, f64::max);
-        let reach = lo.iter().chain(&hi).map(|c| c.abs()).fold(size, f64::max);
-        let tolerance = Tolerance::new(1e-9 * reach, Tolerance::DEFAULT.angular())
-            .map_err(BrepError::Geometry)?;
-        planar(&corners, &faces, tolerance)
+        planar(&corners, &faces, tolerance(&corners)?)
     }
+
+    /// A wedge in the box between two opposite corners, AutoCAD's WEDGE:
+    /// its base at `first`'s height, as tall as `opposite`'s; its face at
+    /// `first`'s X stands upright, and its sloped face, opposite `first`,
+    /// comes down to the base at `opposite`'s X. A side of no length is
+    /// [`GeometryError::ZeroLength`].
+    pub fn wedge(first: Point3, opposite: Point3) -> Result<Body, BrepError> {
+        let (x0, y0, z0) = (first.x(), first.y(), first.z());
+        let (x1, y1, top) = (opposite.x(), opposite.y(), opposite.z());
+        if x1 == x0 || y1 == y0 || top == z0 {
+            return Err(BrepError::Geometry(GeometryError::ZeroLength));
+        }
+        let at = |x: f64, y: f64, z: f64| Point3::new(x, y, z).map_err(BrepError::Geometry);
+        let corners = [
+            at(x0, y0, z0)?,
+            at(x1, y0, z0)?,
+            at(x1, y1, z0)?,
+            at(x0, y1, z0)?,
+            at(x0, y0, top)?,
+            at(x0, y1, top)?,
+        ];
+        // Counterclockwise from outside when X, Y and the height all run
+        // forward: the base, the upright face, the slope, the two ends.
+        let mut faces: Vec<Vec<usize>> = vec![
+            vec![0, 3, 2, 1],
+            vec![0, 4, 5, 3],
+            vec![1, 2, 5, 4],
+            vec![0, 1, 4],
+            vec![3, 5, 2],
+        ];
+        // Each one running backward mirrors it: the corners turn the other
+        // way round.
+        let backward = [x1 < x0, y1 < y0, top < z0].iter().filter(|&&b| b).count();
+        if backward % 2 == 1 {
+            faces.iter_mut().for_each(|f| f.reverse());
+        }
+        let faces: Vec<&[usize]> = faces.iter().map(Vec::as_slice).collect();
+        planar(&corners, &faces, tolerance(&corners)?)
+    }
+}
+
+/// How close a vertex must be to its curves and surfaces: a billionth of
+/// the farthest coordinate, at least of the body's size.
+fn tolerance(points: &[Point3]) -> Result<Tolerance, BrepError> {
+    let reach = points
+        .iter()
+        .flat_map(|p| [p.x().abs(), p.y().abs(), p.z().abs()])
+        .fold(0.0, f64::max);
+    let size = points
+        .iter()
+        .flat_map(|a| points.iter().map(move |b| (*a - *b).length()))
+        .fold(0.0, f64::max);
+    Tolerance::new(1e-9 * reach.max(size), Tolerance::DEFAULT.angular())
+        .map_err(BrepError::Geometry)
 }
 
 /// A closed body of flat faces, each listing its corners counterclockwise
 /// seen from outside; each pair of neighbours shares one straight edge.
-fn planar(
-    points: &[Point3],
-    faces: &[[usize; 4]],
-    tolerance: Tolerance,
-) -> Result<Body, BrepError> {
+fn planar(points: &[Point3], faces: &[&[usize]], tolerance: Tolerance) -> Result<Body, BrepError> {
     let mut b = BodyBuilder::new();
     let vertices: Vec<_> = points.iter().map(|&p| b.vertex(p)).collect();
     let mut edges = HashMap::new();
     let mut ids = Vec::with_capacity(faces.len());
-    for corners in faces {
+    for &corners in faces {
         let mut coedges = Vec::with_capacity(corners.len());
         for k in 0..corners.len() {
             let (i, j) = (corners[k], corners[(k + 1) % corners.len()]);

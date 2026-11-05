@@ -1,5 +1,6 @@
 """The 3D commands of milestone 02.8 (ADR 0024), in the ribbon's 3D tab:
-BOX, which makes a solid (step 4a), and MASSPROP, which measures them.
+BOX and WEDGE, which make solids (steps 4a and 4b), and MASSPROP, which
+measures them.
 
 MASSPROP reports the volume, surface area, bounding box and centroid of the
 solids selected, together, as AutoCAD's MASSPROP reports a selection;
@@ -23,7 +24,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
-from arqstudiocad.core import CadMassProperties, CadSolidMeasures
+from arqstudiocad.core import CadDocument, CadMassProperties, CadSolidMeasures
 from arqstudiocad.i18n import tr
 
 #: Significant digits shown: the kernel refines each measure until it
@@ -119,12 +120,39 @@ def _fixed(value: float, places: int) -> str:
 
 #: The last box height, remembered as AutoCAD remembers it.
 BOX_HEIGHT = "BOX_HEIGHT"
+#: The last wedge height.
+WEDGE_HEIGHT = "WEDGE_HEIGHT"
+
+#: Makes a solid in ``document`` between two opposite corners ``(x, y, z)``.
+type Maker = Callable[[CadDocument, tuple[float, float, float], tuple[float, float, float]], Any]
 
 
 def box(ctx: CommandContext) -> CommandScript:
     """BOX, AutoCAD's (Spanish PRISMARECT): a box on the XY plane, its
     sides along the axes, between two corners or about its center, as high
     as typed, up or down (ADR 0024 step 4a)."""
+    yield from _between(
+        ctx,
+        lambda d, a, b: d.add_box(a, b),
+        BOX_HEIGHT,
+        tr("The box needs a length and a width."),
+    )
+
+
+def wedge(ctx: CommandContext) -> CommandScript:
+    """WEDGE, AutoCAD's (Spanish CUÑA): asked for as BOX, upright at its
+    first corner and sloping down toward the other (ADR 0024 step 4b)."""
+    yield from _between(
+        ctx,
+        lambda d, a, b: d.add_wedge(a, b),
+        WEDGE_HEIGHT,
+        tr("The wedge needs a length and a width."),
+    )
+
+
+def _between(ctx: CommandContext, make: Maker, remembered: str, flat: str) -> CommandScript:
+    """A solid in the box BOX asks for: two corners or a center, a cube or
+    its sides, a height; ``make`` gets the corner it starts at first."""
     document = ctx.document()
     first = yield ctx.point(tr("Specify first corner"), options=[Option("C", tr("Center"))])
     center = None
@@ -149,13 +177,13 @@ def box(ctx: CommandContext) -> CommandScript:
             low, high = first, answer
         if low[0] != high[0] and low[1] != high[1]:
             break
-        ctx.message(tr("The box needs a length and a width."))
+        ctx.message(flat)
     if height is None:
-        height = yield from _height(ctx)
-    ctx.remembered[BOX_HEIGHT] = height
-    # About its center the box is centered in height too, as AutoCAD's.
+        height = yield from _height(ctx, remembered)
+    ctx.remembered[remembered] = height
+    # About its center the solid is centered in height too, as AutoCAD's.
     bottom = -height / 2 if center is not None else 0.0
-    _, changes = document.add_box((*low, bottom), (*high, bottom + height))
+    _, changes = make(document, (*low, bottom), (*high, bottom + height))
     ctx.session.report(document, changes)
 
 
@@ -175,10 +203,10 @@ def _mirror(point: tuple[float, float], center: tuple[float, float]) -> tuple[fl
     return (2 * center[0] - point[0], 2 * center[1] - point[1])
 
 
-def _height(ctx: CommandContext) -> Generator[Prompt, Any, float]:
+def _height(ctx: CommandContext, remembered: str) -> Generator[Prompt, Any, float]:
     """A height, typed (negative: down) or the distance between two points
-    (2Point); the last one by default."""
-    last = ctx.remembered.get(BOX_HEIGHT)
+    (2Point); the last one, kept as ``remembered``, by default."""
+    last = ctx.remembered.get(remembered)
     shown = None if last is None else f"{last:.10g}"
     two_points = Option("2P", tr("2Point"))
     while True:
@@ -199,6 +227,10 @@ def _height(ctx: CommandContext) -> Generator[Prompt, Any, float]:
 
 
 #: The 3D commands.
-SOLID_COMMANDS = (Command("BOX", box), Command("MASSPROP", massprop))
+SOLID_COMMANDS = (
+    Command("BOX", box),
+    Command("WEDGE", wedge, ("WE",)),
+    Command("MASSPROP", massprop),
+)
 
 __all__ = ["SOLID_COMMANDS", "report"]

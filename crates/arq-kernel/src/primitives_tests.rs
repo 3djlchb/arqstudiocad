@@ -59,3 +59,62 @@ fn a_flat_box_is_refused() {
         );
     }
 }
+
+#[test]
+fn a_wedge_stands_at_its_first_corner() {
+    // 4 long in X, 2 wide, 3 high: half the box, upright at x 0.
+    let body = Body::wedge(p(0.0, 0.0, 0.0), p(4.0, 2.0, 3.0)).unwrap();
+    assert_eq!(
+        (
+            body.vertices().len(),
+            body.edges().len(),
+            body.faces().len()
+        ),
+        (6, 9, 5)
+    );
+    let m = body.mass_properties().unwrap();
+    assert!((m.volume - 12.0).abs() < 1e-12, "{}", m.volume);
+    // A right triangle's centroid sits a third of the way in from its legs.
+    let c = m.centroid;
+    assert!(
+        (c.x() - 4.0 / 3.0).abs() < 1e-12
+            && (c.y() - 1.0).abs() < 1e-12
+            && (c.z() - 1.0).abs() < 1e-12
+    );
+    // The base 4 x 2, the upright face 2 x 3, the slope 5 x 2 (its legs 4
+    // and 3), and two right triangles 4 x 3 / 2.
+    assert!((m.area - 36.0).abs() < 1e-12, "{}", m.area);
+}
+
+#[test]
+fn a_wedge_runs_any_way_round() {
+    // Upright at x 4 instead, sloping toward x 0; then down, then across.
+    for (first, opposite, centroid) in [
+        (p(4.0, 0.0, 0.0), p(0.0, 2.0, 3.0), (8.0 / 3.0, 1.0, 1.0)),
+        (p(0.0, 0.0, 0.0), p(4.0, 2.0, -3.0), (4.0 / 3.0, 1.0, -1.0)),
+        (p(0.0, 2.0, 0.0), p(4.0, 0.0, 3.0), (4.0 / 3.0, 1.0, 1.0)),
+        (p(4.0, 2.0, 3.0), p(0.0, 0.0, 0.0), (8.0 / 3.0, 1.0, 2.0)),
+    ] {
+        let m = Body::wedge(first, opposite)
+            .unwrap()
+            .mass_properties()
+            .unwrap();
+        assert!((m.volume - 12.0).abs() < 1e-12, "{first:?}: {}", m.volume);
+        let c = m.centroid;
+        let (x, y, z) = centroid;
+        assert!(
+            (c.x() - x).abs() < 1e-12 && (c.y() - y).abs() < 1e-12 && (c.z() - z).abs() < 1e-12,
+            "{first:?}: {c:?}"
+        );
+    }
+}
+
+#[test]
+fn a_flat_wedge_is_refused() {
+    for opposite in [p(0.0, 2.0, 3.0), p(4.0, 0.0, 3.0), p(4.0, 2.0, 0.0)] {
+        assert_eq!(
+            Body::wedge(p(0.0, 0.0, 0.0), opposite),
+            Err(BrepError::Geometry(GeometryError::ZeroLength))
+        );
+    }
+}

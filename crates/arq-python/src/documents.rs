@@ -421,6 +421,19 @@ impl CadDocument {
         self.create(|cad| cad.add_box(point(corner)?, point(opposite)?))
     }
 
+    /// Makes a wedge in the box between two opposite corners `(x, y, z)`:
+    /// its base at `first`'s height, upright at `first`'s X, sloping down
+    /// toward `opposite`'s X, as tall as `opposite`'s height (WEDGE, ADR
+    /// 0024 step 4b).
+    fn add_wedge(
+        &self,
+        first: (f64, f64, f64),
+        opposite: (f64, f64, f64),
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        let point = |(x, y, z): (f64, f64, f64)| arq_geometry::Point3::new(x, y, z);
+        self.create(|cad| cad.add_wedge(point(first)?, point(opposite)?))
+    }
+
     /// Writes a single-line text, left-justified on the baseline at
     /// `anchor`, on the current layer with the current text style (TEXT,
     /// ADR 0022); `rotation` in radians.

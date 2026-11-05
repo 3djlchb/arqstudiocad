@@ -254,9 +254,66 @@ def test_box_is_in_the_3d_tab_and_the_draw_menu(qtbot: QtBot) -> None:
     qtbot.addWidget(window)
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     box = window.command_actions["BOX"]
-    assert [b.defaultAction() for b in groups["modeling"].buttons] == [box]
+    assert groups["modeling"].buttons[0].defaultAction() is box
     titles = [g.title.text() for g in window.findChildren(RibbonGroupWidget)]
     assert titles.index("Modeling") + 1 == titles.index("Analysis")
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
     assert box in menus["&Modeling"].actions()
     assert menus["&Modeling"].menuAction() in menus["&Draw"].actions()
+
+
+# WEDGE (ADR 0024 step 4b)
+
+
+def test_wedge_stands_at_its_first_corner() -> None:
+    h, document, (m,) = boxed("WEDGE", "0,0", "4,2", "3")
+    assert h.prompts()[:3] == [
+        "Specify first corner [Center(C)]:",
+        "Specify other corner [Cube(C)/Length(L)]:",
+        "Specify height [2Point(2P)]:",
+    ]
+    assert m.volume == pytest.approx(12.0)
+    assert m.centroid == pytest.approx((4 / 3, 1.0, 1.0))
+    # Its own height is remembered, apart from BOX's.
+    h.run("BOX", "10,0", "11,1", "5", "WE", "20,0", "24,2", "")
+    heights = sorted(
+        total.bounds[1][2]
+        for e in document.get_entities()
+        if (total := document.measure_solids([e.id]).total) is not None
+    )
+    assert heights == pytest.approx([3.0, 3.0, 5.0])
+
+
+def test_wedge_about_its_center_stands_at_the_corner_picked() -> None:
+    _, _, (m,) = boxed("WE", "C", "2,1", "0,0", "3")
+    assert m.volume == pytest.approx(12.0)
+    assert m.centroid == pytest.approx((4 / 3, 1.0, -0.5))
+
+
+def test_a_flat_wedge_is_asked_again() -> None:
+    h, _, (m,) = boxed("WEDGE", "0,0", "4,0", "4,2", "-3")
+    assert h.messages()[0] == "The wedge needs a length and a width."
+    assert m.centroid == pytest.approx((4 / 3, 1.0, -1.0))
+
+
+def test_cuna_in_spanish_with_or_without_its_tilde() -> None:
+    set_language("es")
+    try:
+        for typed in ("CUÑA", "cuna"):
+            _, _, (m,) = boxed(typed, "0,0", "Cubo", "2")
+            assert m.volume == pytest.approx(4.0), typed
+    finally:
+        set_language("en")
+
+
+def test_wedge_is_beside_box(qtbot: QtBot) -> None:
+    window = MainWindow(ui=QuietUi())
+    qtbot.addWidget(window)
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    actions = window.command_actions
+    assert [b.defaultAction() for b in groups["modeling"].buttons] == [
+        actions["BOX"],
+        actions["WEDGE"],
+    ]
+    menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
+    assert menus["&Modeling"].actions() == [actions["BOX"], actions["WEDGE"]]

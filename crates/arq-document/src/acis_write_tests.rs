@@ -223,3 +223,38 @@ fn the_records_hold_what_acis_reads_and_ours_does_not() {
         assert!(dot.abs() < 1e-12 && (length - 1.0).abs() < 1e-12, "{u:?}");
     }
 }
+
+#[test]
+fn a_wedge_is_saved_and_reads_back() {
+    use acadrust::types::DxfVersion;
+    let dir = tempfile::tempdir().unwrap();
+    for version in [DxfVersion::AC1015, DxfVersion::AC1032] {
+        let mut doc = Document::new();
+        doc.cad_mut().version = version;
+        doc.add_wedge(p(0.0, 0.0, 0.0), p(4.0, 2.0, 3.0)).unwrap();
+        for ext in ["dwg", "dxf"] {
+            let path = dir.path().join(format!("cuna-{version:?}.{ext}"));
+            doc.save(&path)
+                .unwrap_or_else(|e| panic!("{version:?} {ext}: {e}"));
+            let back = Document::open(&path).unwrap();
+            let id = back
+                .entities()
+                .into_iter()
+                .find(|e| e.kind() == "3DSOLID")
+                .unwrap()
+                .id();
+            let body = back.solid(id).unwrap().unwrap();
+            assert_eq!(body.faces().len(), 5, "{version:?} {ext}");
+            let m = body.mass_properties().unwrap();
+            assert!(
+                (m.volume - 12.0).abs() < 1e-9,
+                "{version:?} {ext}: {}",
+                m.volume
+            );
+        }
+    }
+    assert!(matches!(
+        Document::new().add_wedge(p(0.0, 0.0, 0.0), p(4.0, 0.0, 3.0)),
+        Err(DocumentError::Geometry(_))
+    ));
+}

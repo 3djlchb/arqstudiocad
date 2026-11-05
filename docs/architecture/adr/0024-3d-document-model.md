@@ -256,6 +256,19 @@ part of this ADR.
     centered in height too. One undo step, on the current layer. The box
     has its sides along the axes: AutoCAD turns it to follow the cursor
     given a length, which waits for transforming solids (step 5).
+- **Step 4b, the other primitives, in three pull requests (maintainer,
+  2026-11-04):** 4b-1 WEDGE; 4b-2 CYLINDER and CONE; 4b-3 SPHERE and
+  TORUS; each with AutoCAD's basic options (a center and a radius or a
+  diameter, a height or two points; a cone's top radius). 3P, 2P, Ttr,
+  Elliptical and Axis endpoint wait for the user coordinate systems.
+- **Step 4b-1, WEDGE (2026-11-04):** WEDGE (alias WE, Spanish CUÑA,
+  typed with or without its tilde) asks as BOX does and makes AutoCAD's
+  wedge: in the box between the corners, upright at the first one and
+  sloping down toward the other, five flat faces the writer already
+  writes; any way round (corners in either order, the height up or
+  down), its faces still outward. Its height is remembered apart from
+  BOX's. Saved as DWG 2000 and 2018 and as DXF it reopens as the same
+  solid.
 
 ## Consequences
 

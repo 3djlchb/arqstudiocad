@@ -32,6 +32,16 @@ impl CadDocument {
         self.transact("BOX", |doc| Ok(doc.add_box(corner, opposite)?))
     }
 
+    /// Makes a wedge in the box between two opposite corners, upright at
+    /// `first`'s X, on the current layer (WEDGE, ADR 0024 step 4b).
+    pub fn add_wedge(
+        &mut self,
+        first: Point3,
+        opposite: Point3,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("WEDGE", |doc| Ok(doc.add_wedge(first, opposite)?))
+    }
+
     /// Draws a circle on the current layer.
     pub fn add_circle(&mut self, center: Point2, radius: f64) -> CadResult<(EntityId, ChangeSet)> {
         self.add_geometry(Circle::new(center, radius)?.into())
