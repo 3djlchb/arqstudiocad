@@ -1,5 +1,6 @@
 //! Solids built from a few numbers (ADR 0024 step 4): the primitives the
-//! 3D commands create: a box, a wedge, a cylinder and a cone so far.
+//! 3D commands create: a box, a wedge, a cylinder, a cone, a sphere and a
+//! torus.
 
 use std::collections::HashMap;
 
@@ -7,7 +8,7 @@ use arq_geometry::{GeometryError, Point3, Tolerance, Vector3};
 
 use crate::brep::{Body, BodyBuilder, BrepError, Coedge, Edge, EdgeId, Face, Loop, Lump, Shell};
 use crate::curve::{Curve, EllipseCurve, LineCurve};
-use crate::surface::{Cone, Plane, Surface};
+use crate::surface::{Cone, Plane, Sphere, Surface, Torus};
 
 impl Body {
     /// A box with its edges along the axes, between two opposite
@@ -199,6 +200,50 @@ impl Body {
         });
         b.build(tolerance(&points)?)
     }
+}
+
+impl Body {
+    /// A sphere around `center`: AutoCAD's SPHERE. A radius not above 0 is
+    /// [`GeometryError::InvalidRadius`].
+    pub fn sphere(center: Point3, radius: f64) -> Result<Body, BrepError> {
+        // The sphere refuses a radius not above 0 itself.
+        let sphere = Sphere::new(center, radius).map_err(BrepError::Geometry)?;
+        let reach = Vector3::new(radius, radius, radius).map_err(BrepError::Geometry)?;
+        whole(Surface::Sphere(sphere), &[center - reach, center + reach])
+    }
+
+    /// A torus around the Z axis through `center`: a tube of radius `tube`
+    /// swept round at `radius` from it, AutoCAD's TORUS. The tube must be
+    /// thinner than the torus is wide, a ring with a hole: a self-crossing
+    /// torus, which AutoCAD also makes, waits. Otherwise
+    /// [`GeometryError::InvalidRadius`].
+    pub fn torus(center: Point3, radius: f64, tube: f64) -> Result<Body, BrepError> {
+        let ring = radius.is_finite() && tube.is_finite() && tube > 0.0 && radius > tube;
+        if !ring {
+            return Err(BrepError::Geometry(GeometryError::InvalidRadius));
+        }
+        let axis = Vector3::new(0.0, 0.0, 1.0).map_err(BrepError::Geometry)?;
+        let torus = Torus::new(center, axis, radius, tube).map_err(BrepError::Geometry)?;
+        let out = radius + tube;
+        let reach = Vector3::new(out, out, tube).map_err(BrepError::Geometry)?;
+        whole(Surface::Torus(torus), &[center - reach, center + reach])
+    }
+}
+
+/// A body of one face covering a whole closed surface, without loops (a
+/// sphere, a torus); `extent` the corners of its box, for the tolerance.
+fn whole(surface: Surface, extent: &[Point3]) -> Result<Body, BrepError> {
+    let mut b = BodyBuilder::new();
+    let face = b.face(Face {
+        surface,
+        loops: Vec::new(),
+        reversed: false,
+    });
+    let shell = b.shell(Shell { faces: vec![face] });
+    b.lump(Lump {
+        shells: vec![shell],
+    });
+    b.build(tolerance(extent)?)
 }
 
 /// How close a vertex must be to its curves and surfaces: a billionth of

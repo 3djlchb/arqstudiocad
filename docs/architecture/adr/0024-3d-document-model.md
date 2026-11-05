@@ -295,6 +295,16 @@ part of this ADR.
     eleven hold what it does not write yet. AutoCAD writes every
     circular edge forward; one running against its circle is checked on
     a body built so.
+- **Step 4b-3, SPHERE and TORUS (2026-11-04):** each is one face covering
+  its whole surface, without loops, as ACIS has it; the writer adds
+  sphere and torus surfaces. SPHERE (Spanish ESFERA) asks for a center
+  on the XY plane and a radius or diameter; TORUS (alias TOR, Spanish
+  TOROIDE) for the torus's radius and the tube's, each or its diameter.
+  The tube must be thinner than the torus is wide: AutoCAD also makes a
+  self-crossing torus, whose measure waits. With them, 56 of ATMOS's 58
+  AutoCAD solids are written again by our writer and read back
+  measuring the same; the other two hold NURBS or elliptic cylinders.
+  Step 4b is complete; EXTRUDE (4c) and REVOLVE (4d) follow.
 
 ## Consequences
 

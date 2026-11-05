@@ -1,6 +1,6 @@
 """The 3D commands of milestone 02.8 (ADR 0024), in the ribbon's 3D tab:
-BOX, WEDGE, CYLINDER and CONE, which make solids (steps 4a and 4b), and
-MASSPROP, which measures them.
+BOX, WEDGE, CYLINDER, CONE, SPHERE and TORUS, which make solids (steps 4a
+and 4b), and MASSPROP, which measures them.
 
 MASSPROP reports the volume, surface area, bounding box and centroid of the
 solids selected, together, as AutoCAD's MASSPROP reports a selection;
@@ -125,6 +125,8 @@ WEDGE_HEIGHT = "WEDGE_HEIGHT"
 #: The last radius and height of each round solid.
 CYLINDER_RADIUS, CYLINDER_HEIGHT = "CYLINDER_RADIUS", "CYLINDER_HEIGHT"
 CONE_RADIUS, CONE_HEIGHT = "CONE_RADIUS", "CONE_HEIGHT"
+SPHERE_RADIUS = "SPHERE_RADIUS"
+TORUS_RADIUS, TUBE_RADIUS = "TORUS_RADIUS", "TUBE_RADIUS"
 
 #: Makes a solid in ``document`` between two opposite corners ``(x, y, z)``.
 type Maker = Callable[[CadDocument, tuple[float, float, float], tuple[float, float, float]], Any]
@@ -221,13 +223,42 @@ def cone(ctx: CommandContext) -> CommandScript:
     ctx.session.report(document, changes)
 
 
+def sphere(ctx: CommandContext) -> CommandScript:
+    """SPHERE, AutoCAD's (Spanish ESFERA), its basic options: a center on
+    the XY plane and a radius or diameter (ADR 0024 step 4b). 3P, 2P and
+    Ttr wait for the user coordinate systems."""
+    document = ctx.document()
+    center = yield ctx.point(tr("Specify center point"))
+    radius = yield from _radius(ctx, center, SPHERE_RADIUS, tr("Specify radius"))
+    _, changes = document.add_sphere((*center, 0.0), radius)
+    ctx.session.report(document, changes)
+
+
+def torus(ctx: CommandContext) -> CommandScript:
+    """TORUS, AutoCAD's (Spanish TOROIDE), its basic options: a center on
+    the XY plane, the torus's radius and the tube's, each or its diameter
+    (ADR 0024 step 4b). The tube must be thinner than the torus is wide:
+    a self-crossing torus waits."""
+    document = ctx.document()
+    center = yield ctx.point(tr("Specify center point"))
+    radius = yield from _radius(ctx, center, TORUS_RADIUS, tr("Specify radius"))
+    while True:
+        tube = yield from _radius(ctx, center, TUBE_RADIUS, tr("Specify tube radius"))
+        if tube < radius:
+            break
+        ctx.message(tr("The tube must be thinner than the torus's radius."))
+    _, changes = document.add_torus((*center, 0.0), radius, tube)
+    ctx.session.report(document, changes)
+
+
 def _radius(
-    ctx: CommandContext, center: tuple[float, float], remembered: str
+    ctx: CommandContext, center: tuple[float, float], remembered: str, message: str | None = None
 ) -> Generator[Prompt, Any, float]:
-    """A base radius, or a diameter halved, from ``center``; the last one,
-    kept as ``remembered``, by default."""
+    """A radius (``message``; a base radius by default), or a diameter
+    halved, from ``center``; the last one, kept as ``remembered``, by
+    default."""
     answer = yield ctx.distance(
-        tr("Specify base radius"),
+        message or tr("Specify base radius"),
         base=center,
         options=[Option("D", tr("Diameter"))],
         default=ctx.remembered.get(remembered),
@@ -306,6 +337,8 @@ SOLID_COMMANDS = (
     Command("WEDGE", wedge, ("WE",)),
     Command("CYLINDER", cylinder, ("CYL",)),
     Command("CONE", cone),
+    Command("SPHERE", sphere),
+    Command("TORUS", torus, ("TOR",)),
     Command("MASSPROP", massprop),
 )
 

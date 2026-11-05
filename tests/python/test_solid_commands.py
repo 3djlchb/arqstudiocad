@@ -378,6 +378,62 @@ def test_round_solids_follow_wedge(qtbot: QtBot) -> None:
     groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
     actions = window.command_actions
     names = ["BOX", "WEDGE", "CYLINDER", "CONE"]
+    shown = [b.defaultAction() for b in groups["modeling"].buttons]
+    assert shown[:4] == [actions[n] for n in names]
+    menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
+    assert menus["&Modeling"].actions()[:4] == [actions[n] for n in names]
+
+
+# SPHERE and TORUS (ADR 0024 step 4b-3)
+
+
+def test_sphere_by_radius_or_diameter() -> None:
+    h, document, (m,) = boxed("SPHERE", "1,2", "2")
+    assert h.prompts()[:2] == ["Specify center point:", "Specify radius [Diameter(D)]:"]
+    assert m.volume == pytest.approx(32 / 3 * math.pi)
+    assert m.centroid == pytest.approx((1.0, 2.0, 0.0)), "its center on the plane"
+    h.run("SPHERE", "10,0", "", "SPHERE", "20,0", "D", "2")
+    volumes = sorted(
+        total.volume
+        for e in document.get_entities()
+        if (total := document.measure_solids([e.id]).total) is not None
+    )
+    assert volumes == pytest.approx([4 / 3 * math.pi, 32 / 3 * math.pi, 32 / 3 * math.pi])
+
+
+def test_torus_with_its_tube() -> None:
+    h, _, (m,) = boxed("TORUS", "0,0", "3", "1")
+    assert h.prompts()[:3] == [
+        "Specify center point:",
+        "Specify radius [Diameter(D)]:",
+        "Specify tube radius [Diameter(D)]:",
+    ]
+    assert m.volume == pytest.approx(6 * math.pi**2)
+    assert corners(m) == pytest.approx([-4.0, -4.0, -1.0, 4.0, 4.0, 1.0])
+    # A tube as thick as the ring is wide is asked again; by diameter too.
+    h, _, (thin,) = boxed("TOR", "0,0", "D", "4", "2", "D", "1")
+    assert h.messages()[0] == "The tube must be thinner than the torus's radius."
+    assert thin.volume == pytest.approx(2 * math.pi**2 * 2 * 0.25)
+
+
+def test_esfera_and_toroide_in_spanish() -> None:
+    set_language("es")
+    try:
+        h, _, (ball,) = boxed("ESFERA", "0,0", "1")
+        assert h.prompts()[1] == "Precise el radio [Diámetro(D)]:"
+        _, _, (ring,) = boxed("TOROIDE", "0,0", "2", "Diámetro", "1")
+    finally:
+        set_language("en")
+    assert ball.volume == pytest.approx(4 / 3 * math.pi)
+    assert ring.volume == pytest.approx(2 * math.pi**2 * 2 * 0.25)
+
+
+def test_all_six_primitives_in_the_modeling_group(qtbot: QtBot) -> None:
+    window = MainWindow(ui=QuietUi())
+    qtbot.addWidget(window)
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    actions = window.command_actions
+    names = ["BOX", "WEDGE", "CYLINDER", "CONE", "SPHERE", "TORUS"]
     assert [b.defaultAction() for b in groups["modeling"].buttons] == [actions[n] for n in names]
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
     assert menus["&Modeling"].actions() == [actions[n] for n in names]

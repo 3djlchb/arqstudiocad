@@ -59,6 +59,23 @@ impl CadDocument {
         self.transact("CONE", |doc| Ok(doc.add_cone(center, base, top, height)?))
     }
 
+    /// Makes a sphere around `center` on the current layer (SPHERE, ADR
+    /// 0024 step 4b).
+    pub fn add_sphere(&mut self, center: Point3, radius: f64) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("SPHERE", |doc| Ok(doc.add_sphere(center, radius)?))
+    }
+
+    /// Makes a torus around the Z axis through `center` on the current
+    /// layer (TORUS, ADR 0024 step 4b).
+    pub fn add_torus(
+        &mut self,
+        center: Point3,
+        radius: f64,
+        tube: f64,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("TORUS", |doc| Ok(doc.add_torus(center, radius, tube)?))
+    }
+
     /// Makes a wedge in the box between two opposite corners, upright at
     /// `first`'s X, on the current layer (WEDGE, ADR 0024 step 4b).
     pub fn add_wedge(
