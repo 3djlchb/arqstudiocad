@@ -267,3 +267,35 @@ fn a_new_drawing_saved_before_r2010_says_its_multileader_style_version() {
         }
     }
 }
+
+#[test]
+#[ignore = "needs tools/fetch_codec_samples.py"]
+fn every_dimension_style_of_example_2000_names_a_text_style() {
+    // example_2000.dwg holds only ISO-25; the default "Standard" its reading
+    // gains must name the drawing's text style, not the new-document handle
+    // that there is the ByBlock linetype (ProgeCAD's AUDIT reported two
+    // errors on the saved drawing). Saved and reopened, it still does.
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../target/corpus/libredwg/example_2000.dwg");
+    let dir = tempfile::tempdir().unwrap();
+    let saved = dir.path().join("example_2000.dwg");
+    Document::open(&source).unwrap().save(&saved).unwrap();
+    for path in [source, saved] {
+        let doc = Document::open(&path).unwrap();
+        let cad = doc.cad();
+        for style in cad.dim_styles.iter() {
+            let named = cad
+                .text_styles
+                .iter()
+                .find(|t| t.handle == style.dimtxsty_handle)
+                .map(|t| t.name.clone());
+            assert!(
+                named.is_some(),
+                "{}: {} DIMTXSTY {:X}",
+                path.display(),
+                style.name,
+                style.dimtxsty_handle.value()
+            );
+        }
+    }
+}

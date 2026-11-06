@@ -463,3 +463,37 @@ native corpus groups and nine optional document tests; static, bindings,
 formatting and dependency checks pass. Product adoption awaits PR review;
 no verifier or loss allowance is relaxed. Surface and dynamic-block DXF
 omissions, wider external/version coverage and milestones 03.4/03.5 remain open.
+
+### New DWG 2004 drawings and the multileader-style version (2026-11-06)
+
+An automated ProgeCAD 2026 run over the 3D solid samples (ADR 0024) found
+that ProgeCAD refused every DWG 2004 (AC1018) drawing the codec wrote, even an
+empty new one ("Object improperly read"), while native DWG 2004 drawings read
+and written again opened. Bisected to the default MLEADERSTYLE: before R2010
+AutoCAD keeps its class version as EED of `ACAD_MLEADERVER` (1070 2), which
+the codec did not write. The [correction](testing/progecad-dwg2004-mleader-version.md)
+in fork `b6e2a2a` (immutable tag `arqstudiocad/on-ea66abe-mleader-version-eed-v2`,
+red tests `26257d2`) writes it before R2010 and adds the APPID when missing;
+a style already carrying it keeps its own, R2010+ is untouched. It is stacked
+on `bab8ac0` above, both having started from `c8f4b05`, so the pin keeps both
+corrections. Codec- and application-written DWG 2004 and 2007 drawings reopen
+in ProgeCAD with AUDIT clean and matching measures. The same run found two
+problems still open: ATMOS saved again in DWG 2007/2018 (three AutoCAD solids
+whose construction history holds a sweep node) and R2000 saves built on
+`example_2000.dwg` (the Standard dimension style's DIMTXSTY naming a linetype
+record).
+
+### A read default dimension style and its text style (2026-11-06)
+
+`example_2000.dwg` holds only the ISO-25 dimension style; reading it still
+adds the default "Standard", whose DIMTXSTY kept the handle the default text
+style has in a new document (0x14). In that drawing 0x14 is the ByBlock
+linetype, so ProgeCAD 2026's AUDIT reported two errors on every save ("Object
+of class AcDbLinetypeTableRecord can't be cast to AcDbTextStyleTableRecord").
+The [correction](testing/progecad-r2000-dimtxsty.md) in fork `6e03fb1`
+(immutable tag `arqstudiocad/on-ea66abe-r2000-dimtxsty`, red test `5ab73a0`)
+resolves such a style's text style by the name it keeps, else the current text
+style, leaving the drawing's own styles as read; it is stacked on `b6e2a2a`.
+Rewritten, `example_2000.dwg` audits clean in ProgeCAD. Whether to add a
+"Standard" style the drawing does not have at all is unchanged. ATMOS saved
+again in DWG 2007/2018 remains open.
