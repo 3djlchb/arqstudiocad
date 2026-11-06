@@ -164,8 +164,14 @@ genuine-downgrade policy are unchanged.
 The next [DATATABLE investigation](testing/datatable-dxf-preservation.md)
 reproduces unsupported hard-owned cells and the legacy DXF subclass mismatch;
 its isolated codec candidate is not adopted. A separate native R14 `Invalid
-ResBuf` rejection is also reproduced with the published codec and remains
-under investigation. No additional compatibility row is declared fixed.
+ResBuf` rejection, reproduced with the published codec, is traced to an
+incorrect R2000 XRECORD cloning prefix in R14 DXF. Local fork `bab8ac0`
+corrects versioned reader/writer handling after red tests; ProgeCAD reopens
+the actual corrected R14 DXF and matches 2,724 table/child properties. Fresh
+R2000 DWG/DXF and R14 DWG controls also match their native references. The
+revised codec suite passes 2,448 active tests and the three focused ownership
+cases; paired corpus and product adoption checks remain open. No additional
+product compatibility row is declared fixed.
 Milestones 03.4 and 03.5 remain in progress.
 
 ## Phase 04 — Associative technical documentation ○
