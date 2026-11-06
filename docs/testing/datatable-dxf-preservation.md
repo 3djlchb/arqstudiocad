@@ -1,8 +1,9 @@
 # DATATABLE DWG-to-DXF preservation investigation
 
-Status: **in progress; candidate not adopted or published**. Updated 2026-11-06.
-Milestones 03.4 and 03.5 remain open. The product still uses fork `c8f4b05`.
-The isolated product documentation branch is based on main `3007dd8` after
+Status: **codec published; local published-pin product acceptance passed**. Updated 2026-11-06.
+Milestones 03.4 and 03.5 remain open. This branch pins fork `bab8ac0`;
+main still pins `c8f4b05` at inspection.
+The isolated product branch is based on main `3007dd8` after
 rebasing its own progress commit. The shared main worktree is not modified
 by this task; earlier product baseline measurements retain their recorded base.
 
@@ -14,7 +15,7 @@ flags 2, four columns, 180 rows, column types `[2, 1, 1, 6]`, and 180 hard-owned
 XRECORD targets in the final column. Type 6 is HardOwnerId. Its native DWG
 reference kind is HardOwnership and its DXF group code is 360.
 
-The published codec's `DataTableCellType::has_native_codec`
+The previous `c8f4b05` codec's `DataTableCellType::has_native_codec`
 (`src/objects/class_object.rs`) accepts only types 1 through 5. Consequently,
 the DWG class-object reader retains each entire table as opaque bytes.
 The DXF unknown-object writer has no DXF body to emit, omits the table, and
@@ -24,8 +25,7 @@ the product inventory guard correctly blocks the missing object.
 
 Executable changes are saved locally in isolated AcadRust commit `be58a0b`,
 on branch `fix/datatable-dxf-preservation`, after the retained red reproductions.
-They are not published or a product dependency update yet. The subsequent
-DXF XRECORD correction is saved in local commit `bab8ac0`, after red-test
+The subsequent DXF XRECORD correction is saved in commit `bab8ac0`, after red-test
 commit `9faadfd`. The revised complete suite passes 2,448 active tests with
 93 ignored by normal selection; all three focused hard-ownership cases,
 including the two optional external inputs, also pass on that commit.
@@ -54,10 +54,10 @@ references cannot be resolved by native entget after opening the legacy TABLE
 round-trip graph; codec tests check those owners independently. This is not a
 claim that the native application exposes the complete original ownership graph.
 
-## Native R14 blocker diagnosis
+## Native R14 blocker diagnosis and correction
 
-The complete R14 ASCII DXF still fails to open in ProgeCAD with
-`Invalid ResBuf`. The published `c8f4b05` output reproduces the same rejection,
+Before the final correction, the complete R14 ASCII DXF failed to open in ProgeCAD with
+`Invalid ResBuf`. The previous `c8f4b05` output reproduces the same rejection,
 so this is a pre-existing additional defect rather than a regression caused by
 the new DATATABLE marker. Neither changing the table marker nor restoring
 XRECORD cloning rule 1 removes it. Removing XDATA-range codes from XRECORDs
@@ -95,8 +95,8 @@ field; a later 280 occurs as payload after a named round-trip section. This
 export consumes/rebuilds legacy data (45 XRECORDs versus 323 in the candidate),
 so it is a structural control, not proof that all original objects survive.
 
-The codec writer currently emits the R2000 cloning prefix for R14 as well.
-The reader also consumes the first 280 unconditionally, potentially losing a
+The previous codec writer emitted the R2000 cloning prefix for R14 as well.
+Its reader also consumed the first 280 unconditionally, potentially losing a
 real R14 payload value. The native observations support version-gating both
 paths at AC1015, retaining KeepExisting as the implicit R14 rule. Removing the
 prefix does not remove a user payload entry. Red-test commit `9faadfd` records the two demonstrated failures. The
@@ -124,8 +124,8 @@ differences. See `target/datatable-r14-fixed-native-comparison.json`. Its lines
 match the diagnostic copy exactly; only line endings differ. The newly
 generated R2000 DXF is byte-identical to the already validated output (SHA-256
 `fd1dbffa6cc6bf9b817183e551a631620cbe8367a0060eefe6daabdf8730b696`).
-No production dependency pin or loss allowance changed. Original corpus inputs
-were not edited.
+No production loss allowance changed. Original corpus inputs were not edited.
+Product adoption is recorded separately below.
 
 A separate read-only harness compares all XRECORDs through the corrected
 codec, not only table children: 323 in R14 and 264 in R2000. Payload entries,
@@ -153,10 +153,14 @@ not overlap this task's changed paths. Both codec branches descend from
 preserve both accepted changes when their PRs are integrated. No changes
 were made in that task's worktrees or in the shared main folder.
 
-Remaining gates: publish the validated codec commit and complete product integration checks
-before publication or adoption. Do not declare the two product DXF rows fixed
-until the product checks pass. The earlier benchmark counts below are retained for provenance; the
-final v7 run is recorded above.
+The maintainer authorized publication on 2026-11-06. The annotated fork tag
+`arqstudiocad/on-ea66abe-datatable-dxf` was published and its remote peeled
+commit verified as `bab8ac01a48765648615a79089d77f3d594b6c0e`. The tag object
+is `608c431be8d56560e26687f4d2799fe5a8eaa374`. No fork main or upstream branch
+was changed. This branch updates only the AcadRust Git source in Cargo.lock.
+Other locked dependencies are unchanged. Published-pin product acceptance is
+recorded below. Earlier benchmark counts are retained for provenance; the final
+v7 run is recorded above.
 
 ## Verification recorded so far
 
@@ -193,6 +197,46 @@ The early v2 DXF R14 capture is invalid: its helper continued after an open
 failure and mislabeled the previous active drawing. It is excluded. Later
 helpers use actual full-path checks and conditional guards before creating a
 capture; a missing or wrong drawing produces no accepted result.
+
+## Published-pin product acceptance
+
+The extension was rebuilt with `uv sync` from the exact published Git pin on
+main base `3007dd8`. Local acceptance passes **616 Rust and 864 Python tests**
+(11 existing Qt drag-event deprecation warnings), **nine public core corpus
+groups**, both native Xref/table corpus groups and **nine optional document
+tests**. Clippy with all targets and warnings denied, cargo fmt, cargo deny,
+Ruff check/format (242 files), mypy (152 files) and stubtest pass. The initial
+bare optional-document run lacked `ARQ_NATIVE_XREF_DXF`; its native import
+case refused the missing setup. The configured rerun executes all nine cases
+successfully, including the separately hash-verified native DXF. The lockfile changes only AcadRust's Git source. The
+integrated matrix repeats the same 34 inputs and checks every original SHA-256
+before and after execution: **34 clean reads, 63 verified saves, five declared
+loss blocks and zero semantic save errors**, versus 61 / seven / zero in the
+recorded baseline. Only `example_r14.dwg` and `example_2000.dwg` DXF saves
+change from blocked to verified. All other per-drawing fields match after
+normalizing only random temporary-directory names in refusal diagnostics.
+The matrix exits 1 intentionally while blocked losses remain.
+
+The four strict product outputs match the independently observed codec
+artifacts byte for byte; no explicit loss acceptance is used:
+
+| Input | Output | SHA-256 |
+|---|---|---|
+| R14 | DWG | `946e7c20aa729d37d415858fcde593adc7b65dfca426390323a8d00fe689b9b3` |
+| R14 | DXF | `e1c19cd021e5114cd1699bb01be5dccc6eb937e3c6444f949f1604b96fa5284f` |
+| R2000 | DWG | `361dc22afc946aa534f408a20def13fad620d8f3e83ccbf497e5e4dfca1f7e59` |
+| R2000 | DXF | `fd1dbffa6cc6bf9b817183e551a631620cbe8367a0060eefe6daabdf8730b696` |
+
+Evidence: `target/datatable-product-pin-matrix.json`,
+`target/datatable-product-pin-matrix-comparison.json` (retains raw differences
+and the narrowly normalized comparison), and
+`target/datatable-product-native-artifacts-comparison.json`.
+The remaining five blocks are four dynamic-block purge-preventer DXF omissions
+and the independent Surface associative-object DXF omission. No loss allowance,
+production verifier, public API or runtime dependency was added or relaxed.
+Broader version/operation coverage, external BIM validation and Xref resolution
+remain separate work. Windows checks do not establish Linux/macOS or release
+CPU-floor acceptance. Milestones 03.4 and 03.5 remain open.
 
 ## Reference review
 

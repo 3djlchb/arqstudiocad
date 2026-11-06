@@ -72,6 +72,7 @@ opt-level = 3
 # Existing class-bearing R2000 TABLESTYLE dictionaries survive same-version saves;
 # existing class-bearing R14/R2000 MLEADERSTYLE dictionaries are retained too;
 # genuine downgrades keep their existing policy.
-# Immutable tag: arqstudiocad/on-ea66abe-legacy-mleader.
+# DATATABLE hard-owned cells and versioned legacy XRECORD cloning metadata survive DXF.
+# Immutable tag: arqstudiocad/on-ea66abe-datatable-dxf.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "c8f4b05ec9bd0006fb5f40c45113f40e1a74ecaa" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "bab8ac01a48765648615a79089d77f3d594b6c0e" }

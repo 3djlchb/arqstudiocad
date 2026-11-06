@@ -165,14 +165,20 @@ The next [DATATABLE investigation](testing/datatable-dxf-preservation.md)
 reproduces unsupported hard-owned cells and the legacy DXF subclass mismatch;
 its isolated codec candidate is not adopted. A separate native R14 `Invalid
 ResBuf` rejection, reproduced with the published codec, is traced to an
-incorrect R2000 XRECORD cloning prefix in R14 DXF. Local fork `bab8ac0`
+incorrect R2000 XRECORD cloning prefix in R14 DXF. Fork `bab8ac0`
 corrects versioned reader/writer handling after red tests; ProgeCAD reopens
 the actual corrected R14 DXF and matches 2,724 table/child properties. Fresh
 R2000 DWG/DXF and R14 DWG controls also match their native references. The
 revised codec suite passes 2,448 active tests and the three focused ownership
 cases, and a repeated 944-job paired corpus has no status or summary
-regressions. Publication and product adoption checks remain open. No additional
-product compatibility row is declared fixed.
+regressions. The authorized immutable tag
+`arqstudiocad/on-ea66abe-datatable-dxf` is published and remotely verified;
+published-pin product acceptance on base `3007dd8` passes 616 Rust and 864
+Python tests, nine public core groups, both native corpus groups and nine
+optional document tests. The same 34-input integrated matrix has 63 verified
+saves, five loss blocks and no semantic errors; only the two intended DXF rows
+change. All four strict product outputs match the independently observed
+artifacts byte for byte. Product adoption awaits PR review and merge.
 Milestones 03.4 and 03.5 remain in progress.
 
 ## Phase 04 — Associative technical documentation ○
