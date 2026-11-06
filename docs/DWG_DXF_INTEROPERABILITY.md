@@ -482,3 +482,18 @@ problems still open: ATMOS saved again in DWG 2007/2018 (three AutoCAD solids
 whose construction history holds a sweep node) and R2000 saves built on
 `example_2000.dwg` (the Standard dimension style's DIMTXSTY naming a linetype
 record).
+
+### A read default dimension style and its text style (2026-11-06)
+
+`example_2000.dwg` holds only the ISO-25 dimension style; reading it still
+adds the default "Standard", whose DIMTXSTY kept the handle the default text
+style has in a new document (0x14). In that drawing 0x14 is the ByBlock
+linetype, so ProgeCAD 2026's AUDIT reported two errors on every save ("Object
+of class AcDbLinetypeTableRecord can't be cast to AcDbTextStyleTableRecord").
+The [correction](testing/progecad-r2000-dimtxsty.md) in fork `6e03fb1`
+(immutable tag `arqstudiocad/on-ea66abe-r2000-dimtxsty`, red test `5ab73a0`)
+resolves such a style's text style by the name it keeps, else the current text
+style, leaving the drawing's own styles as read; it is stacked on `b6e2a2a`.
+Rewritten, `example_2000.dwg` audits clean in ProgeCAD. Whether to add a
+"Standard" style the drawing does not have at all is unchanged. ATMOS saved
+again in DWG 2007/2018 remains open.
