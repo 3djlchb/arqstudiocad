@@ -438,3 +438,28 @@ core groups, both native corpus groups and eight optional document tests.
 Product adoption awaits PR review and merge. DATATABLE, Surface,
 dynamic-block DXF controls and broader external/version coverage remain open;
 03.4/03.5 are not closed by this correction.
+
+### Hard-owned DATATABLE and legacy XRECORD follow-up (2026-11-06)
+
+The [scoped correction](testing/datatable-dxf-preservation.md) in fork
+`bab8ac0`, published under immutable tag
+`arqstudiocad/on-ea66abe-datatable-dxf`, adds native type-6 hard-owned cells,
+legacy DXF subclass spelling and version-correct XRECORD cloning metadata.
+It preserves real R14 group-280 payload entries rather than treating them as
+R2000 metadata. ProgeCAD 2026 reopens the corrected actual R14 DXF with all
+2,724 observed table/child properties unchanged; R2000 DWG/DXF each match
+2,889 properties. Complete owner/reference semantics are checked separately
+in the codec; native owner-resolution limitations remain documented.
+
+The rebuilt published-pin product matrix on base `3007dd8` checks the same
+34 source hashes and improves to **63 verified saves / five declared-loss
+blocks / zero semantic save errors**. Only the two DATATABLE DXF rows change
+from the previous baseline after temporary diagnostic-path normalization.
+All four strict DWG/DXF outputs match the independently observed artifacts
+byte for byte. The codec suite passes 2,448 active tests, and the repeated
+944-job paired comparison has no status or summary regressions. Published-pin
+acceptance passes 616 Rust and 864 Python tests, nine public core groups, both
+native corpus groups and nine optional document tests; static, bindings,
+formatting and dependency checks pass. Product adoption awaits PR review;
+no verifier or loss allowance is relaxed. Surface and dynamic-block DXF
+omissions, wider external/version coverage and milestones 03.4/03.5 remain open.
