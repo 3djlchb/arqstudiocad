@@ -55,15 +55,22 @@ failing for that reason; `6e03fb1` the fix.
 - ProgeCAD 2026, independent AUDIT of `example_2000.dwg` rewritten by the
   codec: two errors with the previous pin, none with the correction.
 
-## Still open
+## Entities added to `example_2000.dwg`: not a codec fault
 
-A solid added to `example_2000.dwg` and saved as DWG 2000 by the application
-reads back here, in model space, but ProgeCAD does not list it among the
-model-space entities (AUDIT is clean); the drawing's own solid and regions
-are listed. A box in a new DWG 2000 drawing is listed and measures 24, so the
-ACIS writer is not the cause; the DWG 2000 samples of ADR 0024 steps 4a to 4c
-were built on `example_2000.dwg`, and ProgeCAD never measured their solids.
-Being isolated separately.
+A line or a solid added to `example_2000.dwg` and saved as DWG 2000 reads back
+here in model space, chained correctly (the former last entity 0x894 links to
+it, the model-space record names it last; LibreDWG agrees), yet ProgeCAD does
+not list it. ProgeCAD lists 45 model-space entities of the *original*
+drawing too, stopping at 0x398, whose successor 0x399 is an ARC_DIMENSION, a
+later entity in this DWG 2000; the 23 entities after it, up to 0x894, are not
+listed either. An entity appended to the chain therefore falls in the part
+ProgeCAD does not show. In the native DWG 2000 `2000/Constraints.dwg`, a line
+added by the codec is listed (three entities, the new one last), as is a box
+in a new DWG 2000 drawing (measured 24). The DWG 2000 samples of ADR 0024
+steps 4a to 4c were built on `example_2000.dwg`: their solids are hidden by
+the same cause, not by the writer.
+
+## Still open
 
 ATMOS (LibreDWG's `2007/ATMOS-DC22S.dwg`) saved again in DWG 2007/2018 is
 refused by ProgeCAD; three AutoCAD solids whose construction history holds a
