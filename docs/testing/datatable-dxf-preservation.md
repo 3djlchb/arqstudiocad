@@ -2,7 +2,7 @@
 
 Status: **in progress; candidate not adopted or published**. Updated 2026-11-06.
 Milestones 03.4 and 03.5 remain open. The product still uses fork `c8f4b05`.
-The isolated product documentation branch is based on main `4e3358a` after
+The isolated product documentation branch is based on main `3007dd8` after
 rebasing its own progress commit. The shared main worktree is not modified
 by this task; earlier product baseline measurements retain their recorded base.
 
@@ -138,10 +138,25 @@ was changed. The harness and results are retained in the codec worktree as
 `target/datatable_xrecord_verify.rs` and
 `target/datatable-all-xrecords-comparison.json`.
 
-Remaining gates: rerun the affected paired corpus and product integration checks
+The final paired run on `bab8ac0` repeats all 944 jobs on the same 34
+hash-checked inputs. Compared with the preceding candidate, all statuses and
+summary fields are unchanged. Two error strings differ only in the first
+rejected Surface object handle, in both candidate and baseline; both still
+refuse the same unsupported ACDBASSOCEDGEACTIONPARAM promotion to AC1032.
+The exact differences are retained in `target/datatable-bench-v7-vs-v6.json`.
+
+The concurrent DWG 2004 writer task is isolated on `fix/dwg2004-writer`
+(codec `f163b41`, product worktree based on `3007dd8` at inspection). Its
+codec changes touch `src/io/dwg/dwg_writer.rs` and its own test; these do
+not overlap this task's changed paths. Both codec branches descend from
+`c8f4b05`; neither includes the other. Product dependency updates must
+preserve both accepted changes when their PRs are integrated. No changes
+were made in that task's worktrees or in the shared main folder.
+
+Remaining gates: publish the validated codec commit and complete product integration checks
 before publication or adoption. Do not declare the two product DXF rows fixed
-until the product checks pass. The previous full-suite and benchmark counts
-below predate the final XRECORD version correction.
+until the product checks pass. The earlier benchmark counts below are retained for provenance; the
+final v7 run is recorded above.
 
 ## Verification recorded so far
 
@@ -160,7 +175,7 @@ below predate the final XRECORD version correction.
   with `ARQ_DATATABLE_CORPUS` configured. Logs:
   codec `target/datatable-codec-full-v6.log` and
   `target/datatable-native-focused-v7.log`.
-- The rebuilt paired benchmark completes **944 jobs on the same 34 drawings**
+- The earlier candidate benchmark completes **944 jobs on the same 34 drawings**
   across source-version and forced-2018 profiles. No write-status regression:
   the candidate additionally writes the two forced-2018 DWGs previously blocked
   by opaque DATATABLE payloads. Both codecs still refuse the separate Surface

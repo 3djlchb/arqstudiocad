@@ -170,7 +170,8 @@ corrects versioned reader/writer handling after red tests; ProgeCAD reopens
 the actual corrected R14 DXF and matches 2,724 table/child properties. Fresh
 R2000 DWG/DXF and R14 DWG controls also match their native references. The
 revised codec suite passes 2,448 active tests and the three focused ownership
-cases; paired corpus and product adoption checks remain open. No additional
+cases, and a repeated 944-job paired corpus has no status or summary
+regressions. Publication and product adoption checks remain open. No additional
 product compatibility row is declared fixed.
 Milestones 03.4 and 03.5 remain in progress.
 
