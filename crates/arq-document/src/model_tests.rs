@@ -226,3 +226,44 @@ fn the_working_document_is_saved_and_recovered_from_the_own_model() {
         );
     }
 }
+
+#[test]
+fn a_new_drawing_saved_before_r2010_says_its_multileader_style_version() {
+    // ProgeCAD refuses a DWG 2004 whose MLEADERSTYLE lacks the version EED
+    // AutoCAD writes before R2010 (ACAD_MLEADERVER, 1070 2): the codec pin
+    // must write it, in 2004 and 2007 alike.
+    use acadrust::objects::ObjectType;
+    use acadrust::types::DxfVersion;
+    use acadrust::xdata::XDataValue;
+    let dir = tempfile::tempdir().unwrap();
+    for (version, name) in [
+        (DxfVersion::AC1018, "nuevo-2004.dwg"),
+        (DxfVersion::AC1021, "nuevo-2007.dwg"),
+    ] {
+        let mut doc = Document::new();
+        doc.cad_mut().version = version;
+        let path = dir.path().join(name);
+        doc.save(&path).unwrap();
+        let back = Document::open(&path).unwrap();
+        let cad = back.cad();
+        assert!(cad.app_ids.get("ACAD_MLEADERVER").is_some(), "{name}");
+        let styles: Vec<_> = cad
+            .objects
+            .iter()
+            .filter(|(_, o)| matches!(o, ObjectType::MultiLeaderStyle(_)))
+            .map(|(h, _)| *h)
+            .collect();
+        assert!(!styles.is_empty(), "{name}");
+        for h in styles {
+            let values = cad
+                .object_xdata(h)
+                .and_then(|x| {
+                    x.records()
+                        .iter()
+                        .find(|r| r.application_name == "ACAD_MLEADERVER")
+                })
+                .map(|r| r.values.clone());
+            assert_eq!(values, Some(vec![XDataValue::Integer16(2)]), "{name} {h:?}");
+        }
+    }
+}
