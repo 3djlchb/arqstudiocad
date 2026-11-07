@@ -24,6 +24,7 @@
 //! | Curves | [`Line`], [`Circle`], [`Arc`], and [`Geometry2`] for any of them |
 //! | Move, rotate, scale, mirror | [`Transform2`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
+//! | Polygons with holes, their union, intersection and difference | [`Region`] |
 //! | Object-snap points | [`snap`] |
 //! | Errors | [`GeometryError`] |
 //!
@@ -69,6 +70,7 @@ mod intersect;
 mod line;
 mod point;
 mod point3;
+mod region;
 pub mod snap;
 mod tolerance;
 mod transform;
@@ -86,6 +88,7 @@ pub use intersect::{Intersections, intersect};
 pub use line::Line;
 pub use point::Point2;
 pub use point3::Point3;
+pub use region::{Containment, Region};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
 pub use transform3::Transform3;

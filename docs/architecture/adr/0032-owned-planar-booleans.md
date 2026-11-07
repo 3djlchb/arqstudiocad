@@ -123,6 +123,20 @@ millimetre architecture spans thousands of units.
 4. The commands of D5 in the document, the Python API and the ribbon, and
    the results checked in ProgeCAD.
 
+### Progress
+
+- **2 (done):** `Body::union`, `Body::intersection` and `Body::difference`
+  in `arq-kernel`, on `Region`'s union, intersection and difference of
+  polygons with holes in `arq-geometry`. Each face is split by the other
+  solid's section in its plane, a 2D boolean that splits and classifies at
+  once; a corner on that plane counts as above it (a symbolic
+  perturbation), so a corner or an edge of one solid on a face's plane of
+  the other is already handled. Coplanar faces that meet are refused
+  (`BooleanError::Coplanar`), as are results touching along an edge or at a
+  corner (`BooleanError::NonManifold`), until step 3. A box inside another
+  already leaves a void. The comparison with Truck moves to step 3, with
+  the coincident cases it fails.
+
 ## Consequences
 
 - Booleans of the solids architecture uses most need no third-party

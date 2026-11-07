@@ -39,6 +39,8 @@ pub enum GeometryError {
     InvalidScale,
     /// An affine transformation has no inverse because its linear part is singular.
     SingularTransform,
+    /// A region's contour has fewer than three corners.
+    ShortContour,
 }
 
 impl fmt::Display for GeometryError {
@@ -66,6 +68,7 @@ impl fmt::Display for GeometryError {
             Self::SingularTransform => {
                 write!(f, "the transformation is singular and has no inverse")
             }
+            Self::ShortContour => write!(f, "a contour needs at least three corners"),
         }
     }
 }

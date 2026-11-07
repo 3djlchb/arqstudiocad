@@ -16,11 +16,13 @@
 //! | A face's surface | [`Surface`]: [`Plane`], [`Cone`], [`EllipticCylinder`], [`Sphere`], [`Torus`], [`NurbsSurface`] |
 //! | Why parts are no body | [`BrepError`] |
 //! | What to draw of a body | [`Body::wireframe`] → [`Wireframe`] |
+//! | Union, intersection, difference of planar solids | [`Body::union`], [`Body::intersection`], [`Body::difference`] → [`BooleanError`] |
 //! | Its volume, area, centroid and bounds | [`Body::mass_properties`] → [`MassProperties`] |
 //!
 //! Like `arq-geometry`, this crate depends on no document, Python or GUI;
 //! no engine or backend type appears in it (ADR 0020 D4).
 
+mod boolean;
 mod brep;
 mod chart;
 mod curve;
@@ -30,6 +32,7 @@ mod primitives;
 mod surface;
 mod tessellate;
 
+pub use boolean::BooleanError;
 pub use brep::{
     Body, BodyBuilder, BrepError, Coedge, CoedgeId, Edge, EdgeId, Face, FaceId, Loop, LoopId, Lump,
     Shell, ShellId, Vertex, VertexId,
