@@ -491,3 +491,65 @@ fn spheres_and_tori_read_back_and_are_saved() {
         Err(DocumentError::Geometry(_))
     ));
 }
+
+#[test]
+fn a_void_and_a_second_lump_survive_dwg_2000() {
+    // Saved in DWG 2000 the ACIS is SAT 400, which lacks ACIS 7.0's added
+    // pointer: a shell is `$attrib $next $subshell $face $wire $lump`, a
+    // lump `$attrib $next $shell $body`. Read back by the codec alone the
+    // layout cannot be judged (a wrong writer and a wrong reader agree),
+    // so the records are checked as written: ProgeCAD read a hollow box
+    // as solid when the void sat where the subshell goes.
+    use acadrust::types::DxfVersion;
+    let hollow = Body::cuboid(p(0.0, 0.0, 0.0), p(3.0, 3.0, 3.0))
+        .unwrap()
+        .difference(&Body::cuboid(p(1.0, 1.0, 1.0), p(2.0, 2.0, 2.0)).unwrap())
+        .unwrap()
+        .unwrap();
+    let apart = Body::cuboid(p(10.0, 0.0, 0.0), p(11.0, 1.0, 1.0))
+        .unwrap()
+        .union(&Body::cuboid(p(13.0, 0.0, 0.0), p(14.0, 1.0, 1.0)).unwrap())
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let mut doc = Document::new();
+    doc.cad_mut().version = DxfVersion::AC1015;
+    doc.add_solid(&hollow).unwrap();
+    doc.add_solid(&apart).unwrap();
+    let path = dir.path().join("huecos-2000.dwg");
+    doc.save(&path).unwrap();
+    let back = Document::open(&path).unwrap();
+    let mut seen = 0;
+    for e in back.cad().entities() {
+        let Some(data) = crate::acis::acis_data(e) else {
+            continue;
+        };
+        let text = &data.sat_data;
+        assert!(text.starts_with("400 "), "SAT 400 in DWG 2000");
+        // The first pointer after the attribute: a shell's or lump's next.
+        let next = |kind: &str| -> Vec<String> {
+            text.lines()
+                .filter(|l| l.starts_with(kind))
+                .map(|l| l.split_whitespace().nth(2).unwrap().to_owned())
+                .collect()
+        };
+        let (shells, lumps) = (next("shell "), next("lump "));
+        if lumps.len() == 1 {
+            assert_eq!(shells.len(), 2, "the outside and the void");
+            assert_ne!(shells[0], "$-1", "the outer shell leads to the void");
+            seen += 1;
+        } else {
+            assert_eq!(lumps.len(), 2);
+            assert_ne!(lumps[0], "$-1", "the first lump leads to the second");
+            seen += 1;
+        }
+        let m = back
+            .solid(e.as_entity().handle().value())
+            .unwrap()
+            .unwrap()
+            .mass_properties()
+            .unwrap();
+        let near = |v: f64| (m.volume - v).abs() < 1e-9 * v;
+        assert!(near(26.0) || near(2.0), "{}", m.volume);
+    }
+    assert_eq!(seen, 2);
+}
