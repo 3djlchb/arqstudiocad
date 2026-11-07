@@ -497,3 +497,17 @@ style, leaving the drawing's own styles as read; it is stacked on `b6e2a2a`.
 Rewritten, `example_2000.dwg` audits clean in ProgeCAD. Whether to add a
 "Standard" style the drawing does not have at all is unchanged. ATMOS saved
 again in DWG 2007/2018 remains open.
+
+### Voids and second lumps in DWG 2000 (2026-11-07)
+
+DWG 2000 keeps a solid's ACIS as SAT 400, without the pointer ACIS 7.0 added
+to each topology record. Writing down to SAT 400, the codec dropped the wrong
+token of lumps and shells: a body's second lump became unreachable, and a
+lump's void sat where the subshell goes. ProgeCAD 2026 read a hollow box saved
+in DWG 2000 as a solid one; DWG 2018 and DXF were right. Reading SAT 400 made
+the same mistake back, so the codec's own round trips hid it. The
+[correction](testing/progecad-acis400-topology.md) in fork `f10cc74`
+(immutable tag `arqstudiocad/on-ea66abe-acis400-topology`, red test
+`8823d84`, stacked on `6e03fb1`) drops and restores that pointer at token 0
+for every topology record. ProgeCAD now measures the void and the second lump
+in DWG 2000.

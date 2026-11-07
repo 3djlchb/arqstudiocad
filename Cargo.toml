@@ -76,6 +76,8 @@ opt-level = 3
 # Before R2010 an MLEADERSTYLE carries its version as ACAD_MLEADERVER EED, as
 # AutoCAD writes it, so ProgeCAD opens new AC1018 drawings. A default
 # dimension style a read drawing lacks names that drawing's text style.
-# Immutable tag: arqstudiocad/on-ea66abe-r2000-dimtxsty.
+# SAT 400 (DWG 2000 and earlier) lumps and shells keep their next pointers,
+# so a solid's void and a body's second lump survive.
+# Immutable tag: arqstudiocad/on-ea66abe-acis400-topology.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "6e03fb16f4481bfca6a00af8f18e31858d1b4bc8" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "f10cc742384aa84baea9376d486cb8023a39b1e0" }
