@@ -1,7 +1,8 @@
 """The 3D commands of milestone 02.8 (ADR 0024), in the ribbon's 3D tab:
 BOX, WEDGE, CYLINDER, CONE, SPHERE and TORUS, which make solids (steps 4a
 and 4b), EXTRUDE and REVOLVE, which make them of closed profiles (steps
-4c and 4d), and MASSPROP, which measures them.
+4c and 4d), UNION, SUBTRACT and INTERSECT, which combine solids of flat
+faces (step 5b, ADR 0032), and MASSPROP, which measures them.
 
 MASSPROP reports the volume, surface area, bounding box and centroid of the
 solids selected, together, as AutoCAD's MASSPROP reports a selection;
@@ -25,7 +26,13 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
-from arqstudiocad.core import CadDocument, CadLine, CadMassProperties, CadSolidMeasures
+from arqstudiocad.core import (
+    CadChangeSet,
+    CadDocument,
+    CadLine,
+    CadMassProperties,
+    CadSolidMeasures,
+)
 from arqstudiocad.i18n import tr
 
 #: Significant digits shown: the kernel refines each measure until it
@@ -458,6 +465,94 @@ def _height(
         ctx.message(tr("The height cannot be zero."))
 
 
+def _combined(
+    ctx: CommandContext,
+    document: CadDocument,
+    result: tuple[str, int | None, list[int], list[int], CadChangeSet],
+    too_few: str,
+    empty: str,
+) -> None:
+    """Says how UNION, SUBTRACT or INTERSECT went: the entities left out,
+    then the result, or why nothing changed (maintainer, 2026-11-07)."""
+    outcome, _, solids, not_solids, changes = result
+    if not_solids:
+        ctx.message(tr("{count} were not solids.", count=len(not_solids)))
+    if outcome == "made":
+        ctx.session.report(document, changes)
+        return
+    if outcome == "curved":
+        ctx.message(
+            tr("{count} solids have curved faces: only flat ones combine yet.", count=len(solids))
+        )
+    elif outcome == "unreadable":
+        ctx.message(tr("{count} solids cannot be read yet.", count=len(solids)))
+    elif outcome == "too_few":
+        ctx.message(too_few)
+    else:
+        ctx.message(empty)
+    raise CommandCancelledError(tr("Nothing changed."))
+
+
+def union(ctx: CommandContext) -> CommandScript:
+    """UNION, AutoCAD's (Spanish UNION): the solids selected made one, the
+    first chosen keeping its properties; solids apart are pieces of it
+    (ADR 0032 D5)."""
+    document = ctx.document()
+    ids = yield from select_objects(ctx, document)
+    if not ids:
+        return
+    done_selecting(ctx, document, ids)
+    _combined(
+        ctx,
+        document,
+        document.union_solids(list(ids)),
+        tr("Select at least two solids."),
+        tr("Nothing would be left."),
+    )
+
+
+def intersect(ctx: CommandContext) -> CommandScript:
+    """INTERSECT, AutoCAD's (Spanish INTERSEC): what the solids selected
+    share, in the first chosen; nothing changes when they do not overlap
+    (ADR 0032 D5)."""
+    document = ctx.document()
+    ids = yield from select_objects(ctx, document)
+    if not ids:
+        return
+    done_selecting(ctx, document, ids)
+    _combined(
+        ctx,
+        document,
+        document.intersect_solids(list(ids)),
+        tr("Select at least two solids."),
+        tr("The solids do not overlap."),
+    )
+
+
+def subtract(ctx: CommandContext) -> CommandScript:
+    """SUBTRACT, AutoCAD's (Spanish DIFERENCIA): the solids to subtract
+    from, united, less the solids to subtract, in the first chosen; nothing
+    changes when nothing would be left (ADR 0032 D5)."""
+    document = ctx.document()
+    ctx.message(tr("Select solids to subtract from…"))
+    keep = yield from select_objects(ctx, document)
+    if not keep:
+        return
+    done_selecting(ctx, document, keep)
+    ctx.message(tr("Select solids to subtract…"))
+    cut = yield from select_objects(ctx, document)
+    if not cut:
+        return
+    done_selecting(ctx, document, cut)
+    _combined(
+        ctx,
+        document,
+        document.subtract_solids(list(keep), list(cut)),
+        tr("Select solids to subtract from and solids to subtract."),
+        tr("Nothing would be left."),
+    )
+
+
 #: The 3D commands.
 SOLID_COMMANDS = (
     Command("BOX", box),
@@ -468,6 +563,9 @@ SOLID_COMMANDS = (
     Command("TORUS", torus, ("TOR",)),
     Command("EXTRUDE", extrude, ("EXT",)),
     Command("REVOLVE", revolve, ("REV",)),
+    Command("UNION", union, ("UNI",)),
+    Command("SUBTRACT", subtract, ("SU",)),
+    Command("INTERSECT", intersect, ("IN",)),
     Command("MASSPROP", massprop),
 )
 

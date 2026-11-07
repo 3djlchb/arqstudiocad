@@ -82,8 +82,8 @@ pub use arq_document::{
     Unmeasured,
 };
 pub use arq_document::{
-    Extruded, KeptView, ProfileError, Revolved, Unextruded, Unrevolved, Unwritable, pick_among,
-    select_among,
+    Combination, Combined, Extruded, KeptView, ProfileError, Revolved, Unextruded, Unrevolved,
+    Unwritable, pick_among, select_among,
 };
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};

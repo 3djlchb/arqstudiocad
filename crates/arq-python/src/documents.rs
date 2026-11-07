@@ -511,6 +511,33 @@ impl CadDocument {
         Ok((out.solids, refused, CadChangeSet(changes)))
     }
 
+    /// Unites the 3D solids among `entity_ids` into the first of them,
+    /// erasing the others (UNION, ADR 0032 D5); see [`combination`] for
+    /// what it returns.
+    fn union_solids(&self, entity_ids: Vec<EntityId>) -> PyResult<Combination> {
+        let (out, changes) = self.edit(|cad| cad.union_solids(&entity_ids))?;
+        Ok(combination(out, changes))
+    }
+
+    /// What the 3D solids among `entity_ids` share, in the first of them,
+    /// the others erased (INTERSECT, ADR 0032 D5).
+    fn intersect_solids(&self, entity_ids: Vec<EntityId>) -> PyResult<Combination> {
+        let (out, changes) = self.edit(|cad| cad.intersect_solids(&entity_ids))?;
+        Ok(combination(out, changes))
+    }
+
+    /// The 3D solids among `from_ids` united, less every 3D solid among
+    /// `subtract_ids`, in the first of `from_ids`, the others erased
+    /// (SUBTRACT, ADR 0032 D5).
+    fn subtract_solids(
+        &self,
+        from_ids: Vec<EntityId>,
+        subtract_ids: Vec<EntityId>,
+    ) -> PyResult<Combination> {
+        let (out, changes) = self.edit(|cad| cad.subtract_solids(&from_ids, &subtract_ids))?;
+        Ok(combination(out, changes))
+    }
+
     /// Makes a sphere around `center` `(x, y, z)` (SPHERE, ADR 0024 step
     /// 4b).
     fn add_sphere(
@@ -1289,4 +1316,27 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadApplication>()?;
     m.add_class::<CadDocument>()?;
     Ok(())
+}
+
+/// What UNION, SUBTRACT and INTERSECT return to Python: the outcome
+/// (`"made"`, `"too_few"`, `"empty"`, `"curved"`, `"unreadable"`), the solid
+/// holding the result when made, the solids that stopped it when curved or
+/// unreadable, the entities left out as not 3D solids, and what changed.
+type Combination = (
+    &'static str,
+    Option<EntityId>,
+    Vec<EntityId>,
+    Vec<EntityId>,
+    CadChangeSet,
+);
+
+fn combination(out: arq_core::Combined, changes: arq_core::CadChangeSet) -> Combination {
+    let (code, solid, stopping) = match out.outcome {
+        arq_core::Combination::Made(id) => ("made", Some(id), Vec::new()),
+        arq_core::Combination::TooFew => ("too_few", None, Vec::new()),
+        arq_core::Combination::Empty => ("empty", None, Vec::new()),
+        arq_core::Combination::Curved(ids) => ("curved", None, ids),
+        arq_core::Combination::Unreadable(ids) => ("unreadable", None, ids),
+    };
+    (code, solid, stopping, out.not_solids, CadChangeSet(changes))
 }

@@ -1,6 +1,7 @@
 """The 3D commands (ADR 0024): MASSPROP reports the solids selected, block
 references' too, with every digit that holds, and says why the rest were
-not measured; it is in the ribbon's 3D tab and in Tools > Inquiry."""
+not measured; it is in the ribbon's 3D tab and in Tools > Inquiry. UNION,
+SUBTRACT and INTERSECT combine solids of flat faces (ADR 0032 D5)."""
 
 import math
 from pathlib import Path
@@ -14,8 +15,8 @@ from test_commands import Harness, harness, regression_drawing
 from ui_fakes import QuietUi
 
 from arqstudiocad.commands.solids import refusals, report
-from arqstudiocad.core import CadDocument, CadMassProperties
-from arqstudiocad.events import CommandCancelled, CommandFinished
+from arqstudiocad.core import CadColor, CadDocument, CadMassProperties
+from arqstudiocad.events import CommandCancelled, CommandFinished, DocumentChanged
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.ribbon import Ribbon, RibbonGroupWidget
@@ -256,7 +257,7 @@ def test_box_is_in_the_3d_tab_and_the_draw_menu(qtbot: QtBot) -> None:
     box = window.command_actions["BOX"]
     assert groups["modeling"].buttons[0].defaultAction() is box
     titles = [g.title.text() for g in window.findChildren(RibbonGroupWidget)]
-    assert titles.index("Modeling") + 1 == titles.index("Analysis")
+    assert titles.index("Modeling") + 2 == titles.index("Analysis")
     menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
     assert box in menus["&Modeling"].actions()
     assert menus["&Modeling"].menuAction() in menus["&Draw"].actions()
@@ -690,3 +691,182 @@ def test_solids_move_copy_rotate_scale_and_mirror_as_a_whole() -> None:
         h.run("UNDO")
     assert measure().centroid == pytest.approx((1.0, 1.5, 2.0))
     assert measure().volume == pytest.approx(24.0)
+
+
+# UNION, SUBTRACT and INTERSECT (ADR 0032 D5)
+
+
+def boxes(
+    *corners: tuple[tuple[float, float, float], tuple[float, float, float]],
+) -> tuple[Harness, CadDocument, list[int]]:
+    """A new drawing with a box between each pair of corners, the first on
+    layer "MUROS" in red."""
+    h = harness()
+    h.session.new_document()
+    document = h.session.active
+    assert document is not None
+    ids = [document.add_box(a, b)[0] for a, b in corners]
+    layer, _ = document.create_layer("MUROS")
+    document.set_entity_layer([ids[0]], layer)
+    document.set_entity_color([ids[0]], CadColor.from_index(1))
+    return h, document, ids
+
+
+def solid_ids(document: CadDocument) -> list[int]:
+    return [e.id for e in document.get_entities() if e.kind == "3DSOLID"]
+
+
+def volume_of(document: CadDocument, solid: int) -> float:
+    total = document.measure_solids([solid]).total
+    assert total is not None
+    return total.volume
+
+
+def test_union_makes_one_solid_of_the_first_chosen() -> None:
+    h, document, ids = boxes(((0, 0, 0), (2, 2, 2)), ((1, 1, 1), (3, 3, 3)))
+    h.run("UNION")
+    assert h.prompts()[-1] == "Select objects [All/Last(L)/Previous(P)]:"
+    h.session.select(document, ids)
+    h.run("")
+    assert h.of(CommandFinished)[-1].name == "UNION"
+    # The viewport is told: the second erased, the first changed.
+    changed = h.of(DocumentChanged)[-1].changes
+    assert (changed.deleted, changed.modified) == ((ids[1],), (ids[0],))
+    assert solid_ids(document) == [ids[0]]
+    assert volume_of(document, ids[0]) == pytest.approx(15.0)
+    (kept,) = document.get_entities([ids[0]])
+    assert kept.layer == "MUROS"
+    assert kept.color == CadColor.from_index(1)
+    assert h.session.selection(document) == ()
+    # One undo puts both back.
+    h.run("UNDO")
+    assert solid_ids(document) == ids
+    assert volume_of(document, ids[0]) == pytest.approx(8.0)
+
+
+def test_union_leaves_out_what_is_not_a_solid() -> None:
+    h, document, ids = boxes(((0, 0, 0), (1, 1, 1)), ((5, 0, 0), (6, 1, 1)))
+    line, _ = document.add_line((10, 0), (11, 0))
+    h.session.select(document, [*ids, line])
+    h.run("UNI")
+    assert h.messages()[-1] == "1 were not solids."
+    # Apart: one solid of two pieces.
+    assert solid_ids(document) == [ids[0]]
+    assert volume_of(document, ids[0]) == pytest.approx(2.0)
+    assert [e.kind for e in document.get_entities([line])] == ["LINE"]
+
+
+def test_union_of_one_solid_changes_nothing() -> None:
+    h, document, ids = boxes(((0, 0, 0), (1, 1, 1)))
+    h.session.select(document, ids)
+    h.run("UNION")
+    assert h.messages()[-2:] == ["Select at least two solids.", "Nothing changed."]
+    assert h.of(CommandCancelled)
+    assert solid_ids(document) == ids
+
+
+def test_subtract_asks_what_to_subtract_from_then_what_to_subtract() -> None:
+    # A wall of two boxes less two openings, chosen after the command.
+    h, document, ids = boxes(
+        ((0, 0, 0), (3, 0.2, 2.5)),
+        ((3, 0, 0), (6, 0.2, 2.5)),
+        ((1, 0, 0), (2, 0.2, 2)),
+        ((4, 0, 1), (5, 0.2, 2)),
+    )
+    h.run("SUBTRACT")
+    assert h.messages()[-1] == "Select solids to subtract from…"
+    assert h.prompts()[-1] == "Select objects [All/Last(L)/Previous(P)]:"
+    h.session.select(document, ids[:2])
+    h.run("")
+    assert h.messages()[-1] == "Select solids to subtract…"
+    assert h.prompts()[-1] == "Select objects [All/Last(L)/Previous(P)]:"
+    h.session.select(document, ids[2:])
+    h.run("")
+    assert h.of(CommandFinished)[-1].name == "SUBTRACT"
+    assert solid_ids(document) == [ids[0]]
+    assert volume_of(document, ids[0]) == pytest.approx(6 * 0.2 * 2.5 - 0.4 - 0.2)
+
+
+def test_subtract_with_a_preselection_takes_it_as_what_to_subtract_from() -> None:
+    h, document, ids = boxes(((0, 0, 0), (2, 2, 2)), ((1, 1, 1), (3, 3, 3)))
+    h.session.select(document, ids[:1])
+    h.run("SU")
+    assert h.messages()[-1] == "Select solids to subtract…"
+    h.session.select(document, ids[1:])
+    h.run("")
+    assert volume_of(document, ids[0]) == pytest.approx(7.0)
+
+
+def test_subtract_leaving_nothing_changes_nothing() -> None:
+    h, document, ids = boxes(((0, 0, 0), (1, 1, 1)), ((-1, -1, -1), (2, 2, 2)))
+    h.session.select(document, ids[:1])
+    h.run("SUBTRACT")
+    h.session.select(document, ids[1:])
+    h.run("")
+    assert h.messages()[-2:] == ["Nothing would be left.", "Nothing changed."]
+    assert solid_ids(document) == ids
+
+
+def test_intersect_keeps_what_they_share() -> None:
+    h, document, ids = boxes(((0, 0, 0), (2, 2, 2)), ((1, 1, 1), (3, 3, 3)))
+    h.session.select(document, ids)
+    h.run("IN")
+    assert solid_ids(document) == [ids[0]]
+    assert volume_of(document, ids[0]) == pytest.approx(1.0)
+
+
+def test_intersect_of_solids_apart_changes_nothing() -> None:
+    h, document, ids = boxes(((0, 0, 0), (1, 1, 1)), ((5, 0, 0), (6, 1, 1)))
+    h.session.select(document, ids)
+    h.run("INTERSECT")
+    assert h.messages()[-2:] == ["The solids do not overlap.", "Nothing changed."]
+    assert solid_ids(document) == ids
+
+
+def test_a_curved_solid_changes_nothing() -> None:
+    h, document, ids = boxes(((0, 0, 0), (2, 2, 2)))
+    column, _ = document.add_cone((1, 1, -1), 0.5, 0.5, 4)
+    h.session.select(document, [*ids, column])
+    h.run("UNION")
+    assert h.messages()[-2:] == [
+        "1 solids have curved faces: only flat ones combine yet.",
+        "Nothing changed.",
+    ]
+    assert solid_ids(document) == [*ids, column]
+
+
+def test_combining_in_spanish() -> None:
+    set_language("es")
+    try:
+        h, document, ids = boxes(((0, 0, 0), (2, 2, 2)), ((1, 1, 1), (3, 3, 3)))
+        h.session.select(document, ids[:1])
+        h.run("DIFERENCIA")
+        assert h.messages()[-1] == "Seleccione los sólidos que restar…"
+        h.session.select(document, ids[1:])
+        h.run("")
+        assert volume_of(document, ids[0]) == pytest.approx(7.0)
+        h2, document2, ids2 = boxes(((0, 0, 0), (1, 1, 1)), ((5, 0, 0), (6, 1, 1)))
+        h2.session.select(document2, ids2)
+        h2.run("INTERSEC")
+        assert h2.messages()[-2:] == ["Los sólidos no se superponen.", "No se cambió nada."]
+        h2.session.select(document2, ids2)
+        h2.run("UNION")
+        assert solid_ids(document2) == [ids2[0]]
+    finally:
+        set_language("en")
+
+
+def test_combining_is_in_the_3d_tab_and_the_modify_menu(qtbot: QtBot) -> None:
+    window = MainWindow(ui=QuietUi())
+    qtbot.addWidget(window)
+    groups = {g.group.name: g for g in window.findChildren(RibbonGroupWidget)}
+    names = ("UNION", "SUBTRACT", "INTERSECT")
+    actions = [window.command_actions[n] for n in names]
+    assert [b.defaultAction() for b in groups["solid_editing"].buttons] == actions
+    assert groups["solid_editing"].title.text() == "Solid Editing"
+    titles = [g.title.text() for g in window.findChildren(RibbonGroupWidget)]
+    at = titles.index("Modeling")
+    assert titles[at : at + 3] == ["Modeling", "Solid Editing", "Analysis"]
+    menus = {m.title(): m for m in window.menuBar().findChildren(QMenu)}
+    assert menus["&Solid Editing"].actions() == actions
+    assert menus["&Solid Editing"].menuAction() in menus["&Modify"].actions()
