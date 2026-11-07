@@ -193,14 +193,14 @@ pub(crate) fn boundary_of(
 /// Each boundary segment with the left direction on the face, from the
 /// outward normal at its middle, and how near the boundary the local rule
 /// is trusted; `None` without a boundary (the whole surface).
-pub(crate) fn guides_of(face: &Face, boundary: &[(Point3, Point3)]) -> Option<(Vec<Guide>, f64)> {
+pub(crate) fn guides_of(face: &Face, boundary: &[(Point3, Point3)]) -> Option<(Guides, f64)> {
     if boundary.is_empty() {
         return None;
     }
     let reach = Bounds3::from_points(boundary.iter().map(|(a, _)| *a))
         .map_or(0.0, |b| b.size().length())
         * NEAR;
-    let guides = boundary
+    let guides: Vec<Guide> = boundary
         .iter()
         .filter_map(|&(a, b)| {
             let along = b - a;
@@ -212,7 +212,7 @@ pub(crate) fn guides_of(face: &Face, boundary: &[(Point3, Point3)]) -> Option<(V
             })
         })
         .collect();
-    Some((guides, reach))
+    Some((Guides::new(guides), reach))
 }
 
 /// Whether the point of `line` at `t` lies in the face, by the rule
@@ -400,27 +400,76 @@ pub(crate) struct Guide {
     left: Vector3,
 }
 
+/// A face's guides, in runs of [`Guides::RUN`] with a ball around each:
+/// a run whose ball lies farther than the nearest guide found so far is
+/// passed over whole, so a point's nearest guide costs a few runs, not the
+/// whole boundary.
+pub(crate) struct Guides {
+    guides: Vec<Guide>,
+    /// Each run's centre and radius.
+    balls: Vec<(Point3, f64)>,
+}
+
+impl Guides {
+    /// How many consecutive guides a run holds.
+    const RUN: usize = 16;
+
+    fn new(guides: Vec<Guide>) -> Self {
+        let balls = guides
+            .chunks(Self::RUN)
+            .map(|run| {
+                let ends = run.iter().flat_map(|g| [g.a, g.a + g.along]);
+                let center =
+                    Bounds3::from_points(ends.clone()).map_or(Point3::ORIGIN, |b| b.center());
+                let radius = ends.map(|p| p.distance_to(center)).fold(0.0, f64::max);
+                (center, radius)
+            })
+            .collect();
+        Self { guides, balls }
+    }
+}
+
 /// How far `p`, on the face's surface, lies from the face's boundary, and
 /// whether it is on the left of the nearest boundary segment seen from
-/// outside: inside, when near.
-pub(crate) fn side_of(guides: &[Guide], p: Point3) -> (f64, bool) {
-    let mut nearest: Option<(f64, Point3, &Guide)> = None;
-    for g in guides {
-        let len2 = g.along.dot(g.along);
-        if len2 == 0.0 {
-            continue;
+/// outside: inside, when near. Of guides equally near, the first counts.
+pub(crate) fn side_of(guides: &Guides, p: Point3) -> (f64, bool) {
+    // The runs nearest first, so the best found early passes over most.
+    let mut runs: Vec<(f64, usize)> = guides
+        .balls
+        .iter()
+        .enumerate()
+        .map(|(k, &(c, r))| {
+            // A hair under the true bound, so rounding never passes over a
+            // guide as near as the best.
+            let d = p.distance_to(c);
+            ((d - r - 1e-12 * (d + r)).max(0.0), k)
+        })
+        .collect();
+    runs.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut nearest: Option<(f64, usize, Point3)> = None;
+    for (low, k) in runs {
+        if nearest.is_some_and(|(best, _, _)| low * low > best) {
+            break;
         }
-        let t = ((p - g.a).dot(g.along) / len2).clamp(0.0, 1.0);
-        let q = g.a + g.along * t;
-        let d = q.distance_squared_to(p);
-        if nearest.is_none_or(|(best, _, _)| d < best) {
-            nearest = Some((d, q, g));
+        let start = k * Guides::RUN;
+        for (i, g) in guides.guides[start..].iter().take(Guides::RUN).enumerate() {
+            let len2 = g.along.dot(g.along);
+            if len2 == 0.0 {
+                continue;
+            }
+            let t = ((p - g.a).dot(g.along) / len2).clamp(0.0, 1.0);
+            let q = g.a + g.along * t;
+            let d = q.distance_squared_to(p);
+            let index = start + i;
+            if nearest.is_none_or(|(best, at, _)| d < best || (d == best && index < at)) {
+                nearest = Some((d, index, q));
+            }
         }
     }
-    let Some((d2, q, g)) = nearest else {
+    let Some((d2, index, q)) = nearest else {
         return (0.0, true);
     };
-    (d2.sqrt(), g.left.dot(p - q) > 0.0)
+    (d2.sqrt(), guides.guides[index].left.dot(p - q) > 0.0)
 }
 
 /// The pieces of an isoline inside its face. Near the boundary (within

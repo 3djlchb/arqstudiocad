@@ -1027,7 +1027,10 @@ fn flat_faces_of_lines_and_arcs_are_integrated_once() {
 
 /// How many samples of its integrands measuring `face` of `body` takes.
 fn samples(body: &Body, index: usize) -> usize {
-    let b = body.vertex_bounds().unwrap();
+    // A whole sphere or torus has no vertex: its measured bounds then.
+    let b = body
+        .vertex_bounds()
+        .unwrap_or_else(|| body.mass_properties().unwrap().bounds);
     super::SAMPLES.with(|n| n.set(0));
     super::face_sums(
         body,
@@ -1065,4 +1068,68 @@ fn what_measuring_a_face_costs() {
             assert!(samples(&cone, i) <= 2 * 32, "side {i}");
         }
     }
+}
+
+/// A profile piece: the segment from `a` to `b`.
+fn profile_segment(a: (f64, f64), b: (f64, f64)) -> crate::primitives::ProfilePiece {
+    let q = |x: f64, y: f64| arq_geometry::Point2::new(x, y).unwrap();
+    crate::primitives::ProfilePiece {
+        curve: arq_geometry::Geometry2::Line(
+            arq_geometry::Line::new(q(a.0, a.1), q(b.0, b.1)).unwrap(),
+        ),
+        backward: false,
+    }
+}
+
+/// A profile piece: the arc round `c` of radius `r` from `from` to `to`.
+fn profile_arc(c: (f64, f64), r: f64, from: f64, to: f64) -> crate::primitives::ProfilePiece {
+    let center = arq_geometry::Point2::new(c.0, c.1).unwrap();
+    crate::primitives::ProfilePiece {
+        curve: arq_geometry::Geometry2::Arc(arq_geometry::Arc::new(center, r, from, to).unwrap()),
+        backward: false,
+    }
+}
+
+#[test]
+fn what_measuring_a_sphere_or_a_torus_costs() {
+    let frame = crate::primitives::RevolutionFrame {
+        origin: p(0.0, 0.0, 0.0),
+        axis: v(0.0, 0.0, 1.0),
+        radial: v(1.0, 0.0, 0.0),
+    };
+    // A quarter disc and a disc off the axis, turned three quarters of a
+    // turn: pieces of a sphere and of a torus, bounded by arcs.
+    let quarter = [
+        profile_segment((0.0, 0.0), (2.0, 0.0)),
+        profile_arc((0.0, 0.0), 2.0, 0.0, PI / 2.0),
+        profile_segment((0.0, 2.0), (0.0, 0.0)),
+    ];
+    let ring = [
+        profile_arc((3.0, 0.0), 1.0, -PI / 2.0, PI / 2.0),
+        profile_arc((3.0, 0.0), 1.0, PI / 2.0, 1.5 * PI),
+    ];
+    let dome = Body::revolution(&quarter, frame, 1.5 * PI).unwrap();
+    let tube = Body::revolution(&ring, frame, 1.5 * PI).unwrap();
+    let whole = [
+        Body::sphere(p(0.0, 0.0, 0.0), 2.0).unwrap(),
+        Body::torus(p(0.0, 0.0, 0.0), 3.0, 1.0).unwrap(),
+    ];
+    for body in [&dome, &tube, &whole[0], &whole[1]] {
+        for (i, face) in body.faces().iter().enumerate() {
+            if matches!(face.surface, Surface::Sphere(_) | Surface::Torus(_)) {
+                // The closed form's 8 × 10 samples, for each of the two
+                // rules the loops take before they settle: hundreds of
+                // thousands, a million on a torus, before.
+                assert_eq!(samples(body, i), 2 * 80, "face {i}");
+            }
+        }
+    }
+    // And exact: three quarters of a half ball and of a torus.
+    let near = |a: f64, b: f64| (a - b).abs() <= 1e-14 * b;
+    assert!(near(dome.mass_properties().unwrap().volume, 4.0 * PI));
+    assert!(near(tube.mass_properties().unwrap().volume, 4.5 * PI * PI));
+    assert!(near(
+        whole[1].mass_properties().unwrap().area,
+        12.0 * PI * PI
+    ));
 }

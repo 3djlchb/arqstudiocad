@@ -256,3 +256,50 @@ fn a_ball_turned_about_x_draws_its_meridians_to_its_poles_there() {
     }
     assert!(meridians > 0 && parallels > 0, "{meridians} {parallels}");
 }
+
+#[test]
+fn the_nearest_guide_is_the_one_a_full_search_finds() {
+    // A sector's curved face, its boundary drawn finely: hundreds of
+    // guides in runs. Points on and around it, near corners too, where
+    // guides tie: the runs give what visiting every guide in order gives,
+    // the first of equals included.
+    let body = sector(false);
+    let size = 1e-3;
+    let edges: Vec<Vec<Point3>> = body
+        .edges()
+        .iter()
+        .map(|e| super::edge_polyline(&body, e, size))
+        .collect();
+    for face in body.faces() {
+        let boundary = super::boundary_of(&body, face, &edges);
+        let Some((guides, _)) = super::guides_of(face, &boundary) else {
+            continue;
+        };
+        assert!(guides.guides.len() > 2 * super::Guides::RUN);
+        let corners: Vec<Point3> = boundary.iter().map(|s| s.0).collect();
+        let mut probes = corners.clone();
+        for k in 0..400 {
+            let t = k as f64 * 0.618_033_988_749_895;
+            let c = corners[k * 7 % corners.len()];
+            probes.push(c + v(t.sin(), (2.0 * t).cos(), (3.0 * t).sin()) * (0.5 * (t % 1.0)));
+        }
+        for q in probes {
+            let mut best: Option<(f64, usize, Point3)> = None;
+            for (i, g) in guides.guides.iter().enumerate() {
+                let len2 = g.along.dot(g.along);
+                if len2 == 0.0 {
+                    continue;
+                }
+                let t = ((q - g.a).dot(g.along) / len2).clamp(0.0, 1.0);
+                let r = g.a + g.along * t;
+                let d = r.distance_squared_to(q);
+                if best.is_none_or(|(b, _, _)| d < b) {
+                    best = Some((d, i, r));
+                }
+            }
+            let (d2, i, r) = best.unwrap();
+            let expected = (d2.sqrt(), guides.guides[i].left.dot(q - r) > 0.0);
+            assert_eq!(super::side_of(&guides, q), expected);
+        }
+    }
+}
