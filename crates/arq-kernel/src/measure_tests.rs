@@ -934,25 +934,26 @@ fn millimetre_solids_measure_as_well_as_metre_ones() {
     );
 }
 
-#[test]
-fn a_flat_polygon_face_is_integrated_once_exactly() {
-    // A box turned askew and far off: its faces' first rules already give
-    // what the finest give, so they are taken once.
-    let t = Transform3::rotation(v(1.0, 2.0, 3.0), 0.7)
-        .unwrap()
-        .then(Transform3::translation(v(5000.0, -3000.0, 200.0)));
-    let body = Body::cuboid(p(0.0, 0.0, 0.0), p(6000.0, 200.0, 3000.0))
-        .unwrap()
-        .transformed(t, 1.0)
-        .unwrap();
+/// Checks that each face `settles_at_once` says should agrees, first
+/// rules against the finest, within `1e-14` of the body's size to each
+/// sum's power, and is measured by its first rules; the others not.
+fn assert_first_rules_suffice(body: &Body, expected: &[bool]) {
     let origin = body.vertex_bounds().unwrap().center();
     let size = body.vertex_bounds().unwrap().size().length();
+    let found: Vec<bool> = body
+        .faces()
+        .iter()
+        .map(|f| super::settles_at_once(body, f))
+        .collect();
+    assert_eq!(found, expected);
     for (i, face) in body.faces().iter().enumerate() {
-        assert!(super::is_flat_polygon(&body, face));
-        let once = super::integrate_face(&body, face, i, origin, 1)
+        if !found[i] {
+            continue;
+        }
+        let once = super::integrate_face(body, face, i, origin, 1)
             .unwrap()
             .sums;
-        let finest = super::integrate_face(&body, face, i, origin, 16)
+        let finest = super::integrate_face(body, face, i, origin, 16)
             .unwrap()
             .sums;
         for k in 0..8 {
@@ -963,16 +964,105 @@ fn a_flat_polygon_face_is_integrated_once_exactly() {
             );
         }
         assert_eq!(
-            super::face_sums(&body, face, i, origin, size).unwrap().sums,
+            super::face_sums(body, face, i, origin, size).unwrap().sums,
             once
         );
     }
-    // A cap bounded by a circle is still refined until it settles.
-    let column = Body::cylinder(p(0.0, 0.0, 0.0), 1.0, 2.0).unwrap();
-    assert!(
-        column
-            .faces()
-            .iter()
-            .all(|f| !super::is_flat_polygon(&column, f))
-    );
+}
+
+#[test]
+fn flat_faces_of_lines_and_arcs_are_integrated_once() {
+    // Turned askew and far off, in millimetres.
+    let t = Transform3::rotation(v(1.0, 2.0, 3.0), 0.7)
+        .unwrap()
+        .then(Transform3::translation(v(5000.0, -3000.0, 200.0)));
+    let wall = Body::cuboid(p(0.0, 0.0, 0.0), p(6000.0, 200.0, 3000.0))
+        .unwrap()
+        .transformed(t, 1.0)
+        .unwrap();
+    assert_first_rules_suffice(&wall, &[true; 6]);
+    // A column's caps, bounded by a circle; its side is curved.
+    let column = Body::cylinder(p(0.0, 0.0, 0.0), 300.0, 3000.0)
+        .unwrap()
+        .transformed(t, 1.0)
+        .unwrap();
+    let caps: Vec<bool> = column
+        .faces()
+        .iter()
+        .map(|f| matches!(f.surface, Surface::Plane(_)))
+        .collect();
+    assert_first_rules_suffice(&column, &caps);
+    // A slot: two lines and two half circles, extruded.
+    let q = |x: f64, y: f64| arq_geometry::Point2::new(x, y).unwrap();
+    let line = |a, b| crate::primitives::ProfilePiece {
+        curve: arq_geometry::Geometry2::Line(arq_geometry::Line::new(a, b).unwrap()),
+        backward: false,
+    };
+    let half = |c, from: f64| crate::primitives::ProfilePiece {
+        curve: arq_geometry::Geometry2::Arc(
+            arq_geometry::Arc::new(c, 400.0, from, from + PI).unwrap(),
+        ),
+        backward: false,
+    };
+    let slot = [
+        line(q(0.0, -400.0), q(2000.0, -400.0)),
+        half(q(2000.0, 0.0), -PI / 2.0),
+        line(q(2000.0, 400.0), q(0.0, 400.0)),
+        half(q(0.0, 0.0), PI / 2.0),
+    ];
+    let slab = Body::extrusion(&slot, 0.0, 250.0)
+        .unwrap()
+        .transformed(t, 1.0)
+        .unwrap();
+    let flat: Vec<bool> = slab
+        .faces()
+        .iter()
+        .map(|f| matches!(f.surface, Surface::Plane(_)))
+        .collect();
+    assert_first_rules_suffice(&slab, &flat);
+    let m = slab.mass_properties().unwrap();
+    let exact = (2000.0 * 800.0 + PI * 400.0 * 400.0) * 250.0;
+    assert!((m.volume - exact).abs() <= 1e-14 * exact, "{:e}", m.volume);
+}
+
+/// How many samples of its integrands measuring `face` of `body` takes.
+fn samples(body: &Body, index: usize) -> usize {
+    let b = body.vertex_bounds().unwrap();
+    super::SAMPLES.with(|n| n.set(0));
+    super::face_sums(
+        body,
+        &body.faces()[index],
+        index,
+        b.center(),
+        b.size().length(),
+    )
+    .unwrap();
+    super::SAMPLES.with(std::cell::Cell::get)
+}
+
+#[test]
+fn what_measuring_a_face_costs() {
+    // In millimetres, where the cost once grew with the size.
+    let wall = Body::cuboid(p(0.0, 0.0, 0.0), p(6000.0, 200.0, 3000.0)).unwrap();
+    // Four edges of 16 nodes, each an 8-point rule along u, once.
+    for i in 0..wall.faces().len() {
+        assert_eq!(samples(&wall, i), 4 * 16 * 8, "face {i}");
+    }
+    let column = Body::cylinder(p(0.0, 0.0, 0.0), 300.0, 3000.0).unwrap();
+    for (i, face) in column.faces().iter().enumerate() {
+        let n = samples(&column, i);
+        match face.surface {
+            // A circle of 128 nodes, each an 8-point rule along u, once.
+            Surface::Plane(_) => assert_eq!(n, 128 * 8, "cap {i}"),
+            // The closed form's 32 samples, for each of the two rules the
+            // loops take before they settle.
+            _ => assert_eq!(n, 2 * 32, "side {i}"),
+        }
+    }
+    let cone = Body::cone(p(0.0, 0.0, 0.0), 300.0, 0.0, 3000.0).unwrap();
+    for (i, face) in cone.faces().iter().enumerate() {
+        if !matches!(face.surface, Surface::Plane(_)) {
+            assert!(samples(&cone, i) <= 2 * 32, "side {i}");
+        }
+    }
 }
