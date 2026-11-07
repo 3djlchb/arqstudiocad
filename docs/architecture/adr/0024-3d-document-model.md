@@ -398,6 +398,13 @@ part of this ADR.
     both ways and UNION of planar solids (5b-2); curved surfaces and NURBS
     in the writer (5b-3); SUBTRACT and INTERSECT, Spanish DIFERENCIA and
     INTERSEC, with AutoCAD's prompts (5b-4).
+- **Step 5b, revised (2026-11-07):** a spike before the adapter showed
+  Truck's booleans fail with coplanar faces (walls on the same floor,
+  touching boxes, flush holes; a box inside a box panics), which
+  architecture makes every day. The planar booleans are owned instead,
+  in four pull requests ([ADR 0032](0032-owned-planar-booleans.md)); Truck
+  is not a dependency, and curved booleans wait for their own decision
+  (maintainer, 2026-11-07).
 
 ## Consequences
 
