@@ -101,3 +101,28 @@ explicitly, and the geometry it returns is converted carefully (below).
    crate, conversions both ways and UNION of planar solids; 5b-3 curved
    surfaces and NURBS in the ACIS writer; 5b-4 SUBTRACT and INTERSECT
    (Spanish DIFERENCIA, INTERSEC), with AutoCAD's prompts.
+
+## Amendment: coplanar faces *(maintainer, 2026-11-07)*
+
+The spike above tested only solids in general position. Before building the
+adapter, the cases architecture makes every day were tried on `master`
+`55548a2`:
+
+| Case | Result |
+|---|---|
+| Two boxes overlapping in general position | correct, 12 faces, volume exact |
+| Two boxes apart | correct, two shells |
+| Two boxes touching face to face, centred or offset | `None` |
+| A box inside another | panic: "This shell is not oriented and closed" |
+| Two boxes sharing the floor, or flush at the top | `None` |
+| Two walls in millimetres (4000 × 200 × 2700 and a crossing one), same level | `None`, with tolerance 0.05 or 5 |
+| A slab minus a cylinder longer than it | correct |
+| A slab minus a cylinder flush with it; a blind hole flush at the top | `None` |
+
+Truck's booleans fail whenever a face of one solid lies on a face of the
+other, which in architecture is the rule. Decision 1 above is withdrawn:
+Truck does not become a dependency. The planar booleans are owned instead
+([ADR 0032](../architecture/adr/0032-owned-planar-booleans.md)); Truck stays a
+reference, and a comparison in tests in general position. Any backend
+proposed later, for curved solids, gets a coplanar spike like this one before
+its review is accepted.
