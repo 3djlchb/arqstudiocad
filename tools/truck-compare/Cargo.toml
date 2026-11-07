@@ -1,0 +1,22 @@
+[package]
+name = "truck-compare"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+description = "Compares arq-kernel's planar booleans with Truck's in general position (ADR 0032 D4)"
+
+# A workspace of its own: Truck is never a dependency of the product, of its
+# checks or of its dependency policy; this tool is run by hand.
+[workspace]
+
+[dependencies]
+arq-geometry = { path = "../../crates/arq-geometry" }
+arq-kernel = { path = "../../crates/arq-kernel" }
+# Truck's `master`, the revision reviewed in docs/references/truck.md.
+truck-meshalgo = { git = "https://github.com/ricosjp/truck", rev = "55548a27de0af3e87cceeb677b809aa110a87028" }
+truck-modeling = { git = "https://github.com/ricosjp/truck", rev = "55548a27de0af3e87cceeb677b809aa110a87028" }
+truck-shapeops = { git = "https://github.com/ricosjp/truck", rev = "55548a27de0af3e87cceeb677b809aa110a87028" }
+
+[profile.dev]
+opt-level = 3

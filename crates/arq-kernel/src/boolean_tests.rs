@@ -286,17 +286,6 @@ fn curved_solids_are_refused() {
 }
 
 #[test]
-fn coplanar_faces_wait_for_their_own_step() {
-    // Two boxes on the same floor, overlapping: a shared plane.
-    let a = cuboid((0.0, 0.0, 0.0), (2.0, 2.0, 2.0));
-    let b = cuboid((1.0, 1.0, 0.0), (3.0, 3.0, 3.0));
-    assert_eq!(a.union(&b), Err(BooleanError::Coplanar));
-    // The same floor far apart is no meeting: two lumps.
-    let c = cuboid((5.0, 5.0, 0.0), (6.0, 6.0, 1.0));
-    assert_eq!(a.union(&c).unwrap().lumps().len(), 2);
-}
-
-#[test]
 fn edges_lying_on_a_face_plane() {
     // A square post turned 45° in plan, its two side edges exactly in the
     // plane of the box's face x = 2 (corners on a plane: the symbolic
@@ -355,19 +344,6 @@ fn a_corner_on_a_straight_run_of_an_edge() {
     let rest = slab.difference(&cutter).unwrap().unwrap();
     assert_closed(&rest);
     assert!(close(volume(&rest), 2.0 - volume(&both)));
-}
-
-#[test]
-fn solids_touching_along_an_edge_wait_for_their_own_step() {
-    // A bar turned 45° about X, its lowest edge on the box's top back edge.
-    let a = cuboid((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-    let bar = turned(
-        &cuboid((-0.5, 0.0, 0.0), (1.5, 0.5, 0.5)),
-        (1.0, 0.0, 0.0),
-        PI / 4.0,
-        (0.0, 1.0, 1.0),
-    );
-    assert_eq!(a.union(&bar), Err(BooleanError::NonManifold));
 }
 
 #[test]
@@ -513,4 +489,252 @@ fn the_volumes_add_up_for_random_turned_boxes_and_wedges() {
     }
     // Most pairs overlap: the identities were tested on real cuts.
     assert!(checked > 75, "{checked}");
+}
+
+/// How many faces of `body` lie in the plane through `at` with outward
+/// `normal`.
+fn faces_on(body: &Body, normal: (f64, f64, f64), at: (f64, f64, f64)) -> usize {
+    let n = Vector3::new(normal.0, normal.1, normal.2).unwrap();
+    body.faces()
+        .iter()
+        .filter(|f| match &f.surface {
+            crate::surface::Surface::Plane(pl) => {
+                let m = if f.reversed {
+                    -pl.normal()
+                } else {
+                    pl.normal()
+                };
+                (m - n).length() < 1e-9 && pl.distance(p(at.0, at.1, at.2)) < 1e-6
+            }
+            _ => false,
+        })
+        .count()
+}
+
+#[test]
+fn boxes_on_the_same_floor_unite_as_one_floor() {
+    let a = cuboid((0.0, 0.0, 0.0), (2.0, 2.0, 2.0));
+    let b = cuboid((1.0, 1.0, 0.0), (3.0, 3.0, 3.0));
+    let union = a.union(&b).unwrap();
+    assert_closed(&union);
+    assert!(close(volume(&union), 8.0 + 12.0 - 2.0));
+    // One floor, the outline of both: no seam.
+    assert_eq!(faces_on(&union, (0.0, 0.0, -1.0), (0.0, 0.0, 0.0)), 1);
+    let both = a.intersection(&b).unwrap().unwrap();
+    assert_closed(&both);
+    assert!(close(volume(&both), 2.0));
+    assert_eq!((both.faces().len(), both.vertices().len()), (6, 8));
+    let rest = a.difference(&b).unwrap().unwrap();
+    assert_closed(&rest);
+    assert!(close(volume(&rest), 6.0));
+    let other = b.difference(&a).unwrap().unwrap();
+    assert!(close(volume(&other), 10.0));
+}
+
+#[test]
+fn equal_boxes() {
+    let a = cuboid((0.0, 0.0, 0.0), (2.0, 3.0, 4.0));
+    let union = a.union(&a).unwrap();
+    assert!(close(volume(&union), 24.0));
+    assert_eq!(union.faces().len(), 6);
+    assert!(close(volume(&a.intersection(&a).unwrap().unwrap()), 24.0));
+    assert_eq!(a.difference(&a).unwrap(), None);
+}
+
+#[test]
+fn boxes_sharing_a_face() {
+    // Walls end to end, flush: one block, no line where they met.
+    let a = cuboid((0.0, 0.0, 0.0), (3.0, 0.2, 2.5));
+    let b = cuboid((3.0, 0.0, 0.0), (5.0, 0.2, 2.5));
+    let union = a.union(&b).unwrap();
+    assert_closed(&union);
+    assert!(close(volume(&union), 5.0 * 0.2 * 2.5));
+    assert_eq!(
+        (
+            union.faces().len(),
+            union.edges().len(),
+            union.vertices().len()
+        ),
+        (6, 12, 8)
+    );
+    assert_eq!(a.intersection(&b).unwrap(), None);
+    let rest = a.difference(&b).unwrap().unwrap();
+    assert!(close(volume(&rest), 3.0 * 0.2 * 2.5));
+    assert_eq!(rest.faces().len(), 6);
+    // A smaller box on a face: the face keeps the rest around it.
+    let c = cuboid((3.0, 0.05, 0.5), (4.0, 0.15, 1.0));
+    let joined = a.union(&c).unwrap();
+    assert_closed(&joined);
+    assert!(close(volume(&joined), 1.5 + 0.05));
+    assert_eq!(faces_on(&joined, (1.0, 0.0, 0.0), (3.0, 0.0, 0.0)), 1);
+}
+
+#[test]
+fn boxes_touching_along_an_edge_or_at_a_corner() {
+    let a = cuboid((0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+    let along = cuboid((1.0, 1.0, 0.0), (2.0, 2.0, 1.0));
+    let union = a.union(&along).unwrap();
+    // Two pieces of one solid, each closed, along the line they touch.
+    assert_eq!(union.lumps().len(), 2);
+    assert_closed(&union);
+    assert!(close(volume(&union), 2.0));
+    assert_eq!(a.intersection(&along).unwrap(), None);
+    assert!(close(volume(&a.difference(&along).unwrap().unwrap()), 1.0));
+    let corner = cuboid((1.0, 1.0, 1.0), (2.0, 2.0, 2.0));
+    let union = a.union(&corner).unwrap();
+    assert_eq!(union.lumps().len(), 2);
+    assert!(close(volume(&union), 2.0));
+    assert_eq!(a.intersection(&corner).unwrap(), None);
+    // A void touching the outside along an edge: a bar turned 45° about
+    // X, inside a box, its lowest edge on the box's floor.
+    let room = cuboid((-1.0, 0.0, 0.0), (3.0, 4.0, 4.0));
+    let leaning = turned(
+        &cuboid((-0.5, 0.0, 0.0), (1.5, 0.5, 0.5)),
+        (1.0, 0.0, 0.0),
+        PI / 4.0,
+        (0.0, 2.0, 0.0),
+    );
+    let hollow = room.difference(&leaning).unwrap().unwrap();
+    assert_closed(&hollow);
+    assert_eq!(hollow.lumps().len(), 1);
+    assert_eq!(hollow.lumps()[0].shells.len(), 2);
+    assert!(close(volume(&hollow), 64.0 - 0.5));
+    // Part of an edge: a longer bar along the box's top edge.
+    let bar = cuboid((-0.5, 1.0, 1.0), (1.5, 1.5, 1.5));
+    let union = a.union(&bar).unwrap();
+    assert_closed(&union);
+    assert!(close(volume(&union), 1.0 + 0.5));
+}
+
+#[test]
+fn a_box_inside_another_touching_it() {
+    // Flush with the outer box's top: a pocket open at the top.
+    let big = cuboid((0.0, 0.0, 0.0), (4.0, 4.0, 2.0));
+    let pocket = cuboid((1.0, 1.0, 1.0), (3.0, 2.0, 2.0));
+    let cut = big.difference(&pocket).unwrap().unwrap();
+    assert_closed(&cut);
+    assert_eq!(cut.lumps()[0].shells.len(), 1);
+    assert!(close(volume(&cut), 32.0 - 2.0));
+    assert_eq!(faces_on(&cut, (0.0, 0.0, 1.0), (0.0, 0.0, 2.0)), 1);
+    assert!(close(volume(&big.union(&pocket).unwrap()), 32.0));
+    assert!(close(
+        volume(&big.intersection(&pocket).unwrap().unwrap()),
+        2.0
+    ));
+    // Flush with two sides: a notch at the corner.
+    let notch = cuboid((3.0, 3.0, 0.0), (4.0, 4.0, 2.0));
+    let cut = big.difference(&notch).unwrap().unwrap();
+    assert_closed(&cut);
+    assert!(close(volume(&cut), 30.0));
+    assert_eq!(cut.faces().len(), 8);
+}
+
+#[test]
+fn a_slab_with_a_flush_opening() {
+    // An opening exactly through a 200 mm slab, in millimetres.
+    let slab = cuboid((0.0, 0.0, 0.0), (6000.0, 4000.0, 200.0));
+    let opening = cuboid((1000.0, 1000.0, 0.0), (2200.0, 1800.0, 200.0));
+    let holed = slab.difference(&opening).unwrap().unwrap();
+    assert_closed(&holed);
+    let exact = 6000.0 * 4000.0 * 200.0 - 1200.0 * 800.0 * 200.0;
+    assert!(close(flat_volume(&holed), exact));
+    // Top and bottom each one face with a hole; four faces round the hole.
+    assert_eq!(holed.faces().len(), 10);
+    assert_eq!(
+        holed.faces().iter().filter(|f| f.loops.len() == 2).count(),
+        2
+    );
+    // An opening at the slab's edge: a notch, the edge face left in two.
+    let edge = cuboid((0.0, 1000.0, 0.0), (500.0, 2000.0, 200.0));
+    let notched = slab.difference(&edge).unwrap().unwrap();
+    assert_closed(&notched);
+    assert_eq!(notched.faces().len(), 10);
+    assert_eq!(faces_on(&notched, (-1.0, 0.0, 0.0), (0.0, 0.0, 0.0)), 2);
+    assert!(close(
+        flat_volume(&notched),
+        6000.0 * 4000.0 * 200.0 - 500.0 * 1000.0 * 200.0
+    ));
+}
+
+/// A wall in plan from `(x0, y0)` to `(x1, y1)`, 3 m tall, in millimetres.
+fn wall(x0: f64, y0: f64, x1: f64, y1: f64) -> Body {
+    cuboid((x0, y0, 0.0), (x1, y1, 3000.0))
+}
+
+#[test]
+fn walls_meeting_at_the_same_level() {
+    let along = wall(0.0, 0.0, 5000.0, 200.0);
+    // L: a wall from the corner, overlapping it.
+    let l = along.union(&wall(0.0, 0.0, 200.0, 4000.0)).unwrap();
+    assert_closed(&l);
+    assert!(close(
+        flat_volume(&l),
+        (5000.0 * 200.0 + 3800.0 * 200.0) * 3000.0
+    ));
+    assert_eq!(l.faces().len(), 8);
+    // T: a wall from the middle, butting against it.
+    let t = along.union(&wall(2400.0, 200.0, 2600.0, 3000.0)).unwrap();
+    assert_closed(&t);
+    assert!(close(
+        flat_volume(&t),
+        (5000.0 * 200.0 + 200.0 * 2800.0) * 3000.0
+    ));
+    assert_eq!(t.faces().len(), 10);
+    // Cross: a wall through it.
+    let cross = along.union(&wall(2400.0, -2000.0, 2600.0, 2000.0)).unwrap();
+    assert_closed(&cross);
+    assert!(close(
+        flat_volume(&cross),
+        (5000.0 * 200.0 + 200.0 * 3800.0) * 3000.0
+    ));
+    assert_eq!(cross.faces().len(), 14);
+    // Every top is one face.
+    for body in [&l, &t, &cross] {
+        assert_eq!(faces_on(body, (0.0, 0.0, 1.0), (0.0, 0.0, 3000.0)), 1);
+    }
+}
+
+#[test]
+fn the_volumes_add_up_for_aligned_and_touching_boxes() {
+    // Boxes on a coarse grid, so faces, edges and corners coincide often.
+    let mut rng = Lcg(70_112_026);
+    let mut coincident = 0;
+    for _ in 0..300 {
+        let mut grid = || (rng.range(0.0, 4.0) * 2.0).round() / 2.0;
+        let mut corner = || (grid(), grid(), grid());
+        let (a0, a1, b0, b1) = (corner(), corner(), corner(), corner());
+        let solid = |p: (f64, f64, f64), q: (f64, f64, f64)| {
+            (p.0 != q.0 && p.1 != q.1 && p.2 != q.2).then(|| cuboid(p, q))
+        };
+        let (Some(a), Some(b)) = (solid(a0, a1), solid(b0, b1)) else {
+            continue;
+        };
+        // Half of them both turned alike: the same coincidences on slanted
+        // planes, where rounding no longer keeps them exact.
+        let (a, b) = if coincident % 2 == 0 {
+            (
+                turned(&a, (1.0, 2.0, 3.0), 0.7, (5.0, -3.0, 2.0)),
+                turned(&b, (1.0, 2.0, 3.0), 0.7, (5.0, -3.0, 2.0)),
+            )
+        } else {
+            (a, b)
+        };
+        let (va, vb) = (flat_volume(&a), flat_volume(&b));
+        let case = format!("{a0:?} {a1:?} {b0:?} {b1:?}");
+        let union = a.union(&b).unwrap_or_else(|e| panic!("{case}: {e}"));
+        assert_closed(&union);
+        let both = a.intersection(&b).unwrap_or_else(|e| panic!("{case}: {e}"));
+        let rest = a.difference(&b).unwrap_or_else(|e| panic!("{case}: {e}"));
+        let vi = both.as_ref().map_or(0.0, flat_volume);
+        let vr = rest.as_ref().map_or(0.0, flat_volume);
+        assert!(close(flat_volume(&union), va + vb - vi), "{case}");
+        assert!(close(vr, va - vi), "{case}");
+        for body in [&both, &rest].into_iter().flatten() {
+            assert_closed(body);
+        }
+        let ours = [a0.0, a1.0, a0.1, a1.1, a0.2, a1.2];
+        let theirs = [b0.0, b1.0, b0.1, b1.1, b0.2, b1.2];
+        coincident += usize::from(ours.iter().any(|c| theirs.contains(c)));
+    }
+    assert!(coincident > 100, "{coincident}");
 }

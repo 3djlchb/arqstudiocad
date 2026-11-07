@@ -1,0 +1,6 @@
+[toolchain]
+# Exact version: identical builds for every developer, Codex and CI.
+# Bump deliberately (and update `rust-version` in Cargo.toml).
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
