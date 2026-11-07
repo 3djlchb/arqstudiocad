@@ -11,6 +11,7 @@ reused is recorded in [THIRD_PARTY.md](../../THIRD_PARTY.md).
 | opencadcodec | Rust (DWG/DXF engine, ADR 0008) | MPL-2.0 | [internals](opencadcodec-internals.md) |
 | IngeTrazo | Python, PySide6, OpenGL, small Rust core | GPL-3.0-or-later | [ingetrazo.md](ingetrazo.md) — free (push/pull) modeling, the reference for [ADR 0031](../architecture/adr/0031-free-geometry.md) |
 | Rhino 3D (openNURBS, rhino3dm) | C++ / Python / JS, `.3dm` | open parts MIT; kernel proprietary | [rhino.md](rhino.md) — for the 3D phase and `.3dm` interop |
+| Truck | Rust B-rep kernel | Apache-2.0 | [truck.md](truck.md) — technology review as the first boolean backend (ADR 0024 step 5b) |
 
 Background: [geometry representations](geometry-representations.md):
 analytic, NURBS, meshes, SubD, CSG, implicit and others; what the owned
