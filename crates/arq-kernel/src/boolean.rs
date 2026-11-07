@@ -7,22 +7,34 @@
 //! Each face of one solid is split by the other solid's section in the
 //! face's plane. The other solid's faces that the plane cuts give the
 //! segments bounding the part of the plane inside that solid, and the 2D
-//! booleans of [`Region`] split the face into the part inside and the part
-//! outside: splitting and classifying are one step. Each operation keeps its
-//! parts (union what is outside the other solid, intersection what is
-//! inside, A − B the part of A outside B and the part of B inside A turned
-//! over), their corners welded within the tolerance and their edges split
-//! where a neighbouring face has a corner on them. The faces sharing edges
-//! make shells: a shell enclosing a positive volume is the outside of a
-//! piece (a lump), a negative one a void, given to the smallest piece
-//! around it.
+//! booleans of [`Region`] split the face: splitting and classifying are one
+//! step.
 //!
-//! A corner of one solid on a face's plane of the other counts as lying on
-//! the plane's outer side (a symbolic perturbation), so sections stay
-//! closed. This version handles solids in general position: a face lying
-//! on a face of the other solid is [`BooleanError::Coplanar`], and a result
-//! whose pieces touch along an edge or at a corner is
-//! [`BooleanError::NonManifold`]; both cases are ADR 0032's third step.
+//! A corner of the other solid on the plane is counted on one side of it
+//! (a symbolic perturbation), so the section stays closed. Counted on the
+//! face's inner side it gives `L`, the section just inside the face; on
+//! its outer side `U`, just outside. Where both hold a point of the face
+//! the other solid is around it; where only `L` does, the other solid has a
+//! face there turned the same way; only `U`, turned the opposite way;
+//! neither, it is outside. So coplanar faces, and solids touching along a
+//! face, an edge or a corner, need no case of their own. Each operation
+//! keeps (ADR 0032 D2.4):
+//!
+//! | | of A's faces | of B's faces |
+//! |---|---|---|
+//! | A ∪ B | outside B or on it the same way: `F − U` | outside A: `G − (L ∪ U)` |
+//! | A ∩ B | inside B or on it the same way: `F ∩ L` | inside A: `G ∩ L ∩ U` |
+//! | A − B | outside B or on it the opposite way: `F − L` | inside A, turned over |
+//!
+//! The kept faces lying in one plane and turned the same way are then
+//! merged by a 2D union, which drops the corners left on straight runs:
+//! two walls united show no line where they met. Corners are welded within
+//! the tolerance and edges split where a neighbouring face has a corner on
+//! them. Where solids touch along an edge, four faces meet there; they are
+//! paired around it, each with the next one across the solid between them,
+//! so each piece keeps its own closed surface. The faces sharing edges make
+//! shells: a shell enclosing a positive volume is the outside of a piece (a
+//! lump), a negative one a void, given to the smallest piece around it.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -41,10 +53,7 @@ pub enum BooleanError {
     Curved,
     /// A body encloses no volume: a face without area, or faces turned in.
     NotSolid,
-    /// A face of one solid lies on a face of the other.
-    Coplanar,
-    /// The result's faces touch along an edge or at a corner, or do not
-    /// close.
+    /// The result's faces do not close: numerically inconsistent input.
     NonManifold,
     /// The result's parts form no body.
     Brep(BrepError),
@@ -58,10 +67,7 @@ impl fmt::Display for BooleanError {
                 "only solids of flat faces and straight edges are supported"
             ),
             Self::NotSolid => write!(f, "a body does not enclose a volume"),
-            Self::Coplanar => write!(f, "a face of one solid lies on a face of the other"),
-            Self::NonManifold => {
-                write!(f, "the result touches itself along an edge or at a corner")
-            }
+            Self::NonManifold => write!(f, "the result's faces do not close"),
             Self::Brep(e) => write!(f, "{e}"),
         }
     }
@@ -135,12 +141,21 @@ fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, BooleanError> {
                 .map_err(BrepError::Geometry)
                 .map_err(BooleanError::Brep)?;
             let region = Region::new(contours).map_err(|_| BooleanError::NotSolid)?;
-            let segments = section(other, &region, origin, face.normal, (u, v), tol)?;
-            let section = Region::from_edges(&segments, tol);
+            let cut = |side: Side| -> Result<Region, BooleanError> {
+                let segments = section(other, origin, face.normal, (u, v), side, tol)?;
+                Ok(Region::from_edges(&segments, tol))
+            };
             let kept = match (op, first) {
-                (Op::Union, _) | (Op::Difference, true) => region.difference(&section, tol),
-                (Op::Intersection, _) | (Op::Difference, false) => {
-                    region.intersection(&section, tol)
+                (Op::Union, true) => region.difference(&cut(Side::Outer)?, tol),
+                (Op::Intersection, true) => region.intersection(&cut(Side::Inner)?, tol),
+                (Op::Difference, true) => region.difference(&cut(Side::Inner)?, tol),
+                (Op::Union, false) => {
+                    let near = cut(Side::Inner)?.union(&cut(Side::Outer)?, tol);
+                    region.difference(&near, tol)
+                }
+                (Op::Intersection | Op::Difference, false) => {
+                    let around = cut(Side::Inner)?.intersection(&cut(Side::Outer)?, tol);
+                    region.intersection(&around, tol)
                 }
             };
             let flip = op == Op::Difference && !first;
@@ -162,6 +177,7 @@ fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, BooleanError> {
             }
         }
     }
+    let pieces = merge_coplanar(pieces, tol)?;
     if pieces.is_empty() {
         return Ok(None);
     }
@@ -258,16 +274,24 @@ fn tolerance<'a>(
         .map_err(BooleanError::Brep)
 }
 
+/// Which side of a plane a corner on it counts on: the section just
+/// inside a face (`Inner`, against its normal) or just outside (`Outer`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Side {
+    Inner,
+    Outer,
+}
+
 /// The directed segments, in the frame `(u, v)` at `origin`, bounding the
 /// part of the plane through `origin` with unit `normal` inside `solid`, the
-/// inside on their left; [`BooleanError::Coplanar`] if a face of the solid
-/// lies on the plane where `region` is.
+/// inside on their left: the plane taken a hair to `side` of itself, the
+/// solid's corners on it counted on the other side.
 fn section(
     solid: &Solid,
-    region: &Region,
     origin: Point3,
     normal: Vector3,
     (u, v): (Vector3, Vector3),
+    side: Side,
     tol: Tolerance,
 ) -> Result<Vec<(Point2, Point2)>, BooleanError> {
     let t = tol.linear();
@@ -282,22 +306,15 @@ fn section(
         .iter()
         .map(|&p| (p - origin).dot(normal))
         .collect();
-    // On the plane counts as above it.
-    let above: Vec<bool> = height.iter().map(|&h| h >= -t).collect();
+    // Taken just inside, a corner on the plane is above it; just outside,
+    // below.
+    let above: Vec<bool> = match side {
+        Side::Inner => height.iter().map(|&h| h >= -t).collect(),
+        Side::Outer => height.iter().map(|&h| h > t).collect(),
+    };
     let mut crossings: HashMap<(usize, usize), Point3> = HashMap::new();
     let mut segments = Vec::new();
     for face in &solid.faces {
-        let corners = || face.loops.iter().flatten().copied();
-        if corners().all(|i| height[i].abs() <= t) {
-            // A face on the plane matters only near the region.
-            let flats = corners()
-                .map(|i| flat(solid.points[i]))
-                .collect::<Result<Vec<_>, _>>()?;
-            if overlap(&flats, region.contours().iter().flatten().copied(), t) {
-                return Err(BooleanError::Coplanar);
-            }
-            continue;
-        }
         let along = normal.cross(face.normal);
         if along.length() <= tol.angular() {
             continue;
@@ -330,26 +347,64 @@ fn section(
     Ok(segments)
 }
 
-/// Whether the boxes around two sets of points overlap within `t`.
-fn overlap(a: &[Point2], b: impl Iterator<Item = Point2>, t: f64) -> bool {
-    let bounds = |points: &mut dyn Iterator<Item = Point2>| {
-        points.fold(None, |acc: Option<[f64; 4]>, p| {
-            Some(acc.map_or([p.x(), p.y(), p.x(), p.y()], |b| {
-                [
-                    b[0].min(p.x()),
-                    b[1].min(p.y()),
-                    b[2].max(p.x()),
-                    b[3].max(p.y()),
-                ]
-            }))
-        })
-    };
-    match (bounds(&mut a.iter().copied()), bounds(&mut b.into_iter())) {
-        (Some(p), Some(q)) => {
-            p[0] <= q[2] + t && q[0] <= p[2] + t && p[1] <= q[3] + t && q[1] <= p[3] + t
+/// The kept faces with those lying in one plane, turned the same way,
+/// merged: their regions united in the first one's frame, so the corners
+/// they shared on straight runs are dropped.
+fn merge_coplanar(pieces: Vec<Piece>, tol: Tolerance) -> Result<Vec<Piece>, BooleanError> {
+    let t = tol.linear();
+    let mut groups: Vec<Vec<Piece>> = Vec::new();
+    for piece in pieces {
+        let same = groups.iter_mut().find(|g| {
+            let first = &g[0];
+            (first.normal - piece.normal).length() <= tol.angular()
+                && (piece.origin - first.origin).dot(first.normal).abs() <= t
+        });
+        match same {
+            Some(group) => group.push(piece),
+            None => groups.push(vec![piece]),
         }
-        _ => false,
     }
+    let mut out = Vec::new();
+    for group in groups {
+        if group.len() == 1 {
+            out.extend(group);
+            continue;
+        }
+        let (origin, normal) = (group[0].origin, group[0].normal);
+        let (u, v) = frame(normal);
+        let mut merged = Region::default();
+        for piece in &group {
+            let contours = piece
+                .loops
+                .iter()
+                .map(|l| {
+                    l.iter()
+                        .map(|&p| {
+                            let w = p - origin;
+                            Point2::new(w.dot(u), w.dot(v))
+                        })
+                        .collect()
+                })
+                .collect::<Result<Vec<Vec<Point2>>, _>>()
+                .map_err(BrepError::Geometry)
+                .map_err(BooleanError::Brep)?;
+            let region = Region::new(contours).map_err(|_| BooleanError::NotSolid)?;
+            merged = merged.union(&region, tol);
+        }
+        for part in merged.pieces(tol) {
+            let lift = |q: &Point2| origin + u * q.x() + v * q.y();
+            out.push(Piece {
+                origin,
+                normal,
+                loops: part
+                    .contours()
+                    .iter()
+                    .map(|c| c.iter().map(lift).collect())
+                    .collect(),
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// The body of the result's faces, if they close into shells.
@@ -403,15 +458,11 @@ fn assemble(pieces: &[Piece], tol: Tolerance) -> Result<Body, BooleanError> {
             *l = out;
         }
     }
-    // Each edge once each way: the faces close without touching.
-    let mut uses: HashMap<(usize, usize), (usize, u32)> = HashMap::new();
-    for (f, (_, loops)) in faces.iter().enumerate() {
-        for l in loops {
-            for k in 0..l.len() {
-                uses.entry((l[k], l[(k + 1) % l.len()])).or_insert((f, 0)).1 += 1;
-            }
-        }
-    }
+    // Each use of an edge paired with one running the other way, so each
+    // pair is one edge of the body; where four faces meet (solids touching
+    // along an edge), around it.
+    let normals: Vec<Vector3> = faces.iter().map(|(i, _)| pieces[*i].normal).collect();
+    let pairs = pair_uses(&faces, &normals, &points)?;
     let mut parent: Vec<usize> = (0..faces.len()).collect();
     fn root(parent: &mut [usize], mut f: usize) -> usize {
         while parent[f] != f {
@@ -420,14 +471,9 @@ fn assemble(pieces: &[Piece], tol: Tolerance) -> Result<Body, BooleanError> {
         }
         f
     }
-    for (&(i, j), &(f, count)) in &uses {
-        match uses.get(&(j, i)) {
-            Some(&(g, 1)) if count == 1 => {
-                let (rf, rg) = (root(&mut parent, f), root(&mut parent, g));
-                parent[rf] = rg;
-            }
-            _ => return Err(BooleanError::NonManifold),
-        }
+    for &(a, b) in pairs.values() {
+        let (ra, rb) = (root(&mut parent, a.face), root(&mut parent, b.face));
+        parent[ra] = rb;
     }
     // Shells, their volumes, and the lumps.
     let mut shells: HashMap<usize, Vec<usize>> = HashMap::new();
@@ -450,7 +496,12 @@ fn assemble(pieces: &[Piece], tol: Tolerance) -> Result<Body, BooleanError> {
     let outsides: Vec<usize> = (0..shells.len()).filter(|&s| volumes[s] > 0.0).collect();
     let mut lumps: Vec<Vec<usize>> = outsides.iter().map(|&s| vec![s]).collect();
     for void in (0..shells.len()).filter(|&s| volumes[s] <= 0.0) {
-        let probe = points[faces[shells[void][0]].1[0][0]];
+        // A point inside one of its faces, beside an edge's middle: never
+        // on another shell, even one the void touches at an edge or corner.
+        let f = shells[void][0];
+        let l = &faces[f].1[0];
+        let (a, b) = (points[l[0]], points[l[1]]);
+        let probe = a.midpoint(b) + normals[f].cross(b - a) * 0.01;
         let around = outsides
             .iter()
             .enumerate()
@@ -469,19 +520,26 @@ fn assemble(pieces: &[Piece], tol: Tolerance) -> Result<Body, BooleanError> {
         }
     }
     // The body.
+    let mut pair_of: HashMap<Use, usize> = HashMap::new();
+    for (&id, &(a, b)) in &pairs {
+        pair_of.insert(a, id);
+        pair_of.insert(b, id);
+    }
     let mut b = BodyBuilder::new();
     let mut vertices = HashMap::new();
     let mut edges = HashMap::new();
     let mut face_ids = Vec::with_capacity(faces.len());
-    for (index, loops) in &faces {
+    for (f, (index, loops)) in faces.iter().enumerate() {
         let piece = &pieces[*index];
         let mut loop_ids = Vec::with_capacity(loops.len());
-        for l in loops {
+        for (lp, l) in loops.iter().enumerate() {
             let mut coedges = Vec::with_capacity(l.len());
             for k in 0..l.len() {
                 let (i, j) = (l[k], l[(k + 1) % l.len()]);
                 let key = (i.min(j), i.max(j));
-                let edge = match edges.get(&key) {
+                // The pair this use belongs to names its edge.
+                let id = pair_of[&Use { face: f, lp, k }];
+                let edge = match edges.get(&id) {
                     Some(&edge) => edge,
                     None => {
                         let mut vertex =
@@ -497,7 +555,7 @@ fn assemble(pieces: &[Piece], tol: Tolerance) -> Result<Body, BooleanError> {
                             end,
                             reversed: false,
                         });
-                        edges.insert(key, edge);
+                        edges.insert(id, edge);
                         edge
                     }
                 };
@@ -535,6 +593,89 @@ fn assemble(pieces: &[Piece], tol: Tolerance) -> Result<Body, BooleanError> {
         .map_err(BrepError::Geometry)
         .map_err(BooleanError::Brep)?;
     b.build(check).map_err(BooleanError::Brep)
+}
+
+/// One use of an edge: the `k`-th edge of loop `lp` of face `face`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct Use {
+    face: usize,
+    lp: usize,
+    k: usize,
+}
+
+/// The uses of each edge paired, each with one running the other way,
+/// keyed by a pair number. Where more than two faces meet at an edge, they
+/// are taken in turn around it, and each face whose solid side faces the
+/// turn pairs with the next: the two bound the solid between them.
+fn pair_uses(
+    faces: &[(usize, Vec<Vec<usize>>)],
+    normals: &[Vector3],
+    points: &[Point3],
+) -> Result<HashMap<usize, (Use, Use)>, BooleanError> {
+    let mut by_edge: HashMap<(usize, usize), Vec<(Use, bool)>> = HashMap::new();
+    for (face, (_, loops)) in faces.iter().enumerate() {
+        for (lp, l) in loops.iter().enumerate() {
+            for k in 0..l.len() {
+                let (i, j) = (l[k], l[(k + 1) % l.len()]);
+                by_edge
+                    .entry((i.min(j), i.max(j)))
+                    .or_default()
+                    .push((Use { face, lp, k }, i < j));
+            }
+        }
+    }
+    let mut keys: Vec<_> = by_edge.keys().copied().collect();
+    keys.sort_unstable();
+    let mut pairs = HashMap::new();
+    for key in keys {
+        let mut uses = by_edge.remove(&key).expect("listed");
+        let forward = uses.iter().filter(|u| u.1).count();
+        if forward * 2 != uses.len() {
+            return Err(BooleanError::NonManifold);
+        }
+        if uses.len() == 2 {
+            pairs.insert(pairs.len(), (uses[0].0, uses[1].0));
+            continue;
+        }
+        // Around the edge: each face's direction into itself, square to
+        // the edge, as an angle about it.
+        let axis = (points[key.1] - points[key.0])
+            .normalized()
+            .map_err(|_| BooleanError::NonManifold)?;
+        let (r, s) = frame(axis);
+        let mut around: Vec<(f64, Use, bool, bool)> = uses
+            .drain(..)
+            .map(|(u, forward)| {
+                let n = normals[u.face];
+                let run = if forward { axis } else { -axis };
+                let into = n.cross(run);
+                let angle = into.dot(s).atan2(into.dot(r));
+                // Its solid lies against its normal: toward the turn's
+                // direction there or away from it.
+                let solid_ahead = (-n).dot(axis.cross(into)) > 0.0;
+                (angle, u, forward, solid_ahead)
+            })
+            .collect();
+        around.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let n = around.len();
+        let mut taken = vec![false; n];
+        for i in 0..n {
+            if !around[i].3 {
+                continue;
+            }
+            let j = (i + 1) % n;
+            if taken[i] || taken[j] || around[j].3 || around[i].2 == around[j].2 {
+                return Err(BooleanError::NonManifold);
+            }
+            taken[i] = true;
+            taken[j] = true;
+            pairs.insert(pairs.len(), (around[i].1, around[j].1));
+        }
+        if taken.iter().any(|&t| !t) {
+            return Err(BooleanError::NonManifold);
+        }
+    }
+    Ok(pairs)
 }
 
 /// Points welded within a tolerance.

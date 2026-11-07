@@ -136,6 +136,30 @@ millimetre architecture spans thousands of units.
   corner (`BooleanError::NonManifold`), until step 3. A box inside another
   already leaves a void. The comparison with Truck moves to step 3, with
   the coincident cases it fails.
+- **3 (done):** coincident geometry. The other solid's section is taken
+  on both sides of a face's plane, its corners on the plane counted
+  inside (`L`) or outside (`U`): a part of the face in both lies inside
+  the other solid, in `L` only on a face of it turned the same way, in `U`
+  only on one turned the opposite way, in neither outside. Each operation's
+  rule of D2.4 is then one 2D boolean per face (`F − U`, `F ∩ L`, `F − L`
+  for the first solid; `G − (L ∪ U)` and `G ∩ L ∩ U` for the second), so
+  coplanar faces and solids touching along a face, an edge or a corner need
+  no case of their own, and `BooleanError::Coplanar` is gone. The kept
+  faces in one plane turned the same way are merged, with their corners on
+  straight runs. Where solids touch along an edge, its four faces are
+  paired around it, each with the next across the solid between them, so
+  each piece keeps its own closed surface (one body, two lumps).
+- **D4 evidence:**
+  - architecture cases in millimetres: walls meeting in L, T and cross at
+    the same level, walls end to end, a slab with flush openings, a pocket
+    flush with the top, boxes sharing a face, an edge, a corner, a void
+    touching the outside along an edge;
+  - 300 random pairs of boxes on a coarse grid, half turned alike,
+    against the volume identities;
+  - Truck in general position, run by hand in a crate of its own
+    (`tools/truck-compare`, maintainer, 2026-11-07): where both answer
+    they agree, except where Truck's own results miss the identities
+    ([results](../../testing/truck-boolean-comparison.md)).
 
 ## Consequences
 

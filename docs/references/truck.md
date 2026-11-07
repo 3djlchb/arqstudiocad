@@ -123,6 +123,7 @@ Truck's booleans fail whenever a face of one solid lies on a face of the
 other, which in architecture is the rule. Decision 1 above is withdrawn:
 Truck does not become a dependency. The planar booleans are owned instead
 ([ADR 0032](../architecture/adr/0032-owned-planar-booleans.md)); Truck stays a
-reference, and a comparison in tests in general position. Any backend
+reference, and a comparison in general position, run by hand
+([results](../testing/truck-boolean-comparison.md)). Any backend
 proposed later, for curved solids, gets a coplanar spike like this one before
 its review is accepted.
