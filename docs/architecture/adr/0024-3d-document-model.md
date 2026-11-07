@@ -383,6 +383,21 @@ part of this ADR.
   - **Checked:** every solid of ATMOS (DWG 2007, SAT) and of LibreDWG's
     examples (DWG 2000, and 2013 in SAB) moved, turned, scaled and
     mirrored measures where the change puts it, saved and reopened.
+- **Step 5b, booleans, the plan (2026-11-07):** UNION, SUBTRACT and
+  INTERSECT, first through Truck as D3 says, after its
+  [technology review](../../references/truck.md) (maintainer, 2026-11-07):
+  - **Truck's `master` pinned by exact commit,** its last release being two
+    years old; its security advisories (VTK and STEP code we never call,
+    two unmaintained crates) taken as justified, tested exceptions.
+  - **Behind an adapter crate of its own:** the kernel does not depend on
+    it, and the document sees our B-rep before and after (ADR 0020 D4).
+  - **Exact where it can be,** as AutoCAD: lines, circles, ellipses,
+    planes, cylinders and cones recognized in what Truck returns; the rest
+    NURBS, which the ACIS writer learns to write.
+  - **Four pull requests:** this review (5b-1); the adapter, conversions
+    both ways and UNION of planar solids (5b-2); curved surfaces and NURBS
+    in the writer (5b-3); SUBTRACT and INTERSECT, Spanish DIFERENCIA and
+    INTERSEC, with AutoCAD's prompts (5b-4).
 
 ## Consequences
 
