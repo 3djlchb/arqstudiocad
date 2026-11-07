@@ -35,9 +35,11 @@
 //!   is taken signed instead, which is smooth and right within it.
 //!
 //! The 1-dimensional integrals use Gauss–Legendre rules, doubled until
-//! the result settles; on a flat face bounded by straight edges the
-//! integrands are polynomials the first rules integrate exactly, so they
-//! are taken once.
+//! the result settles; on a flat face bounded by lines and arcs the first
+//! rules are already exact to the last digit, so they are taken once. On
+//! a cone or cylinder the integrand is a trigonometric polynomial of degree
+//! 3 in `u` with polynomial coefficients in `v`, found once per face from
+//! a few samples and integrated in closed form (see `ConeTable`).
 //!
 //! The bounds are those of the edges (exact for lines and arcs) and of the
 //! points of spheres and tori that stand out within their faces.
@@ -187,6 +189,13 @@ fn parts(a: f64, b: f64, step: f64) -> usize {
     ((b - a).abs() / step).ceil().max(1.0) as usize
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread has sampled an integrand `G`: what a
+    /// measure costs, for the tests.
+    pub(super) static SAMPLES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// A face being integrated.
 struct FaceIntegral<'a> {
     chart: Chart<'a>,
@@ -209,6 +218,8 @@ struct FaceIntegral<'a> {
     /// polynomial of degree 3 at most (cones, cylinders): interpolated
     /// from them, exactly, instead of integrated again.
     v_poly: Option<Vec<(f64, Sums)>>,
+    /// `G` on a cone or cylinder in closed form (see [`ConeTable`]).
+    cone: Option<ConeTable>,
     /// Where `H` starts.
     v_base: f64,
     /// A spindle torus's (one crossing its axis): the sign its distance
@@ -221,6 +232,8 @@ struct FaceIntegral<'a> {
 impl FaceIntegral<'_> {
     /// The integrands at `(u, v)`, per unit of parameter area.
     fn g(&self, u: f64, v: f64) -> Sums {
+        #[cfg(test)]
+        SAMPLES.with(|n| n.set(n.get() + 1));
         let p = self.chart.point(u, v);
         let (su, sv) = self.chart.partials(u, v);
         let n = su.cross(sv);
@@ -339,6 +352,9 @@ impl FaceIntegral<'_> {
     /// `F̃(u, v) = ∫ (G − Ḡ) du` from the start of the period, periodic in
     /// `u`.
     fn f_tilde(&self, u: f64, v: f64) -> Sums {
+        if let Some(cone) = &self.cone {
+            return cone.f_tilde(self.starts.0, u, v);
+        }
         let period = self.periods.0.expect("closed in u");
         let u0 = self.starts.0;
         let u = u0 + (u - u0).rem_euclid(period);
@@ -347,6 +363,9 @@ impl FaceIntegral<'_> {
 
     /// `H(v) = ∫ (Ḡ − c) dv` from `v_base`.
     fn h(&self, v: f64) -> Sums {
+        if let Some(cone) = &self.cone {
+            return cone.h(self.v_base, v);
+        }
         let mut v = v;
         if let Some(period) = self.periods.1 {
             // Periodic once the overall mean is out.
@@ -360,6 +379,104 @@ impl FaceIntegral<'_> {
         integrate(self.v_base, v, pieces, &self.breaks.1, |t| {
             minus(self.mean_at(t), self.overall)
         })
+    }
+}
+
+/// `G` on a cone or cylinder, exactly: a trigonometric polynomial of
+/// degree 3 in `u` whose coefficients are polynomials of degree 3 in `v`
+/// (the position is of degree 1 in both, the normal too, the moments' `x²n`
+/// of degree 3; the area element `√(1 + k²) |r₀ + k v|` keeps its sign
+/// within a face, which never crosses its apex). Eight even samples in `u`
+/// give its Fourier coefficients and four Chebyshev points in `v` their
+/// polynomials, both exactly; `F̃` and `H` are then integrals in closed
+/// form, instead of a Gauss rule of up to 64 samples of `G` at every node
+/// of the loops.
+struct ConeTable {
+    /// The middle and half width of the face's span of `v`: the
+    /// polynomials are in `t = (v − mid) / half`, for their conditioning.
+    mid: f64,
+    half: f64,
+    /// `coef[j][m]`: the coefficient of `t^j` times the `m`-th of `1, cos u,
+    /// sin u, cos 2u, sin 2u, cos 3u, sin 3u`.
+    coef: [[Sums; 7]; 4],
+}
+
+impl ConeTable {
+    /// The table of `integral`'s `G` over `v` in `[lo, hi]`.
+    fn new(integral: &FaceIntegral, lo: f64, hi: f64) -> Self {
+        let (mid, half) = (
+            (lo + hi) / 2.0,
+            ((hi - lo) / 2.0).max(1e-9 * (1.0 + mid_abs(lo, hi))),
+        );
+        // Chebyshev coefficients in t of the Fourier coefficients in u.
+        let mut cheb = [[[0.0; 8]; 7]; 4];
+        for q in 0..4 {
+            let t = (PI * (2 * q + 1) as f64 / 8.0).cos();
+            let mut fourier = [[0.0; 8]; 7];
+            for i in 0..8 {
+                let u = TAU * i as f64 / 8.0;
+                let g = integral.g(u, mid + half * t);
+                add(&mut fourier[0], g, 1.0 / 8.0);
+                for m in 1..=3 {
+                    let (sin, cos) = (m as f64 * u).sin_cos();
+                    add(&mut fourier[2 * m - 1], g, cos / 4.0);
+                    add(&mut fourier[2 * m], g, sin / 4.0);
+                }
+            }
+            let chebyshev = [1.0, t, 2.0 * t * t - 1.0, 4.0 * t * t * t - 3.0 * t];
+            for (j, &tj) in chebyshev.iter().enumerate() {
+                let weight = if j == 0 { 0.25 } else { 0.5 };
+                for m in 0..7 {
+                    add(&mut cheb[j][m], fourier[m], weight * tj);
+                }
+            }
+        }
+        // T₀ = 1, T₁ = t, T₂ = 2t² − 1, T₃ = 4t³ − 3t, into powers of t.
+        let mut coef = [[[0.0; 8]; 7]; 4];
+        for m in 0..7 {
+            coef[0][m] = minus(cheb[0][m], cheb[2][m]);
+            coef[1][m] = minus(cheb[1][m], scaled(cheb[3][m], 3.0));
+            coef[2][m] = scaled(cheb[2][m], 2.0);
+            coef[3][m] = scaled(cheb[3][m], 4.0);
+        }
+        Self { mid, half, coef }
+    }
+
+    /// The powers `1, t, t², t³` at `v`.
+    fn powers(&self, v: f64) -> [f64; 4] {
+        let t = (v - self.mid) / self.half;
+        [1.0, t, t * t, t * t * t]
+    }
+
+    /// `F̃(u, v) = ∫ (G − Ḡ) du` from `u0`: the terms without a mean,
+    /// integrated.
+    fn f_tilde(&self, u0: f64, u: f64, v: f64) -> Sums {
+        let mut basis = [0.0; 7];
+        for m in 1..=3 {
+            let mf = m as f64;
+            let ((s1, c1), (s0, c0)) = ((mf * u).sin_cos(), (mf * u0).sin_cos());
+            basis[2 * m - 1] = (s1 - s0) / mf;
+            basis[2 * m] = (c0 - c1) / mf;
+        }
+        let mut total = [0.0; 8];
+        for (j, tj) in self.powers(v).into_iter().enumerate() {
+            for (&c, &b) in self.coef[j].iter().zip(&basis).skip(1) {
+                add(&mut total, c, tj * b);
+            }
+        }
+        total
+    }
+
+    /// `H(v) = ∫ Ḡ dv` from `base`.
+    fn h(&self, base: f64, v: f64) -> Sums {
+        let (from, to) = (self.powers(base), self.powers(v));
+        let mut total = [0.0; 8];
+        for j in 0..4 {
+            // ∫ t^j dv = half · t^(j+1) / (j + 1).
+            let rise = (to[j] * to[1] - from[j] * from[1]) / (j + 1) as f64;
+            add(&mut total, self.coef[j][0], self.half * rise);
+        }
+        total
     }
 }
 
@@ -626,6 +743,7 @@ fn integrate_face(
         fine: if analytic { 1 } else { fine },
         overall: [0.0; 8],
         v_poly: None,
+        cone: None,
         v_base: low.or(high).unwrap_or(v_mean),
         tube_side: None,
     };
@@ -648,7 +766,11 @@ fn integrate_face(
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), v| {
                 (lo.min(v), hi.max(v))
             });
-        integral.tabulate(lo, hi);
+        if matches!(integral.chart, Chart::Cone { .. }) {
+            integral.cone = Some(ConeTable::new(&integral, lo, hi));
+        } else {
+            integral.tabulate(lo, hi);
+        }
     }
     let mut sums = [0.0; 8];
     let mut complement = false;
@@ -827,9 +949,7 @@ fn face_sums(
         size * size,
     ];
     let mut previous = integrate_face(body, face, index, origin, 1)?;
-    if is_flat_polygon(body, face) {
-        // Polynomials of degree 3 at most along straight edges: the first
-        // rules are exact, nothing to settle.
+    if settles_at_once(body, face) {
         return Ok(previous);
     }
     for fine in [2, 4, 8, 16] {
@@ -843,14 +963,22 @@ fn face_sums(
     Err(MeasureError::NotConverged { face: index })
 }
 
-/// Whether a face is flat and bounded by straight edges only.
-fn is_flat_polygon(body: &Body, face: &Face) -> bool {
+/// Whether a face's first rules already give its integrals: a flat face
+/// bounded by lines and arcs of circles or ellipses. On a plane `F` is a
+/// polynomial of degree 3 in the plane's coordinates. Along a line the loop
+/// integrand is then a polynomial the 8-point rule integrates exactly. Along
+/// an arc it is a trigonometric polynomial of degree 4 in the arc's angle,
+/// taken in pieces of π/8 at most; there the rule's remainder,
+/// `h¹⁷ (8!)⁴ / (17 (16!)³)` times a 16th derivative of at most `4¹⁶` times
+/// the integrand's size, is below `1e-20` of it, far under the `1e-11` the
+/// refinement settles to.
+fn settles_at_once(body: &Body, face: &Face) -> bool {
     matches!(face.surface, Surface::Plane(_))
         && face.loops.iter().all(|lp| {
             body.loops()[lp.index()].coedges.iter().all(|c| {
                 matches!(
                     body.edge(body.coedges()[c.index()].edge).curve,
-                    Some(Curve::Line(_))
+                    Some(Curve::Line(_) | Curve::Ellipse(_))
                 )
             })
         })
