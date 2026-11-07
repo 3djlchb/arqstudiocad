@@ -39,7 +39,9 @@
 //! rules are already exact to the last digit, so they are taken once. On
 //! a cone or cylinder the integrand is a trigonometric polynomial of degree
 //! 3 in `u` with polynomial coefficients in `v`, found once per face from
-//! a few samples and integrated in closed form (see `ConeTable`).
+//! a few samples and integrated in closed form (see `ConeTable`); on a
+//! sphere or torus one of degree 3 in `u` and 4 in `v`, the same way (see
+//! `AngleTable`).
 //!
 //! The bounds are those of the edges (exact for lines and arcs) and of the
 //! points of spheres and tori that stand out within their faces.
@@ -220,6 +222,8 @@ struct FaceIntegral<'a> {
     v_poly: Option<Vec<(f64, Sums)>>,
     /// `G` on a cone or cylinder in closed form (see [`ConeTable`]).
     cone: Option<ConeTable>,
+    /// `G` on a sphere or torus in closed form (see [`AngleTable`]).
+    angles: Option<AngleTable>,
     /// Where `H` starts.
     v_base: f64,
     /// A spindle torus's (one crossing its axis): the sign its distance
@@ -244,6 +248,9 @@ impl FaceIntegral<'_> {
             (Some(side), &Chart::Torus { big, small, .. }) => {
                 side * (big + small * v.cos()) * small
             }
+            // r² cos v, as the length is within a face (v a latitude), and
+            // smooth beyond, where `AngleTable` samples it.
+            (_, &Chart::Sphere { r, .. }) => r * r * v.cos(),
             _ => n.length(),
         };
         [
@@ -355,6 +362,9 @@ impl FaceIntegral<'_> {
         if let Some(cone) = &self.cone {
             return cone.f_tilde(self.starts.0, u, v);
         }
+        if let Some(angles) = &self.angles {
+            return angles.f_tilde(self.starts.0, u, v);
+        }
         let period = self.periods.0.expect("closed in u");
         let u0 = self.starts.0;
         let u = u0 + (u - u0).rem_euclid(period);
@@ -370,6 +380,12 @@ impl FaceIntegral<'_> {
         if let Some(period) = self.periods.1 {
             // Periodic once the overall mean is out.
             v = self.v_base + (v - self.v_base).rem_euclid(period);
+        }
+        if let Some(angles) = &self.angles {
+            return minus(
+                angles.h(self.v_base, v),
+                scaled(self.overall, v - self.v_base),
+            );
         }
         let pieces = if self.v_angle {
             parts(self.v_base, v, FRAC_PI_8)
@@ -478,6 +494,100 @@ impl ConeTable {
         }
         total
     }
+}
+
+/// `G` on a sphere or torus, exactly: a trigonometric polynomial of degree
+/// 3 in `u` and 4 in `v` (the position and the unit normal are of degree 1
+/// in both, the area element `r² cos v` or `r (R + r cos v)` of degree 1 in
+/// `v`, the moments' `x²n` of degree 3 and 4). Eight even samples in `u`
+/// and ten in `v` give its Fourier coefficients exactly; `Ḡ`, `F̃` and `H`
+/// are then sums in closed form, instead of Gauss rules sampling `G` (`H`
+/// sampled `Ḡ`, itself 16 samples, up to 64 times at every loop node).
+struct AngleTable {
+    /// `coef[m][l]`: the coefficient of the `m`-th of `1, cos u, sin u, …,
+    /// sin 3u` times the `l`-th of `1, cos v, sin v, …, sin 4v`.
+    coef: [[Sums; 9]; 7],
+}
+
+impl AngleTable {
+    /// The table of `integral`'s `G`.
+    fn new(integral: &FaceIntegral) -> Self {
+        let mut coef = [[[0.0; 8]; 9]; 7];
+        for j in 0..10 {
+            let v = TAU * j as f64 / 10.0;
+            let wv = fourier_weights::<9>(v, 10);
+            for i in 0..8 {
+                let u = TAU * i as f64 / 8.0;
+                let wu = fourier_weights::<7>(u, 8);
+                let g = integral.g(u, v);
+                for (m, row) in coef.iter_mut().enumerate() {
+                    for (l, c) in row.iter_mut().enumerate() {
+                        add(c, g, wu[m] * wv[l]);
+                    }
+                }
+            }
+        }
+        Self { coef }
+    }
+
+    /// `F̃(u, v) = ∫ (G − Ḡ) du` from `u0`.
+    fn f_tilde(&self, u0: f64, u: f64, v: f64) -> Sums {
+        let (across, at) = (trig_integrals::<7>(u0, u), trig_values::<9>(v));
+        let mut total = [0.0; 8];
+        for (row, &a) in self.coef.iter().zip(&across).skip(1) {
+            for (&c, &b) in row.iter().zip(&at) {
+                add(&mut total, c, a * b);
+            }
+        }
+        total
+    }
+
+    /// `∫ Ḡ dv` from `base`.
+    fn h(&self, base: f64, v: f64) -> Sums {
+        let along = trig_integrals::<9>(base, v);
+        let mut total = [0.0; 8];
+        for (&c, &a) in self.coef[0].iter().zip(&along) {
+            add(&mut total, c, a);
+        }
+        total
+    }
+}
+
+/// `1, cos x, sin x, cos 2x, sin 2x, …` up to `N` terms.
+fn trig_values<const N: usize>(x: f64) -> [f64; N] {
+    let mut out = [0.0; N];
+    out[0] = 1.0;
+    for k in 1..=(N - 1) / 2 {
+        let (sin, cos) = (k as f64 * x).sin_cos();
+        out[2 * k - 1] = cos;
+        out[2 * k] = sin;
+    }
+    out
+}
+
+/// The integrals of [`trig_values`] from `a` to `b`.
+fn trig_integrals<const N: usize>(a: f64, b: f64) -> [f64; N] {
+    let mut out = [0.0; N];
+    out[0] = b - a;
+    for k in 1..=(N - 1) / 2 {
+        let kf = k as f64;
+        let ((sb, cb), (sa, ca)) = ((kf * b).sin_cos(), (kf * a).sin_cos());
+        out[2 * k - 1] = (sb - sa) / kf;
+        out[2 * k] = (ca - cb) / kf;
+    }
+    out
+}
+
+/// The weights that turn `n` even samples of a trigonometric polynomial,
+/// of degree below `n / 2`, into its coefficients on [`trig_values`]: the
+/// sample at `x`'s share.
+fn fourier_weights<const N: usize>(x: f64, n: usize) -> [f64; N] {
+    let mut out = trig_values::<N>(x);
+    out[0] = 1.0 / n as f64;
+    for w in &mut out[1..] {
+        *w *= 2.0 / n as f64;
+    }
+    out
 }
 
 /// A point of a loop where the integrals are sampled.
@@ -744,6 +854,7 @@ fn integrate_face(
         overall: [0.0; 8],
         v_poly: None,
         cone: None,
+        angles: None,
         v_base: low.or(high).unwrap_or(v_mean),
         tube_side: None,
     };
@@ -757,6 +868,9 @@ fn integrate_face(
         } else {
             1.0
         });
+    }
+    if matches!(integral.chart, Chart::Sphere { .. } | Chart::Torus { .. }) {
+        integral.angles = Some(AngleTable::new(&integral));
     }
     if analytic && !v_angle && periods.0.is_some() {
         // A cone's or cylinder's: polynomial in v over the face's span.
@@ -871,11 +985,15 @@ fn integrate_face(
         }
         (Some(pu), Some(pv)) => {
             // The overall mean, out of H, comes back times the parameter area.
-            let n = 16 * fine;
-            for j in 0..n {
-                let v = integral.starts.1 + pv * j as f64 / n as f64;
-                let mean = integral.mean_u(v);
-                add(&mut integral.overall, mean, 1.0 / n as f64);
+            if let Some(angles) = &integral.angles {
+                integral.overall = angles.coef[0][0];
+            } else {
+                let n = 16 * fine;
+                for j in 0..n {
+                    let v = integral.starts.1 + pv * j as f64 / n as f64;
+                    let mean = integral.mean_u(v);
+                    add(&mut integral.overall, mean, 1.0 / n as f64);
+                }
             }
             integral.v_base = integral.starts.1;
             let all_u = loops.iter().all(|l| l.winding.1 == 0);
@@ -1102,13 +1220,19 @@ impl Body {
             .collect();
         for &(i, complement) in faces {
             let face = &self.faces()[i];
-            for (line, t) in standing_out(face) {
+            let candidates = standing_out(face);
+            if candidates.is_empty() {
+                continue;
+            }
+            // The face's boundary and guides, once for all its candidates.
+            let boundary = boundary_of(self, face, &edges);
+            let guides = guides_of(face, &boundary);
+            for (line, t) in candidates {
                 let q = line(t);
-                let boundary = boundary_of(self, face, &edges);
-                let inside = match guides_of(face, &boundary) {
+                let inside = match &guides {
                     None => true, // the whole surface
                     Some((guides, reach)) => {
-                        inside_at(&line, t, &|p| side_of(&guides, p), reach).unwrap_or(complement)
+                        inside_at(&line, t, &|p| side_of(guides, p), *reach).unwrap_or(complement)
                     }
                 };
                 if inside {
