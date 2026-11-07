@@ -906,3 +906,73 @@ fn a_mirrored_solid_measures_the_same_mirrored() {
         same_point(c.centroid, both.apply_point(a.centroid), 10.0);
     }
 }
+
+#[test]
+fn millimetre_solids_measure_as_well_as_metre_ones() {
+    // A wall 6 m × 200 mm × 3 m and a column, drawn in millimetres. The
+    // rule along a plane's u was once cut every π/4 of length, thousands of
+    // pieces at this size: slow, and summing them cost digits.
+    let wall = Body::cuboid(p(0.0, 0.0, 0.0), p(6000.0, 200.0, 3000.0)).unwrap();
+    let start = std::time::Instant::now();
+    let m = wall.mass_properties().unwrap();
+    let wall_time = start.elapsed();
+    let exact = 6000.0 * 200.0 * 3000.0;
+    assert!((m.volume - exact).abs() <= 2e-15 * exact, "{:e}", m.volume);
+    let area = 2.0 * (6000.0 * 200.0 + 6000.0 * 3000.0 + 200.0 * 3000.0);
+    assert!((m.area - area).abs() <= 2e-15 * area, "{:e}", m.area);
+    assert!(m.centroid.distance_to(p(3000.0, 100.0, 1500.0)) <= 1e-12 * 6000.0);
+    let column = Body::cylinder(p(0.0, 0.0, 0.0), 300.0, 3000.0).unwrap();
+    let start = std::time::Instant::now();
+    let c = column.mass_properties().unwrap();
+    let column_time = start.elapsed();
+    let exact = PI * 300.0 * 300.0 * 3000.0;
+    assert!((c.volume - exact).abs() <= 1e-12 * exact);
+    // Seconds before; milliseconds now, with a wide margin for slow runners.
+    assert!(
+        wall_time.as_millis() < 200 && column_time.as_millis() < 500,
+        "{wall_time:?} {column_time:?}"
+    );
+}
+
+#[test]
+fn a_flat_polygon_face_is_integrated_once_exactly() {
+    // A box turned askew and far off: its faces' first rules already give
+    // what the finest give, so they are taken once.
+    let t = Transform3::rotation(v(1.0, 2.0, 3.0), 0.7)
+        .unwrap()
+        .then(Transform3::translation(v(5000.0, -3000.0, 200.0)));
+    let body = Body::cuboid(p(0.0, 0.0, 0.0), p(6000.0, 200.0, 3000.0))
+        .unwrap()
+        .transformed(t, 1.0)
+        .unwrap();
+    let origin = body.vertex_bounds().unwrap().center();
+    let size = body.vertex_bounds().unwrap().size().length();
+    for (i, face) in body.faces().iter().enumerate() {
+        assert!(super::is_flat_polygon(&body, face));
+        let once = super::integrate_face(&body, face, i, origin, 1)
+            .unwrap()
+            .sums;
+        let finest = super::integrate_face(&body, face, i, origin, 16)
+            .unwrap()
+            .sums;
+        for k in 0..8 {
+            let scale = size.powi([2, 3, 4, 4, 4, 2, 2, 2][k]);
+            assert!(
+                (once[k] - finest[k]).abs() <= 1e-14 * scale,
+                "face {i} sum {k}"
+            );
+        }
+        assert_eq!(
+            super::face_sums(&body, face, i, origin, size).unwrap().sums,
+            once
+        );
+    }
+    // A cap bounded by a circle is still refined until it settles.
+    let column = Body::cylinder(p(0.0, 0.0, 0.0), 1.0, 2.0).unwrap();
+    assert!(
+        column
+            .faces()
+            .iter()
+            .all(|f| !super::is_flat_polygon(&column, f))
+    );
+}

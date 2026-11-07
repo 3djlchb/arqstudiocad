@@ -35,7 +35,9 @@
 //!   is taken signed instead, which is smooth and right within it.
 //!
 //! The 1-dimensional integrals use Gauss–Legendre rules, doubled until
-//! the result settles.
+//! the result settles; on a flat face bounded by straight edges the
+//! integrands are polynomials the first rules integrate exactly, so they
+//! are taken once.
 //!
 //! The bounds are those of the edges (exact for lines and arcs) and of the
 //! points of spheres and tori that stand out within their faces.
@@ -245,12 +247,21 @@ impl FaceIntegral<'_> {
 
     /// `∫_a^b G(s, v) ds`.
     fn along_u(&self, a: f64, b: f64, v: f64) -> Sums {
-        let pieces = if self.chart.is_analytic() {
-            parts(a, b, FRAC_PI_4)
-        } else {
-            1
-        } * self.fine;
-        integrate(a, b, pieces, &self.breaks.0, |s| self.g(s, v))
+        integrate(a, b, self.pieces_along_u(a, b), &self.breaks.0, |s| {
+            self.g(s, v)
+        })
+    }
+
+    /// How many pieces the rule for [`Self::along_u`] takes. Where `u` is an
+    /// angle (cones, cylinders, spheres, tori), one per eighth of a turn; a
+    /// plane's `u` is a length, along which `G` is a polynomial of degree 3
+    /// at most, that one piece integrates exactly at any size (in
+    /// millimetres one per π/4 of a length made thousands).
+    fn pieces_along_u(&self, a: f64, b: f64) -> usize {
+        match self.chart {
+            Chart::Plane { .. } | Chart::Nurbs { .. } => self.fine,
+            _ => parts(a, b, FRAC_PI_4) * self.fine,
+        }
     }
 
     /// `Ḡ(v)`: the mean of `G` over a turn of `u`.
@@ -816,6 +827,11 @@ fn face_sums(
         size * size,
     ];
     let mut previous = integrate_face(body, face, index, origin, 1)?;
+    if is_flat_polygon(body, face) {
+        // Polynomials of degree 3 at most along straight edges: the first
+        // rules are exact, nothing to settle.
+        return Ok(previous);
+    }
     for fine in [2, 4, 8, 16] {
         let next = integrate_face(body, face, index, origin, fine)?;
         let settled = (0..8).all(|i| (next.sums[i] - previous.sums[i]).abs() <= 1e-11 * scale[i]);
@@ -825,6 +841,19 @@ fn face_sums(
         previous = next;
     }
     Err(MeasureError::NotConverged { face: index })
+}
+
+/// Whether a face is flat and bounded by straight edges only.
+fn is_flat_polygon(body: &Body, face: &Face) -> bool {
+    matches!(face.surface, Surface::Plane(_))
+        && face.loops.iter().all(|lp| {
+            body.loops()[lp.index()].coedges.iter().all(|c| {
+                matches!(
+                    body.edge(body.coedges()[c.index()].edge).curve,
+                    Some(Curve::Line(_))
+                )
+            })
+        })
 }
 
 impl Body {
