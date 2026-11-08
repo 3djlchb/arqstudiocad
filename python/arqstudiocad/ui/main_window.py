@@ -338,6 +338,10 @@ class MainWindow(QMainWindow):
         self._modify_menu = menu_bar.addMenu("")
         for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "EXPLODE"):
             self._modify_menu.addAction(self.command_actions[name])
+        # Combining solids, as AutoCAD's Modify > Solid Editing (ADR 0032 D5).
+        self._solid_editing_menu = self._modify_menu.addMenu("")
+        for name in ("UNION", "SUBTRACT", "INTERSECT"):
+            self._solid_editing_menu.addAction(self.command_actions[name])
 
         self._help_menu = menu_bar.addMenu("")
         self._about_action = self._help_menu.addAction("")
@@ -379,6 +383,7 @@ class MainWindow(QMainWindow):
         self._insert_menu.setTitle(tr("&Insert"))
         self._draw_menu.setTitle(tr("&Draw"))
         self._modify_menu.setTitle(tr("&Modify"))
+        self._solid_editing_menu.setTitle(tr("&Solid Editing"))
         self._help_menu.setTitle(tr("&Help"))
         self._about_action.setText(tr("&About {app}"))
         self._welcome.setText(

@@ -249,7 +249,7 @@ impl Document {
     /// Sets a moved solid's construction history to none, as AutoCAD's
     /// History property does: its steps no longer say where it is
     /// (maintainer, 2026-11-05). Undone with the change.
-    fn drop_history(&mut self, history: Handle) {
+    pub(crate) fn drop_history(&mut self, history: Handle) {
         use acadrust::objects::{DynamicBlockData, ObjectType};
         let recording = matches!(
             self.cad().objects.get(&history),

@@ -160,6 +160,21 @@ millimetre architecture spans thousands of units.
     (`tools/truck-compare`, maintainer, 2026-11-07): where both answer
     they agree, except where Truck's own results miss the identities
     ([results](../../testing/truck-boolean-comparison.md)).
+- **4 (done):** UNION, SUBTRACT and INTERSECT (Spanish UNION, DIFERENCIA,
+  INTERSEC), in the 3D tab's Solid Editing group and Modify > Solid
+  Editing.
+  - The result is written into the first solid chosen, which keeps its
+    handle and properties; the others are erased, in one undo step.
+  - SUBTRACT, as AutoCAD's, unites the solids to subtract from and takes
+    away every solid to subtract (maintainer, 2026-11-07).
+  - Nothing changes, and the command says why, when a solid is curved or
+    cannot be read, when too few are chosen, or when nothing would be left
+    (maintainer, 2026-11-07).
+  - The results reopen in ProgeCAD 2026 from DWG 2000 and 2018 and from
+    DXF with the same volume and centroid, AUDIT clean
+    ([evidence](../../testing/progecad-solid-booleans.md)). That check found
+    voids and second lumps lost in DWG 2000, corrected first in the codec
+    (#138).
 
 ## Consequences
 

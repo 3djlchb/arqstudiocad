@@ -8,8 +8,8 @@
 use std::collections::BTreeMap;
 
 use arq_document::{
-    BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Currencies, Document,
-    DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, Revolved,
+    BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Combined, Currencies,
+    Document, DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, Revolved,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Point3, Transform2, Vector2};
 
@@ -83,6 +83,31 @@ impl CadDocument {
         self.transact("REVOLVE", |doc| {
             Ok(doc.revolve_entities(ids, axis_start, axis_end, angle)?)
         })
+    }
+
+    /// Unites the 3D solids among `ids` into the first of them, erasing
+    /// the others (UNION, ADR 0032 D5); one undo step, none when nothing
+    /// changed.
+    pub fn union_solids(&mut self, ids: &[EntityId]) -> CadResult<(Combined, ChangeSet)> {
+        self.transact("UNION", |doc| Ok(doc.union_solids(ids)?))
+    }
+
+    /// Leaves in the first of the 3D solids among `ids` what they all
+    /// share, erasing the others (INTERSECT, ADR 0032 D5); one undo step,
+    /// none when nothing changed.
+    pub fn intersect_solids(&mut self, ids: &[EntityId]) -> CadResult<(Combined, ChangeSet)> {
+        self.transact("INTERSECT", |doc| Ok(doc.intersect_solids(ids)?))
+    }
+
+    /// Unites the 3D solids among `from` into the first of them less every
+    /// 3D solid among `subtract`, erasing the others (SUBTRACT, ADR 0032
+    /// D5); one undo step, none when nothing changed.
+    pub fn subtract_solids(
+        &mut self,
+        from: &[EntityId],
+        subtract: &[EntityId],
+    ) -> CadResult<(Combined, ChangeSet)> {
+        self.transact("SUBTRACT", |doc| Ok(doc.subtract_solids(from, subtract)?))
     }
 
     /// Makes a sphere around `center` on the current layer (SPHERE, ADR

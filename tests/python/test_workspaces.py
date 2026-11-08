@@ -198,6 +198,7 @@ def test_ribbon_tabs_groups_and_buttons(qtbot: QtBot) -> None:
         "Block",
         "Text",
         "Modeling",
+        "Solid Editing",
         "Analysis",
         "Navigate",
         "Views",
