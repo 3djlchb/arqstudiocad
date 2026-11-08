@@ -277,10 +277,15 @@ fn far_from_the_origin() {
 #[test]
 fn curved_solids_are_refused() {
     let a = cuboid((0.0, 0.0, 0.0), (2.0, 2.0, 2.0));
+    // A cylinder takes the curved path (ADR 0033 delivery 2): a round hole.
     let c = Body::cylinder(p(1.0, 1.0, -1.0), 0.5, 4.0).unwrap();
-    assert_eq!(a.difference(&c), Err(BooleanError::Curved));
-    assert_eq!(c.union(&a), Err(BooleanError::Curved));
-    // A whole sphere: a curved face without loops or edges.
+    assert!(close(
+        volume(&a.difference(&c).unwrap().unwrap()),
+        8.0 - PI * 0.25 * 2.0
+    ));
+    // A cone and a whole sphere wait for their deliveries.
+    let cone = Body::cone(p(1.0, 1.0, -1.0), 0.5, 0.2, 4.0).unwrap();
+    assert_eq!(a.difference(&cone), Err(BooleanError::Curved));
     let ball = Body::sphere(p(1.0, 1.0, 1.0), 0.5).unwrap();
     assert_eq!(a.intersection(&ball), Err(BooleanError::Curved));
 }

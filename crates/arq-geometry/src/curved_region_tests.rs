@@ -347,3 +347,62 @@ fn a_sliver_thinner_than_the_tolerance_is_nothing() {
         .collect();
     assert_eq!(CurvedRegion::from_trims(&sides, TOL).contours().len(), 1);
 }
+
+#[test]
+fn trims_running_along_each_other_up_to_near_their_end() {
+    // A band on a cylinder's window and the section of a box on it share
+    // the window's edges for part of their height: near where that shared
+    // stretch ends, one side of a point is still on the other trim, the
+    // other is not, which is no crossing (a box's corner on a turned
+    // column, ADR 0033 delivery 2).
+    let seg = |a: (f64, f64), b: (f64, f64)| Trim::Segment {
+        from: p(a.0, a.1),
+        to: p(b.0, b.1),
+    };
+    let g = |n: [f64; 3], d: f64, from: f64, to: f64| Trim::Graph {
+        num: n,
+        den: [d, 0.0, 0.0],
+        from,
+        to,
+    };
+    let x0 = 1.5707963267948948;
+    let x1 = 7.853981633974481;
+    let face = CurvedRegion::from_trims(
+        &[
+            seg((x1, 0.0), (x1, 2.0936845230923717)),
+            seg((x1, 2.0936845230923717), (x0, 2.0936845230923717)),
+            seg((x0, 2.0936845230923717), (x0, 0.0)),
+            seg((1.570796326794895, 0.0), (x1, 0.0)),
+        ],
+        TOL,
+    );
+    let up = [1.8084534125830893, 0.23948569142680448, 0.0880508571760062];
+    let low = [0.3624455631677497, 0.23948569142680448, 0.0880508571760062];
+    let side = [0.9362696760424247, -0.4334092459614225, 0.4247908597671816];
+    let section = CurvedRegion::from_trims(
+        &[
+            g(up, 0.9108513749041844, 5.095363254311353, x0),
+            seg((x0, 2.0821226404347204), (x0, 0.49458828603200555)),
+            g(low, 0.9108513749041844, x0, x1),
+            seg((x1, 0.49458828603200555), (x1, 2.0821226404347204)),
+            g(up, 0.9108513749041844, x1, 6.073275949587764),
+            g(
+                side,
+                0.19071602562375906,
+                6.073275949587763,
+                5.09536325431138,
+            ),
+        ],
+        TOL,
+    );
+    let both = face.intersection(&section, TOL);
+    assert_eq!(both.contours().len(), 1);
+    assert!(both.area() > 9.0 && both.area() < section.area());
+    let union = face.union(&section, TOL);
+    assert!(close(
+        union.area(),
+        face.area() + section.area() - both.area()
+    ));
+    let rest = face.difference(&section, TOL);
+    assert!(close(rest.area(), face.area() - both.area()));
+}
