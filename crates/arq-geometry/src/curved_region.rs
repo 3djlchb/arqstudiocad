@@ -202,6 +202,19 @@ impl Trim {
         }
     }
 
+    /// The parameters `(s, u)` where this trim, at `s`, and `other`, at
+    /// `u`, cross within `tol`; where they run along each other, none.
+    pub fn crossings(&self, other: &Trim, tol: Tolerance) -> Vec<(f64, f64)> {
+        let o = self.at(0.0, [0.0, 0.0]);
+        crossings(self, other, o, tol.linear())
+    }
+
+    /// The parameter of this trim's point nearest `p`, and its distance.
+    pub fn closest(&self, p: Point2) -> (f64, f64) {
+        let o = self.at(0.0, [0.0, 0.0]);
+        project(self, [p.x(), p.y()], o)
+    }
+
     /// Whether `self` and `next`, which starts where it ends, run along one
     /// curve the same way: then one trim, returned.
     fn joined(&self, next: &Self, tol: f64) -> Option<Self> {
@@ -861,15 +874,20 @@ fn refine(a: &Trim, b: &Trim, seed: (f64, f64), o: P, t: f64) -> Option<(f64, f6
     (dist(a.at(s, o), b.at(u, o)) <= t).then_some((s, u))
 }
 
-/// Whether `a` runs along `b` at `a(s)`: a little way either side, it is
-/// still on `b`.
+/// Whether `a` runs along `b` at `a(s)`: a little way to one side or the
+/// other, it is still on `b`. A crossing leaves `b` on both sides; near the
+/// end of a stretch where two trims run along each other, one side is past
+/// it, so one side is enough.
 fn along(a: &Trim, b: &Trim, s: f64, o: P, t: f64) -> bool {
     let near = |x: f64| {
         let x = x.clamp(0.0, 1.0);
+        if x == s {
+            return false;
+        }
         let p = a.at(x, o);
         project(b, [p[0] + o[0], p[1] + o[1]], o).1 <= t
     };
-    near(s - 0.01) && near(s + 0.01)
+    near(s - 0.01) || near(s + 0.01)
 }
 
 /// The parameter of the point of `trim` nearest `q` (in the plane's own

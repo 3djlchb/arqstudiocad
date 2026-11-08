@@ -147,6 +147,28 @@ As ADR 0032 D4, for the new kinds:
     - Pieces are told apart by their ends and their middle.
     - Contours are chained by the leftmost turn, tangent ties broken by
       curvature, and consecutive pieces of one curve are joined again.
+- **2.2 (done):** the kernel unions, intersects and subtracts solids of
+  planes and circular cylinders in general position (`boolean_curved`);
+  solids of flat faces keep the planar path.
+  - **Domains:** each face is split in its own domain: a plane in a frame;
+    a cylinder in its angle and height, in a window of one turn closed by
+    its seam. The window starts away from the face's edges and from the
+    other solid's section, so no curve lies on the seam.
+  - **Section curves:** the other solid's section is bounded by exact
+    curves.
+    - A plane meets a cylinder in an ellipse (a circle across it), or in
+      two lines along it.
+    - On the cylinder these curves are graphs `h(θ)` or lines.
+    - Each is kept where it lies in its own face; on a seam, a point is in
+      the face if it is so to either side.
+  - **Assembly:** the parts are lifted back to lines, circles and ellipses.
+    - A face cut by the seam is joined across it.
+    - Edges are split where a neighbour has a corner on them, so circles
+      written from different starts meet.
+    - Voids go to the shell a ray from them crosses an odd number of times.
+  - **Not yet:** two cylindrical faces meeting are refused, as delivery 4
+    says; coincident faces come with 2.3. `CurvedRegion` now treats trims
+    running along each other up to near their end as no crossing.
 
 ## Consequences
 

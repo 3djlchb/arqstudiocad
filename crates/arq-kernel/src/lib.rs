@@ -23,6 +23,7 @@
 //! no engine or backend type appears in it (ADR 0020 D4).
 
 mod boolean;
+mod boolean_curved;
 mod brep;
 mod chart;
 mod curve;

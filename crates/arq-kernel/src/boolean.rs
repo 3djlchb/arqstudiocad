@@ -77,7 +77,7 @@ impl std::error::Error for BooleanError {}
 
 /// Which boolean.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Op {
+pub(crate) enum Op {
     Union,
     Intersection,
     Difference,
@@ -122,6 +122,24 @@ struct Piece {
 }
 
 fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, BooleanError> {
+    // Solids of flat faces take the planar path, coincident faces
+    // included; with a cylinder, the curved one (ADR 0033 delivery 2).
+    let flat = |body: &Body| {
+        body.faces()
+            .iter()
+            .all(|f| matches!(f.surface, Surface::Plane(_)))
+            && body
+                .edges()
+                .iter()
+                .all(|e| matches!(e.curve, Some(Curve::Line(_))))
+    };
+    if !(flat(a) && flat(b)) {
+        return if crate::boolean_curved::takes(a) && crate::boolean_curved::takes(b) {
+            crate::boolean_curved::boolean(a, b, op)
+        } else {
+            Err(BooleanError::Curved)
+        };
+    }
     let (sa, sb) = (solid(a)?, solid(b)?);
     let tol = tolerance(sa.points.iter().chain(&sb.points))?;
     let mut pieces = Vec::new();
@@ -272,6 +290,11 @@ fn tolerance<'a>(
     Tolerance::new(1e-9 * reach.max(size), Tolerance::DEFAULT.angular())
         .map_err(BrepError::Geometry)
         .map_err(BooleanError::Brep)
+}
+
+/// [`tolerance`] of a list of points.
+pub(crate) fn tolerance_of(points: &[Point3]) -> Result<Tolerance, BooleanError> {
+    tolerance(points.iter())
 }
 
 /// Which side of a plane a corner on it counts on: the section just
