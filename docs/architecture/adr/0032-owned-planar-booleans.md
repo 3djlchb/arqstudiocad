@@ -183,7 +183,8 @@ millimetre architecture spans thousands of units.
 - The owned kernel's step 7 starts here, ahead of the roadmap's order: its
   acceptance suite (ADR 0020 D6) is D4's.
 - Curved booleans (round columns through slabs, cylindrical holes) wait for
-  their own decision.
+  their own decision: [ADR 0033](0033-owned-booleans-milestone.md) makes
+  them deliveries of milestone 02.15, owned too.
 - The adapter crate planned for Truck is not built; ADR 0024 D3's backend
   stays open for curved solids, each candidate after its own review and a
   coplanar spike like this one.

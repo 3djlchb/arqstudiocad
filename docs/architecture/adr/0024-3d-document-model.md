@@ -405,6 +405,10 @@ part of this ADR.
   in four pull requests ([ADR 0032](0032-owned-planar-booleans.md)); Truck
   is not a dependency, and curved booleans wait for their own decision
   (maintainer, 2026-11-07).
+- **Booleans, a milestone (2026-11-07):** step 5b is done (planar solids,
+  ADR 0032). The owned booleans continue as milestone 02.15 ([ADR
+  0033](0033-owned-booleans-milestone.md)), curved solids included, so D3's
+  temporary backend no longer covers booleans, only step 8.
 
 ## Consequences
 
