@@ -25,6 +25,7 @@
 //! | Move, rotate, scale, mirror | [`Transform2`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
 //! | Polygons with holes, their union, intersection and difference | [`Region`] |
+//! | The same with curved edges: arcs, and a plane seen on a cylinder or a cone | [`CurvedRegion`] of [`Trim`]s |
 //! | Object-snap points | [`snap`] |
 //! | Errors | [`GeometryError`] |
 //!
@@ -64,6 +65,7 @@ mod arc;
 mod bounds;
 mod bounds3;
 mod circle;
+mod curved_region;
 mod error;
 mod geometry;
 mod intersect;
@@ -82,6 +84,7 @@ pub use arc::Arc;
 pub use bounds::Bounds2;
 pub use bounds3::Bounds3;
 pub use circle::Circle;
+pub use curved_region::{CurvedRegion, Trim};
 pub use error::{GeometryError, GeometryResult};
 pub use geometry::{Geometry2, GeometryKind};
 pub use intersect::{Intersections, intersect};
