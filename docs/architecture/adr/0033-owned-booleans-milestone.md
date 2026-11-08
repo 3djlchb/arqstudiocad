@@ -122,6 +122,32 @@ As ADR 0032 D4, for the new kinds:
 - Making NURBS solids: ADR 0031 (Free Geometry) decides how they are made.
   This milestone only combines them.
 
+## Progress
+
+- **Delivery 2, four pull requests** (maintainer, 2026-11-07), as ADR
+  0032's:
+  1. the 2D booleans with curved edges;
+  2. planes with cylinders in general position;
+  3. the coincident cases (flush holes and columns), cones and cylinders
+     on parallel axes;
+  4. the commands, Truck and ProgeCAD.
+
+  Curved edges are kept exact, their crossings found numerically
+  (maintainer, 2026-11-07).
+- **2.1 (done):** `CurvedRegion` in `arq-geometry`, regions bounded by
+  exact trims:
+  - **Trims:** segments, arcs of ellipses (circles among them), and graphs
+    of rational trigonometric functions, what a plane leaves on a cylinder
+    or a cone in its parameters.
+  - **Method:** `Region`'s edge selection.
+    - Crossings are seeded where fine polylines meet and refined by
+      Newton's method on the exact curves; ends lying on other trims are
+      found by projection; trims running along each other are split by
+      their ends.
+    - Pieces are told apart by their ends and their middle.
+    - Contours are chained by the leftmost turn, tangent ties broken by
+      curvature, and consecutive pieces of one curve are joined again.
+
 ## Consequences
 
 - Solids architecture uses most combine without a third-party kernel. Each
