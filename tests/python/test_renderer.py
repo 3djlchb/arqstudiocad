@@ -28,6 +28,10 @@ from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.options_dialog import Options, OptionsDialog, saved_options
 from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV
 
+#: A hardware backend of the platform running the tests: OpenGL on Linux,
+#: DirectX 12 on Windows, Metal on macOS.
+HERE = renderer_settings()[2]
+
 
 def test_the_settings_follow_each_platform_without_software() -> None:
     assert renderer_settings("linux") == (AUTOMATIC, CPU, "vulkan", "opengl")
@@ -99,10 +103,10 @@ def test_renderer_and_antialias_are_kept(tmp_path: Path) -> None:
         AUTOMATIC,
         False,
     )
-    settings.setValue("options/renderer", "opengl")
+    settings.setValue("options/renderer", HERE)
     settings.setValue("options/antialias", "true")
     assert (saved_options(settings).renderer, saved_options(settings).antialias) == (
-        "opengl",
+        HERE,
         True,
     )
     settings.setValue("options/renderer", "glide")
@@ -182,9 +186,9 @@ def test_safe_mode_and_a_crash_keep_the_cpu(
         return Choice(reason="Drawing on the CPU: no graphics card passed the check.")
 
     monkeypatch.setattr(main_window, "probe", fake_probe)
-    window.apply_options(Options(renderer="opengl"))
+    window.apply_options(Options(renderer=HERE))
     assert not sentinel.armed
-    assert probed == [("opengl",)]
+    assert probed == [(HERE,)]
 
 
 def test_a_probe_that_passes_gives_every_viewport_the_gpu_and_a_failure_takes_it_back(
