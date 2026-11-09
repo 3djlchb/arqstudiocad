@@ -24,6 +24,11 @@ class GpuProbeResult:
         """Whether the offscreen draw and readback succeeded."""
         return self.adapter is not None and self.error is None
 
+    @property
+    def software(self) -> bool:
+        """Whether the adapter runs on the CPU (llvmpipe, lavapipe, WARP)."""
+        return self.device_type == "Cpu"
+
 
 def backend_order(platform: str = sys.platform) -> tuple[str, ...]:
     """Returns the backend order from ADR 0007 for this operating system."""
@@ -71,9 +76,19 @@ def probe_backend(backend: str, timeout: float = PROBE_TIMEOUT_SECONDS) -> GpuPr
 
 
 def first_available_backend() -> GpuProbeResult | None:
-    """Returns the first passing backend; a crashed or hung probe is skipped."""
+    """Returns the first passing hardware backend, else the first software one.
+
+    A crashed or hung probe is skipped. An adapter that runs on the CPU is
+    kept only while no hardware one passes (ADR 0013 D5.8): on the reference
+    machine Vulkan is lavapipe, so OpenGL ES on the GPU wins over it.
+    """
+    software: GpuProbeResult | None = None
     for backend in backend_order():
         result = probe_backend(backend)
-        if result.available:
+        if not result.available:
+            continue
+        if not result.software:
             return result
-    return None
+        if software is None:
+            software = result
+    return software

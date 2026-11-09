@@ -52,3 +52,55 @@ def test_probe_timeout_skips_unresponsive_backend(monkeypatch: pytest.MonkeyPatc
 
     assert not result.available
     assert result.error == "probe timed out after 1 seconds"
+
+
+def _fake_probes(
+    monkeypatch: pytest.MonkeyPatch, results: dict[str, gpu.GpuProbeResult]
+) -> list[str]:
+    probed: list[str] = []
+
+    def probe(backend: str) -> gpu.GpuProbeResult:
+        probed.append(backend)
+        return results.get(backend, gpu.GpuProbeResult(backend, error="not available"))
+
+    monkeypatch.setattr(gpu, "probe_backend", probe)
+    monkeypatch.setattr(gpu, "backend_order", lambda: ("vulkan", "opengl", "software"))
+    return probed
+
+
+def test_hardware_adapter_wins_over_an_earlier_software_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The reference machine: Vulkan is lavapipe, OpenGL ES runs on the GT 730.
+    probed = _fake_probes(
+        monkeypatch,
+        {
+            "vulkan": gpu.GpuProbeResult("vulkan", "llvmpipe (LLVM 19.1.7)", "Cpu"),
+            "opengl": gpu.GpuProbeResult("opengl", "NV106", "Other"),
+            "software": gpu.GpuProbeResult("software", "llvmpipe (LLVM 19.1.7)", "Cpu"),
+        },
+    )
+
+    result = gpu.first_available_backend()
+
+    assert result == gpu.GpuProbeResult("opengl", "NV106", "Other")
+    assert probed == ["vulkan", "opengl"]
+
+
+def test_first_software_adapter_is_kept_when_no_hardware_passes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lavapipe = gpu.GpuProbeResult("vulkan", "llvmpipe (LLVM 19.1.7)", "Cpu")
+    probed = _fake_probes(
+        monkeypatch,
+        {"vulkan": lavapipe, "software": gpu.GpuProbeResult("software", "llvmpipe", "Cpu")},
+    )
+
+    assert gpu.first_available_backend() == lavapipe
+    assert probed == ["vulkan", "opengl", "software"]
+
+
+def test_no_backend_when_every_probe_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_probes(monkeypatch, {})
+
+    assert gpu.first_available_backend() is None
