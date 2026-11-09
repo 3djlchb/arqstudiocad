@@ -266,3 +266,185 @@ fn a_plane_through_the_axis_where_the_angle_starts() {
         .unwrap();
     assert!(close(volume(&half), PI), "{}", volume(&half));
 }
+
+/// How many faces of `body` are planes facing `normal`.
+fn flat_faces(body: &Body, normal: (f64, f64, f64)) -> usize {
+    let n = Vector3::new(normal.0, normal.1, normal.2).unwrap();
+    body.faces()
+        .iter()
+        .filter(|f| match &f.surface {
+            crate::surface::Surface::Plane(pl) => {
+                let m = if f.reversed {
+                    -pl.normal()
+                } else {
+                    pl.normal()
+                };
+                (m - n).length() < 1e-9
+            }
+            _ => false,
+        })
+        .count()
+}
+
+#[test]
+fn a_flush_column_bores_a_hole_through_a_slab() {
+    // The column exactly as thick as the slab: its ends lie on the slab's
+    // faces, one each way.
+    let slab = cuboid((0.0, 0.0, 0.0), (4.0, 4.0, 1.0));
+    let col = column((2.0, 2.0, 0.0), 0.5, 1.0);
+    let disc = PI * 0.25;
+    let holed = slab.difference(&col).unwrap().unwrap();
+    assert!(close(volume(&holed), 16.0 - disc), "{}", volume(&holed));
+    let holed_flats = holed
+        .faces()
+        .iter()
+        .filter(|f| matches!(f.surface, crate::surface::Surface::Plane(_)) && f.loops.len() == 2)
+        .count();
+    assert_eq!(holed_flats, 2, "top and bottom, each with a round hole");
+    assert!(close(
+        volume(&slab.intersection(&col).unwrap().unwrap()),
+        disc
+    ));
+    assert!(close(volume(&slab.union(&col).unwrap()), 16.0));
+    assert_eq!(col.difference(&slab).unwrap(), None);
+}
+
+#[test]
+fn a_blind_hole_flush_with_the_top() {
+    let slab = cuboid((0.0, 0.0, 0.0), (4.0, 4.0, 1.0));
+    let col = column((2.0, 2.0, 0.5), 0.5, 0.5);
+    let pocket = slab.difference(&col).unwrap().unwrap();
+    assert!(
+        close(volume(&pocket), 16.0 - PI * 0.25 * 0.5),
+        "{}",
+        volume(&pocket)
+    );
+    assert_eq!(
+        pocket.lumps()[0].shells.len(),
+        1,
+        "open at the top, no void"
+    );
+    // Flush with the top, through the bottom.
+    let through = column((2.0, 2.0, -1.0), 0.5, 2.0);
+    let holed = slab.difference(&through).unwrap().unwrap();
+    assert!(
+        close(volume(&holed), 16.0 - PI * 0.25),
+        "{}",
+        volume(&holed)
+    );
+}
+
+#[test]
+fn a_column_standing_on_a_slab_unites_with_it() {
+    // Touching face to face: one solid, no face where they meet.
+    let slab = cuboid((0.0, 0.0, 0.0), (4.0, 4.0, 1.0));
+    let col = column((2.0, 2.0, 1.0), 0.5, 3.0);
+    let joined = slab.union(&col).unwrap();
+    assert_eq!(joined.lumps().len(), 1);
+    assert!(
+        close(volume(&joined), 16.0 + PI * 0.25 * 3.0),
+        "{}",
+        volume(&joined)
+    );
+    // The slab's top keeps a round hole where the column stands; the
+    // column's foot is gone.
+    assert_eq!(flat_faces(&joined, (0.0, 0.0, -1.0)), 1);
+    assert_eq!(slab.intersection(&col).unwrap(), None);
+    assert!(close(
+        volume(&slab.difference(&col).unwrap().unwrap()),
+        16.0
+    ));
+}
+
+#[test]
+fn a_column_on_a_slab_s_edge_and_flush_faces_merge() {
+    // A slab with a round hole, and a block beside it flush at top and
+    // bottom: their tops become one face, the hole in it.
+    let slab = cuboid((0.0, 0.0, 0.0), (4.0, 4.0, 1.0));
+    let holed = slab
+        .difference(&column((2.0, 2.0, -1.0), 0.5, 3.0))
+        .unwrap()
+        .unwrap();
+    let block = cuboid((4.0, 0.0, 0.0), (6.0, 4.0, 1.0));
+    let joined = holed.union(&block).unwrap();
+    assert!(
+        close(volume(&joined), 24.0 - PI * 0.25),
+        "{}",
+        volume(&joined)
+    );
+    assert_eq!(flat_faces(&joined, (0.0, 0.0, 1.0)), 1, "one top");
+    assert_eq!(flat_faces(&joined, (0.0, 0.0, -1.0)), 1, "one bottom");
+    assert_eq!(flat_faces(&joined, (0.0, -1.0, 0.0)), 1, "one front");
+}
+
+#[test]
+fn the_volumes_add_up_for_flush_columns_and_slabs() {
+    // Columns and slabs on a coarse grid, so their ends and faces meet
+    // often.
+    let mut rng = Lcg(20_261_109);
+    let mut flush = 0;
+    for _ in 0..40 {
+        let grid = |rng: &mut Lcg, lo: f64, hi: f64| (rng.range(lo, hi) * 2.0).round() / 2.0;
+        let z0 = grid(&mut rng, 0.0, 2.0);
+        let z1 = z0 + grid(&mut rng, 0.5, 2.0);
+        let slab = cuboid((0.0, 0.0, z0), (4.0, 4.0, z1));
+        let (cz, h) = (grid(&mut rng, -0.5, 2.5), grid(&mut rng, 0.5, 3.0));
+        let col = column(
+            (grid(&mut rng, 0.5, 3.5), grid(&mut rng, 0.5, 3.5), cz),
+            rng.range(0.2, 0.5),
+            h,
+        );
+        let (va, vb) = (volume(&slab), volume(&col));
+        let union = slab.union(&col).unwrap();
+        let vi = slab.intersection(&col).unwrap().map_or(0.0, |x| volume(&x));
+        let vr = slab.difference(&col).unwrap().map_or(0.0, |x| volume(&x));
+        let case = format!("slab {z0}..{z1}, column {cz}..{}", cz + h);
+        assert!(close(volume(&union), va + vb - vi), "{case}: union");
+        assert!(close(vr, va - vi), "{case}: difference");
+        flush += usize::from([z0, z1].contains(&cz) || [z0, z1].contains(&(cz + h)));
+    }
+    assert!(flush > 10, "{flush}");
+}
+
+#[test]
+fn a_cut_s_floor_merges_with_the_step_beside_it() {
+    // A stepped block (low on the left, high on the right) with a round
+    // hole; cutting the high part down to the step leaves a floor, the
+    // subtracted box's own bottom turned over, flush with the step: one
+    // face.
+    let low = cuboid((0.0, 0.0, 0.0), (4.0, 4.0, 0.5));
+    let high = cuboid((2.0, 0.0, 0.0), (4.0, 4.0, 1.0));
+    let stepped = low
+        .union(&high)
+        .unwrap()
+        .difference(&column((3.5, 2.0, -1.0), 0.25, 3.0))
+        .unwrap()
+        .unwrap();
+    let cut = stepped
+        .difference(&cuboid((1.5, -1.0, 0.5), (3.0, 5.0, 2.0)))
+        .unwrap()
+        .unwrap();
+    let hole = PI * 0.0625;
+    assert!(
+        close(volume(&cut), 8.0 + 4.0 - 2.0 - hole),
+        "{}",
+        volume(&cut)
+    );
+    let up = Vector3::new(0.0, 0.0, 1.0).unwrap();
+    let floors = cut
+        .faces()
+        .iter()
+        .filter(|f| match &f.surface {
+            crate::surface::Surface::Plane(pl) => {
+                let m = if f.reversed {
+                    -pl.normal()
+                } else {
+                    pl.normal()
+                };
+                (m - up).length() < 1e-9 && pl.distance(p(0.0, 0.0, 0.5)) < 1e-9
+            }
+            _ => false,
+        })
+        .count();
+    assert_eq!(floors, 1, "the step and the cut's floor, one face");
+}

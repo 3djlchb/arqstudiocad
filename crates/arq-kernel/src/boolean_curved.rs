@@ -37,7 +37,7 @@ use crate::boolean::{BooleanError, Op, tolerance_of};
 use crate::brep::{Body, BodyBuilder, BrepError, Coedge, Edge, Face, Loop, Lump, Shell};
 use crate::chart::frame;
 use crate::curve::{Curve, EllipseCurve, LineCurve};
-use crate::surface::Surface;
+use crate::surface::{Plane, Surface};
 use crate::tessellate::ellipse_parameter;
 
 /// A directed piece of an edge in space.
@@ -270,10 +270,13 @@ struct CSolid {
     regions: Vec<CurvedRegion>,
 }
 
-/// A face of the result: its surface, orientation, domain and region.
+/// A face of the result: its surface, orientation, domain and region;
+/// `flipped` when its region was turned over against its domain (a face of
+/// the solid subtracted), so its outside is against the domain's normal.
 struct Part {
     surface: Surface,
     reversed: bool,
+    flipped: bool,
     domain: Domain,
     region: CurvedRegion,
 }
@@ -305,12 +308,22 @@ pub(crate) fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, Boolea
     let mut parts = Vec::new();
     for (own, other, first) in [(&sa, &sb, true), (&sb, &sa, false)] {
         for (face, region) in own.faces.iter().zip(&own.regions) {
-            let (face, region, section) = framed(face, region, other, tol)?;
+            let (face, region, inner, outer) = framed(face, region, other, tol)?;
             let (face, region) = (&face, &region);
+            // The planar booleans' rules (ADR 0032 D2.4, 0033 delivery 2.3):
+            // the other solid just inside the face (L) and just outside (U).
             let kept = match (op, first) {
-                (Op::Union, _) | (Op::Difference, true) => region.difference(&section, tol),
-                (Op::Intersection, _) | (Op::Difference, false) => {
-                    region.intersection(&section, tol)
+                (Op::Union, true) => region.difference(&outer, tol),
+                (Op::Intersection, true) => region.intersection(&inner, tol),
+                (Op::Difference, true) => region.difference(&inner, tol),
+                // L and U alike (general position) need no boolean of their own.
+                (Op::Union, false) if inner == outer => region.difference(&inner, tol),
+                (Op::Union, false) => region.difference(&inner.union(&outer, tol), tol),
+                (Op::Intersection | Op::Difference, false) if inner == outer => {
+                    region.intersection(&inner, tol)
+                }
+                (Op::Intersection | Op::Difference, false) => {
+                    region.intersection(&inner.intersection(&outer, tol), tol)
                 }
             };
             let flip = op == Op::Difference && !first;
@@ -318,6 +331,7 @@ pub(crate) fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, Boolea
                 parts.push(Part {
                     surface: face.surface.clone(),
                     reversed: face.reversed ^ flip,
+                    flipped: flip,
                     domain: face.domain,
                     region: if flip {
                         reverse_region(&piece, tol)?
@@ -328,10 +342,73 @@ pub(crate) fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, Boolea
             }
         }
     }
+    let parts = merge_coplanar(parts, tol)?;
     if parts.is_empty() {
         return Ok(None);
     }
     assemble(&parts, tol).map(Some)
+}
+
+/// The kept flat parts lying in one plane and facing the same way, merged:
+/// lifted, brought into one frame of that plane and united, so the edges
+/// they shared are gone (ADR 0032 D2.5).
+fn merge_coplanar(parts: Vec<Part>, tol: Tolerance) -> Result<Vec<Part>, BooleanError> {
+    let t = tol.linear();
+    let outward = |p: &Part| match p.domain {
+        Domain::Plane { n, origin, .. } => Some((if p.flipped { -n } else { n }, origin)),
+        Domain::Cylinder { .. } => None,
+    };
+    let mut groups: Vec<Vec<Part>> = Vec::new();
+    let mut out = Vec::new();
+    for part in parts {
+        let Some((n, o)) = outward(&part) else {
+            out.push(part);
+            continue;
+        };
+        let same = groups.iter_mut().find(|g| {
+            let (m, q) = outward(&g[0]).expect("flat");
+            (m - n).length() <= tol.angular() && (o - q).dot(m).abs() <= t
+        });
+        match same {
+            Some(g) => g.push(part),
+            None => groups.push(vec![part]),
+        }
+    }
+    for group in groups {
+        if group.len() == 1 {
+            out.extend(group);
+            continue;
+        }
+        let (n, origin) = outward(&group[0]).expect("flat");
+        let (u, v) = frame(n);
+        let domain = Domain::Plane { origin, u, v, n };
+        let mut merged = CurvedRegion::default();
+        for part in &group {
+            let mut contours = Vec::new();
+            for contour in part.region.contours() {
+                let spans = lift_contour(&part.domain, contour, t)?;
+                contours.push(
+                    spans
+                        .iter()
+                        .map(|s| trim_on(&domain, s))
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+            }
+            let region = CurvedRegion::new(contours, tol).map_err(|_| BooleanError::NonManifold)?;
+            merged = merged.union(&region, tol);
+        }
+        let plane = Plane::new(origin, n).map_err(geometry)?;
+        for piece in merged.pieces(tol) {
+            out.push(Part {
+                surface: Surface::Plane(plane),
+                reversed: false,
+                flipped: false,
+                domain,
+                region: piece,
+            });
+        }
+    }
+    Ok(out)
 }
 
 /// A cylinder's pieces joined again where the window's seam cut one face
@@ -799,14 +876,14 @@ fn framed(
     region: &CurvedRegion,
     other: &CSolid,
     tol: Tolerance,
-) -> Result<(CFace, CurvedRegion, CurvedRegion), BooleanError> {
+) -> Result<(CFace, CurvedRegion, CurvedRegion, CurvedRegion), BooleanError> {
     let mut cuts = Vec::new();
     for (g, r) in other.faces.iter().zip(&other.regions) {
         cuts.extend(cut(face, g, r, tol)?);
     }
     let Domain::Cylinder { .. } = face.domain else {
-        let section = close(&face.domain, cuts, tol)?;
-        return Ok((face.clone(), region.clone(), section));
+        let (inner, outer) = sides(&face.domain, &cuts, tol)?;
+        return Ok((face.clone(), region.clone(), inner, outer));
     };
     let own: Vec<Trim> = face
         .loops
@@ -816,11 +893,62 @@ fn framed(
         .collect::<Result<_, _>>()?;
     let mut moved = face.clone();
     if let Domain::Cylinder { x0, .. } = &mut moved.domain {
-        *x0 = quiet_start(own.iter().chain(&cuts));
+        *x0 = quiet_start(own.iter().chain(cuts.iter().map(|(t, _)| t)));
     }
     let region = close(&moved.domain, own, tol)?;
-    let section = close(&moved.domain, cuts, tol)?;
-    Ok((moved, region, section))
+    let (inner, outer) = sides(&moved.domain, &cuts, tol)?;
+    Ok((moved, region, inner, outer))
+}
+
+/// The other solid just inside a face (L) and just outside it (U), from the
+/// section's pieces and the sides they bound.
+fn sides(
+    domain: &Domain,
+    cuts: &[(Trim, Reach)],
+    tol: Tolerance,
+) -> Result<(CurvedRegion, CurvedRegion), BooleanError> {
+    let pick = |want: Reach| {
+        cuts.iter()
+            .filter(|(_, r)| *r == Reach::Both || *r == want)
+            .map(|(t, _)| *t)
+            .collect::<Vec<_>>()
+    };
+    // In general position every piece bounds both sides: one section.
+    if cuts.iter().all(|(_, r)| *r == Reach::Both) {
+        let both = close(domain, pick(Reach::Both), tol)?;
+        return Ok((both.clone(), both));
+    }
+    Ok((
+        close(domain, pick(Reach::Inner), tol)?,
+        close(domain, pick(Reach::Outer), tol)?,
+    ))
+}
+
+/// Which side of a face a piece of the other solid's section bounds: a
+/// curve through the inside of its own face, both; one along its own
+/// face's edge, only the side that face goes on to (ADR 0033 delivery 2.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Reach {
+    Both,
+    Inner,
+    Outer,
+}
+
+/// How far `p` lies outside the face's surface: along its outward normal.
+fn height(domain: &Domain, p: Point3) -> f64 {
+    match *domain {
+        Domain::Plane { origin, n, .. } => (p - origin).dot(n),
+        Domain::Cylinder {
+            origin,
+            axis,
+            r,
+            sigma,
+            ..
+        } => {
+            let d = p - origin;
+            sigma * ((d - axis * d.dot(axis)).length() - r)
+        }
+    }
 }
 
 /// Where `g`'s face cuts `face`'s surface, the parts in `g` (its `region`),
@@ -830,7 +958,7 @@ fn cut(
     g: &CFace,
     region: &CurvedRegion,
     tol: Tolerance,
-) -> Result<Vec<Trim>, BooleanError> {
+) -> Result<Vec<(Trim, Reach)>, BooleanError> {
     let t = tol.linear();
     // The curves, as spans in space, before keeping their parts in g.
     let curves: Vec<Span> = match (face.domain, g.domain) {
@@ -856,7 +984,7 @@ fn cut(
     };
     let mut out = Vec::new();
     for curve in curves {
-        for part in inside_parts(&curve, g, region, tol)? {
+        for (part, reach) in inside_parts(&curve, face, g, region, tol)? {
             // Run with g's solid on the left: along n_face × n_g.
             let p = part.point(0.5);
             let want = face.domain.normal(p).cross(g.domain.normal(p));
@@ -866,7 +994,7 @@ fn cut(
                 part
             };
             let trim = trim_on(&face.domain, &part)?;
-            out.push(trim);
+            out.push((trim, reach));
         }
     }
     Ok(out)
@@ -1014,10 +1142,11 @@ fn apart(a: &CFace, b: &CFace, t: f64) -> bool {
 /// g's domain, the pieces between whose middles are inside.
 fn inside_parts(
     curve: &Span,
+    face: &CFace,
     g: &CFace,
     region: &CurvedRegion,
     tol: Tolerance,
-) -> Result<Vec<Span>, BooleanError> {
+) -> Result<Vec<(Span, Reach)>, BooleanError> {
     let t = tol.linear();
     // The curve in g's domain, as one trim (into g's window if a cylinder).
     let image = trim_on(&g.domain, curve)?;
@@ -1060,19 +1189,67 @@ fn inside_parts(
         cuts.sort_by(f64::total_cmp);
         cuts.dedup_by(|a, b| (*a - *b).abs() <= 1e-12);
         for w in cuts.windows(2) {
-            let mid = trim.point((w[0] + w[1]) / 2.0);
-            if inside_face(&g.domain, region, mid, tol) {
-                let (a, b) = (s0 + (s1 - s0) * w[0], s0 + (s1 - s0) * w[1]);
-                // Longer than the tolerance (a closed curve ends where it
-                // starts: its middle tells).
-                if (curve.point(a) - curve.point((a + b) / 2.0)).length() > t {
-                    parts.push(curve.part(a, b));
+            let at = (w[0] + w[1]) / 2.0;
+            let mid = trim.point(at);
+            let reach = if inside_face(&g.domain, region, mid, tol) {
+                Reach::Both
+            } else if region.contains(mid, tol) == arq_geometry::Containment::Boundary {
+                // Along g's edge: g goes on to one side of the face only.
+                match side_of_edge(face, g, region, &trim, at, tol) {
+                    Some(reach) => reach,
+                    None => continue,
                 }
+            } else {
+                continue;
+            };
+            let (a, b) = (s0 + (s1 - s0) * w[0], s0 + (s1 - s0) * w[1]);
+            // Longer than the tolerance (a closed curve ends where it
+            // starts: its middle tells).
+            if (curve.point(a) - curve.point((a + b) / 2.0)).length() > t {
+                parts.push((curve.part(a, b), reach));
             }
         }
     }
     // Joined again where the window cut them, so one piece runs on.
     Ok(parts)
+}
+
+/// Which side of `face` the face `g` goes on to from its edge, where the
+/// curve `trim` (in g's domain) runs along it at `at`: a hair into g's
+/// region, how far above `face` it is.
+fn side_of_edge(
+    face: &CFace,
+    g: &CFace,
+    region: &CurvedRegion,
+    trim: &Trim,
+    at: f64,
+    tol: Tolerance,
+) -> Option<Reach> {
+    let t = tol.linear();
+    let (p, q) = (trim.point(at), trim.point((at + 1e-3).min(1.0)));
+    let (dx, dy) = (q.x() - p.x(), q.y() - p.y());
+    // On a cylinder x is an angle: steps measured along the surface.
+    let scale = match g.domain {
+        Domain::Cylinder { r, .. } => r,
+        Domain::Plane { .. } => 1.0,
+    };
+    let len = (dx * scale).hypot(dy);
+    if len == 0.0 {
+        return None;
+    }
+    let step = 1e3 * t;
+    for sign in [1.0, -1.0] {
+        let probe = Point2::new(
+            p.x() - sign * dy / len * step / scale,
+            p.y() + sign * dx * scale / len * step,
+        )
+        .ok()?;
+        if inside_face(&g.domain, region, probe, tol) {
+            let h = height(&face.domain, g.domain.lift([probe.x(), probe.y()]));
+            return Some(if h < 0.0 { Reach::Inner } else { Reach::Outer });
+        }
+    }
+    None
 }
 
 /// Whether the point `q` of a face's domain lies inside the face's region.
