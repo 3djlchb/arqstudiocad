@@ -1,13 +1,14 @@
 //! Rasterizing a 100,000-entity drawing at 1920 x 1080 (ADR 0013, D5.3).
 //!
 //! `cargo bench -p arq-render`. A measurement target for the floor machine
-//! (ADR 0013, D5.8), not a promise.
+//! (ADR 0013, D5.8), not a promise. The GPU renderer is measured too where
+//! this machine has a hardware adapter (`ARQ_GPU_BACKEND` picks one).
 
 use std::hint::black_box;
 
 use arq_core::{Document, PlanGeometry};
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2};
-use arq_render::{Camera, Scene, Style, render};
+use arq_render::{Camera, GpuBackend, GpuRenderer, Scene, Style, render};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 const SIDE: usize = 317; // 317² ≈ 100,000 cells, one entity each
@@ -58,7 +59,35 @@ fn rasterize(c: &mut Criterion) {
     group.bench_function("render 1% (zoomed in)", |b| {
         b.iter(|| black_box(render(&scene, &detail, style)))
     });
+    if let Some(mut gpu) = gpu_renderer() {
+        eprintln!("GPU renderer on {:?}", gpu.adapter());
+        group.bench_function("GPU render all", |b| {
+            b.iter(|| black_box(gpu.render(&scene, &all, style).expect("drawn")))
+        });
+        group.bench_function("GPU render 1% (zoomed in)", |b| {
+            b.iter(|| black_box(gpu.render(&scene, &detail, style).expect("drawn")))
+        });
+    }
     group.finish();
+}
+
+/// The backend `ARQ_GPU_BACKEND` names, or the first hardware adapter.
+fn gpu_renderer() -> Option<GpuRenderer> {
+    if let Some(name) = std::env::var("ARQ_GPU_BACKEND")
+        .ok()
+        .filter(|v| !v.is_empty())
+    {
+        return GpuRenderer::new(GpuBackend::parse(&name).expect("ARQ_GPU_BACKEND")).ok();
+    }
+    [
+        GpuBackend::Dx12,
+        GpuBackend::Metal,
+        GpuBackend::Vulkan,
+        GpuBackend::OpenGl,
+    ]
+    .into_iter()
+    .filter_map(|b| GpuRenderer::new(b).ok())
+    .find(|r| r.adapter().device_type != "Cpu")
 }
 
 criterion_group!(benches, rasterize);

@@ -59,7 +59,8 @@ section "Build"
 run "build (uv sync)" uv sync
 
 section "Rust tests"
-run "rust tests" cargo test
+# The GPU renderer's tests must find an adapter here (ADR 0007).
+run "rust tests" env ARQ_GPU_TESTS=require cargo test
 
 section "Python tests"
 run "python tests" env QT_QPA_PLATFORM=offscreen uv run pytest -q -p no:cacheprovider
