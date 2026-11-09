@@ -71,6 +71,7 @@ def test_without_x11_the_viewport_draws_on_the_cpu(
 WINDOW_SCRIPT = textwrap.dedent(
     """
     import json, sys, time
+    from PySide6.QtCore import Qt
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import QApplication
     from arqstudiocad.core import CadApplication
@@ -82,8 +83,11 @@ WINDOW_SCRIPT = textwrap.dedent(
         document.add_line((i * 5.0, 0.0), (i * 5.0 + 3.0, 60.0))
     document.add_circle((100.0, 30.0), 25.0)
     viewport = Viewport(document)
+    # Grabbed from the screen: kept above any other window on the desktop.
+    viewport.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
     viewport.resize(400, 300)
     viewport.show()
+    viewport.raise_()
     for _ in range(30):
         app.processEvents()
         time.sleep(0.02)
