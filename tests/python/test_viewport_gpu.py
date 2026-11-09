@@ -150,6 +150,7 @@ def test_a_real_window_is_presented_by_the_gpu(tmp_path: Path) -> None:
         timeout=120,
         env=env,
         check=False,
+        cwd=tmp_path,
     )
     assert done.returncode == 0, done.stderr[-2000:]
     result = json.loads(done.stdout.strip().splitlines()[-1])
@@ -242,6 +243,7 @@ def _shot(tmp_path: Path, name: str, backend: str | None) -> tuple[str, tuple[in
         timeout=120,
         env=env,
         check=False,
+        cwd=tmp_path,
     )
     assert done.returncode == 0, done.stderr[-2000:]
     path, *rgb = done.stdout.strip().splitlines()[-1].split()
@@ -361,6 +363,7 @@ def test_the_app_chooses_the_graphics_card_by_itself(tmp_path: Path) -> None:
         timeout=120,
         env=env,
         check=False,
+        cwd=tmp_path,
     )
     assert done.returncode == 0, done.stderr[-2000:]
     result = json.loads(done.stdout.strip().splitlines()[-1])
