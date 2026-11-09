@@ -63,7 +63,7 @@ section "Rust tests"
 run "rust tests" env ARQ_GPU_TESTS=require cargo test
 
 section "Python tests"
-run "python tests" env QT_QPA_PLATFORM=offscreen uv run pytest -q -p no:cacheprovider
+run "python tests" env QT_QPA_PLATFORM=offscreen ARQ_GPU_TESTS=require uv run pytest -q -p no:cacheprovider
 
 section "Installation self-check"
 run "self-check" uv run arqstudiocad --check

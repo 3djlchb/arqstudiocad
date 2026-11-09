@@ -1,106 +1,244 @@
-//! The GPU renderer: the same scene and camera as the CPU rasterizer, drawn
-//! offscreen with wgpu and read back into the same [`Image`] (ADR 0007).
+//! The GPU renderer (ADR 0007, ADR 0034): a scene and a camera drawn with
+//! wgpu, either straight into a window or offscreen into the CPU
+//! rasterizer's [`Image`].
 //!
-//! The image lets the GPU be checked against the CPU rasterizer, the floor
-//! path, on the same input (ADR 0013 D5.8). The viewport will present the
-//! same drawing straight to its window instead, since reading the image back
-//! costs about 20 ms a frame on the reference machine (ADR 0007).
-//! It draws the very segments the rasterizer traces ([`trace`]), as
-//! one-pixel lines, within wgpu's downlevel limits (what OpenGL ES 3.0
-//! offers); 4× multisampling smooths them where the adapter offers it.
-//! Dashes are cut on the CPU, as tiny-skia cuts them: each segment from its
-//! start.
+//! The drawing is kept on the GPU ([`Retained`]): panning and zooming
+//! change only a uniform, and the geometry is built and uploaded again only
+//! when the scene changes, the zoom leaves its band or the view leaves its
+//! region. Lines are one pixel wide, and what can be shorter than a pixel
+//! is drawn as a pixel too, as the CPU shows it, within wgpu's downlevel
+//! limits (what OpenGL ES 3.0 offers); 4× multisampled on request, where a
+//! hardware adapter offers it.
+//! Dashes are cut in the fragment shader along each segment from its start,
+//! as the rasterizer cuts them.
+//!
+//! The window is the viewport's (ADR 0034 D1), its surface made from Qt's
+//! native handles at the Python boundary; the offscreen image lets the
+//! GPU be checked against the CPU rasterizer, the floor path, on the same
+//! input (ADR 0013 D5.8). Errors come back as errors, never panics, so the
+//! caller can draw on the CPU instead (ADR 0034 D5).
 
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use crate::camera::Camera;
 use crate::gpu_probe::{GpuBackend, GpuProbeResult, offscreen_adapter};
-use crate::raster::{DASH_PX, Image, Sink, Style, trace};
+use crate::raster::{DASH_PX, Image, Style};
+use crate::retained::{Retained, Vertex};
 use crate::scene::Scene;
 
-/// The image the GPU draws: 8 bits per channel, no sRGB conversion, so
-/// colors come back byte for byte.
-const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+/// The offscreen image: 8 bits per channel, no sRGB conversion, so colors
+/// come back byte for byte.
+const OFFSCREEN: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// How long a frame may take on the GPU before the renderer gives up.
 const FRAME_TIMEOUT: Duration = Duration::from_secs(5);
-/// Bytes per vertex: x, y as `f32` and the color as four bytes.
-const VERTEX_BYTES: u64 = 12;
+/// Bytes per vertex: position, offset, along and color.
+const VERTEX_BYTES: u64 = 24;
 
 const SHADER: &str = r"
-struct View { size: vec2<f32>, unused: vec2<f32> };
+struct View {
+    // The camera's center relative to the geometry's origin, in world units.
+    center: vec2<f32>,
+    // The target's size in pixels.
+    size: vec2<f32>,
+    // Pixels per world unit.
+    scale: f32,
+    // Dashes: on and on plus off, in pixels.
+    dash_on: f32,
+    dash_period: f32,
+    unused: f32,
+};
 @group(0) @binding(0) var<uniform> view: View;
 
 struct Out {
     @builtin(position) position: vec4<f32>,
     @location(0) color: vec4<f32>,
+    // Pixels from the segment's start; negative when not dashed.
+    @location(1) along: f32,
 };
 
-// Screen pixels (origin top-left, y down) to clip space.
 @vertex
-fn vs_main(@location(0) at: vec2<f32>, @location(1) color: vec4<f32>) -> Out {
+fn vs_main(
+    @location(0) at: vec2<f32>,
+    @location(1) offset: vec2<f32>,
+    @location(2) along: f32,
+    @location(3) color: vec4<f32>,
+) -> Out {
+    return place(at, offset, along, color);
+}
+
+fn place(at: vec2<f32>, offset: vec2<f32>, along: f32, color: vec4<f32>) -> Out {
+    let d = (at - view.center) * view.scale;
+    // Screen pixels: origin top-left, y down.
+    let px = vec2<f32>(
+        d.x + view.size.x * 0.5 + offset.x,
+        view.size.y * 0.5 - d.y + offset.y,
+    );
     var out: Out;
     out.position = vec4<f32>(
-        at.x / view.size.x * 2.0 - 1.0,
-        1.0 - at.y / view.size.y * 2.0,
+        px.x / view.size.x * 2.0 - 1.0,
+        1.0 - px.y / view.size.y * 2.0,
         0.0,
         1.0,
     );
     out.color = color;
+    out.along = along * view.scale;
+    return out;
+}
+
+// A dot, only where it falls inside the view: a pixel just outside would
+// still bleed into the edge, where the CPU draws nothing.
+@vertex
+fn vs_end(
+    @location(0) at: vec2<f32>,
+    @location(1) offset: vec2<f32>,
+    @location(2) along: f32,
+    @location(3) color: vec4<f32>,
+) -> Out {
+    var out = place(at, offset, along, color);
+    let px = (out.position.xy * vec2<f32>(0.5, -0.5) + 0.5) * view.size;
+    if (px.x < 0.0 || px.y < 0.0 || px.x >= view.size.x || px.y >= view.size.y) {
+        out.position = vec4<f32>(4.0, 4.0, 0.0, 1.0);
+    }
     return out;
 }
 
 @fragment
 fn fs_main(in: Out) -> @location(0) vec4<f32> {
+    if (in.along >= 0.0 && in.along % view.dash_period >= view.dash_on) {
+        discard;
+    }
     return in.color;
 }
 ";
 
-/// A scene drawn offscreen on one GPU adapter.
+/// A scene drawn on one GPU adapter, into a window or offscreen.
 pub struct GpuRenderer {
     adapter: GpuProbeResult,
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pipeline: wgpu::RenderPipeline,
+    shader: wgpu::ShaderModule,
+    pipeline_layout: wgpu::PipelineLayout,
+    pipelines: Vec<(
+        wgpu::TextureFormat,
+        wgpu::PrimitiveTopology,
+        wgpu::RenderPipeline,
+    )>,
     uniform: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     samples: u32,
     max_buffer: u64,
+    retained: Option<Retained>,
     vertices: Option<wgpu::Buffer>,
-    target: Option<Target>,
-    traced: Vec<Vertex>,
+    line_count: u32,
+    dot_count: u32,
+    builds: u64,
+    offscreen: Option<Offscreen>,
+    window: Option<Window>,
+    errors: Arc<Mutex<Option<String>>>,
+    /// Keeps the surface's instance alive.
+    _instance: Option<wgpu::Instance>,
 }
 
-/// The textures and the readback buffer for one size.
-struct Target {
+/// The segments as lines, and what can be shorter than a pixel as pixels.
+struct Pipelines {
+    lines: wgpu::RenderPipeline,
+    dots: wgpu::RenderPipeline,
+}
+
+/// The offscreen textures and the readback buffer, for one size.
+struct Offscreen {
     width: u32,
     height: u32,
     /// Bytes per row in the readback buffer, padded as wgpu requires.
     row_bytes: u32,
-    /// The image read back: the multisampled texture's resolve, or the
-    /// texture drawn when there is no multisampling.
     resolved: wgpu::Texture,
     multisampled: Option<wgpu::Texture>,
     readback: wgpu::Buffer,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-struct Vertex {
-    at: [f32; 2],
-    rgba: [u8; 4],
+/// The window's surface and its multisampled image, if any.
+struct Window {
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+    multisampled: Option<wgpu::Texture>,
 }
 
 impl GpuRenderer {
-    /// A renderer on `backend`'s offscreen adapter, the one its probe
-    /// checks. Run the probe in a child process first (ADR 0007): a driver
-    /// can crash where an error cannot be caught.
-    pub fn new(backend: GpuBackend) -> Result<Self, String> {
-        pollster::block_on(Self::create(backend))
+    /// An offscreen renderer on `backend`'s adapter, the one its probe
+    /// checks, 4× multisampled when `antialias` asks and a hardware adapter
+    /// offers it. Run the probe in a child process first (ADR 0007): a
+    /// driver can crash where an error cannot be caught.
+    pub fn new(backend: GpuBackend, antialias: bool) -> Result<Self, String> {
+        pollster::block_on(async {
+            let adapter = offscreen_adapter(backend).await?;
+            Self::create(backend, adapter, None, antialias).await
+        })
     }
 
-    async fn create(backend: GpuBackend) -> Result<Self, String> {
-        let adapter = offscreen_adapter(backend).await?;
+    /// A renderer presenting to a window's `surface`, made by `instance`
+    /// on `backend`, `width` × `height` pixels. Making the surface from the
+    /// window's native handles is the caller's: the one `unsafe` step, kept
+    /// at the Python boundary (ADR 0034 D1).
+    pub fn for_surface(
+        backend: GpuBackend,
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        antialias: bool,
+    ) -> Result<Self, String> {
+        pollster::block_on(async {
+            let adapter = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::LowPower,
+                    force_fallback_adapter: false,
+                    compatible_surface: Some(&surface),
+                    apply_limit_buckets: false,
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+            let caps = surface.get_capabilities(&adapter);
+            let format = caps
+                .formats
+                .iter()
+                .copied()
+                .find(|f| !f.is_srgb())
+                .or_else(|| caps.formats.first().copied())
+                .ok_or("the window offers no surface format")?;
+            let config = wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format,
+                width: width.max(1),
+                height: height.max(1),
+                present_mode: wgpu::PresentMode::Fifo,
+                desired_maximum_frame_latency: 2,
+                alpha_mode: caps
+                    .alpha_modes
+                    .first()
+                    .copied()
+                    .unwrap_or(wgpu::CompositeAlphaMode::Auto),
+                view_formats: vec![],
+                color_space: wgpu::SurfaceColorSpace::Auto,
+            };
+            let mut renderer = Self::create(backend, adapter, Some(instance), antialias).await?;
+            surface.configure(&renderer.device, &config);
+            renderer.window = Some(Window {
+                surface,
+                config,
+                multisampled: None,
+            });
+            renderer.check()?;
+            Ok(renderer)
+        })
+    }
+
+    async fn create(
+        backend: GpuBackend,
+        adapter: wgpu::Adapter,
+        instance: Option<wgpu::Instance>,
+        antialias: bool,
+    ) -> Result<Self, String> {
         let info = adapter.get_info();
         // The downlevel rule (ADR 0007): what an OpenGL ES 3.0 device offers.
         let limits = wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
@@ -113,10 +251,24 @@ impl GpuRenderer {
             })
             .await
             .map_err(|error| error.to_string())?;
-        let samples = if adapter
-            .get_texture_format_features(FORMAT)
-            .flags
-            .sample_count_supported(4)
+        let errors: Arc<Mutex<Option<String>>> = Arc::default();
+        let sink = Arc::clone(&errors);
+        device.on_uncaptured_error(Arc::new(move |error| {
+            let mut slot = sink
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            slot.get_or_insert_with(|| error.to_string());
+        }));
+        // Multisampling when asked, on hardware only: on a CPU adapter it
+        // costs much and gains nothing, and lavapipe drops pixels of
+        // multisampled lines (a 5-pixel line drawn as 2, measured on the
+        // reference machine). On the GT 730 it doubles a frame's time.
+        let samples = if antialias
+            && info.device_type != wgpu::DeviceType::Cpu
+            && adapter
+                .get_texture_format_features(OFFSCREEN)
+                .flags
+                .sample_count_supported(4)
         {
             4
         } else {
@@ -131,7 +283,7 @@ impl GpuRenderer {
             label: Some("ArqStudioCAD renderer view"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -145,55 +297,9 @@ impl GpuRenderer {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("ArqStudioCAD renderer lines"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: VERTEX_BYTES,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x2,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Unorm8x4,
-                            offset: 8,
-                            shader_location: 1,
-                        },
-                    ],
-                })],
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: samples,
-                ..Default::default()
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: FORMAT,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ArqStudioCAD renderer view size"),
-            size: 16,
+            label: Some("ArqStudioCAD renderer view"),
+            size: 32,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -206,7 +312,7 @@ impl GpuRenderer {
             }],
         });
 
-        Ok(Self {
+        let renderer = Self {
             adapter: GpuProbeResult {
                 backend: backend.name().to_owned(),
                 adapter: info.name,
@@ -214,15 +320,25 @@ impl GpuRenderer {
             },
             device,
             queue,
-            pipeline,
+            shader,
+            pipeline_layout,
+            pipelines: Vec::new(),
             uniform,
             bind_group,
             samples,
             max_buffer,
+            retained: None,
             vertices: None,
-            target: None,
-            traced: Vec::new(),
-        })
+            line_count: 0,
+            dot_count: 0,
+            builds: 0,
+            offscreen: None,
+            window: None,
+            errors,
+            _instance: instance,
+        };
+        renderer.check()?;
+        Ok(renderer)
     }
 
     /// The backend and adapter it draws on.
@@ -230,14 +346,78 @@ impl GpuRenderer {
         &self.adapter
     }
 
-    /// Samples per pixel: 4 where the adapter offers multisampling, else 1.
+    /// Samples per pixel: 4 when antialiasing was asked and a hardware
+    /// adapter offers it, else 1.
     pub fn samples(&self) -> u32 {
         self.samples
     }
 
-    /// Paints `scene` as `camera` sees it, like [`crate::render`]. An error
-    /// means the GPU could not draw this frame; the caller draws it on the
-    /// CPU instead.
+    /// How many times the drawing was built and uploaded: once, then only
+    /// when the scene, the background, the zoom band or the region changed.
+    pub fn builds(&self) -> u64 {
+        self.builds
+    }
+
+    /// Draws `scene` as `camera` sees it into the window, sized to the
+    /// camera. A frame the window cannot take now (hidden, being resized)
+    /// is skipped. An error means the GPU cannot draw; the caller draws on
+    /// the CPU instead.
+    pub fn present(&mut self, scene: &Scene, camera: &Camera, style: Style) -> Result<(), String> {
+        let (width, height) = camera.size();
+        self.prepare(scene, camera, style)?;
+        let Some(window) = self.window.as_mut() else {
+            return Err("this renderer has no window".to_owned());
+        };
+        if (window.config.width, window.config.height) != (width, height) {
+            window.config.width = width;
+            window.config.height = height;
+            window.surface.configure(&self.device, &window.config);
+            window.multisampled = None;
+        }
+        let frame = match window.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(f)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Outdated => {
+                window.surface.configure(&self.device, &window.config);
+                return Ok(());
+            }
+            other => return Err(format!("the window's surface: {other:?}")),
+        };
+        let format = window.config.format;
+        if self.samples > 1 && window.multisampled.is_none() {
+            window.multisampled = Some(texture(
+                &self.device,
+                width,
+                height,
+                self.samples,
+                format,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            ));
+        }
+        let target = frame.texture.create_view(&Default::default());
+        let multisampled = window
+            .multisampled
+            .as_ref()
+            .map(|t| t.create_view(&Default::default()));
+        let pipelines = self.pipelines_for(format);
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        self.pass(
+            &mut encoder,
+            &target,
+            multisampled.as_ref(),
+            &pipelines,
+            style,
+        );
+        self.queue.submit([encoder.finish()]);
+        self.queue.present(frame);
+        self.check()
+    }
+
+    /// Paints `scene` as `camera` sees it into an image, like
+    /// [`crate::render`]: the GPU's drawing, checked against the CPU's.
     pub fn render(
         &mut self,
         scene: &Scene,
@@ -245,92 +425,29 @@ impl GpuRenderer {
         style: Style,
     ) -> Result<Image, String> {
         let (width, height) = camera.size();
-        let mut traced = std::mem::take(&mut self.traced);
-        traced.clear();
-        let mut sink = VertexSink {
-            vertices: &mut traced,
-            rgba: [0, 0, 0, 255],
-            dashed: false,
-        };
-        trace(scene, camera, style, &mut sink);
-        let image = self.draw(&traced, width, height, style);
-        self.traced = traced;
-        image
-    }
-
-    fn draw(
-        &mut self,
-        vertices: &[Vertex],
-        width: u32,
-        height: u32,
-        style: Style,
-    ) -> Result<Image, String> {
-        let bytes = vertices.len() as u64 * VERTEX_BYTES;
-        if bytes > self.max_buffer {
-            return Err(format!(
-                "{} segments exceed the GPU's {}-byte buffers",
-                vertices.len() / 2,
-                self.max_buffer
-            ));
+        self.prepare(scene, camera, style)?;
+        if !self
+            .offscreen
+            .as_ref()
+            .is_some_and(|t| (t.width, t.height) == (width, height))
+        {
+            self.offscreen = Some(self.new_offscreen(width, height));
         }
-        self.ensure_target(width, height);
-        self.ensure_vertices(bytes.max(VERTEX_BYTES * 2));
-        let (Some(target), Some(buffer)) = (&self.target, &self.vertices) else {
-            unreachable!("both made just above");
+        let pipelines = self.pipelines_for(OFFSCREEN);
+        let Some(target) = &self.offscreen else {
+            unreachable!("made just above");
         };
-
-        if !vertices.is_empty() {
-            let mut data = Vec::with_capacity(bytes as usize);
-            for v in vertices {
-                data.extend_from_slice(&v.at[0].to_ne_bytes());
-                data.extend_from_slice(&v.at[1].to_ne_bytes());
-                data.extend_from_slice(&v.rgba);
-            }
-            self.queue.write_buffer(buffer, 0, &data);
-        }
-        let size = [width as f32, height as f32, 0.0, 0.0];
-        let size: Vec<u8> = size.iter().flat_map(|v| v.to_ne_bytes()).collect();
-        self.queue.write_buffer(&self.uniform, 0, &size);
-
         let resolved = target.resolved.create_view(&Default::default());
         let multisampled = target
             .multisampled
             .as_ref()
             .map(|t| t.create_view(&Default::default()));
-        let (view, resolve_target) = match &multisampled {
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let (view, resolve) = match &multisampled {
             Some(m) => (m, Some(&resolved)),
             None => (&resolved, None),
         };
-        let [r, g, b] = style.background.map(|c| f64::from(c) / 255.0);
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("ArqStudioCAD renderer frame"),
-            });
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("ArqStudioCAD renderer lines"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            if !vertices.is_empty() {
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, &self.bind_group, &[]);
-                pass.set_vertex_buffer(0, buffer.slice(..bytes));
-                pass.draw(0..vertices.len() as u32, 0..1);
-            }
-        }
+        self.pass_into(&mut encoder, view, resolve, &pipelines, style);
         encoder.copy_texture_to_buffer(
             target.resolved.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -348,7 +465,6 @@ impl GpuRenderer {
             },
         );
         let submission = self.queue.submit([encoder.finish()]);
-
         let (sender, receiver) = mpsc::channel();
         target
             .readback
@@ -379,6 +495,7 @@ impl GpuRenderer {
         }
         drop(mapped);
         target.readback.unmap();
+        self.check()?;
         Ok(Image {
             width,
             height,
@@ -386,37 +503,232 @@ impl GpuRenderer {
         })
     }
 
-    /// Textures and readback for `width` × `height`, kept between frames.
-    fn ensure_target(&mut self, width: u32, height: u32) {
-        if self
-            .target
+    /// Builds and uploads the drawing if what is kept no longer serves,
+    /// then sets the camera.
+    fn prepare(&mut self, scene: &Scene, camera: &Camera, style: Style) -> Result<(), String> {
+        if !self
+            .retained
             .as_ref()
-            .is_some_and(|t| t.width == width && t.height == height)
+            .is_some_and(|r| r.serves(scene, camera, style))
         {
-            return;
+            let retained =
+                Retained::build(scene, camera, style).ok_or("the camera shows nothing finite")?;
+            self.upload(&retained.vertices, &retained.dots)?;
+            self.retained = Some(retained);
+            self.builds += 1;
         }
-        let texture = |samples: u32, usage| {
-            self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("ArqStudioCAD renderer image"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: samples,
-                dimension: wgpu::TextureDimension::D2,
-                format: FORMAT,
-                usage,
-                view_formats: &[],
-            })
+        let Some(retained) = &self.retained else {
+            unreachable!("built just above");
         };
+        let (cx, cy) = retained.center(camera);
+        let (width, height) = camera.size();
+        let [on, off] = DASH_PX;
+        let view = [
+            cx as f32,
+            cy as f32,
+            width as f32,
+            height as f32,
+            camera.scale() as f32,
+            on,
+            on + off,
+            0.0,
+        ];
+        let bytes: Vec<u8> = view.iter().flat_map(|v| v.to_ne_bytes()).collect();
+        self.queue.write_buffer(&self.uniform, 0, &bytes);
+        Ok(())
+    }
+
+    /// Uploads the lines, then the dots after them.
+    fn upload(&mut self, lines: &[Vertex], dots: &[Vertex]) -> Result<(), String> {
+        let count = lines.len() + dots.len();
+        let bytes = count as u64 * VERTEX_BYTES;
+        if bytes > self.max_buffer {
+            return Err(format!(
+                "{} segments exceed the GPU's {}-byte buffers",
+                lines.len() / 2,
+                self.max_buffer
+            ));
+        }
+        let needed = bytes.max(VERTEX_BYTES * 2);
+        if !self.vertices.as_ref().is_some_and(|b| b.size() >= needed) {
+            let size = (needed + needed / 2).min(self.max_buffer).max(needed);
+            self.vertices = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ArqStudioCAD renderer segments"),
+                size: size.next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+        }
+        let mut data = Vec::with_capacity(bytes as usize);
+        for v in lines.iter().chain(dots) {
+            for f in [v.at[0], v.at[1], v.offset[0], v.offset[1], v.along] {
+                data.extend_from_slice(&f.to_ne_bytes());
+            }
+            data.extend_from_slice(&v.rgba);
+        }
+        if let (Some(buffer), false) = (&self.vertices, data.is_empty()) {
+            self.queue.write_buffer(buffer, 0, &data);
+        }
+        self.line_count = lines.len() as u32;
+        self.dot_count = dots.len() as u32;
+        Ok(())
+    }
+
+    /// The pass into a window's frame, multisampled or not.
+    fn pass(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame: &wgpu::TextureView,
+        multisampled: Option<&wgpu::TextureView>,
+        pipelines: &Pipelines,
+        style: Style,
+    ) {
+        match multisampled {
+            Some(m) => self.pass_into(encoder, m, Some(frame), pipelines, style),
+            None => self.pass_into(encoder, frame, None, pipelines, style),
+        }
+    }
+
+    fn pass_into(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        view: &wgpu::TextureView,
+        resolve_target: Option<&wgpu::TextureView>,
+        pipelines: &Pipelines,
+        style: Style,
+    ) {
+        let [r, g, b] = style.background.map(|c| f64::from(c) / 255.0);
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("ArqStudioCAD renderer lines"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        let total = self.line_count + self.dot_count;
+        if let (Some(buffer), true) = (&self.vertices, total > 0) {
+            pass.set_bind_group(0, &self.bind_group, &[]);
+            pass.set_vertex_buffer(0, buffer.slice(..u64::from(total) * VERTEX_BYTES));
+            pass.set_pipeline(&pipelines.lines);
+            pass.draw(0..self.line_count, 0..1);
+            // What can be shorter than a pixel, as pixels: a line that short
+            // makes no fragment, and the CPU still shows it as a dot.
+            // Without multisampling a line also leaves out its last pixel
+            // (the diamond-exit rule), which the CPU draws: then every end
+            // is drawn as a pixel too.
+            let first = if self.samples == 1 {
+                0
+            } else {
+                self.line_count
+            };
+            pass.set_pipeline(&pipelines.dots);
+            pass.draw(first..total, 0..1);
+        }
+    }
+
+    /// The pipelines for a target format.
+    fn pipelines_for(&mut self, format: wgpu::TextureFormat) -> Pipelines {
+        Pipelines {
+            lines: self.pipeline(format, wgpu::PrimitiveTopology::LineList),
+            dots: self.pipeline(format, wgpu::PrimitiveTopology::PointList),
+        }
+    }
+
+    /// A pipeline for a target format and topology, made once.
+    fn pipeline(
+        &mut self,
+        format: wgpu::TextureFormat,
+        topology: wgpu::PrimitiveTopology,
+    ) -> wgpu::RenderPipeline {
+        if let Some((_, _, p)) = self
+            .pipelines
+            .iter()
+            .find(|(f, t, _)| *f == format && *t == topology)
+        {
+            return p.clone();
+        }
+        let attribute = |format, offset, shader_location| wgpu::VertexAttribute {
+            format,
+            offset,
+            shader_location,
+        };
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("ArqStudioCAD renderer lines"),
+                layout: Some(&self.pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &self.shader,
+                    entry_point: Some(match topology {
+                        wgpu::PrimitiveTopology::PointList => "vs_end",
+                        _ => "vs_main",
+                    }),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: VERTEX_BYTES,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes: &[
+                            attribute(wgpu::VertexFormat::Float32x2, 0, 0),
+                            attribute(wgpu::VertexFormat::Float32x2, 8, 1),
+                            attribute(wgpu::VertexFormat::Float32, 16, 2),
+                            attribute(wgpu::VertexFormat::Unorm8x4, 20, 3),
+                        ],
+                    })],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: self.samples,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &self.shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            });
+        self.pipelines.push((format, topology, pipeline.clone()));
+        pipeline
+    }
+
+    fn new_offscreen(&self, width: u32, height: u32) -> Offscreen {
         let resolved = texture(
+            &self.device,
+            width,
+            height,
             1,
+            OFFSCREEN,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         );
-        let multisampled = (self.samples > 1)
-            .then(|| texture(self.samples, wgpu::TextureUsages::RENDER_ATTACHMENT));
+        let multisampled = (self.samples > 1).then(|| {
+            texture(
+                &self.device,
+                width,
+                height,
+                self.samples,
+                OFFSCREEN,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            )
+        });
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let row_bytes = (width * 4).div_ceil(align) * align;
         let readback = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -425,77 +737,51 @@ impl GpuRenderer {
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        self.target = Some(Target {
+        Offscreen {
             width,
             height,
             row_bytes,
             resolved,
             multisampled,
             readback,
-        });
+        }
     }
 
-    /// A vertex buffer of at least `bytes`, grown by half again when short.
-    fn ensure_vertices(&mut self, bytes: u64) {
-        if self.vertices.as_ref().is_some_and(|b| b.size() >= bytes) {
-            return;
-        }
-        let size = (bytes + bytes / 2).min(self.max_buffer).max(bytes);
-        self.vertices = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ArqStudioCAD renderer segments"),
-            size: size.next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        }));
-    }
-}
-
-/// Traced segments as line vertices, dashes cut here.
-struct VertexSink<'a> {
-    vertices: &'a mut Vec<Vertex>,
-    rgba: [u8; 4],
-    dashed: bool,
-}
-
-impl Sink for VertexSink<'_> {
-    fn style(&mut self, rgb: [u8; 3], dashed: bool) {
-        self.rgba = [rgb[0], rgb[1], rgb[2], 255];
-        self.dashed = dashed;
-    }
-
-    fn segment(&mut self, a: (f32, f32), b: (f32, f32)) {
-        if !self.dashed {
-            self.push(a, b);
-            return;
-        }
-        // On and off along the segment from its start, as tiny-skia dashes
-        // a path of separate segments.
-        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
-        let length = dx.hypot(dy);
-        if length == 0.0 {
-            return;
-        }
-        let at = |d: f32| (a.0 + dx * d / length, a.1 + dy * d / length);
-        let [on, off] = DASH_PX;
-        let mut d = 0.0;
-        while d < length {
-            self.push(at(d), at((d + on).min(length)));
-            d += on + off;
+    /// The first error wgpu reported since the last check, if any.
+    fn check(&self) -> Result<(), String> {
+        let mut slot = self
+            .errors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match slot.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
 }
 
-impl VertexSink<'_> {
-    fn push(&mut self, a: (f32, f32), b: (f32, f32)) {
-        self.vertices.push(Vertex {
-            at: [a.0, a.1],
-            rgba: self.rgba,
-        });
-        self.vertices.push(Vertex {
-            at: [b.0, b.1],
-            rgba: self.rgba,
-        });
-    }
+fn texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    samples: u32,
+    format: wgpu::TextureFormat,
+    usage: wgpu::TextureUsages,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("ArqStudioCAD renderer image"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: samples,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage,
+        view_formats: &[],
+    })
 }
 
 #[cfg(test)]

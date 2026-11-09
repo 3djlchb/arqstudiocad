@@ -7,6 +7,7 @@
 //! rasterizer draw every view alike.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use arq_core::{
     CadChangeSet, Document, DrawItem, EntityId, Shape, SpaceItem, pick_among, select_among,
@@ -29,6 +30,15 @@ pub struct Scene {
     entries: Vec<Entry>,
     index: HashMap<EntityId, usize>,
     view: View,
+    revision: u64,
+}
+
+/// Revisions are unique across scenes, so a renderer that kept one scene's
+/// geometry never takes another scene for it.
+static REVISIONS: AtomicU64 = AtomicU64::new(1);
+
+fn next_revision() -> u64 {
+    REVISIONS.fetch_add(1, Ordering::Relaxed)
 }
 
 impl Scene {
@@ -54,6 +64,7 @@ impl Scene {
                 .collect(),
             index: HashMap::new(),
             view,
+            revision: next_revision(),
         };
         scene.reindex();
         scene
@@ -64,12 +75,19 @@ impl Scene {
         self.view
     }
 
+    /// Changes whenever what the scene draws may have changed; never the
+    /// same for two scenes. A renderer that keeps geometry checks it.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     /// A scene of loose shapes, not of a document's entities: a preview's.
     pub(crate) fn from_items(items: Vec<DrawItem>) -> Self {
         let mut scene = Self {
             entries: vec![entry(0, items)],
             index: HashMap::new(),
             view: View::Top,
+            revision: next_revision(),
         };
         scene.reindex();
         scene
@@ -82,6 +100,7 @@ impl Scene {
         if changes.is_empty() {
             return false;
         }
+        self.revision = next_revision();
         let tables = !changes.layers_created().is_empty()
             || !changes.layers_modified().is_empty()
             || !changes.layers_deleted().is_empty()

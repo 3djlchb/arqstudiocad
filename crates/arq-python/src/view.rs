@@ -1,5 +1,6 @@
 //! `CadView`: a document seen through a camera, rendered on the CPU into an
-//! image Qt can show (ADR 0013, D5.3).
+//! image Qt can show (ADR 0013, D5.3), or presented by the GPU straight into
+//! a native window (ADR 0034).
 //!
 //! The view keeps its own render scene (derived data, never the source of
 //! truth) and camera behind one lock. Building the scene and rendering run
@@ -8,8 +9,8 @@
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use arq_render::{Camera, Scene, Style, View, render};
-use pyo3::exceptions::PyValueError;
+use arq_render::{Camera, GpuBackend, GpuRenderer, Scene, Style, View, render};
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
@@ -22,6 +23,8 @@ struct State {
     scene: Scene,
     camera: Camera,
     style: Style,
+    /// The GPU presenting into a window, when attached.
+    gpu: Option<GpuRenderer>,
 }
 
 /// A view of a document: what it draws, where the camera looks, and the
@@ -65,6 +68,7 @@ impl CadView {
                 scene,
                 camera,
                 style: Style::default(),
+                gpu: None,
             }),
         })
     }
@@ -140,6 +144,84 @@ impl CadView {
             render(&state.scene, &state.camera, state.style)
         });
         PyBytes::new(py, &image.pixels)
+    }
+
+    /// Presents the view with the GPU straight into a native window (ADR
+    /// 0034): `window` is the X11 window (`QWidget.winId()`) and `display`
+    /// Qt's `Display*` (`QGuiApplication.nativeInterface().display()`), both
+    /// as integers. `antialias` asks for 4× multisampling, where a hardware
+    /// adapter offers it; it doubles a frame's time on the reference
+    /// machine. Returns `(backend, adapter, device_type)`. The window
+    /// and the connection must outlive the attachment: call
+    /// `detach_window()` before the widget goes. An unknown backend raises
+    /// `ValueError`; a GPU that cannot draw there, `RuntimeError`, and the
+    /// view stays as it was.
+    #[pyo3(signature = (backend, display, window, antialias = false))]
+    fn attach_window(
+        &self,
+        py: Python<'_>,
+        backend: &str,
+        display: usize,
+        window: u64,
+        antialias: bool,
+    ) -> PyResult<(String, String, String)> {
+        let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
+        let (width, height) = self.state().camera.size();
+        let renderer = py
+            .detach(|| {
+                // SAFETY: the caller's contract above: Qt keeps the window
+                // and its display alive until `detach_window`.
+                let (instance, surface) =
+                    unsafe { crate::gpu::window_surface(backend, display, window) }?;
+                GpuRenderer::for_surface(backend, instance, surface, width, height, antialias)
+            })
+            .map_err(PyRuntimeError::new_err)?;
+        let adapter = renderer.adapter().clone();
+        self.state().gpu = Some(renderer);
+        Ok((adapter.backend, adapter.adapter, adapter.device_type))
+    }
+
+    /// Stops presenting into the window; `render()` keeps working.
+    fn detach_window(&self) {
+        self.state().gpu = None;
+    }
+
+    /// `(backend, adapter, device_type)` of the GPU presenting into a window,
+    /// or `None` when no window is attached.
+    #[getter]
+    fn gpu(&self) -> Option<(String, String, String)> {
+        let state = self.state();
+        let adapter = state.gpu.as_ref()?.adapter();
+        Some((
+            adapter.backend.clone(),
+            adapter.adapter.clone(),
+            adapter.device_type.clone(),
+        ))
+    }
+
+    /// Draws the view into the attached window with the GPU. Panning and
+    /// zooming only move what the GPU keeps. On an error the window is
+    /// detached and `RuntimeError` raised, so the caller draws with
+    /// `render()` instead (ADR 0034 D5).
+    fn present(&self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| {
+            let mut state = self.state();
+            let State {
+                scene,
+                camera,
+                style,
+                gpu,
+            } = &mut *state;
+            let Some(renderer) = gpu.as_mut() else {
+                return Err("no window attached".to_owned());
+            };
+            let result = renderer.present(scene, camera, *style);
+            if result.is_err() {
+                *gpu = None;
+            }
+            result
+        })
+        .map_err(PyRuntimeError::new_err)
     }
 
     /// A new size in pixels; the center and scale stay.

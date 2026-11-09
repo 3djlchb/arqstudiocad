@@ -45,7 +45,8 @@ impl GpuBackend {
         }
     }
 
-    fn wgpu_backend(self) -> wgpu::Backends {
+    /// The wgpu backends this backend tries.
+    pub fn wgpu_backends(self) -> wgpu::Backends {
         match self {
             Self::Dx12 => wgpu::Backends::DX12,
             Self::Vulkan => wgpu::Backends::VULKAN,
@@ -103,7 +104,7 @@ pub fn probe_gpu_backend(backend: GpuBackend) -> Result<GpuProbeResult, String> 
 /// checks and the renderer then draws with.
 pub(crate) async fn offscreen_adapter(backend: GpuBackend) -> Result<wgpu::Adapter, String> {
     let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
-    descriptor.backends = backend.wgpu_backend();
+    descriptor.backends = backend.wgpu_backends();
     let instance = wgpu::Instance::new(descriptor);
     instance
         .request_adapter(&wgpu::RequestAdapterOptions {
