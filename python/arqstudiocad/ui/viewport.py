@@ -899,13 +899,12 @@ class Viewport(QWidget):
         backend = self._gpu_backend
         if backend is None:
             return
-        app = QGuiApplication.instance()
-        native = app.nativeInterface() if isinstance(app, QGuiApplication) else None
-        if not isinstance(native, QNativeInterface.QX11Application):
+        display = _x11_display()
+        if display is None:
             self._gpu_failed("the GPU viewport needs Qt on X11 (xcb) for now")
             return
         try:
-            adapter = self.view.attach_window(backend, int(native.display()), int(self.winId()))
+            adapter = self.view.attach_window(backend, display, int(self.winId()))
         except (RuntimeError, ValueError) as error:
             self._gpu_failed(str(error))
             return
@@ -1005,6 +1004,21 @@ def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None
 
 def _distance(a: QPointF, b: QPointF) -> float:
     return float(((a.x() - b.x()) ** 2 + (a.y() - b.y()) ** 2) ** 0.5)
+
+
+def _x11_display() -> int | None:
+    """Qt's ``Display*`` when it runs on X11 (xcb), else None. PySide6 has
+    the X11 interface only in its Linux build, so it is looked up, never
+    named: on Windows and macOS there is nothing to find."""
+    app = QGuiApplication.instance()
+    if not isinstance(app, QGuiApplication) or app.platformName() != "xcb":
+        return None
+    x11 = getattr(QNativeInterface, "QX11Application", None)
+    native = app.nativeInterface()
+    if x11 is None or not isinstance(native, x11):
+        return None
+    display = int(native.display())
+    return display or None
 
 
 def _gpu_backend() -> str | None:
