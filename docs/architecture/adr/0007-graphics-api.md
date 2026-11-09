@@ -163,3 +163,38 @@ only on view or drawing changes, and the CPU rasterizer stays
 interchangeable behind the same image. The direct path comes later, once
 the overlays are drawn by wgpu and a measurement asks for it. Wayland,
 Windows, macOS and high-DPI remain to be tried.
+
+## Offscreen renderer measured; the direct path decided (2026-11-09)
+
+`arq-render`'s `GpuRenderer` draws a scene offscreen with wgpu and reads it
+back into the CPU rasterizer's `Image`. Both draw the very segments of one
+trace (culling, arc flattening, clipping, colors), so a test can compare
+them on the same input (ADR 0013 D5.8). That test passes on the GT 730
+(OpenGL ES, 4× multisampling), on lavapipe and on the software backend.
+
+On the reference machine, at 1920 × 1080, with the 100,000-entity drawing
+of `cargo bench -p arq-render`:
+
+| Frame | CPU rasterizer | GPU, 4× MSAA | GPU, no MSAA |
+|---|---|---|---|
+| The whole drawing | 99 ms | 86 ms | 66 ms |
+| A 1 % view | 13 ms | 44 ms | 26 ms |
+
+Of the GPU's 86 ms for the whole drawing, 30 ms go to the trace on the CPU
+and 50 ms to drawing and reading the image back. In the 1 % view the trace
+takes 2 ms, and drawing and reading back take 40 ms. Reading the image back
+from the GPU costs about 20 ms per frame at full HD on nouveau, more with
+multisampling, whatever is drawn.
+
+The Qt spike had compared the GPU without its trace against the whole CPU
+path, which made the offscreen path look 3–6 times faster. It is not on the
+floor machine.
+
+Decided (maintainer, 2026-11-09): the GPU viewport takes the **direct
+path**. wgpu presents to the viewport's native window, with no readback,
+and draws the overlays too: crosshair, grips, rubber bands, snap markers,
+selection highlight. They move from `QPainter` into wgpu. The CPU
+rasterizer stays the fallback, behind the same widget. `GpuRenderer`'s
+device, pipeline, shader and trace carry over. Its offscreen image stays
+for the equivalence tests and wherever no window is drawn.
+

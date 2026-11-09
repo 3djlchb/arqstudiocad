@@ -6,6 +6,9 @@
 //! to the view in `f64` before becoming `f32` pixels, so far-away geometry
 //! never reaches the painter with huge coordinates. Consecutive shapes of
 //! one color are stroked as one path.
+//!
+//! What is drawn ([`trace`]) is kept apart from who paints it (a [`Sink`]),
+//! so the GPU renderer draws the very same segments.
 
 use arq_core::{Color, DrawItem, Shape};
 use arq_geometry::Tolerance;
@@ -19,6 +22,8 @@ use crate::scene::{Scene, shape_bounds};
 const ARC_TOLERANCE_PX: f64 = 0.25;
 /// Half the size of a point's cross, in pixels.
 const POINT_PX: f64 = 2.0;
+/// An entity not drawn yet is outlined dashed: on, off, in pixels.
+pub(crate) const DASH_PX: [f32; 2] = [4.0, 3.0];
 
 /// How the view looks.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -90,74 +95,85 @@ fn paint(scene: &Scene, camera: &Camera, style: Style, fill: tiny_skia::Color) -
     let (width, height) = camera.size();
     let mut pixmap = Pixmap::new(width, height).expect("a camera is at least 1x1");
     pixmap.fill(fill);
-
-    if let Some(view) = camera.visible() {
-        // A little beyond the edges, so strokes touching them are drawn.
-        let margin = 2.0 / camera.scale();
-        let view = view.expanded(margin).unwrap_or(view);
-        let tol = Tolerance::default();
-        let mut batch = Batch::new(style);
-        for entry in scene.entries() {
-            if !entry.bounds.is_some_and(|b| b.intersects(view, tol)) {
-                continue;
-            }
-            for item in &entry.items {
-                if !shape_bounds(item.shape).intersects(view, tol) {
-                    continue;
-                }
-                batch.set_color(
-                    &mut pixmap,
-                    item.color,
-                    matches!(item.shape, Shape::Placeholder(_)),
-                );
-                batch.add(camera, item.shape);
-            }
-        }
-        batch.flush(&mut pixmap);
-    }
+    let mut sink = PixmapSink {
+        pixmap,
+        path: PathBuilder::new(),
+        rgb: None,
+        dashed: false,
+    };
+    trace(scene, camera, style, &mut sink);
+    sink.flush();
     Image {
         width,
         height,
-        pixels: pixmap.take(),
+        pixels: sink.pixmap.take(),
     }
 }
 
-/// Shapes of one color and style, collected into one path.
-struct Batch {
+/// Where traced segments go: tiny-skia here, the GPU renderer's vertices
+/// there, so every renderer draws the very same segments (ADR 0013 D5.8).
+pub(crate) trait Sink {
+    /// The segments from here on are drawn in `rgb`, dashed or not. Called
+    /// only when either changes.
+    fn style(&mut self, rgb: [u8; 3], dashed: bool);
+    /// A segment in screen pixels, already clipped to near the view.
+    fn segment(&mut self, a: (f32, f32), b: (f32, f32));
+}
+
+/// Walks what `scene` shows through `camera` into `sink`, as segments in
+/// screen pixels: shapes outside the view skipped by their boxes, arcs
+/// flattened for their size on screen, segments clipped in `f64`.
+pub(crate) fn trace(scene: &Scene, camera: &Camera, style: Style, sink: &mut impl Sink) {
+    let Some(view) = camera.visible() else {
+        return;
+    };
+    // A little beyond the edges, so strokes touching them are drawn.
+    let margin = 2.0 / camera.scale();
+    let view = view.expanded(margin).unwrap_or(view);
+    let tol = Tolerance::default();
+    let (width, height) = camera.size();
+    let mut tracer = Tracer {
+        style,
+        sink,
+        current: None,
+        width: f64::from(width),
+        height: f64::from(height),
+    };
+    for entry in scene.entries() {
+        if !entry.bounds.is_some_and(|b| b.intersects(view, tol)) {
+            continue;
+        }
+        for item in &entry.items {
+            if !shape_bounds(item.shape).intersects(view, tol) {
+                continue;
+            }
+            tracer.set_color(item.color, matches!(item.shape, Shape::Placeholder(_)));
+            tracer.add(camera, item.shape);
+        }
+    }
+}
+
+/// The trace in progress: the current color and the view's size.
+struct Tracer<'a, S: Sink> {
     style: Style,
-    rgb: Option<[u8; 3]>,
-    dashed: bool,
-    path: PathBuilder,
+    sink: &'a mut S,
+    current: Option<([u8; 3], bool)>,
     width: f64,
     height: f64,
 }
 
-impl Batch {
-    fn new(style: Style) -> Self {
-        Self {
-            style,
-            rgb: None,
-            dashed: false,
-            path: PathBuilder::new(),
-            width: 0.0,
-            height: 0.0,
-        }
-    }
-
-    /// Starts a new path when the color or the dash changes.
-    fn set_color(&mut self, pixmap: &mut Pixmap, color: Color, dashed: bool) {
+impl<S: Sink> Tracer<'_, S> {
+    /// Tells the sink when the color or the dash changes.
+    fn set_color(&mut self, color: Color, dashed: bool) {
         let rgb = match color {
             Color::Rgb { r, g, b } => [r, g, b],
             Color::Index(i) => aci_rgb_on(i, self.style.background),
             _ => aci_rgb_on(7, self.style.background),
         };
-        if self.rgb != Some(rgb) || self.dashed != dashed {
-            self.flush(pixmap);
-            self.rgb = Some(rgb);
-            self.dashed = dashed;
+        if self.current != Some((rgb, dashed)) {
+            self.current = Some((rgb, dashed));
+            self.sink.style(rgb, dashed);
         }
-        self.width = f64::from(pixmap.width());
-        self.height = f64::from(pixmap.height());
     }
 
     fn add(&mut self, camera: &Camera, shape: Shape) {
@@ -219,12 +235,35 @@ impl Batch {
     fn segment(&mut self, a: (f64, f64), b: (f64, f64)) {
         let pad = 4.0;
         if let Some((a, b)) = clip(a, b, -pad, -pad, self.width + pad, self.height + pad) {
-            self.path.move_to(a.0 as f32, a.1 as f32);
-            self.path.line_to(b.0 as f32, b.1 as f32);
+            self.sink
+                .segment((a.0 as f32, a.1 as f32), (b.0 as f32, b.1 as f32));
         }
     }
+}
 
-    fn flush(&mut self, pixmap: &mut Pixmap) {
+/// Segments of one color and style, collected into one tiny-skia path.
+struct PixmapSink {
+    pixmap: Pixmap,
+    path: PathBuilder,
+    rgb: Option<[u8; 3]>,
+    dashed: bool,
+}
+
+impl Sink for PixmapSink {
+    fn style(&mut self, rgb: [u8; 3], dashed: bool) {
+        self.flush();
+        self.rgb = Some(rgb);
+        self.dashed = dashed;
+    }
+
+    fn segment(&mut self, a: (f32, f32), b: (f32, f32)) {
+        self.path.move_to(a.0, a.1);
+        self.path.line_to(b.0, b.1);
+    }
+}
+
+impl PixmapSink {
+    fn flush(&mut self) {
         let builder = std::mem::replace(&mut self.path, PathBuilder::new());
         let (Some(path), Some([r, g, b])) = (builder.finish(), self.rgb) else {
             return;
@@ -235,13 +274,14 @@ impl Batch {
         let stroke = Stroke {
             width: 0.0, // hairline: one pixel at any zoom, the fastest path
             dash: if self.dashed {
-                StrokeDash::new(vec![4.0, 3.0], 0.0)
+                StrokeDash::new(DASH_PX.to_vec(), 0.0)
             } else {
                 None
             },
             ..Stroke::default()
         };
-        pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+        self.pixmap
+            .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
     }
 }
 

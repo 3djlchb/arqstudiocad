@@ -92,6 +92,13 @@ arq-render --bench raster`, 100,000 entities at 1920 × 1080): render all
 
 ## What it shows
 
+> **Correction (2026-11-09):** path B's times below leave out the trace, the
+> CPU work that turns the drawing into segments each frame (30 ms for this
+> drawing on this machine). With it, the offscreen renderer takes 86 ms for
+> the whole drawing against the CPU's 99, and 44 ms for a 1 % view against
+> 13. The direct path was chosen instead ([ADR
+> 0007](../architecture/adr/0007-graphics-api.md)).
+
 - **Both paths work on X11** with the GT 730 and with lavapipe: the lines on
   screen, resizes, no errors. The risk of ADR 0007 is retired for X11 on
   the reference machine.

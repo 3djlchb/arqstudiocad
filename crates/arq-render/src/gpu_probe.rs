@@ -99,11 +99,13 @@ pub fn probe_gpu_backend(backend: GpuBackend) -> Result<GpuProbeResult, String> 
     pollster::block_on(probe(backend))
 }
 
-async fn probe(backend: GpuBackend) -> Result<GpuProbeResult, String> {
+/// The adapter `backend` offers for offscreen work: the one the probe
+/// checks and the renderer then draws with.
+pub(crate) async fn offscreen_adapter(backend: GpuBackend) -> Result<wgpu::Adapter, String> {
     let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
     descriptor.backends = backend.wgpu_backend();
     let instance = wgpu::Instance::new(descriptor);
-    let adapter = instance
+    instance
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::LowPower,
             force_fallback_adapter: backend.force_fallback(),
@@ -111,7 +113,11 @@ async fn probe(backend: GpuBackend) -> Result<GpuProbeResult, String> {
             apply_limit_buckets: false,
         })
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())
+}
+
+async fn probe(backend: GpuBackend) -> Result<GpuProbeResult, String> {
+    let adapter = offscreen_adapter(backend).await?;
     let info = adapter.get_info();
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor::default())
