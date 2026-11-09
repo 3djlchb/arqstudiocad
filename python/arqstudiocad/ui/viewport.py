@@ -140,9 +140,9 @@ HOT = QColor(230, 40, 40)
 #: Snap markers and their names (AutoCAD's AutoSnap color).
 MARKER = QColor(255, 200, 0)
 
-#: Until the renderer is chosen at start (ADR 0034 D6), naming a GPU backend
-#: here (``opengl``, ``vulkan``) makes viewports present with the GPU, on
-#: X11 only.
+#: Forces viewports to present with the GPU on this backend (``opengl``,
+#: ``vulkan``), skipping the choice at start (ADR 0034 D5): for tests and
+#: developers. X11 only for now.
 GPU_VIEWPORT_ENV = "ARQ_GPU_VIEWPORT"
 
 _log = logging.getLogger(__name__)
@@ -217,6 +217,10 @@ class Viewport(QWidget):
     #: context menu would open, a ``QPoint`` on the screen, and whether the
     #: keyboard asked (True) or the right button (False).
     context_requested = Signal(object, bool)
+    #: The GPU presented its first frame since it was attached (ADR 0034 D5).
+    gpu_presented = Signal()
+    #: The GPU stopped drawing, and why; the viewport draws on the CPU.
+    gpu_stopped = Signal(str)
 
     def __init__(
         self,
@@ -271,15 +275,17 @@ class Viewport(QWidget):
         # A block dragged from the palette over the drawing, by name.
         self._drop_name: str | None = None
         self.setAcceptDrops(True)
-        # The GPU, opted into (GPU_VIEWPORT_ENV): the widget becomes a native
-        # window wgpu presents to, and Qt never paints it (ADR 0034 D1).
-        self._gpu_backend = _gpu_backend()
+        # The GPU (ADR 0034): chosen by the main window (set_gpu), or forced
+        # with GPU_VIEWPORT_ENV. The widget becomes a native window wgpu
+        # presents to, and Qt never paints it.
+        self._gpu_backend: str | None = None
+        self._antialias = False
         self._gpu = False
-        if self._gpu_backend is not None:
-            self._set_native(True)
-            app = QGuiApplication.instance()
-            if app is not None:
-                app.aboutToQuit.connect(self._detach_gpu)
+        self._presented = False
+        app = QGuiApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self._detach_gpu)
+        self.set_gpu(_gpu_backend())
 
     # The view, for commands (ViewControl)
 
@@ -442,6 +448,10 @@ class Viewport(QWidget):
             except RuntimeError as error:
                 self._gpu_failed(str(error))
                 self.update()
+                return
+            if not self._presented:
+                self._presented = True
+                self.gpu_presented.emit()
             return
         if self._dirty or self._image is None:
             self._render()
@@ -917,6 +927,18 @@ class Viewport(QWidget):
         """``(backend, adapter, device_type)`` while the GPU presents."""
         return self.view.gpu if self._gpu else None
 
+    def set_gpu(self, backend: str | None, antialias: bool = False) -> None:
+        """Draws with the GPU on ``backend``, 4x antialiased when asked, or
+        on the CPU when ``backend`` is None; at once, shown or not."""
+        if (backend, antialias) == (self._gpu_backend, self._antialias):
+            return
+        self._detach_gpu()
+        self._gpu_backend, self._antialias = backend, antialias
+        self._set_native(backend is not None)
+        if backend is not None and self.isVisible():
+            self._attach_gpu()
+        self._redraw()
+
     def _attach_gpu(self) -> None:
         backend = self._gpu_backend
         if backend is None:
@@ -926,11 +948,12 @@ class Viewport(QWidget):
             self._gpu_failed("the GPU viewport needs Qt on X11 (xcb) for now")
             return
         try:
-            adapter = self.view.attach_window(backend, display, int(self.winId()))
+            adapter = self.view.attach_window(backend, display, int(self.winId()), self._antialias)
         except (RuntimeError, ValueError) as error:
             self._gpu_failed(str(error))
             return
         self._gpu = True
+        self._presented = False
         _log.info("viewport presented by the GPU: %s", adapter)
         self._redraw()
 
@@ -946,6 +969,7 @@ class Viewport(QWidget):
         self._gpu_backend = None
         self._set_native(False)
         self._redraw()
+        self.gpu_stopped.emit(reason)
 
     def _set_native(self, on: bool) -> None:
         for attribute in (

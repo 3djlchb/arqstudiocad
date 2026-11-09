@@ -3,7 +3,8 @@ sections chosen from a sidebar, each subsection a titled group box, with
 Reset section, OK, Apply and Cancel. Modal; it remembers its size and the
 last section shown. Only settings whose feature exists are shown: this
 version holds General (language and theme), Display (the crosshair, the
-snap markers' and command line's colors, the block editor's background)
+snap markers' and command line's colors, the block editor's background, the
+renderer and its antialiasing)
 and User preferences (the wheel's zoom, what a right-click in model space
 does).
 """
@@ -36,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad.i18n import available_languages, tr
+from arqstudiocad.renderer import AUTOMATIC, renderer_settings, renderer_title
 from arqstudiocad.ui.crosshair import (
     CROSSHAIR_TYPES,
     SIZES,
@@ -94,6 +96,10 @@ class Options:
     command_line_color: str = ""
     #: Always a color.
     block_editor_background: str = QColor(*BLOCK_EDITOR_BACKGROUND).name()
+    #: What draws the viewports (ADR 0034 D5): automatic, the CPU, or a
+    #: graphics backend; and whether the graphics card antialiases.
+    renderer: str = AUTOMATIC
+    antialias: bool = False
 
     @property
     def crosshair(self) -> Crosshair:
@@ -112,6 +118,8 @@ SECTIONS: dict[str, tuple[str, ...]] = {
         "marker_color",
         "command_line_color",
         "block_editor_background",
+        "renderer",
+        "antialias",
     ),
     "user_preferences": ("zoom_wheel_reversed", "zoom_factor", "right_click"),
 }
@@ -147,7 +155,9 @@ def checked(name: str, saved: object) -> Any:
         except ValueError:
             return None
         return number if low <= number <= high else None
-    if name == "zoom_wheel_reversed":
+    if name == "renderer":
+        return saved if saved in renderer_settings() else None
+    if name in ("zoom_wheel_reversed", "antialias"):
         # An INI file keeps it as text.
         if saved is True or saved == "true":
             return True
@@ -203,9 +213,12 @@ class OptionsDialog(QDialog):
         apply: Callable[[Options], None],
         settings: QSettings | None = None,
         parent: QWidget | None = None,
+        renderer_status: str = "",
     ) -> None:
         super().__init__(parent)
         self.setObjectName("options_dialog")
+        #: What draws the viewports now, in a sentence.
+        self._renderer_status = renderer_status
         self.setModal(True)
         self._apply = apply
         self._settings = settings
@@ -404,6 +417,25 @@ class OptionsDialog(QDialog):
             self.block_editor_group,
             [(self.block_editor_label, self.block_editor_background)],
         )
+        self.graphics_group = QGroupBox()
+        self.renderer_label = QLabel()
+        self.renderer = QComboBox()
+        self.renderer.setObjectName("renderer")
+        self.renderer.currentIndexChanged.connect(self._changed)
+        self.antialias = QCheckBox()
+        self.antialias.setObjectName("antialias")
+        self.antialias.toggled.connect(self._changed)
+        self.renderer_status = QLabel()
+        self.renderer_status.setObjectName("renderer_status")
+        self.renderer_status.setWordWrap(True)
+        self.graphics_help = QLabel()
+        self.graphics_help.setWordWrap(True)
+        self._group(
+            rows,
+            self.graphics_group,
+            [(self.renderer_label, self.renderer), (None, self.antialias)],
+            [self.renderer_status, self.graphics_help],
+        )
         self._helps += [self.size_help, self.preview_caption]
         for field in self._color_fields():
             field.changed.connect(self._changed)
@@ -517,6 +549,17 @@ class OptionsDialog(QDialog):
         )
         self.block_editor_group.setTitle(tr("Block editor"))
         self.block_editor_label.setText(tr("Background color"))
+        self.graphics_group.setTitle(tr("Graphics"))
+        self.renderer_label.setText(tr("Renderer"))
+        self.antialias.setText(tr("Smooth lines on the graphics card (antialiasing)"))
+        self.renderer_status.setText(self._renderer_status)
+        self.renderer_status.setVisible(bool(self._renderer_status))
+        self.graphics_help.setText(
+            tr(
+                "Automatic draws with the graphics card when it passes a check, and on "
+                "the CPU otherwise. Antialiasing can halve the speed on older cards."
+            )
+        )
         for field in self._color_fields():
             field.retranslate()
         self._fill()
@@ -556,6 +599,11 @@ class OptionsDialog(QDialog):
             )
             for field in self._color_fields():
                 field.set_value(getattr(self.pending, self._field_name(field)))
+            self.renderer.clear()
+            for setting in renderer_settings():
+                self.renderer.addItem(renderer_title(setting), setting)
+            self.renderer.setCurrentIndex(max(0, self.renderer.findData(self.pending.renderer)))
+            self.antialias.setChecked(self.pending.antialias)
         finally:
             self._filling = False
         self.apply_button.setEnabled(self.pending != self.applied)
@@ -597,6 +645,7 @@ class OptionsDialog(QDialog):
         theme = self.theme.currentData()
         right_click = self.right_click.currentData()
         kind = self.crosshair_type.currentData()
+        renderer = self.renderer.currentData()
         self.pending = replace(
             self.pending,
             language=str(language) if language is not None else "",
@@ -606,6 +655,8 @@ class OptionsDialog(QDialog):
             zoom_factor=self.zoom_spin.value(),
             crosshair_size=self.size_spin.value(),
             crosshair_type=kind if kind in CROSSHAIR_TYPES else self.pending.crosshair_type,
+            renderer=renderer if renderer in renderer_settings() else self.pending.renderer,
+            antialias=self.antialias.isChecked(),
             **{self._field_name(field): field.value() for field in self._color_fields()},
         )
         self.apply_button.setEnabled(self.pending != self.applied)

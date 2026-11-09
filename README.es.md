@@ -127,6 +127,7 @@ Ejecuta `xcode-select --install` para el compilador y sigue los pasos 2–4 de L
 uv run arqstudiocad              # abre la aplicación
 uv run arqstudiocad --lang es    # en español (también: Herramientas > Idioma)
 uv run arqstudiocad --check      # verifica la instalación y muestra un informe
+uv run arqstudiocad --safe-mode  # dibuja con la CPU, sea cual sea la tarjeta gráfica
 ```
 
 Y las pruebas:

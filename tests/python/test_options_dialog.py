@@ -75,6 +75,7 @@ def test_general_holds_the_language_and_the_theme(qtbot: QtBot) -> None:
         "Theme",
         "Crosshair",
         "Block editor",
+        "Graphics",
         "Zoom",
         "Right-click in model space",
     ]
@@ -151,6 +152,7 @@ def test_a_language_applied_names_the_dialog_again(qtbot: QtBot) -> None:
             "Tema",
             "Cursor en cruz",
             "Editor de bloques",
+            "Gráficos",
             "Zoom",
             "Clic derecho en el espacio modelo",
         ]

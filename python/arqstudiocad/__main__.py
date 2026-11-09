@@ -23,6 +23,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--lang", metavar="CODE", help="interface language for this session, e.g. en or es"
     )
+    parser.add_argument(
+        "--safe-mode",
+        action="store_true",
+        help="draw on the CPU for this session, whatever the graphics card",
+    )
     args = parser.parse_args(argv)
 
     if args.check:
@@ -43,7 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from arqstudiocad.application import run
 
-    return run(language=args.lang)
+    return run(language=args.lang, safe_mode=args.safe_mode)
 
 
 if __name__ == "__main__":
