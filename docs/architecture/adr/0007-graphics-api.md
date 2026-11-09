@@ -138,3 +138,28 @@ since Mesa offers llvmpipe through GL only when llvmpipe is the display's
 driver. It now looks for the fallback adapter in Vulkan as well and finds
 lavapipe. The probe part of the release gate passes on this machine. GPU
 viewport rendering and the Qt presentation path remain open.
+
+## Qt integration spike, X11 (2026-11-09)
+
+The spike of the open risk ran on the reference machine
+([results](../../testing/wgpu-qt-spike.md)). Both paths work on X11 with the
+GT 730 and with lavapipe:
+
+- **direct:** a native `QWidget` whose X11 window wgpu presents to;
+- **offscreen:** wgpu renders, the pixels are read back, and Qt paints them
+  as a `QImage`.
+
+On X11 the wgpu instance needs the display handle, and Vulkan needs Qt's
+own `Display*` (`QGuiApplication.nativeInterface().display()`).
+
+At 100,000 lines the direct path holds 60 fps, the limit vsync sets. The
+offscreen path takes 16–27 ms per frame, against the CPU rasterizer's 98 ms
+at 1920 × 1080. Lavapipe takes 63–71 ms, so it is no gain over the CPU
+rasterizer.
+
+Proposed, for the maintainer to decide: the first GPU viewport takes the
+offscreen path. It keeps the viewport's `QPainter` overlays and its redraw
+only on view or drawing changes, and the CPU rasterizer stays
+interchangeable behind the same image. The direct path comes later, once
+the overlays are drawn by wgpu and a measurement asks for it. Wayland,
+Windows, macOS and high-DPI remain to be tried.
