@@ -19,11 +19,16 @@ use crate::camera::Camera;
 use crate::scene::{Scene, shape_bounds};
 
 /// How far a flattened arc may stray from the true curve, in pixels.
-const ARC_TOLERANCE_PX: f64 = 0.25;
+pub(crate) const ARC_TOLERANCE_PX: f64 = 0.25;
 /// Half the size of a point's cross, in pixels.
-const POINT_PX: f64 = 2.0;
+pub(crate) const POINT_PX: f64 = 2.0;
 /// An entity not drawn yet is outlined dashed: on, off, in pixels.
 pub(crate) const DASH_PX: [f32; 2] = [4.0, 3.0];
+/// Beyond the view, segments are clipped this far out, in pixels.
+const PAD_PX: f64 = 4.0;
+/// The CPU's canvas reaches this far beyond the view, past the pad and a
+/// stroke's antialiasing, so tiny-skia never clips.
+const MARGIN_PX: f32 = 8.0;
 
 /// How the view looks.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -93,7 +98,12 @@ pub fn preview(items: &[DrawItem], size: u32, background: [u8; 3], ink: Option<[
 /// Paints `scene` as `camera` sees it over `fill`.
 fn paint(scene: &Scene, camera: &Camera, style: Style, fill: tiny_skia::Color) -> Image {
     let (width, height) = camera.size();
-    let mut pixmap = Pixmap::new(width, height).expect("a camera is at least 1x1");
+    // Painted with a margin all round, wider than the trace's clipping pad,
+    // then cut out: tiny-skia never clips a hairline itself, which shifted
+    // lines entering at the top edge by a pixel (found against the GPU).
+    let margin = MARGIN_PX as u32;
+    let mut pixmap =
+        Pixmap::new(width + 2 * margin, height + 2 * margin).expect("a camera is at least 1x1");
     pixmap.fill(fill);
     let mut sink = PixmapSink {
         pixmap,
@@ -103,10 +113,17 @@ fn paint(scene: &Scene, camera: &Camera, style: Style, fill: tiny_skia::Color) -
     };
     trace(scene, camera, style, &mut sink);
     sink.flush();
+    let full = sink.pixmap.take();
+    let (row, stride) = (width as usize * 4, (width + 2 * margin) as usize * 4);
+    let mut pixels = Vec::with_capacity(row * height as usize);
+    for y in 0..height as usize {
+        let start = (y + margin as usize) * stride + margin as usize * 4;
+        pixels.extend_from_slice(&full[start..start + row]);
+    }
     Image {
         width,
         height,
-        pixels: sink.pixmap.take(),
+        pixels,
     }
 }
 
@@ -165,11 +182,7 @@ struct Tracer<'a, S: Sink> {
 impl<S: Sink> Tracer<'_, S> {
     /// Tells the sink when the color or the dash changes.
     fn set_color(&mut self, color: Color, dashed: bool) {
-        let rgb = match color {
-            Color::Rgb { r, g, b } => [r, g, b],
-            Color::Index(i) => aci_rgb_on(i, self.style.background),
-            _ => aci_rgb_on(7, self.style.background),
-        };
+        let rgb = ink(color, self.style);
         if self.current != Some((rgb, dashed)) {
             self.current = Some((rgb, dashed));
             self.sink.style(rgb, dashed);
@@ -233,11 +246,21 @@ impl<S: Sink> Tracer<'_, S> {
 
     /// A segment in screen pixels, clipped to the view first.
     fn segment(&mut self, a: (f64, f64), b: (f64, f64)) {
-        let pad = 4.0;
+        let pad = PAD_PX;
         if let Some((a, b)) = clip(a, b, -pad, -pad, self.width + pad, self.height + pad) {
             self.sink
                 .segment((a.0 as f32, a.1 as f32), (b.0 as f32, b.1 as f32));
         }
+    }
+}
+
+/// The color a shape is drawn in on `style`'s background: ACI 7 is white
+/// on dark and black on light, as the rest of the ACI table adapts.
+pub(crate) fn ink(color: Color, style: Style) -> [u8; 3] {
+    match color {
+        Color::Rgb { r, g, b } => [r, g, b],
+        Color::Index(i) => aci_rgb_on(i, style.background),
+        _ => aci_rgb_on(7, style.background),
     }
 }
 
@@ -280,13 +303,18 @@ impl PixmapSink {
             },
             ..Stroke::default()
         };
-        self.pixmap
-            .stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+        self.pixmap.stroke_path(
+            &path,
+            &paint,
+            &stroke,
+            Transform::from_translate(MARGIN_PX, MARGIN_PX),
+            None,
+        );
     }
 }
 
 /// Liang–Barsky: the part of segment `a`–`b` inside the rectangle, if any.
-fn clip(
+pub(crate) fn clip(
     a: (f64, f64),
     b: (f64, f64),
     x0: f64,

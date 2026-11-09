@@ -21,6 +21,7 @@ mod gpu;
 mod gpu_probe;
 mod outline;
 mod raster;
+mod retained;
 mod scene;
 mod view;
 
@@ -32,3 +33,5 @@ pub use outline::{Polyline, outline};
 pub use raster::{Image, Style, preview, render};
 pub use scene::Scene;
 pub use view::View;
+/// The wgpu the renderer is built on, for the boundary that makes surfaces.
+pub use wgpu;

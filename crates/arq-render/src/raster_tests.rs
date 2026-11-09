@@ -319,3 +319,29 @@ fn a_preview_keeps_each_shape_color_on_its_background() {
     assert!(near(&light, [0, 0, 0]), "ACI 7 black on light");
     assert!(!near(&light, [255, 255, 255]));
 }
+
+#[test]
+fn a_line_entering_at_the_top_edge_is_drawn_where_it_is() {
+    // Found against the GPU renderer: tiny-skia, clipping a hairline that
+    // starts above its canvas, drew it a pixel lower. The same line drawn
+    // ten pixels lower, wholly inside, must give the same pixels shifted.
+    let cam = Camera::new(160, 120);
+    let rows = |shift: f64| {
+        let mut cad = CadDocument::new();
+        let (a, b) = ((148.8, -1.19 + shift), (160.17, 3.81 + shift));
+        // Screen to world at one pixel per unit: x - 80, 60 - y.
+        cad.add_line(p(a.0 - 80.0, 60.0 - a.1), p(b.0 - 80.0, 60.0 - b.1))
+            .unwrap();
+        let img = render(&scene_of(&cad), &cam, DARK);
+        let top = shift as u32;
+        (top..top + 3)
+            .map(|y| (140..160).map(|x| pixel(&img, x, y)).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    };
+    let (entering, inside) = (rows(0.0), rows(10.0));
+    assert!(
+        inside.iter().flatten().any(|&c| c != DARK.background),
+        "the line is drawn"
+    );
+    assert_eq!(entering, inside);
+}

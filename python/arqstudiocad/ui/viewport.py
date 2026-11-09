@@ -49,7 +49,9 @@ Keys typed in the viewport go to the command line (:attr:`Viewport.key_typed`),
 as in AutoCAD, where typing anywhere answers the command.
 """
 
+import logging
 import math
+import os
 import time
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
@@ -61,15 +63,19 @@ from PySide6.QtGui import (
     QDragLeaveEvent,
     QDragMoveEvent,
     QDropEvent,
+    QGuiApplication,
     QImage,
     QKeyEvent,
     QMouseEvent,
+    QNativeInterface,
+    QPaintEngine,
     QPainter,
     QPaintEvent,
     QPen,
     QPolygonF,
     QRegion,
     QResizeEvent,
+    QShowEvent,
     QTransform,
     QWheelEvent,
 )
@@ -123,6 +129,13 @@ HOT = QColor(230, 40, 40)
 
 #: Snap markers and their names (AutoCAD's AutoSnap color).
 MARKER = QColor(255, 200, 0)
+
+#: Until the renderer is chosen at start (ADR 0034 D6), naming a GPU backend
+#: here (``opengl``, ``vulkan``) makes viewports present with the GPU, on
+#: X11 only. Overlays are not drawn yet in that mode (ADR 0034 D6.2).
+GPU_VIEWPORT_ENV = "ARQ_GPU_VIEWPORT"
+
+_log = logging.getLogger(__name__)
 
 
 def snap_name(kind: str) -> str:
@@ -248,6 +261,15 @@ class Viewport(QWidget):
         # A block dragged from the palette over the drawing, by name.
         self._drop_name: str | None = None
         self.setAcceptDrops(True)
+        # The GPU, opted into (GPU_VIEWPORT_ENV): the widget becomes a native
+        # window wgpu presents to, and Qt never paints it (ADR 0034 D1).
+        self._gpu_backend = _gpu_backend()
+        self._gpu = False
+        if self._gpu_backend is not None:
+            self._set_native(True)
+            app = QGuiApplication.instance()
+            if app is not None:
+                app.aboutToQuit.connect(self._detach_gpu)
 
     # The view, for commands (ViewControl)
 
@@ -380,7 +402,35 @@ class Viewport(QWidget):
 
     # Qt
 
+    # Qt documents returning no engine for WA_PaintOnScreen; PySide6's stub
+    # says the engine is never None.
+    def paintEngine(self) -> QPaintEngine | None:  # type: ignore[override]  # noqa: N802
+        # None while the GPU paints: Qt must not paint over its window.
+        return None if self._gpu else super().paintEngine()
+
+    def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 (Qt API)
+        super().showEvent(event)
+        if self._gpu_backend is not None and not self._gpu:
+            self._attach_gpu()
+
+    def event(self, event: QEvent) -> bool:
+        kind = event.type()
+        if kind == QEvent.Type.DeferredDelete:
+            # Before Qt destroys the native window the GPU presents to.
+            self._detach_gpu()
+        elif kind == QEvent.Type.WinIdChange and self._gpu:
+            self._detach_gpu()
+            self._attach_gpu()
+        return super().event(event)
+
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 (Qt API)
+        if self._gpu:
+            try:
+                self.view.present()
+            except RuntimeError as error:
+                self._gpu_failed(str(error))
+                self.update()
+            return
         if self._dirty or self._image is None:
             self._render()
         painter = QPainter(self)
@@ -838,6 +888,53 @@ class Viewport(QWidget):
         self._dirty = True
         self.update()
 
+    # The GPU (ADR 0034)
+
+    @property
+    def gpu(self) -> tuple[str, str, str] | None:
+        """``(backend, adapter, device_type)`` while the GPU presents."""
+        return self.view.gpu if self._gpu else None
+
+    def _attach_gpu(self) -> None:
+        backend = self._gpu_backend
+        if backend is None:
+            return
+        app = QGuiApplication.instance()
+        native = app.nativeInterface() if isinstance(app, QGuiApplication) else None
+        if not isinstance(native, QNativeInterface.QX11Application):
+            self._gpu_failed("the GPU viewport needs Qt on X11 (xcb) for now")
+            return
+        try:
+            adapter = self.view.attach_window(backend, int(native.display()), int(self.winId()))
+        except (RuntimeError, ValueError) as error:
+            self._gpu_failed(str(error))
+            return
+        self._gpu = True
+        _log.info("viewport presented by the GPU: %s", adapter)
+        self._redraw()
+
+    def _detach_gpu(self) -> None:
+        if self._gpu:
+            self.view.detach_window()
+            self._gpu = False
+
+    def _gpu_failed(self, reason: str) -> None:
+        """Back to the CPU rasterizer in this widget, for this session."""
+        _log.warning("the GPU viewport stopped, drawing on the CPU: %s", reason)
+        self._detach_gpu()
+        self._gpu_backend = None
+        self._set_native(False)
+        self._redraw()
+
+    def _set_native(self, on: bool) -> None:
+        for attribute in (
+            Qt.WidgetAttribute.WA_NativeWindow,
+            Qt.WidgetAttribute.WA_PaintOnScreen,
+            Qt.WidgetAttribute.WA_NoSystemBackground,
+        ):
+            if attribute != Qt.WidgetAttribute.WA_NativeWindow or on:
+                self.setAttribute(attribute, on)
+
     def _render(self) -> None:
         self._pixels = self.view.render()
         image = QImage(
@@ -908,3 +1005,9 @@ def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None
 
 def _distance(a: QPointF, b: QPointF) -> float:
     return float(((a.x() - b.x()) ** 2 + (a.y() - b.y()) ** 2) ** 0.5)
+
+
+def _gpu_backend() -> str | None:
+    """The backend opted into with ``GPU_VIEWPORT_ENV``, if any."""
+    name = os.environ.get(GPU_VIEWPORT_ENV, "").strip()
+    return name or None

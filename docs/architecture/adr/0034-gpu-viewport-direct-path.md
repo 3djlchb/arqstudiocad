@@ -1,6 +1,6 @@
 # 0034. The GPU viewport: drawing straight into the widget
 
-Date: 2026-11-10 · Status: Proposed
+Date: 2026-11-10 · Status: Accepted (2026-11-09, PR #147)
 
 ## Context
 
@@ -173,3 +173,60 @@ until the last:
 - **Amends ADR 0016 D4** (the overlays are drawn on the GPU when it is on,
   painted over the CPU image otherwise) and ADR 0007's offscreen fallback
   (the CPU rasterizer is the fallback, not offscreen readback).
+
+## Implementation notes
+
+### D6.1, presenting (2026-11-10)
+
+- **Precision by region, not by two `f32`.** The geometry kept on the GPU
+  covers a region around the view, the view and four more on each side. It
+  is clipped to that region in `f64` and kept relative to the region's
+  center, so a single `f32` keeps survey coordinates exact. This also solves
+  what two `f32` would not: a long line seen 10⁶ times closer has no
+  endpoint millions of pixels away to round. Panning out of the region, or
+  zooming past the band (×2), builds it again. Tests check survey
+  coordinates and a diagonal at 10⁶ zoom against the CPU.
+- **`unsafe` stays at the boundary.** Making a surface from native handles
+  needs `unsafe`, which the workspace forbids. `arq-python`, which PyO3
+  already exempts, makes the surface from Qt's handles. `arq-render`
+  receives it through a safe constructor and re-exports `wgpu`.
+- **Small things show.** A line that can be shorter than a pixel within
+  the band, or a circle or arc smaller than one, is also drawn as a point,
+  since a line that short makes no fragment. Without multisampling, every
+  segment's end is drawn as a point too, since OpenGL leaves out a line's
+  last pixel (the diamond-exit rule), which the CPU draws. One point per
+  chord of a curve would light whole areas of a dense drawing, so it is one
+  per small shape.
+- **Antialiasing is optional and off by default.** 4× multisampling doubles
+  a frame on the GT 730 (33 ms instead of 17), so the viewport asks for it
+  only when the Preferences of D6.3 do. It is used on hardware adapters
+  only: lavapipe drops pixels of multisampled lines (a 5-pixel line drawn as
+  2). The equivalence tests check both modes.
+- **The comparison found a CPU defect.** tiny-skia, clipping a hairline
+  that starts above its canvas, drew it a pixel lower. The CPU rasterizer
+  now paints on a canvas 8 pixels larger all round, beyond the trace's
+  4-pixel clip, and cuts the view out, so tiny-skia never clips. The cost
+  is 6 % on the 100,000-entity drawing (99 → 105 ms) and 14 % on a 1 %
+  view (13.4 → 15.3 ms). A regression test keeps it fixed.
+- **Errors, not panics.** wgpu's uncaptured errors are collected and
+  returned. A failed frame detaches the window, and the viewport goes back
+  to the CPU rasterizer in the same widget.
+- **Opt-in until D6.3:** `ARQ_GPU_VIEWPORT=opengl` (or another backend)
+  makes viewports present with the GPU on X11. The overlays are not drawn in
+  that mode until D6.2. The surface is released before Qt destroys the
+  native window: on `DeferredDelete`, on quitting, and when the window is
+  recreated (`WinIdChange`).
+
+Measured on the reference machine, a viewport of 1200 × 650 on the
+100,000-entity drawing (lines, circles and arcs), the median frame while
+panning and zooming:
+
+| Path | Pan | Zoom |
+|---|---|---|
+| CPU rasterizer | 45 ms | 63 ms |
+| GPU, no antialiasing | 17 ms (vsync) | 17 ms (vsync) |
+| GPU, 4× antialiasing | 32 ms | 33 ms |
+
+At a working zoom the GPU's and the CPU's images are the same shapes in the
+same places.
+

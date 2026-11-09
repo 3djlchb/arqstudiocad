@@ -77,7 +77,7 @@ fn gpu_renderer() -> Option<GpuRenderer> {
         .ok()
         .filter(|v| !v.is_empty())
     {
-        return GpuRenderer::new(GpuBackend::parse(&name).expect("ARQ_GPU_BACKEND")).ok();
+        return GpuRenderer::new(GpuBackend::parse(&name).expect("ARQ_GPU_BACKEND"), false).ok();
     }
     [
         GpuBackend::Dx12,
@@ -86,7 +86,7 @@ fn gpu_renderer() -> Option<GpuRenderer> {
         GpuBackend::OpenGl,
     ]
     .into_iter()
-    .filter_map(|b| GpuRenderer::new(b).ok())
+    .filter_map(|b| GpuRenderer::new(b, false).ok())
     .find(|r| r.adapter().device_type != "Cpu")
 }
 
