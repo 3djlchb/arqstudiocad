@@ -288,3 +288,28 @@ fn a_polyline_is_found_on_its_arcs() {
     assert_eq!(cad.pick(p(1.0, -1.0), 0.05).unwrap(), Some(id));
     assert_eq!(cad.select_window(area(0.8, -1.1, 1.2, -0.8), true), [id]);
 }
+
+#[test]
+fn a_large_opened_drawing_takes_new_entities() {
+    // rstar 0.13.0 bulk-loaded some trees with leaves on different levels;
+    // inserting into such a tree panicked (rstar issue #256). Opening
+    // 100,000 entities and adding lines over them was one such case.
+    let mut doc = Document::new();
+    for i in 0..100_000 {
+        doc.insert_point_for_tests(f64::from(i % 1_000), f64::from(i / 1_000));
+    }
+    let mut cad = CadDocument::from_document(doc);
+    for i in 0..1_000 {
+        let x = f64::from(i % 1_000) + 10.0;
+        cad.add_line(p(x, 0.25), p(x + 0.5, 0.25)).unwrap();
+    }
+    assert_eq!(
+        cad.query_entities(area(-1e9, -1e9, 1e9, 1e9)).len(),
+        101_000
+    );
+    // Points (10..=999, 0) and the lines over x 10..1010.5 at y 0.25.
+    assert_eq!(
+        cad.query_entities(area(9.9, 0.1, 1_011.0, 0.3)).len(),
+        1_000
+    );
+}

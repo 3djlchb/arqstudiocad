@@ -18,7 +18,7 @@ copied.
 
 | Path in this repo | Origin | License | Notes |
 |---|---|---|---|
-| `crates/arq-core` | [rstar](https://github.com/georust/rstar), crates.io `=0.13.0` | MIT OR Apache-2.0 | Private R*-tree implementation for 2D model-space bounding-box queries; no types cross the core API (ADR 0021) |
+| `crates/arq-core` | [rstar](https://github.com/georust/rstar), crates.io `=0.14.0` | MIT OR Apache-2.0 | Private R*-tree implementation for 2D model-space bounding-box queries; no types cross the core API (ADR 0021) |
 | `crates/arq-render` | [wgpu](https://github.com/gfx-rs/wgpu), crates.io `=30.0.1` | MIT OR Apache-2.0 | Cross-platform GPU API for the 02.7 backend probe and renderer (ADR 0007) |
 | `crates/arq-render` | [pollster](https://github.com/zesterer/pollster), crates.io `=0.4.0` | MIT OR Apache-2.0 | Runs wgpu initialization futures synchronously in the isolated probe process |
 | `python/arqstudiocad/budget_export.py` | [openpyxl](https://openpyxl.readthedocs.io), PyPI `>=3.1,<4` (3.1.5 locked) | MIT | Writes the budget as an Excel workbook; imported only when exporting to Excel, CSV works without it (ADR 0028 D6) |

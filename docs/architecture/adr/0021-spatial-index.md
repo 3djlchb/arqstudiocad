@@ -56,3 +56,22 @@ does not change query results or drawing order. GPU viewport rendering remains
 open. An isolated wgpu adapter/pipeline/offscreen readback probe is now
 implemented under ADR 0007; it has passed locally on Windows with DX12, while
 Linux reference-machine validation remains open.
+
+## Upgrade to rstar 0.14.0 (2026-11-08)
+
+The reference machine's report (`tools/reference_machine_report.sh`) found
+a panic, "This is a bug in rstar", when 1,000 entities were moved in an
+opened 100,000-line drawing. rstar 0.13.0's `bulk_load` built some trees
+with leaves on different levels, and a later insertion into one panicked
+(rstar issue #256, a regression in 0.13.0, fixed in 0.14.0). Opening a
+drawing bulk-loads the index, so any edit after opening could hit it. A
+standalone reproduction outside this repository showed the fault in rstar
+alone. `arq-core` now pins `rstar` 0.14.0 (MSRV 1.90, below ours); its
+breaking change to `RTreeNum` does not affect `f64`.
+`a_large_opened_drawing_takes_new_entities` fails on 0.13.0 and passes on
+0.14.0.
+
+On the reference machine (i7-2600, Criterion 20-sample estimate), 0.13.0
+and then 0.14.0: `query 1% window` 37.2 µs and 42.2 µs, `query everything`
+7.24 ms and 7.34 ms.
+
