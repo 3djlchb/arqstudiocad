@@ -68,6 +68,11 @@ pub(crate) struct Retained {
     /// line that short makes no fragment on the GPU, while the CPU still
     /// shows it as a dot.
     pub(crate) dots: Vec<Vertex>,
+    /// Point-list vertices: the ends of each line and arc. Without
+    /// multisampling a line leaves out its last pixel (the diamond-exit
+    /// rule), which the CPU draws; the joints between an arc's chords need
+    /// none, the next chord draws them.
+    pub(crate) ends: Vec<Vertex>,
 }
 
 impl Retained {
@@ -91,6 +96,7 @@ impl Retained {
             rgba: [0, 0, 0, 255],
             vertices: Vec::new(),
             dots: Vec::new(),
+            ends: Vec::new(),
         };
         let tol = Tolerance::default();
         for entry in scene.entries() {
@@ -111,6 +117,7 @@ impl Retained {
             origin: builder.origin,
             vertices: builder.vertices,
             dots: builder.dots,
+            ends: builder.ends,
         })
     }
 
@@ -157,6 +164,7 @@ struct Builder {
     rgba: [u8; 4],
     vertices: Vec<Vertex>,
     dots: Vec<Vertex>,
+    ends: Vec<Vertex>,
 }
 
 impl Builder {
@@ -165,6 +173,8 @@ impl Builder {
             Shape::Line(l) => {
                 self.segment(l.start(), l.end(), false);
                 self.dot_if_tiny(l.start(), l.end());
+                self.end(l.start());
+                self.end(l.end());
             }
             Shape::Circle(c) => self.arc(c.center(), c.radius(), 0.0, std::f64::consts::TAU),
             Shape::Arc(a) => self.arc(a.center(), a.radius(), a.start_angle(), a.sweep()),
@@ -216,6 +226,12 @@ impl Builder {
             }
             previous = next;
         }
+        // A circle has no ends; an arc, its first and last points.
+        if sweep < std::f64::consts::TAU {
+            for p in [point(0), point(n)].into_iter().flatten() {
+                self.end(p);
+            }
+        }
     }
 
     /// A segment clipped to the region in `f64`.
@@ -250,6 +266,14 @@ impl Builder {
             && self.region.contains_point(mid, Tolerance::default())
         {
             self.dot((mid.x(), mid.y()));
+        }
+    }
+
+    /// An end of a line or an arc, when it is in the region.
+    fn end(&mut self, p: Point2) {
+        if self.region.contains_point(p, Tolerance::default()) {
+            let vertex = self.vertex((p.x(), p.y()), [0.0, 0.0], SOLID);
+            self.ends.push(vertex);
         }
     }
 

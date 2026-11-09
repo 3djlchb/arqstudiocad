@@ -71,8 +71,6 @@ from PySide6.QtGui import (
     QPaintEngine,
     QPainter,
     QPaintEvent,
-    QPen,
-    QPolygonF,
     QRegion,
     QResizeEvent,
     QShowEvent,
@@ -94,7 +92,19 @@ from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point, ortho
 from arqstudiocad.ui.block_drag import dragged_block
-from arqstudiocad.ui.crosshair import Crosshair, crosshair_rects, paint_crosshair
+from arqstudiocad.ui.crosshair import Crosshair, crosshair_rects, crosshair_strokes
+from arqstudiocad.ui.overlay import (
+    RGBA,
+    Fill,
+    Label,
+    Overlay,
+    Stroke,
+    marker,
+    rectangle,
+    rgba,
+    to_core,
+)
+from arqstudiocad.ui.overlay import paint as paint_overlay
 
 #: How much one wheel notch (120 eighths of a degree) zooms, in percent:
 #: the default of Options > User preferences > Zoom, and its bounds.
@@ -132,7 +142,7 @@ MARKER = QColor(255, 200, 0)
 
 #: Until the renderer is chosen at start (ADR 0034 D6), naming a GPU backend
 #: here (``opengl``, ``vulkan``) makes viewports present with the GPU, on
-#: X11 only. Overlays are not drawn yet in that mode (ADR 0034 D6.2).
+#: X11 only.
 GPU_VIEWPORT_ENV = "ARQ_GPU_VIEWPORT"
 
 _log = logging.getLogger(__name__)
@@ -425,8 +435,10 @@ class Viewport(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 (Qt API)
         if self._gpu:
+            ratio = self.devicePixelRatioF()
+            items, labels = to_core(self.overlay(), self.font(), ratio)
             try:
-                self.view.present()
+                self.view.present(items, labels, ratio)
             except RuntimeError as error:
                 self._gpu_failed(str(error))
                 self.update()
@@ -436,16 +448,7 @@ class Viewport(QWidget):
         painter = QPainter(self)
         if self._image is not None:
             painter.drawImage(0, 0, self._image)
-        self._paint_overlay(painter)
-        if self._cursor_at is not None:
-            paint_crosshair(
-                painter,
-                self._crosshair,
-                self._cursor_at,
-                QRectF(self.rect()),
-                PICK_PIXELS,
-                QColor(*self.view.background),
-            )
+        paint_overlay(painter, self.overlay())
         painter.end()
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt API)
@@ -774,81 +777,100 @@ class Viewport(QWidget):
             self._hover = entity_id
             self.update()
 
-    def _paint_overlay(self, painter: QPainter) -> None:
-        """The selection, the highlight and the window, over the image."""
-        ratio = self.devicePixelRatioF()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.save()
-        painter.scale(1 / ratio, 1 / ratio)  # outlines come in physical pixels
+    def overlay(self) -> Overlay:
+        """What is drawn over the drawing now, in logical pixels and in the
+        order it is painted (ADR 0034 D4): the selection, the highlight, the
+        dragged outlines, the grips, the rubber band and the snap, the drop
+        frame, the window, and the crosshair. Painted by ``QPainter`` over
+        the CPU image, or drawn by the GPU."""
+        out = Overlay()
+        text = rgba(self.palette().text().color())
         if self._selected:
-            painter.setPen(QPen(SELECTED, 2 * ratio))
-            self._draw_outlines(painter, self._selected)
+            self._outline_strokes(out, self._selected, rgba(SELECTED), 2.0)
         if self._hover is not None:
-            color = SELECTED if self._hover in self._selected else self.palette().text().color()
-            painter.setPen(QPen(color, 3 * ratio))
-            self._draw_outlines(painter, (self._hover,))
+            hover = rgba(SELECTED) if self._hover in self._selected else text
+            self._outline_strokes(out, (self._hover,), hover, 3.0)
         preview = self.preview
         if preview is not None and self._dragged is not None:
-            painter.setTransform(preview, combine=True)
-            painter.setPen(QPen(self.palette().text().color(), 1 * ratio))
-            self._draw_outlines(painter, self._dragged.entity_ids)
-        painter.restore()
-        self._paint_grips(painter)
+            self._outline_strokes(out, self._dragged.entity_ids, text, 1.0, preview)
+        self._grip_items(out)
         if self._asking:
-            self._paint_point(painter)
+            self._point_items(out, text)
         if self._drop_name is not None:
-            self._paint_drop(painter)
+            highlight = rgba(self.palette().highlight().color())
+            frame = QRectF(self.rect()).adjusted(2, 2, -2, -2)
+            corners = rectangle((frame.left(), frame.top()), (frame.right(), frame.bottom()))
+            out.items.append(Stroke(corners, highlight, 2.0, dashed=True, closed=True))
+            out.labels.append(
+                Label((12.0, 22.0), tr("Drop to insert {name}", name=self._drop_name), text)
+            )
         if self._press is not None and self._band is not None:
             crossing = self._band.x() < self._press.x()
-            color = CROSSING if crossing else SELECTED
-            pen = QPen(color, 1)
-            if crossing:
-                pen.setStyle(Qt.PenStyle.DashLine)
+            color = QColor(CROSSING if crossing else SELECTED)
+            box = QRectF(self._press, self._band).normalized()
+            a, b = (box.left(), box.top()), (box.right(), box.bottom())
             fill = QColor(color)
             fill.setAlpha(FILL_ALPHA)
-            painter.setPen(pen)
-            painter.setBrush(fill)
-            painter.drawRect(QRectF(self._press, self._band).normalized())
+            out.items.append(Fill(a, b, rgba(fill)))
+            out.items.append(
+                Stroke(rectangle(a, b), rgba(color), 1.0, dashed=crossing, closed=True)
+            )
+        if self._cursor_at is not None:
+            out.items.extend(
+                crosshair_strokes(
+                    self._crosshair,
+                    self._cursor_at,
+                    QRectF(self.rect()),
+                    PICK_PIXELS,
+                    QColor(*self.view.background),
+                )
+            )
+        return out
 
-    def _paint_drop(self, painter: QPainter) -> None:
-        """The drawing takes the dragged block: a dashed frame and a note."""
-        pen = QPen(self.palette().highlight().color(), 2)
-        pen.setStyle(Qt.PenStyle.DashLine)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(QRectF(self.rect()).adjusted(2, 2, -2, -2))
-        painter.setPen(self.palette().text().color())
-        painter.drawText(QPointF(12, 22), tr("Drop to insert {name}", name=self._drop_name))
+    def _outline_strokes(
+        self,
+        out: Overlay,
+        entity_ids: tuple[int, ...],
+        color: RGBA,
+        width: float,
+        transform: QTransform | None = None,
+    ) -> None:
+        """The entities' outlines, which come in physical pixels, moved by
+        ``transform`` when they are being dragged."""
+        ratio = self.devicePixelRatioF()
+        for polyline in self.view.outlines(entity_ids):
+            points = [QPointF(x, y) for x, y in polyline]
+            if transform is not None:
+                points = [transform.map(p) for p in points]
+            out.items.append(
+                Stroke(tuple((p.x() / ratio, p.y() / ratio) for p in points), color, width)
+            )
 
-    def _paint_grips(self, painter: QPainter) -> None:
-        """Grips as filled squares, the hot one red."""
+    def _grip_items(self, out: Overlay) -> None:
+        """Grips as filled squares, the hot one red, edged in the base color."""
         ratio = self.devicePixelRatioF()
         r = GRIP_PIXELS
-        painter.setPen(QPen(self.palette().base().color(), 1))
+        edge = rgba(self.palette().base().color())
         for grip in self._shown_grips():
             x, y = self.view.to_screen(*grip.point)
-            painter.setBrush(HOT if grip == self._hot else SELECTED)
-            painter.drawRect(QRectF(x / ratio - r, y / ratio - r, 2 * r, 2 * r))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
+            a, b = (x / ratio - r, y / ratio - r), (x / ratio + r, y / ratio + r)
+            out.items.append(Fill(a, b, rgba(HOT if grip == self._hot else SELECTED)))
+            out.items.append(Stroke(rectangle(a, b), edge, 1.0, closed=True))
 
-    def _paint_point(self, painter: QPainter) -> None:
+    def _point_items(self, out: Overlay, text: RGBA) -> None:
         """The rubber band from the last point and the snap marker."""
         if self._target is None:
             return
         at = self.screen_point(self._target)
+        to = (at.x(), at.y())
         if self._base is not None and (self._dragged is None or self._dragged.band):
-            painter.setPen(QPen(self.palette().text().color(), 1, Qt.PenStyle.DashLine))
-            painter.drawLine(self.screen_point(self._base), at)
+            base = self.screen_point(self._base)
+            out.items.append(Stroke(((base.x(), base.y()), to), text, 1.0, dashed=True))
         if self._snap is not None:
-            painter.setPen(QPen(self._marker, 2))
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            draw_marker(painter, self._snap.kind, at, MARKER_PIXELS)
-            label = at + QPointF(MARKER_PIXELS + 4, -MARKER_PIXELS - 4)
-            painter.drawText(label, snap_name(self._snap.kind))
-
-    def _draw_outlines(self, painter: QPainter, entity_ids: tuple[int, ...]) -> None:
-        for polyline in self.view.outlines(entity_ids):
-            painter.drawPolyline(QPolygonF([QPointF(x, y) for x, y in polyline]))
+            color = rgba(self._marker)
+            out.items.extend(marker(self._snap.kind, to, MARKER_PIXELS, color, 2.0))
+            label = (at.x() + MARKER_PIXELS + 4, at.y() - MARKER_PIXELS - 4)
+            out.labels.append(Label(label, snap_name(self._snap.kind), color))
 
     def screen_point(self, point: Point) -> QPointF:
         """Where a point of the XY plane is seen, in logical pixels, in any
@@ -945,36 +967,6 @@ class Viewport(QWidget):
         image.setDevicePixelRatio(self.devicePixelRatioF())
         self._image = image
         self._dirty = False
-
-
-def draw_marker(painter: QPainter, kind: str, at: QPointF, r: float) -> None:
-    """AutoCAD's AutoSnap glyph for a snap, centred on ``at``."""
-    x, y = at.x(), at.y()
-
-    def p(dx: float, dy: float) -> QPointF:
-        return QPointF(x + dx, y + dy)
-
-    if kind == "END":
-        painter.drawRect(QRectF(x - r, y - r, 2 * r, 2 * r))
-    elif kind == "MID":
-        painter.drawPolygon(QPolygonF([p(0, -r), p(r, r), p(-r, r)]))
-    elif kind == "CEN":
-        painter.drawEllipse(at, r, r)
-    elif kind == "QUA":
-        painter.drawPolygon(QPolygonF([p(0, -r), p(r, 0), p(0, r), p(-r, 0)]))
-    elif kind == "INT":
-        painter.drawLine(p(-r, -r), p(r, r))
-        painter.drawLine(p(-r, r), p(r, -r))
-    elif kind == "PER":
-        painter.drawLine(p(-r, r), p(r, r))
-        painter.drawLine(p(-r, r), p(-r, -r))
-        painter.drawLine(p(-r, 0), p(0, 0))
-        painter.drawLine(p(0, 0), p(0, r))
-    elif kind == "TAN":
-        painter.drawEllipse(at, r, r)
-        painter.drawLine(p(-r, -r), p(r, -r))
-    else:  # NEA: an hourglass
-        painter.drawPolygon(QPolygonF([p(-r, -r), p(r, -r), p(-r, r), p(r, r)]))
 
 
 def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None:

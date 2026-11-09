@@ -22,7 +22,9 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
 use crate::camera::Camera;
+use crate::gpu_overlay::OverlayPainter;
 use crate::gpu_probe::{GpuBackend, GpuProbeResult, offscreen_adapter};
+use crate::overlay::Overlay;
 use crate::raster::{DASH_PX, Image, Style};
 use crate::retained::{Retained, Vertex};
 use crate::scene::Scene;
@@ -132,10 +134,12 @@ pub struct GpuRenderer {
     vertices: Option<wgpu::Buffer>,
     line_count: u32,
     dot_count: u32,
+    end_count: u32,
     builds: u64,
     offscreen: Option<Offscreen>,
     window: Option<Window>,
     errors: Arc<Mutex<Option<String>>>,
+    overlay: OverlayPainter,
     /// Keeps the surface's instance alive.
     _instance: Option<wgpu::Instance>,
 }
@@ -312,6 +316,7 @@ impl GpuRenderer {
             }],
         });
 
+        let overlay = OverlayPainter::new(&device, &layout, samples);
         let renderer = Self {
             adapter: GpuProbeResult {
                 backend: backend.name().to_owned(),
@@ -331,10 +336,12 @@ impl GpuRenderer {
             vertices: None,
             line_count: 0,
             dot_count: 0,
+            end_count: 0,
             builds: 0,
             offscreen: None,
             window: None,
             errors,
+            overlay,
             _instance: instance,
         };
         renderer.check()?;
@@ -362,7 +369,13 @@ impl GpuRenderer {
     /// camera. A frame the window cannot take now (hidden, being resized)
     /// is skipped. An error means the GPU cannot draw; the caller draws on
     /// the CPU instead.
-    pub fn present(&mut self, scene: &Scene, camera: &Camera, style: Style) -> Result<(), String> {
+    pub fn present(
+        &mut self,
+        scene: &Scene,
+        camera: &Camera,
+        style: Style,
+        overlay: &Overlay,
+    ) -> Result<(), String> {
         let (width, height) = camera.size();
         self.prepare(scene, camera, style)?;
         let Some(window) = self.window.as_mut() else {
@@ -403,6 +416,8 @@ impl GpuRenderer {
             .as_ref()
             .map(|t| t.create_view(&Default::default()));
         let pipelines = self.pipelines_for(format);
+        self.overlay
+            .prepare(&self.device, &self.queue, overlay, format);
         let mut encoder = self.device.create_command_encoder(&Default::default());
         self.pass(
             &mut encoder,
@@ -410,6 +425,7 @@ impl GpuRenderer {
             multisampled.as_ref(),
             &pipelines,
             style,
+            format,
         );
         self.queue.submit([encoder.finish()]);
         self.queue.present(frame);
@@ -417,12 +433,14 @@ impl GpuRenderer {
     }
 
     /// Paints `scene` as `camera` sees it into an image, like
-    /// [`crate::render`]: the GPU's drawing, checked against the CPU's.
+    /// [`crate::render`], with `overlay` over it: the GPU's drawing,
+    /// checked against the CPU's.
     pub fn render(
         &mut self,
         scene: &Scene,
         camera: &Camera,
         style: Style,
+        overlay: &Overlay,
     ) -> Result<Image, String> {
         let (width, height) = camera.size();
         self.prepare(scene, camera, style)?;
@@ -434,6 +452,8 @@ impl GpuRenderer {
             self.offscreen = Some(self.new_offscreen(width, height));
         }
         let pipelines = self.pipelines_for(OFFSCREEN);
+        self.overlay
+            .prepare(&self.device, &self.queue, overlay, OFFSCREEN);
         let Some(target) = &self.offscreen else {
             unreachable!("made just above");
         };
@@ -447,7 +467,7 @@ impl GpuRenderer {
             Some(m) => (m, Some(&resolved)),
             None => (&resolved, None),
         };
-        self.pass_into(&mut encoder, view, resolve, &pipelines, style);
+        self.pass_into(&mut encoder, view, resolve, &pipelines, style, OFFSCREEN);
         encoder.copy_texture_to_buffer(
             target.resolved.as_image_copy(),
             wgpu::TexelCopyBufferInfo {
@@ -513,7 +533,7 @@ impl GpuRenderer {
         {
             let retained =
                 Retained::build(scene, camera, style).ok_or("the camera shows nothing finite")?;
-            self.upload(&retained.vertices, &retained.dots)?;
+            self.upload(&retained.vertices, &retained.dots, &retained.ends)?;
             self.retained = Some(retained);
             self.builds += 1;
         }
@@ -538,9 +558,9 @@ impl GpuRenderer {
         Ok(())
     }
 
-    /// Uploads the lines, then the dots after them.
-    fn upload(&mut self, lines: &[Vertex], dots: &[Vertex]) -> Result<(), String> {
-        let count = lines.len() + dots.len();
+    /// Uploads the lines, then the dots, then the ends.
+    fn upload(&mut self, lines: &[Vertex], dots: &[Vertex], ends: &[Vertex]) -> Result<(), String> {
+        let count = lines.len() + dots.len() + ends.len();
         let bytes = count as u64 * VERTEX_BYTES;
         if bytes > self.max_buffer {
             return Err(format!(
@@ -560,7 +580,7 @@ impl GpuRenderer {
             }));
         }
         let mut data = Vec::with_capacity(bytes as usize);
-        for v in lines.iter().chain(dots) {
+        for v in lines.iter().chain(dots).chain(ends) {
             for f in [v.at[0], v.at[1], v.offset[0], v.offset[1], v.along] {
                 data.extend_from_slice(&f.to_ne_bytes());
             }
@@ -571,6 +591,7 @@ impl GpuRenderer {
         }
         self.line_count = lines.len() as u32;
         self.dot_count = dots.len() as u32;
+        self.end_count = ends.len() as u32;
         Ok(())
     }
 
@@ -582,10 +603,11 @@ impl GpuRenderer {
         multisampled: Option<&wgpu::TextureView>,
         pipelines: &Pipelines,
         style: Style,
+        format: wgpu::TextureFormat,
     ) {
         match multisampled {
-            Some(m) => self.pass_into(encoder, m, Some(frame), pipelines, style),
-            None => self.pass_into(encoder, frame, None, pipelines, style),
+            Some(m) => self.pass_into(encoder, m, Some(frame), pipelines, style, format),
+            None => self.pass_into(encoder, frame, None, pipelines, style, format),
         }
     }
 
@@ -596,6 +618,7 @@ impl GpuRenderer {
         resolve_target: Option<&wgpu::TextureView>,
         pipelines: &Pipelines,
         style: Style,
+        format: wgpu::TextureFormat,
     ) {
         let [r, g, b] = style.background.map(|c| f64::from(c) / 255.0);
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -614,25 +637,27 @@ impl GpuRenderer {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        let total = self.line_count + self.dot_count;
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        // In the buffer: the lines, the dots, then the ends.
+        let total = self.line_count + self.dot_count + self.end_count;
         if let (Some(buffer), true) = (&self.vertices, total > 0) {
-            pass.set_bind_group(0, &self.bind_group, &[]);
             pass.set_vertex_buffer(0, buffer.slice(..u64::from(total) * VERTEX_BYTES));
             pass.set_pipeline(&pipelines.lines);
             pass.draw(0..self.line_count, 0..1);
             // What can be shorter than a pixel, as pixels: a line that short
             // makes no fragment, and the CPU still shows it as a dot.
             // Without multisampling a line also leaves out its last pixel
-            // (the diamond-exit rule), which the CPU draws: then every end
-            // is drawn as a pixel too.
-            let first = if self.samples == 1 {
-                0
+            // (the diamond-exit rule), which the CPU draws: then the ends of
+            // lines and arcs are drawn as pixels too.
+            let last = if self.samples == 1 {
+                total
             } else {
-                self.line_count
+                self.line_count + self.dot_count
             };
             pass.set_pipeline(&pipelines.dots);
-            pass.draw(first..total, 0..1);
+            pass.draw(self.line_count..last, 0..1);
         }
+        self.overlay.draw(&mut pass, format);
     }
 
     /// The pipelines for a target format.
