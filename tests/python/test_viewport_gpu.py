@@ -303,3 +303,73 @@ def test_the_gpu_draws_the_overlays_the_cpu_paints(tmp_path: Path) -> None:
 
 def _rgb(color: QColor) -> tuple[int, int, int]:
     return (color.red(), color.green(), color.blue())
+
+
+APP_SCRIPT = textwrap.dedent(
+    """
+    import json, sys, time
+    from pathlib import Path
+    from PySide6.QtCore import QSettings
+    from PySide6.QtWidgets import QApplication
+    from arqstudiocad.renderer import Sentinel
+    from arqstudiocad.ui.main_window import MainWindow
+
+    app = QApplication([])
+    folder = Path(sys.argv[1])
+    settings = QSettings(str(folder / "settings.ini"), QSettings.Format.IniFormat)
+    sentinel = Sentinel(folder / "gpu-starting")
+    window = MainWindow(settings, sentinel=sentinel)
+    window.resize(800, 600)
+    window.show()
+    # Unmodified, so closing asks nothing.
+    document = window.session.new_document()
+    viewport = window.viewports[document.id]
+    # The probe runs in the background: wait for its answer and a frame.
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.05)
+        if viewport.gpu is not None and not sentinel.armed:
+            break
+    print(json.dumps({
+        "renderer": [window.renderer.backend, window.renderer.adapter],
+        "viewport": viewport.gpu,
+        "sentinel": sentinel.armed,
+        "history": window.command_window.history.toPlainText(),
+    }))
+    window.close()
+    """
+)
+
+
+def test_the_app_chooses_the_graphics_card_by_itself(tmp_path: Path) -> None:
+    """No backend forced: the window probes, takes a hardware adapter, gives
+    the viewport the GPU, says so, and its first frame disarms the
+    sentinel (ADR 0034 D5)."""
+    if not os.environ.get("DISPLAY"):
+        if REQUIRED:
+            pytest.fail("ARQ_GPU_TESTS=require, but there is no X11 display")
+        pytest.skip("no X11 display")
+    script = tmp_path / "app.py"
+    script.write_text(APP_SCRIPT, encoding="utf-8")
+    env = dict(os.environ, QT_QPA_PLATFORM="xcb")
+    env.pop(GPU_VIEWPORT_ENV, None)
+    done = subprocess.run(
+        [sys.executable, str(script), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-2000:]
+    result = json.loads(done.stdout.strip().splitlines()[-1])
+    if result["renderer"][0] is None:
+        if REQUIRED:
+            pytest.fail(f"ARQ_GPU_TESTS=require, but the CPU was chosen: {result['history']}")
+        pytest.skip(f"no graphics card here: {result['history']}")
+    backend, adapter = result["renderer"]
+    assert result["viewport"] is not None and result["viewport"][0] == backend
+    assert result["viewport"][2] != "Cpu", "never a software adapter"
+    assert f"Drawing with the graphics card: {adapter}" in result["history"]
+    assert not result["sentinel"], "the first frame disarmed it"

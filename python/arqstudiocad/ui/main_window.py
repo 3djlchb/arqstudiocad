@@ -1,6 +1,7 @@
 """Main window: document tabs, menus, the command window, the layers,
 properties and history panels, language switch and About."""
 
+import os
 import platform
 from dataclasses import replace
 from functools import partial
@@ -8,7 +9,14 @@ from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QLocale, QPoint, QRect, QSettings, Qt, qVersion
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QColor, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QCloseEvent,
+    QColor,
+    QGuiApplication,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -23,7 +31,14 @@ from PySide6.QtWidgets import (
 
 from arqstudiocad import _core
 from arqstudiocad.application import choose_language
-from arqstudiocad.commands import CommandContext, CommandRunner, UiServices, ViewControl, Worker
+from arqstudiocad.commands import (
+    CommandContext,
+    CommandRunner,
+    Outcome,
+    UiServices,
+    ViewControl,
+    Worker,
+)
 from arqstudiocad.commands.blocks import edit_clicked
 from arqstudiocad.commands.builtin import DEFAULT_SAVE_EXTENSION, builtin_registry, open_command
 from arqstudiocad.commands.grips import grip_edit, shown_grips
@@ -53,6 +68,7 @@ from arqstudiocad.events import (
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
 from arqstudiocad.product import APP_NAME
 from arqstudiocad.recent_files import same_file
+from arqstudiocad.renderer import Choice, Sentinel, plan, probe
 from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
@@ -79,7 +95,7 @@ from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
-from arqstudiocad.ui.viewport import Viewport
+from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV, Viewport
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
 from arqstudiocad.workspaces import BLOCK_EDITOR, WorkspaceRegistry, builtin_workspaces
 
@@ -96,9 +112,17 @@ class MainWindow(QMainWindow):
         ui: UiServices | None = None,
         worker: Worker | None = None,
         workspaces: WorkspaceRegistry | None = None,
+        safe_mode: bool = False,
+        sentinel: Sentinel | None = None,
     ) -> None:
         super().__init__()
         self._settings = settings
+        #: What draws the viewports (ADR 0034 D5), the CPU until chosen.
+        self._renderer = Choice()
+        self._safe_mode = safe_mode
+        self._sentinel = sentinel
+        #: Counts the choices asked, so an older probe's answer is dropped.
+        self._choosing = 0
         #: The Options dialog's settings but language and theme (ADR 0029 D5).
         self._options = saved_options(settings)
         self.bus = bus if bus is not None else EventBus()
@@ -354,6 +378,7 @@ class MainWindow(QMainWindow):
         self.workspaces.before_reset.append(self.auto_hide.pin_all)
         self.workspaces.show_remembered()
         self.auto_hide.restore()
+        self.choose_renderer()
 
     def retranslate(self) -> None:
         """Set every user-visible text from the active language."""
@@ -517,6 +542,9 @@ class MainWindow(QMainWindow):
             return
         viewport = Viewport(document, drafting=self.session.drafting)
         self._style_viewport(viewport)
+        viewport.gpu_presented.connect(self._gpu_presented)
+        viewport.gpu_stopped.connect(self._gpu_stopped)
+        self._give_renderer(viewport)
         viewport.entity_double_clicked.connect(
             lambda entity_id: self._edit_double_clicked(document, entity_id)
         )
@@ -622,14 +650,104 @@ class MainWindow(QMainWindow):
         self._options = values
         if self._settings is not None:
             save_options(self._settings, values, keys)
+        if "renderer" in keys:
+            # Choosing a renderer is trying the graphics card again.
+            if self._sentinel is not None:
+                self._sentinel.disarm()
+            self.choose_renderer()
+        elif "antialias" in keys:
+            for viewport in self.viewports.values():
+                self._give_renderer(viewport)
         for viewport in self.viewports.values():
             self._style_viewport(viewport)
         self.command_window.set_text_color(values.command_line_color)
         if keys:
             self.bus.publish(OptionsChanged(keys))
 
+    # The renderer (ADR 0034 D5)
+
+    @property
+    def renderer(self) -> Choice:
+        """What draws the viewports now."""
+        return self._renderer
+
+    def choose_renderer(self) -> None:
+        """Chooses what draws the viewports: at once when the CPU is the
+        answer, otherwise after probing the graphics card in the background,
+        the viewports drawing on the CPU meanwhile."""
+        self._choosing += 1
+        forced = os.environ.get(GPU_VIEWPORT_ENV, "").strip()
+        if forced:
+            self._use_renderer(Choice(backend=forced))
+            return
+        planned = plan(
+            self._options.renderer,
+            safe_mode=self._safe_mode,
+            crashed=self._sentinel is not None and self._sentinel.armed,
+            gpu_platform=QGuiApplication.platformName() == "xcb",
+        )
+        if isinstance(planned, Choice):
+            self._use_renderer(planned)
+            return
+        asked = self._choosing
+
+        def done(outcome: Outcome) -> None:
+            if asked != self._choosing:
+                return  # a newer choice was asked meanwhile
+            if isinstance(outcome.value, Choice):
+                self._use_renderer(outcome.value)
+            else:
+                reason = tr(
+                    "Drawing on the CPU: the graphics card could not be checked ({error}).",
+                    error=outcome.error,
+                )
+                self._use_renderer(Choice(reason=reason))
+
+        self.worker.run(lambda: probe(planned), done)
+
+    def _use_renderer(self, choice: Choice) -> None:
+        self._renderer = choice
+        if not choice.quiet:
+            self.runner.context.message(choice.message())
+        for viewport in self.viewports.values():
+            self._give_renderer(viewport)
+
+    def _give_renderer(self, viewport: Viewport) -> None:
+        backend = self._renderer.backend
+        if backend is not None and self._sentinel is not None:
+            # Until its first frame: a crash meanwhile is the driver's.
+            self._sentinel.arm()
+        viewport.set_gpu(backend, self._options.antialias)
+
+    def _gpu_presented(self) -> None:
+        if self._sentinel is not None:
+            self._sentinel.disarm()
+
+    def _gpu_stopped(self, reason: str) -> None:
+        """A viewport's graphics card failed: every viewport draws on the CPU
+        until the next start, and the command window says so."""
+        if self._sentinel is not None:
+            self._sentinel.disarm()
+        if not self._renderer.gpu:
+            return
+        self._use_renderer(
+            Choice(
+                reason=tr(
+                    "The graphics card stopped drawing ({error}); drawing on the CPU until "
+                    "{app} starts again.",
+                    error=reason,
+                )
+            )
+        )
+
     def options_dialog(self) -> OptionsDialog:
-        return OptionsDialog(self.options_values(), self.apply_options, self._settings, self)
+        return OptionsDialog(
+            self.options_values(),
+            self.apply_options,
+            self._settings,
+            self,
+            renderer_status=self._renderer.message(),
+        )
 
     def show_options(self) -> bool:
         """OPTIONS: the dialog, modal, until it closes."""
@@ -741,6 +859,9 @@ class MainWindow(QMainWindow):
         self.workspaces.save_state()
         if isinstance(self.worker, QtWorker):
             self.worker.shutdown()
+        # Quitting is no crash, whatever the graphics card had drawn.
+        if self._sentinel is not None:
+            self._sentinel.disarm()
         event.accept()
 
     def _save_on_quit(self, document: CadDocument) -> bool:

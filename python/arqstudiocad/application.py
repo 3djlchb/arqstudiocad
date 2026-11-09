@@ -1,6 +1,7 @@
 """Application lifecycle: Qt application, language selection, main window."""
 
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from arqstudiocad.i18n import SOURCE_LANGUAGE, available_languages
@@ -11,6 +12,8 @@ if TYPE_CHECKING:
     from PySide6.QtCore import QSettings
 
 SETTINGS_FILE = "settings.ini"
+#: The crash sentinel's file (ADR 0034 D5), beside the settings.
+GPU_SENTINEL_FILE = "gpu-starting"
 
 
 def choose_language(requested: str | None, saved: object, system_locale: str) -> str:
@@ -36,12 +39,26 @@ def open_settings() -> "QSettings":
     return QSettings()
 
 
-def run(language: str | None = None) -> int:
+def sentinel_path() -> Path:
+    """Where the GPU's crash sentinel is kept: beside the INI file in
+    portable mode, otherwise in the application's local data folder.
+    Requires the application and organization names to be set first."""
+    from PySide6.QtCore import QStandardPaths
+
+    folder = portable_dir()
+    if folder is None:
+        location = QStandardPaths.StandardLocation.AppLocalDataLocation
+        folder = Path(QStandardPaths.writableLocation(location))
+    return folder / GPU_SENTINEL_FILE
+
+
+def run(language: str | None = None, safe_mode: bool = False) -> int:
     from PySide6.QtCore import QLocale
     from PySide6.QtWidgets import QApplication
 
     from arqstudiocad import _core
     from arqstudiocad.i18n import set_language
+    from arqstudiocad.renderer import Sentinel
     from arqstudiocad.ui.main_window import LANGUAGE_SETTING, MainWindow
     from arqstudiocad.ui.theme import THEME_SETTING, THEMES, apply_theme, as_theme
 
@@ -57,6 +74,6 @@ def run(language: str | None = None) -> int:
     )
 
     apply_theme(app, as_theme(settings.value(THEME_SETTING)) or THEMES[0])
-    window = MainWindow(settings)
+    window = MainWindow(settings, safe_mode=safe_mode, sentinel=Sentinel(sentinel_path()))
     window.show()
     return app.exec()

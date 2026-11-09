@@ -268,3 +268,34 @@ selected, the median frame of a 1200 × 650 viewport on the 100,000-entity
 drawing: 20 ms panning and zooming on the GPU, 54 ms panning and 71 ms
 zooming on the CPU.
 
+### D6.3, choosing and falling back (2026-11-10)
+
+- **Chosen without waiting.** `arqstudiocad.renderer.plan` decides at once
+  whether a GPU may be tried, from the Renderer setting, `--safe-mode`, the
+  crash sentinel and the platform (X11 until D6.4), and which backends to
+  probe. `probe` then runs them on the window's background worker, each in
+  a child process (ADR 0007), and takes the first **hardware** adapter;
+  lavapipe, llvmpipe and WARP never draw a viewport. The viewports draw on
+  the CPU meanwhile and switch when the answer comes (`Viewport.set_gpu`),
+  about a second after the window shows on the reference machine, where
+  the two probes take 0.3 s.
+- **On by default.** Renderer is Automatic unless chosen otherwise:
+  the GPU draws wherever a hardware adapter passes. `ARQ_GPU_VIEWPORT`
+  stays as a developer's override that skips the choice.
+- **The crash sentinel** (`gpu-starting`, beside the settings in portable
+  mode, otherwise in the application's local data folder) is written
+  before a viewport attaches the GPU and removed at its first frame, when
+  the GPU stops cleanly, and on quitting. Found at the next start, it keeps
+  the CPU and says why. Choosing a renderer in Options clears it and tries
+  again.
+- **Options › Display › Graphics:** Renderer (Automatic, CPU, or each
+  hardware backend of the platform) and antialiasing, with a line saying
+  what draws now. A change applies at once, without restarting.
+- **Told when there is news.** The command window says what draws at start
+  when it is the graphics card ("Drawing with the graphics card: NV106
+  (OpenGL).") or when the CPU draws for a reason worth knowing: safe mode, a
+  past crash, no card passing the check. When the GPU fails while drawing,
+  it says every viewport draws on the CPU until the next start. Where the
+  CPU is expected (another platform until D6.4) or chosen, nothing is said
+  at start; Options › Graphics says it in every case.
+

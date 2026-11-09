@@ -125,6 +125,7 @@ Run `xcode-select --install` for the compiler, then follow the Linux steps 2–4
 uv run arqstudiocad              # opens the application
 uv run arqstudiocad --lang es    # in Spanish (also: Tools > Language)
 uv run arqstudiocad --check      # verifies the installation, prints a report
+uv run arqstudiocad --safe-mode  # draws on the CPU, whatever the graphics card
 ```
 
 And the test suites:
