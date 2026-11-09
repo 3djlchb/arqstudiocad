@@ -56,9 +56,12 @@ impl GpuBackend {
                 {
                     wgpu::Backends::DX12
                 }
+                // wgpu's GL backend has no fallback adapter: Mesa offers
+                // llvmpipe there only when it is the display's own driver.
+                // Lavapipe, Mesa's llvmpipe for Vulkan, is found either way.
                 #[cfg(target_os = "linux")]
                 {
-                    wgpu::Backends::GL
+                    wgpu::Backends::VULKAN | wgpu::Backends::GL
                 }
                 #[cfg(target_os = "macos")]
                 {

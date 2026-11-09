@@ -79,7 +79,10 @@ do not block a release.
 | Board / firmware | BIOSTAR H61MGC, AMI UEFI (2011) |
 | OS | LMDE 7 (Debian 13), Cinnamon 6.6.9, **X11**, kernel 6.12 |
 
-Mesa and OpenGL versions (`glxinfo -B`) are still to be recorded. What this
+Mesa and OpenGL (`glxinfo -B`, recorded 2026-11-08): **Mesa 25.0.7**,
+renderer NV106 accelerated, 2 GB video memory, OpenGL **4.3** core and
+compatibility, OpenGL ES **3.2**. Its Vulkan, Vulkan 1.4.305, is lavapipe
+(`llvmpipe (LLVM 19.1.7, 256 bits)`). What this
 machine implies — software Vulkan rejected, OpenGL ES as its GPU path, a
 CPU rasterizer, the build baseline — is decided in
 [ADR 0013, D5.8](0013-application-shell.md).
@@ -114,3 +117,24 @@ AMD and macOS are covered by manual CI runs and volunteer testers.
 - The probe passed locally on Windows with Intel UHD 630 / DX12. This does not
   yet switch the viewport from the CPU rasterizer; the renderer and Qt
   presentation path, plus the reference Linux-machine validation, remain open.
+
+## Reference machine probe (2026-11-08)
+
+The probe ran on the reference machine (GT 730, nouveau, LMDE 7, X11):
+
+| Backend | Adapter | Device type |
+|---|---|---|
+| `vulkan` | llvmpipe (LLVM 19.1.7, 256 bits), lavapipe | `Cpu` |
+| `opengl` | NV106, the GT 730 through nouveau | `Other` |
+| `software` | llvmpipe (LLVM 19.1.7, 256 bits) | `Cpu` |
+
+Two faults were found and fixed. The parent took the first backend that
+passed, so the reference machine would have drawn with lavapipe on the
+CPU. It now takes the first hardware adapter and keeps an adapter whose
+device type is `Cpu` only while no hardware one passes (ADR 0013 D5.8).
+The machine therefore selects OpenGL ES on the GT 730. The `software`
+backend also failed on Linux: wgpu's GL backend has no fallback adapter,
+since Mesa offers llvmpipe through GL only when llvmpipe is the display's
+driver. It now looks for the fallback adapter in Vulkan as well and finds
+lavapipe. The probe part of the release gate passes on this machine. GPU
+viewport rendering and the Qt presentation path remain open.
