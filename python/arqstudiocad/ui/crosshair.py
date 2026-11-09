@@ -18,6 +18,8 @@ from typing import Literal
 from PySide6.QtCore import QLineF, QPointF, QRect, QRectF
 from PySide6.QtGui import QColor, QPainter, QPen
 
+from arqstudiocad.ui.overlay import Stroke, rgba
+
 #: The crosshair's shape (the Options dialog's Type).
 type CrosshairType = Literal["crosshair", "arrow", "small"]
 CROSSHAIR_TYPES: tuple[CrosshairType, ...] = ("crosshair", "arrow", "small")
@@ -109,3 +111,15 @@ def paint_crosshair(
     painter.setPen(QPen(crosshair_color(style, background), 1))
     painter.drawLines(lines)
     painter.restore()
+
+
+def crosshair_strokes(
+    style: Crosshair, at: QPointF, area: QRectF, pick: float, background: QColor
+) -> list[Stroke]:
+    """The crosshair as the viewport's overlay draws it (ADR 0034 D4): one
+    crisp logical pixel wide, as :func:`paint_crosshair` paints it."""
+    color = rgba(crosshair_color(style, background))
+    return [
+        Stroke(((line.x1(), line.y1()), (line.x2(), line.y2())), color, 1.0, crisp=True)
+        for line in crosshair_lines(style, at, area, pick)
+    ]

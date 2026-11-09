@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 from pytestqt.qtbot import QtBot
 
@@ -83,8 +84,10 @@ WINDOW_SCRIPT = textwrap.dedent(
         document.add_line((i * 5.0, 0.0), (i * 5.0 + 3.0, 60.0))
     document.add_circle((100.0, 30.0), 25.0)
     viewport = Viewport(document)
-    # Grabbed from the screen: kept above any other window on the desktop.
+    # Grabbed from the screen: kept above any other window on the desktop,
+    # and deaf to the real mouse, which would move the crosshair.
     viewport.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+    viewport.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
     viewport.resize(400, 300)
     viewport.show()
     viewport.raise_()
@@ -93,15 +96,23 @@ WINDOW_SCRIPT = textwrap.dedent(
         time.sleep(0.02)
     result = {"gpu": viewport.gpu}
 
-    def lit() -> int:
+    def grab():
         viewport.repaint()
-        for _ in range(5):
+        for _ in range(3):
             app.processEvents()
-            time.sleep(0.02)
-        top = viewport.mapToGlobal(viewport.rect().topLeft())
-        image = QGuiApplication.primaryScreen().grabWindow(
-            0, top.x(), top.y(), viewport.width(), viewport.height()
-        ).toImage()
+            time.sleep(0.03)
+        # The window's own pixels, not the screen's: on a busy desktop the
+        # compositor may be redrawing the screen while it is read.
+        return QGuiApplication.primaryScreen().grabWindow(int(viewport.winId())).toImage()
+
+    def lit() -> int:
+        # The desktop may still be fading the window in: grab until two
+        # grabs in a row are the same.
+        image, previous = grab(), None
+        for _ in range(60):
+            if image == previous:
+                break
+            previous, image = image, grab()
         bg = viewport.view.background
         return sum(
             1
@@ -151,3 +162,144 @@ def test_a_real_window_is_presented_by_the_gpu(tmp_path: Path) -> None:
     assert result["lit_panned"] > 100, "and still after panning"
     assert result["lit_panned"] != result["lit"], "panning moved it"
     assert result["still_gpu"] and result["closed"]
+
+
+OVERLAY_SCRIPT = textwrap.dedent(
+    """
+    import sys, time
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtWidgets import QApplication
+    from arqstudiocad.core import CadApplication
+    from arqstudiocad.ui.viewport import Viewport
+
+    app = QApplication([])
+    document = CadApplication().create_document("Plano")
+    first, _ = document.add_line((0.0, 0.0), (100.0, 60.0))
+    second, _ = document.add_circle((60.0, 20.0), 15.0)
+    document.add_line((0.0, 60.0), (100.0, 0.0))
+    viewport = Viewport(document)
+    viewport.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+    # The real mouse must not move the crosshair or the highlight.
+    viewport.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+    viewport.setGeometry(100, 100, 400, 300)
+    viewport.show()
+    viewport.raise_()
+    for _ in range(30):
+        app.processEvents()
+        time.sleep(0.02)
+    # The selection with its grips, one hot; the highlight; a window being
+    # dragged; a block dropped; the crosshair.
+    viewport.show_selection((first, second))
+    grips = tuple(document.grips([first, second]))
+    viewport.show_grips(grips, grips[0])
+    viewport._set_hover(second)
+    viewport._press, viewport._band = QPointF(40, 200), QPointF(260, 260)
+    viewport._drop_name = "Door"
+    viewport._cursor_at = QPointF(300.0, 120.0)
+    viewport.update()
+
+    def grab():
+        viewport.repaint()
+        for _ in range(3):
+            app.processEvents()
+            time.sleep(0.03)
+        # The window's own pixels, not the screen's: on a busy desktop the
+        # compositor may be redrawing the screen while it is read.
+        return QGuiApplication.primaryScreen().grabWindow(int(viewport.winId())).toImage()
+
+    # The desktop may still be fading the window in: grab until two grabs
+    # in a row are the same.
+    shot, previous = grab(), None
+    for _ in range(60):
+        if shot == previous:
+            break
+        previous, shot = shot, grab()
+    else:
+        sys.exit("the window never settled on screen")
+    shot.save(sys.argv[1])
+    path = "gpu" if viewport.gpu is not None else "cpu"
+    print(path, *viewport.view.background)
+    viewport.deleteLater()
+    for _ in range(5):
+        app.processEvents()
+    """
+)
+
+
+def _shot(tmp_path: Path, name: str, backend: str | None) -> tuple[str, tuple[int, int, int], Path]:
+    script = tmp_path / "overlay.py"
+    script.write_text(OVERLAY_SCRIPT, encoding="utf-8")
+    env = dict(os.environ, QT_QPA_PLATFORM="xcb")
+    env.pop(GPU_VIEWPORT_ENV, None)
+    if backend is not None:
+        env[GPU_VIEWPORT_ENV] = backend
+    out = tmp_path / f"{name}.png"
+    done = subprocess.run(
+        [sys.executable, str(script), str(out)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr[-2000:]
+    path, *rgb = done.stdout.strip().splitlines()[-1].split()
+    r, g, b = (int(c) for c in rgb)
+    return path, (r, g, b), out
+
+
+def test_the_gpu_draws_the_overlays_the_cpu_paints(tmp_path: Path) -> None:
+    """One description, two painters (ADR 0034 D4): the selection, the
+    highlight, the grips, the window, the drop note and the crosshair look
+    the same on both, to within a pixel of antialiasing."""
+    if not os.environ.get("DISPLAY"):
+        if REQUIRED:
+            pytest.fail("ARQ_GPU_TESTS=require, but there is no X11 display")
+        pytest.skip("no X11 display")
+    backend = os.environ.get("ARQ_GPU_BACKEND") or "opengl"
+    path, _, gpu_png = _shot(tmp_path, "gpu", backend)
+    if path != "gpu":
+        if REQUIRED:
+            pytest.fail("ARQ_GPU_TESTS=require, but the GPU did not attach")
+        pytest.skip(f"no {backend} adapter for a window here")
+    path, (br, bg, bb), cpu_png = _shot(tmp_path, "cpu", None)
+    assert path == "cpu"
+    gpu, cpu = QImage(str(gpu_png)), QImage(str(cpu_png))
+    assert (gpu.width(), gpu.height()) == (cpu.width(), cpu.height())
+
+    def contrast(image: QImage, x: int, y: int) -> int:
+        c = image.pixelColor(x, y)
+        return max(abs(c.red() - br), abs(c.green() - bg), abs(c.blue() - bb))
+
+    def near(image: QImage, x: int, y: int) -> bool:
+        return any(
+            contrast(image, x + dx, y + dy) > 0
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            if 0 <= x + dx < image.width() and 0 <= y + dy < image.height()
+        )
+
+    clear = 48
+    misses = []
+    for y in range(cpu.height()):
+        for x in range(cpu.width()):
+            for one, other, name in ((cpu, gpu, "the GPU"), (gpu, cpu, "the CPU")):
+                if contrast(one, x, y) > clear and not near(other, x, y):
+                    misses.append((name, x, y))
+    # Measured on the reference machine: none; a missing overlay, hundreds.
+    assert not misses, misses[:20]
+
+    def has(image: QImage, rgb: tuple[int, int, int]) -> bool:
+        return any(
+            _rgb(image.pixelColor(x, y)) == rgb
+            for y in range(0, image.height())
+            for x in range(0, image.width())
+        )
+
+    for color, what in (((30, 144, 255), "selection"), ((230, 40, 40), "hot grip")):
+        assert has(cpu, color) and has(gpu, color), what
+
+
+def _rgb(color: QColor) -> tuple[int, int, int]:
+    return (color.red(), color.green(), color.blue())

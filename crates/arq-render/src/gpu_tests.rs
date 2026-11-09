@@ -17,6 +17,7 @@ use arq_core::{CadDocument, Color, DrawItem, Shape};
 use arq_geometry::{Bounds2, Point2};
 
 use super::*;
+use crate::overlay::{Overlay, OverlayItem, OverlayLabel};
 use crate::raster::render;
 
 const DARK: Style = Style {
@@ -168,7 +169,9 @@ fn assert_same(cpu: &Image, gpu: &Image, style: Style, inks: &[[u8; 3]], case: &
 
 fn both(gpu: &mut GpuRenderer, scene: &Scene, camera: &Camera, style: Style) -> (Image, Image) {
     let cpu = render(scene, camera, style);
-    let drawn = gpu.render(scene, camera, style).expect("the GPU draws");
+    let drawn = gpu
+        .render(scene, camera, style, &Overlay::default())
+        .expect("the GPU draws");
     (cpu, drawn)
 }
 
@@ -342,7 +345,9 @@ fn draws_what_the_cpu_draws(gpu: &mut GpuRenderer) {
     assert_eq!(gpu.builds(), built + 1, "built again past the band");
 
     // Nothing to draw: the background alone.
-    let img = gpu.render(&Scene::default(), &camera, DARK).expect("empty");
+    let img = gpu
+        .render(&Scene::default(), &camera, DARK, &Overlay::default())
+        .expect("empty");
     assert!(lit(&img, DARK).iter().all(|&l| !l), "an empty scene");
 }
 
@@ -362,4 +367,125 @@ fn cad_with_lines(count: usize) -> CadDocument {
             .unwrap();
     }
     cad
+}
+
+#[test]
+fn the_overlay_is_drawn_over_the_drawing() {
+    for antialias in [false, true] {
+        let Some(mut gpu) = renderer(antialias) else {
+            return;
+        };
+        overlay_draws(&mut gpu);
+    }
+}
+
+fn overlay_draws(gpu: &mut GpuRenderer) {
+    const BLUE: [u8; 4] = [30, 144, 255, 255];
+    let camera = Camera::new(100, 100);
+    let stroke = |points: Vec<[f32; 2]>, width, dashed, crisp| OverlayItem::Stroke {
+        points,
+        rgba: BLUE,
+        width,
+        dashed,
+        closed: false,
+        crisp,
+    };
+    let draw = |gpu: &mut GpuRenderer, items: Vec<OverlayItem>, labels, ratio| {
+        let overlay = Overlay {
+            items,
+            labels,
+            ratio,
+        };
+        gpu.render(&Scene::default(), &camera, DARK, &overlay)
+            .expect("drawn")
+    };
+    let blue = [30, 144, 255];
+    let bg = DARK.background;
+
+    // A translucent fill, blended over the background.
+    let img = draw(
+        gpu,
+        vec![OverlayItem::Fill {
+            min: [10.0, 10.0],
+            max: [30.0, 20.0],
+            rgba: [30, 144, 255, 40],
+        }],
+        vec![],
+        1.0,
+    );
+    let mixed: Vec<u8> = (0..3)
+        .map(|c| {
+            let (b, f) = (f32::from(bg[c]), f32::from(blue[c]));
+            (b + (f - b) * 40.0 / 255.0).round() as u8
+        })
+        .collect();
+    for (got, want) in pixel(&img, 20, 15).iter().zip(&mixed) {
+        assert!(
+            got.abs_diff(*want) <= 2,
+            "fill {:?} vs {mixed:?}",
+            pixel(&img, 20, 15)
+        );
+    }
+    assert_eq!(pixel(&img, 5, 15), bg, "outside the fill");
+
+    // Three wide through row 50's middle: rows 49 to 51 full, 47 and 53
+    // untouched.
+    let img = draw(
+        gpu,
+        vec![stroke(vec![[10.0, 50.5], [90.0, 50.5]], 3.0, false, false)],
+        vec![],
+        1.0,
+    );
+    for row in 49..=51 {
+        assert_eq!(pixel(&img, 50, row), blue, "row {row}");
+    }
+    assert_eq!(pixel(&img, 50, 47), bg);
+    assert_eq!(pixel(&img, 50, 53), bg);
+
+    // Crisp, one wide: exactly row 30, ends included.
+    let img = draw(
+        gpu,
+        vec![stroke(vec![[10.3, 30.8], [20.6, 30.2]], 1.0, false, true)],
+        vec![],
+        1.0,
+    );
+    for x in 10..=20 {
+        assert_eq!(pixel(&img, x, 30), blue, "column {x}");
+    }
+    assert_eq!(pixel(&img, 15, 29), bg);
+    assert_eq!(pixel(&img, 15, 31), bg);
+    assert_eq!(pixel(&img, 21, 30), bg);
+
+    // Dashed and crisp: four on, two off, from x = 10.
+    let img = draw(
+        gpu,
+        vec![stroke(vec![[10.0, 70.0], [40.0, 70.0]], 1.0, true, true)],
+        vec![],
+        1.0,
+    );
+    let row: Vec<bool> = (10..30).map(|x| pixel(&img, x, 70) == blue).collect();
+    assert!(row[0] && row[3] && !row[5] && row[7] && !row[11], "{row:?}");
+
+    // A text Qt painted, premultiplied, at its whole pixels.
+    let red = OverlayLabel {
+        at: [60, 60],
+        width: 3,
+        height: 2,
+        pixels: [255, 0, 0, 255].repeat(6),
+    };
+    let img = draw(gpu, vec![], vec![red], 1.0);
+    assert_eq!(pixel(&img, 60, 60), [255, 0, 0]);
+    assert_eq!(pixel(&img, 62, 61), [255, 0, 0]);
+    assert_eq!(pixel(&img, 63, 60), bg);
+    assert_eq!(pixel(&img, 60, 62), bg);
+
+    // Twice the pixels per logical pixel: places and widths doubled.
+    let img = draw(
+        gpu,
+        vec![stroke(vec![[5.0, 20.25], [45.0, 20.25]], 1.0, false, false)],
+        vec![],
+        2.0,
+    );
+    assert_eq!(pixel(&img, 50, 40), blue);
+    assert_eq!(pixel(&img, 50, 37), bg);
 }

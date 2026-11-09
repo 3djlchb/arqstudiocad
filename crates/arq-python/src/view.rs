@@ -9,7 +9,9 @@
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use arq_render::{Camera, GpuBackend, GpuRenderer, Scene, Style, View, render};
+use arq_render::{
+    Camera, GpuBackend, GpuRenderer, Overlay, OverlayItem, OverlayLabel, Scene, Style, View, render,
+};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
@@ -199,11 +201,24 @@ impl CadView {
         ))
     }
 
-    /// Draws the view into the attached window with the GPU. Panning and
-    /// zooming only move what the GPU keeps. On an error the window is
-    /// detached and `RuntimeError` raised, so the caller draws with
-    /// `render()` instead (ADR 0034 D5).
-    fn present(&self, py: Python<'_>) -> PyResult<()> {
+    /// Draws the view into the attached window with the GPU, the overlays
+    /// over it (ADR 0034 D3, D4), in logical pixels scaled by `ratio`:
+    /// `items` in order, each `("stroke", points, (r, g, b, a), width,
+    /// dashed, closed, crisp)` or `("fill", (x0, y0), (x1, y1), (r, g, b,
+    /// a))`; `labels` as `(x, y, width, height, pixels)` in physical pixels,
+    /// RGBA premultiplied, as Qt painted them. Panning and zooming only move
+    /// what the GPU keeps. On an error the window is detached and
+    /// `RuntimeError` raised, so the caller draws with `render()` instead
+    /// (ADR 0034 D5); a malformed item raises `ValueError`.
+    #[pyo3(signature = (items = Vec::new(), labels = Vec::new(), ratio = 1.0))]
+    fn present(
+        &self,
+        py: Python<'_>,
+        items: Vec<Bound<'_, PyAny>>,
+        labels: Vec<(i32, i32, u32, u32, Vec<u8>)>,
+        ratio: f32,
+    ) -> PyResult<()> {
+        let overlay = overlay(&items, labels, ratio)?;
         py.detach(|| {
             let mut state = self.state();
             let State {
@@ -215,7 +230,7 @@ impl CadView {
             let Some(renderer) = gpu.as_mut() else {
                 return Err("no window attached".to_owned());
             };
-            let result = renderer.present(scene, camera, *style);
+            let result = renderer.present(scene, camera, *style, &overlay);
             if result.is_err() {
                 *gpu = None;
             }
@@ -369,6 +384,74 @@ impl CadView {
         let (w, h) = state.camera.size();
         format!("CadView({w}x{h}, {} shapes)", state.scene.shape_count())
     }
+}
+
+/// A color as Python gives it: red, green, blue, alpha.
+type Rgba = (u8, u8, u8, u8);
+/// `("stroke", points, rgba, width, dashed, closed, crisp)`.
+type StrokeTuple = (String, Vec<(f32, f32)>, Rgba, f32, bool, bool, bool);
+/// `("fill", (x0, y0), (x1, y1), rgba)`.
+type FillTuple = (String, (f32, f32), (f32, f32), Rgba);
+
+/// The overlay the viewport described, from Python's tagged tuples.
+fn overlay(
+    items: &[Bound<'_, PyAny>],
+    labels: Vec<(i32, i32, u32, u32, Vec<u8>)>,
+    ratio: f32,
+) -> PyResult<Overlay> {
+    let point = |p: (f32, f32)| [p.0, p.1];
+    let mut parsed = Vec::with_capacity(items.len());
+    for item in items {
+        let kind: String = item.get_item(0)?.extract()?;
+        parsed.push(match kind.as_str() {
+            "stroke" => {
+                let (_, points, rgba, width, dashed, closed, crisp): StrokeTuple =
+                    item.extract()?;
+                OverlayItem::Stroke {
+                    points: points.into_iter().map(point).collect(),
+                    rgba: [rgba.0, rgba.1, rgba.2, rgba.3],
+                    width,
+                    dashed,
+                    closed,
+                    crisp,
+                }
+            }
+            "fill" => {
+                let (_, min, max, rgba): FillTuple = item.extract()?;
+                OverlayItem::Fill {
+                    min: point(min),
+                    max: point(max),
+                    rgba: [rgba.0, rgba.1, rgba.2, rgba.3],
+                }
+            }
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown overlay item {other:?}"
+                )));
+            }
+        });
+    }
+    let mut out = Vec::with_capacity(labels.len());
+    for (x, y, width, height, pixels) in labels {
+        if pixels.len() != width as usize * height as usize * 4 {
+            return Err(PyValueError::new_err(format!(
+                "a {width}x{height} label needs {} bytes, not {}",
+                width as usize * height as usize * 4,
+                pixels.len()
+            )));
+        }
+        out.push(OverlayLabel {
+            at: [x, y],
+            width,
+            height,
+            pixels,
+        });
+    }
+    Ok(Overlay {
+        items: parsed,
+        labels: out,
+        ratio,
+    })
 }
 
 /// Adds the class to the module.

@@ -8,7 +8,7 @@ use std::hint::black_box;
 
 use arq_core::{Document, PlanGeometry};
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2};
-use arq_render::{Camera, GpuBackend, GpuRenderer, Scene, Style, render};
+use arq_render::{Camera, GpuBackend, GpuRenderer, Overlay, Scene, Style, render};
 use criterion::{Criterion, criterion_group, criterion_main};
 
 const SIDE: usize = 317; // 317² ≈ 100,000 cells, one entity each
@@ -62,10 +62,20 @@ fn rasterize(c: &mut Criterion) {
     if let Some(mut gpu) = gpu_renderer() {
         eprintln!("GPU renderer on {:?}", gpu.adapter());
         group.bench_function("GPU render all", |b| {
-            b.iter(|| black_box(gpu.render(&scene, &all, style).expect("drawn")))
+            b.iter(|| {
+                black_box(
+                    gpu.render(&scene, &all, style, &Overlay::default())
+                        .expect("drawn"),
+                )
+            })
         });
         group.bench_function("GPU render 1% (zoomed in)", |b| {
-            b.iter(|| black_box(gpu.render(&scene, &detail, style).expect("drawn")))
+            b.iter(|| {
+                black_box(
+                    gpu.render(&scene, &detail, style, &Overlay::default())
+                        .expect("drawn"),
+                )
+            })
         });
     }
     group.finish();

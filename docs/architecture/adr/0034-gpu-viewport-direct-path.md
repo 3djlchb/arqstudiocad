@@ -230,3 +230,41 @@ panning and zooming:
 At a working zoom the GPU's and the CPU's images are the same shapes in the
 same places.
 
+### D6.2, the overlays (2026-11-10)
+
+- **One description.** `arqstudiocad.ui.overlay` describes what is drawn
+  over the drawing, in logical pixels and in painting order: strokes (width,
+  dashed, closed, crisp), translucent fills and labels. The viewport builds
+  it once a frame (`Viewport.overlay()`). The CPU path paints it with
+  `QPainter` (`overlay.paint`) and the GPU path hands it to
+  `CadView.present`. The old painting methods are gone, and with them the
+  chance of the two paths drifting apart.
+- **Strokes as triangles.** `arq-render/src/overlay.rs` turns strokes into
+  quads on the CPU, a few hundred vertices a frame. Their edges fade over
+  half a pixel in the shader, by the distance to the stroke's middle, so
+  they are smooth without multisampling. Crisp strokes (the crosshair)
+  cover whole pixels. Dashes follow Qt's `DashLine` (four widths on, two
+  off), running on across corners.
+- **Texts stay Qt's.** Snap names and the drop note are painted by Qt into
+  small premultiplied images at physical pixels, then drawn as textured
+  quads, so `tr()`, the font and the text direction are Qt's.
+- **Selection by outlines, not by the retained geometry.** The selection
+  and the highlight are the entities' outlines (`CadView.outlines`), as the
+  CPU path draws them. Redrawing the retained segments in another width (D3)
+  can come when a measurement asks for it.
+- **Ends, not joints.** Without multisampling only the real ends of lines
+  and arcs are drawn as extra pixels, not every joint between an arc's
+  chords. Those made dense views look heavier than they should.
+- **Dense views differ.** Where about one entity falls on each pixel (the
+  100,000-entity drawing seen whole), the CPU's antialiasing averages the
+  geometry into a grey and the GPU without antialiasing draws whole pixels,
+  brighter. Antialiasing (D6.3's preference) makes it grey too. At a
+  working zoom, the same selection, highlight, grips, window, drop note and
+  crosshair captured on screen from both paths differ in no pixel
+  (`test_the_gpu_draws_the_overlays_the_cpu_paints`).
+
+Measured on the reference machine with the crosshair and 200 entities
+selected, the median frame of a 1200 × 650 viewport on the 100,000-entity
+drawing: 20 ms panning and zooming on the GPU, 54 ms panning and 71 ms
+zooming on the CPU.
+

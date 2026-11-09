@@ -181,3 +181,26 @@ fn it_serves_until_the_scene_the_zoom_or_the_view_moves_on() {
     let rebuilt = Scene::build(cad.document());
     assert!(!r.serves(&rebuilt, &cam, DARK), "another scene");
 }
+
+#[test]
+fn only_the_real_ends_are_kept() {
+    // A line's two ends and an arc's first and last points; a circle has
+    // none, and the joints between chords are not ends.
+    let mut cad = CadDocument::new();
+    cad.add_line(p(-40.0, 0.0), p(-20.0, 0.0)).unwrap();
+    cad.add_circle(p(0.0, 0.0), 10.0).unwrap();
+    cad.add_arc(p(20.0, 0.0), 10.0, 0.0, std::f64::consts::FRAC_PI_2)
+        .unwrap();
+    let r = Retained::build(&Scene::build(cad.document()), &camera(), DARK).unwrap();
+    let ends: Vec<_> = r
+        .ends
+        .iter()
+        .map(|v| world(&r, v))
+        .map(|(x, y)| ((x * 1e6).round() / 1e6, (y * 1e6).round() / 1e6))
+        .collect();
+    assert_eq!(
+        ends,
+        [(-40.0, 0.0), (-20.0, 0.0), (30.0, 0.0), (20.0, 10.0)]
+    );
+    assert!(r.vertices.len() > 20, "the chords themselves");
+}

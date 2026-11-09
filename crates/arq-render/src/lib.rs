@@ -18,8 +18,10 @@
 mod aci;
 mod camera;
 mod gpu;
+mod gpu_overlay;
 mod gpu_probe;
 mod outline;
+mod overlay;
 mod raster;
 mod retained;
 mod scene;
@@ -30,6 +32,7 @@ pub use camera::Camera;
 pub use gpu::GpuRenderer;
 pub use gpu_probe::{GpuBackend, GpuProbeResult, probe_gpu_backend};
 pub use outline::{Polyline, outline};
+pub use overlay::{Overlay, OverlayItem, OverlayLabel};
 pub use raster::{Image, Style, preview, render};
 pub use scene::Scene;
 pub use view::View;
