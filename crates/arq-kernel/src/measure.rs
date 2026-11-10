@@ -648,8 +648,11 @@ fn coedge_nodes(body: &Body, coedge: &Coedge, fine: usize, out: &mut Vec<Node>) 
     };
     cuts.sort_by(f64::total_cmp);
     cuts.dedup();
+    // An ellipse's sixteen pieces a turn; a spline's two between knots, at
+    // least as many as an ellipse's in all (a conic's arc is one span).
     let per_cut = match &edge.curve {
         Some(Curve::Ellipse(_)) => 16,
+        Some(Curve::Nurbs(_)) => 2usize.max(16_usize.div_ceil(cuts.len() - 1)),
         _ => 2,
     } * fine;
     let mut nodes = Vec::with_capacity((cuts.len() - 1) * per_cut * NODES.len());
@@ -1048,7 +1051,11 @@ fn integrate_face(
 }
 
 /// The face's integrals, the rules refined until they settle: each
-/// quantity changes by less than `1e-11` of the body's size to its power.
+/// quantity changes by less than `1e-11` of the body's size to its power,
+/// or, at the finest rules, `1e-9`: there rounding, not the rule, is what
+/// changes a thin face's moments (a sliver of a cone, its edges ellipses a
+/// hundred times longer than wide), by different amounts on each system's
+/// mathematical library.
 fn face_sums(
     body: &Body,
     face: &Face,
@@ -1072,7 +1079,8 @@ fn face_sums(
     }
     for fine in [2, 4, 8, 16] {
         let next = integrate_face(body, face, index, origin, fine)?;
-        let settled = (0..8).all(|i| (next.sums[i] - previous.sums[i]).abs() <= 1e-11 * scale[i]);
+        let within = if fine == 16 { 1e-9 } else { 1e-11 };
+        let settled = (0..8).all(|i| (next.sums[i] - previous.sums[i]).abs() <= within * scale[i]);
         if settled {
             return Ok(next);
         }

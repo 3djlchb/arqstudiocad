@@ -49,7 +49,8 @@ use crate::surface::{Plane, Surface};
 /// Why two solids have no boolean in this version.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BooleanError {
-    /// A face is not a plane, or an edge not a line.
+    /// A face or an edge this version does not combine: a sphere's, a
+    /// torus's or a NURBS surface's face, or two curved faces meeting.
     Curved,
     /// A body encloses no volume: a face without area, or faces turned in.
     NotSolid,
@@ -64,7 +65,7 @@ impl fmt::Display for BooleanError {
         match self {
             Self::Curved => write!(
                 f,
-                "only solids of flat faces and straight edges are supported"
+                "only solids of planes, cylinders and cones are supported, curved faces meeting flat ones"
             ),
             Self::NotSolid => write!(f, "a body does not enclose a volume"),
             Self::NonManifold => write!(f, "the result's faces do not close"),
@@ -123,7 +124,8 @@ struct Piece {
 
 fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, BooleanError> {
     // Solids of flat faces take the planar path, coincident faces
-    // included; with a cylinder, the curved one (ADR 0033 delivery 2).
+    // included; with a cylinder or a cone, the curved one (ADR 0033
+    // delivery 2).
     let flat = |body: &Body| {
         body.faces()
             .iter()
