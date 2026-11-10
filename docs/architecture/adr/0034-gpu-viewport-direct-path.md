@@ -382,9 +382,10 @@ per frame:
     immediate or unsynchronized presentation all leave the window black,
     captured from the desktop. The fault is in how Intel's Windows driver
     presents OpenGL to a Qt child window. So the choice passes it over:
-    `renderer.PRESENTS_BLACK` lists, by platform, backend and a word of the
-    adapter's name, what passes its probe but draws black (OpenGL on an
-    Intel adapter under Windows); such a backend is skipped for the next
+    `renderer.FAILS_ON_SCREEN` (named `PRESENTS_BLACK` until the cards were
+    chosen, below) lists, by platform, backend and a word of the adapter's
+    name, what passes its probe but fails in a window (OpenGL on an Intel
+    adapter under Windows); such a backend is skipped for the next
     that draws, and when none is left the CPU draws and the command window
     and Options › Graphics say why. `ARQ_GPU_VIEWPORT` and
     `tools/gpu_viewport_check.py` still reach it, to see whether a later
@@ -398,7 +399,8 @@ per frame:
   is not read, so DirectX 12 and Vulkan take the UHD 630. The GTX was
   reached through OpenGL only, by setting Windows' graphics preference to
   high performance for the Python interpreter for the second run (removed
-  afterwards). Preferring the discrete card is a later choice.
+  afterwards). Preferring the discrete card is a later choice, taken
+  below ("After 02.7: the graphics card chosen").
 - **The tests.** With `ARQ_GPU_TESTS=require`, `arq-render`'s GPU tests
   pass on DirectX 12 on the UHD 630. The viewport's window tests
   (`test_viewport_gpu.py`) read windows from X11 only, so there they fail
@@ -424,3 +426,42 @@ X11 and Windows are validated. Wayland draws through XWayland. macOS is
 written but untried: it waits for a Mac and does not block (ADR 0007's
 best-effort tier).
 
+### After 02.7: the graphics card chosen (2026-11-10)
+
+A machine with two cards, integrated and discrete, used the integrated one
+always: the probe and the window asked wgpu for low power. The maintainer
+asked that every card can be used (2026-11-10), in two pull requests: the
+choice in the application first, then Options › Graphics.
+
+- **Every card listed and probed.** A child process lists a backend's
+  cards (`--gpu-adapters`, `list_gpu_adapters`), with their names, kinds
+  and PCI ids, creating no device; another checks one card by its index in
+  that list (`--gpu-probe <backend> --adapter <n>`, `probe_gpu_adapter`),
+  so a driver that crashes takes down only its child (ADR 0007).
+- **The discrete card first** *(maintainer, 2026-11-10)*. Automatic tries
+  every hardware card of every backend: the discrete ones first, then the
+  integrated, each kind in the backends' order (D5). A backend whose cards
+  cannot be listed tries the one it prefers. With no card named, the
+  window and the offscreen renderer ask wgpu for high performance.
+- **The card the viewport draws with** is the one chosen, by its index in
+  its backend's list, its name checked: Vulkan lists the UHD 630 twice.
+- **Vulkan on Windows** needed the window's module (`HINSTANCE`) beside its
+  `HWND`, read from the window itself; DirectX 12 never did. It had not
+  shown: Vulkan always failed its probe on the integrated card.
+- **Fails on screen.** On the UHD 630 under Windows Vulkan's first entry
+  crashes its probe and its second passes it, but drawing in a window
+  closes the application (an access violation). `FAILS_ON_SCREEN` lists it
+  beside OpenGL's black window, each with what happens, said when the CPU
+  draws for it.
+
+On the development laptop, measured with the code of this change:
+
+| Backend | Cards listed | Probe | In a window |
+|---|---|---|---|
+| DirectX 12 | UHD 630, GTX 1050 Ti, Microsoft Basic Render Driver | all pass | both cards draw |
+| Vulkan | UHD 630, GTX 1050 Ti, UHD 630 | first UHD 630 crashes; the others pass | GTX draws; UHD 630 closes the application |
+| OpenGL | UHD 630 | passes | black |
+
+Automatic now takes DirectX 12 on the GTX 1050 Ti. Options › Graphics,
+with a list of the cards and one of their APIs, entries that cannot be
+chosen disabled with why, and a check on demand, is the next pull request.
