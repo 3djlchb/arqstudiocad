@@ -12,9 +12,11 @@ CPU, it opens a real viewport in a window of its own and:
 - times panning and zooming a generated drawing (``--entities``, 100,000 by
   default);
 - draws a small scene with every overlay (selection, highlight, grips, a
-  window, a dropped block's note, the crosshair) and saves the window's
-  pixels;
-- compares each GPU's pixels with the CPU's.
+  window, a dropped block's note, the crosshair) and saves its pixels as
+  shown on screen;
+- compares each GPU's pixels with the CPU's. A blank capture, all but
+  one colour, is reported, not compared: nothing was drawn, or nothing
+  could be read back.
 
 Windows appear and close on their own; leave the mouse still. The report
 goes to ``target/gpu-viewport-report-<date>.txt``; send that file back. The
@@ -30,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +40,11 @@ from typing import Any
 
 #: How long a child may take before it is given up, in seconds.
 CHILD_TIMEOUT = 300
+
+#: A capture this much of one colour is blank. The overlay scene's
+#: background covers about 84% of it; a black window on Windows 11, all but
+#: its rounded corners.
+BLANK = 0.99
 
 
 def main() -> int:
@@ -123,8 +131,11 @@ def report(entities: int) -> int:
         say("== Overlays, GPU against CPU (pixels the other did not draw within one)")
         for name in passed:
             if name in runs:
-                background = tuple(int(v) for v in runs["cpu"]["background"])
-                misses = compare(images / f"{name}.png", images / "cpu.png", background)
+                try:
+                    misses = compare(images / f"{name}.png", images / "cpu.png")
+                except ValueError as error:
+                    say(f"  {name:9} not compared: {error}")
+                    continue
                 say(f"  {name:9} {misses} pixel(s)" + ("" if misses else ": the same"))
         say()
     say(f"Images: {images}")
@@ -137,7 +148,6 @@ def report(entities: int) -> int:
 def child(name: str, entities: int, out: Path) -> int:
     """One viewport, drawn by the GPU on ``name`` or by the CPU."""
     from PySide6.QtCore import QPointF, Qt
-    from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import QApplication
 
     from arqstudiocad.core import CadApplication, CadDocument
@@ -203,26 +213,43 @@ def child(name: str, entities: int, out: Path) -> int:
     for _ in range(60):
         viewport.repaint()
         settle(app, 0.1)
-        image = QGuiApplication.primaryScreen().grabWindow(int(viewport.winId())).toImage()
+        image = capture(viewport)
         if image == previous:
             break
         previous = image
     if image is not None:
         image.save(str(out))
-    background = list(viewport.view.background)
     viewport.deleteLater()
     settle(app, 0.2)
     print(
         json.dumps(
             {
                 "drawn_by": list(drawn_by) if drawn_by else "the CPU",
-                "background": background,
                 "pan": pan,
                 "zoom": zoom,
             }
         )
     )
     return 0
+
+
+def capture(viewport: Any) -> Any:
+    """The viewport's pixels as shown on screen.
+
+    On Windows, reading back a window that DirectX 12 or OpenGL presents to
+    gives black: there the desktop, as composed, is read where the window
+    lies (ADR 0034 D6.4). Elsewhere the window's own pixels are read, which
+    a busy desktop's compositor cannot be redrawing at that moment.
+    """
+    from PySide6.QtCore import QPoint
+
+    screen = viewport.screen()
+    if sys.platform == "win32":
+        at = viewport.mapToGlobal(QPoint(0, 0)) - screen.geometry().topLeft()
+        shot = screen.grabWindow(0, at.x(), at.y(), viewport.width(), viewport.height())
+    else:
+        shot = screen.grabWindow(int(viewport.winId()))
+    return shot.toImage()
 
 
 def settle(app: object, seconds: float) -> None:
@@ -251,16 +278,33 @@ def drawing(entities: int) -> str:
     return "\n".join(codes)
 
 
-def compare(gpu_png: Path, cpu_png: Path, background: tuple[int, ...]) -> int:
+def compare(gpu_png: Path, cpu_png: Path) -> int:
     """Pixels one image draws clearly where the other draws nothing within
-    one pixel, both ways, as the tests compare them."""
+    one pixel, both ways, as the tests compare them.
+
+    The background is the CPU image's commonest colour, as captured. Raises
+    ``ValueError`` when the images cannot be compared: missing, of different
+    sizes, or either blank (``BLANK``; it would otherwise pass: a black
+    pixel is close enough to a dark background to count as drawing).
+    """
     from PySide6.QtGui import QGuiApplication, QImage
 
     _ = QGuiApplication.instance() or QGuiApplication([])
     gpu, cpu = QImage(str(gpu_png)), QImage(str(cpu_png))
-    if gpu.isNull() or cpu.isNull() or gpu.size() != cpu.size():
-        return -1
-    r, g, b = background[:3]
+    if gpu.isNull() or cpu.isNull():
+        raise ValueError("an image is missing")
+    if gpu.size() != cpu.size():
+        raise ValueError("the images differ in size")
+    counts: dict[str, Counter[int]] = {}
+    for label, image in (("GPU", gpu), ("CPU", cpu)):
+        counts[label] = Counter(
+            image.pixel(x, y) for y in range(image.height()) for x in range(image.width())
+        )
+        share = counts[label].most_common(1)[0][1] / (image.width() * image.height())
+        if share >= BLANK:
+            raise ValueError(f"the {label} image is blank, {share:.2%} of one colour")
+    common = counts["CPU"].most_common(1)[0][0]
+    r, g, b = (common >> 16) & 0xFF, (common >> 8) & 0xFF, common & 0xFF
 
     def contrast(image: QImage, x: int, y: int) -> int:
         c = image.pixelColor(x, y)

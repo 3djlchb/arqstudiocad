@@ -309,7 +309,7 @@ zooming on the CPU.
   WARP and llvmpipe, which the probe refuses on purpose.
 - **Automatic waits for a try on real hardware** (maintainer, 2026-11-10).
   Where the graphics card has not yet been seen drawing (`renderer.VALIDATED`,
-  X11 alone so far), Automatic keeps the CPU without saying so at start. A
+  X11 and Windows so far), Automatic keeps the CPU without saying so at start. A
   backend chosen in Options › Graphics is probed and used, with the crash
   sentinel and the fallback. A platform joins `VALIDATED` once its report
   is recorded here.
@@ -344,6 +344,52 @@ machine's X11 desktop, with XWayland:
   weston bug the GPU viewport does not cause, to check under GNOME's and
   KDE's compositors.
 
-Still to try: Windows on the development laptop (GTX 1050 Ti, UHD 630;
-DirectX 12, Vulkan, OpenGL), and macOS when a Mac is at hand.
+**Windows, tried (2026-11-09)** on the development laptop: Windows 11
+Pro 10.0.26300, Intel Core of family 6 model 158 with 12 threads, an Intel
+UHD Graphics 630 and an NVIDIA GeForce GTX 1050 Ti, Python 3.14.10. Three
+runs of `tools/gpu_viewport_check.py`, times as median (95th percentile)
+per frame:
 
+| Run | Backend | Adapter | Pan, ms | Zoom, ms | Overlays |
+| --- | --- | --- | --- | --- | --- |
+| default | DirectX 12 | UHD 630 | 16.6 (16.9) | 16.6 (17.2) | 0 pixels apart |
+| default | OpenGL | UHD 630 | 16.8 (17.8) | 16.6 (17.7) | black on screen |
+| default | CPU | | 36.0 (40.3) | 45.3 (51.0) | |
+| GTX preferred | DirectX 12 | UHD 630 | 16.6 (17.5) | 16.6 (17.4) | 0 pixels apart |
+| GTX preferred | OpenGL | GTX 1050 Ti | 16.6 (17.3) | 16.6 (17.6) | 0 pixels apart |
+| GTX preferred | CPU | | 36.0 (40.6) | 46.7 (51.8) | |
+
+- **DirectX 12 draws**, on the UHD 630, and is what Automatic probes
+  first: the drawing and every overlay on screen as the CPU paints them,
+  panning and zooming at a frame's 16.6 ms, the display's 60 Hz (the
+  present waits for it), against the CPU's 36 and 45 ms. So Windows joins
+  `VALIDATED`.
+- **Window captures are black.** Reading back a window that DirectX 12 or
+  OpenGL presents to gives black on Windows, and the check's first version
+  passed that as the same as the CPU: a black pixel is near enough to the
+  dark background to count as drawing. The check now reads the composed
+  desktop where the window lies on Windows, measures the background in the
+  CPU's capture, and reports a capture that is all but one colour (99% or
+  more; Windows 11's rounded corners leave a few pixels) instead of
+  comparing it.
+- **OpenGL on the UHD 630 draws black.** Its probe passes and it presents
+  at the same pace, but the window stays black, seen on screen by the
+  maintainer and on the desktop's capture. Automatic never reaches it after
+  DirectX 12; chosen in Options › Graphics, the viewport is black. On the
+  GTX 1050 Ti, OpenGL draws as the CPU does.
+- **Vulkan crashes in its probe**: the child process ends with an access
+  violation (0xC0000005) and no output, so it is reported as failed and
+  never used. The probe in a child process (ADR 0007) keeps the
+  application alive.
+- **The adapter is the low-power one.** Both the window's surface and the
+  probe ask wgpu for `PowerPreference::LowPower`, and `WGPU_ADAPTER_NAME`
+  is not read, so DirectX 12 and Vulkan take the UHD 630. The GTX was
+  reached through OpenGL only, by setting Windows' graphics preference to
+  high performance for the Python interpreter for the second run (removed
+  afterwards). Preferring the discrete card is a later choice.
+- **The tests.** With `ARQ_GPU_TESTS=require`, `arq-render`'s GPU tests
+  pass on DirectX 12 on the UHD 630. The viewport's window tests
+  (`test_viewport_gpu.py`) read windows from X11 only, so there they fail
+  for want of an X display; on Windows this check stands in for them.
+
+Still to try: macOS when a Mac is at hand.
