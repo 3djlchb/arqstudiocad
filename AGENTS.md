@@ -48,6 +48,7 @@ uv run stubtest arqstudiocad._core            # the .pyi stub matches the module
 cargo deny check                               # dependency licenses + advisories
 tools/new_worktree.ps1 <topic>                 # a task's own working copy (or .sh)
 bash tools/check_cpu_floor.sh                  # Linux/WSL + Intel SDE, before a release: tests on the floor CPU
+uv run python tools/gpu_viewport_check.py     # on a machine to try: the GPU viewport, timed and compared with the CPU
 ```
 
 One-time setup: `cargo install cargo-deny --locked` and `uv run pre-commit install`.

@@ -53,6 +53,7 @@ import logging
 import math
 import os
 import time
+from typing import Literal
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -943,12 +944,15 @@ class Viewport(QWidget):
         backend = self._gpu_backend
         if backend is None:
             return
-        display = _x11_display()
-        if display is None:
-            self._gpu_failed("the GPU viewport needs Qt on X11 (xcb) for now")
+        system = window_system()
+        display = _x11_display() if system == "x11" else 0
+        if system is None or display is None:
+            self._gpu_failed("the GPU viewport needs Qt on X11, Windows or macOS")
             return
         try:
-            adapter = self.view.attach_window(backend, display, int(self.winId()), self._antialias)
+            adapter = self.view.attach_window(
+                backend, display, int(self.winId()), self._antialias, system
+            )
         except (RuntimeError, ValueError) as error:
             self._gpu_failed(str(error))
             return
@@ -1020,6 +1024,25 @@ def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None
 
 def _distance(a: QPointF, b: QPointF) -> float:
     return float(((a.x() - b.x()) ** 2 + (a.y() - b.y()) ** 2) ** 0.5)
+
+
+#: The window systems the GPU presents to, by Qt's platform name (ADR 0034
+#: D1). On Wayland Qt runs on XWayland when the GPU draws (application.py):
+#: PySide6 does not give a window's ``wl_surface``.
+WINDOW_SYSTEMS: dict[str, Literal["x11", "win32", "appkit"]] = {
+    "xcb": "x11",
+    "windows": "win32",
+    "cocoa": "appkit",
+}
+
+
+def window_system() -> Literal["x11", "win32", "appkit"] | None:
+    """The window system the GPU would present to, by the platform Qt runs
+    on; None where it cannot present yet."""
+    app = QGuiApplication.instance()
+    if not isinstance(app, QGuiApplication):
+        return None
+    return WINDOW_SYSTEMS.get(app.platformName())
 
 
 def _x11_display() -> int | None:
