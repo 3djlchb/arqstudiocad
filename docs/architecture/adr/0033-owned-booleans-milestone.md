@@ -169,6 +169,22 @@ As ADR 0032 D4, for the new kinds:
   - **Not yet:** two cylindrical faces meeting are refused, as delivery 4
     says; coincident faces come with 2.3. `CurvedRegion` now treats trims
     running along each other up to near their end as no crossing.
+- **2.3 in three** (maintainer, 2026-11-07): 2.3a the coincident cases
+  with cylinders and merged faces; 2.3b cones; 2.3c cylinders on parallel
+  axes.
+- **2.3a (done):** flush columns and holes, columns standing on slabs,
+  merged faces.
+  - **Two sides:** the other solid's section is taken just inside a face
+    (L) and just outside it (U), as for planes.
+    - A section curve through the inside of its own face bounds both.
+    - One running along its own face's edge bounds only the side that
+      face goes on to, found a hair into it.
+    - Faces lying on the face's surface add nothing: their neighbours
+      meeting it along their edges outline them.
+  - **Rules:** ADR 0032 D2.4's, as on the planar path.
+  - **Merged faces:** kept flat faces lying in one plane and facing the
+    same way are united, a subtracted solid's turned faces included, so a
+    cut's floor flush with a step beside it is one face.
 
 ## Consequences
 
