@@ -94,6 +94,31 @@ def test_the_first_hardware_adapter_is_taken_never_a_software_one() -> None:
     assert not choice.gpu and "no graphics card passed" in choice.message()
 
 
+def test_a_backend_known_to_draw_black_is_passed_over() -> None:
+    # The development laptop: OpenGL's probe passes on the UHD 630, but its
+    # window stays black (ADR 0034 D6.4).
+    intel = GpuProbeResult("opengl", "Intel(R) UHD Graphics 630", "IntegratedGpu")
+    run = fake_probes({"opengl": intel})
+    chosen = probe(("opengl",), run, platform="win32")
+    assert not chosen.gpu
+    assert "OpenGL leaves the window black with Intel(R) UHD Graphics 630" in chosen.message()
+    # Automatic goes on to the next that draws: DirectX 12 first anyway, or
+    # Vulkan after OpenGL.
+    both = fake_probes(
+        {
+            "opengl": intel,
+            "vulkan": GpuProbeResult("vulkan", "Intel(R) UHD Graphics 630", "IntegratedGpu"),
+        }
+    )
+    assert probe(("opengl", "vulkan"), both, platform="win32").backend == "vulkan"
+    # OpenGL on another card, or on Intel elsewhere, is taken.
+    nvidia = fake_probes(
+        {"opengl": GpuProbeResult("opengl", "NVIDIA GeForce GTX 1050 Ti/PCIe/SSE2", "Other")}
+    )
+    assert probe(("opengl",), nvidia, platform="win32").backend == "opengl"
+    assert probe(("opengl",), run, platform="linux").backend == "opengl"
+
+
 def test_a_choice_says_what_draws() -> None:
     assert Choice(backend="opengl", adapter="NV106").message() == (
         "Drawing with the graphics card: NV106 (OpenGL)."

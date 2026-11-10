@@ -297,6 +297,7 @@
   "Drawing on the CPU: the graphics card could not be checked ({error}).": "Dibujando con la CPU: no se pudo comprobar la tarjeta gráfica ({error}).",
   "Drawing on the CPU: the graphics card is not yet tried on this system. Choose a renderer in Options to use it.": "Dibujando con la CPU: la tarjeta gráfica aún no se ha probado en este sistema. Elija un renderizador en Opciones para usarla.",
   "Drawing on the CPU: the graphics driver closed {app} the last time it used the graphics card. Choose a renderer in Options to try it again.": "Dibujando con la CPU: el controlador gráfico cerró {app} la última vez que usó la tarjeta gráfica. Elija un renderizador en Opciones para volver a intentarlo.",
+  "Drawing on the CPU: {backend} leaves the window black with {adapter} on this system. Choose another renderer in Options.": "Dibujando con la CPU: {backend} deja la ventana en negro con {adapter} en este sistema. Elija otro renderizador en Opciones.",
   "Drawing with the graphics card ({backend}).": "Dibujando con la tarjeta gráfica ({backend}).",
   "Drawing with the graphics card: {adapter} ({backend}).": "Dibujando con la tarjeta gráfica: {adapter} ({backend}).",
   "Drawings (*.dwg *.dxf *.dwt);;DWG drawings (*.dwg);;DXF drawings (*.dxf);;Drawing templates (*.dwt)": "Dibujos (*.dwg *.dxf *.dwt);;Dibujos DWG (*.dwg);;Dibujos DXF (*.dxf);;Plantillas de dibujo (*.dwt)",
