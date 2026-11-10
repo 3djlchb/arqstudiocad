@@ -1,14 +1,25 @@
 # ArqStudioCAD — Modules and roadmap
 
-The order of work of the [master plan](MASTER_PLAN.md) (version 2.1,
-2026-10-13), and where the project stands. Phases are a sequence, not
-dates: a phase ends when its exit criterion is met and tested, not when its
-code exists. Phases may overlap once their contracts are stable.
+The order of work of the [master plan](MASTER_PLAN.md) (version 2.2,
+2026-11-10), and where the project stands. Phases are not dates: a phase
+ends when its exit criterion is met and tested, not when its code exists.
+
+Phases 00–04 are **vertical**: the core, in sequence, ending with the first
+release (milestone 04.6). Phases 05 on are **horizontal**: modules on the
+core, through its APIs, numbered by when they were added, not by a strict
+dependency; new ones go at the end. A horizontal phase never changes the
+core on its own: what it needs of the core is a milestone of a vertical
+phase, or an ADR ([ADR 0035](architecture/adr/0035-phase-structure.md)).
 
 Legend: ✅ done · ◐ in progress · ○ to do.
 
 ## Where we are (2026-10-31)
 
+- **Phases reorganized (2026-11-10, [ADR 0035](architecture/adr/0035-phase-structure.md)):**
+  vertical phases 00–04 end with the first release (04.6), after
+  dimensions, hatches, layouts and plotting to PDF (04.2–04.5); milestone
+  02.14 is now the basic 2D commands; Free Geometry, milestone 02.14 until
+  then, is phase 05, and the phases after it moved one number up.
 - **Technical MVP: 8 of 8** (master plan §15): milestone 02.6 saves and
   recovers the working document (DWG) from the own internal model.
 - **Working format:** DWG, as BricsCAD does, with an own internal model; the
@@ -81,7 +92,9 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   today); and 3D wireframe entities with Z and user coordinate systems.
   Shading waits for the GPU viewport (02.7).
 - Before the master plan the phases were numbered 0–10 (ADR 0014) and
-  milestones 2.1–2.8; the table at the end maps old names to new ones.
+  milestones 2.1–2.8, and before ADR 0035 Free Geometry was 02.14 and the
+  later phases one number lower; the tables at the end map old names to
+  new ones.
 ´
 ## Phase 00 — Specification and contracts ✅
 
@@ -116,7 +129,7 @@ Exit: create, edit, save and recover a basic drawing.
 | 02.11 Block data | Each block definition carries its own data for budget tables (maintainer, 2026-10-26): category, typ´e, material, cost and supplier; the cost has a currency from the drawing's register (maintainer, 2026-10-27). Decisions ([ADR 0027](architecture/adr/0027-block-data.md)): the data is stored inside the DWG, on the block definition (an extension dictionary with an XRECORD), so it travels with the drawing and with a copied block; it belongs to the definition, not to each reference, and a budget's quantity is the number of references (SELECTBLOCK's count); category and type are free text, suggesting the values the drawing already uses; the cost is an exact amount with its currency's decimals; the drawing's register, kept in the DWG, lists its currencies (US dollars by default), several active and one principal, picked from an ISO 4217 catalog or the user's own, so that a budget can later be broken down by currency. The Block Definition dialog shows them in an optional section, folded by default; they are edited later from the Blocks palette (Block data…) and the Properties panel, and the currencies from a Currencies dialog (CURRENCIES), without the block editor, which keeps them when it saves. Attributes stay for what differs between references (a door's code, a room's number). A library shared between drawings, and the budget table itself (quantities × cost), come later; after it, measured quantities for budget line items (perimeter, area, height, volume, weight, each in its unit, the measure each block is priced by chosen and changeable), taken from each reference, so a dynamic block's quantities follow its parameters with the parametric engine (04.1) (maintainer, 2026-10-28; ADR 0027 D7). Order: after Blocks palette step 8e; an ADR first, then the core, the Currencies dialog, the Budget data section with BLOCKDATA and the palette, and the Properties panel | ✅ ADR 0027, accepted 2026-10-29; step 2, the core: block data and the currency register kept in the DWG and checked on save, BLOCKDATA and CURRENCIES as undo steps, copied, renamed and purged with their block, and the Python API; step 3: CURRENCIES (Spanish MONEDAS) and its Currencies dialog, with the ISO 4217 catalog and the number format (thousands and decimal separators, D3a), general for the drawing and, if wanted, its own for each currency; step 4a: BLOCKDATA (Spanish DATOSBLOQUE) and -BLOCKDATA with the Block Data dialog, and the Blocks palette's Block data… and Budget data section; step 4b: the folded Budget data section of the Block Definition dialog, written with the block in one undo step; clearing a block's data at once: Clear data in the Block Data dialog and Clear block data in the palette's menu, confirmed first; step 5: the Properties panel's Block data group, edited in place for references of one block, completing ADR 0027 D8 |
 | 02.12 Budget table | The budget from the drawing (maintainer, 2026-10-29; [ADR 0028](architecture/adr/0028-budget-table.md)): a dockable Budget panel and the BUDGET command (Spanish PRESUPUESTO), grouped by category with subtotals; each block's quantity is its references in model space, nested ones multiplied by the block holding them, layouts excluded; blocks without a cost listed apart, never summed; totals per currency, never mixed; the whole drawing or the selection only; export to CSV and to Excel (.xlsx, through openpyxl, MIT). Order: the ADR, the core's quantities, the panel, the export | ✅ ADR 0028, accepted 2026-10-29 |
 | 02.13 Context menu and Options | The maintainer's design briefs (2026-10-22; decisions 2026-10-29, [ADR 0029](architecture/adr/0029-context-menu-and-options.md)): a right-click on model space with nothing selected opens Repeat {command} and Options…, and acts as Enter during a command; the Options dialog (OPTIONS, OP, Spanish OPCIONES), modal, showing only settings whose feature exists: language and theme, a crosshair drawn by the viewport with a live preview, the block editor's background, wheel zoom, the right-click setting. Order: the ADR, the menu, the dialog, the crosshair, zoom | ✅ ADR 0029, accepted 2026-10-31: the menu, the dialog with General, User preferences (Right-click, Zoom), `OptionsChanged`, Ctrl+Tab, the crosshair drawn by the viewport and Options › Display |
-| 02.14 Free Geometry | A workspace of its own for organic forms that CAD and BIM's strict volumes make hard (maintainer, 2026-11-04; [ADR 0031](architecture/adr/0031-free-geometry.md), proposed): three ways of modeling, mixed by object in one drawing with a mode filter for who wants one (maintainer, 2026-11-05): flat faces pushed and pulled after SketchUp and [IngeTrazo](references/ingetrazo.md), exact solids at once; subdivision meshes (Catmull-Clark, with creases) saved as AutoCAD's MESH and made exact solids on request; NURBS surfaces as in Rhino, saved as ACIS surfaces and solids; meshes and NURBS edited in an environment entered on the object; simple shading on the CPU, picking in 3D and a working plane first; its tabs only in its workspace, its commands typed everywhere. Order: shading, 3D picking and the working plane, the workspace with flat faces, MESH and the subdivision environment, NURBS in the ACIS writer and mesh to solid, NURBS modeling (trims and fillets after booleans) | ○ ADR 0031 proposed |
+| 02.14 Basic 2D commands | So that phase 02 meets its exit criterion (create, edit, save) ([ADR 0035](architecture/adr/0035-phase-structure.md) D4, maintainer, 2026-11-10): the 2D commands a drawing needs that the code lacks (checked 2026-11-10), each with its Spanish name (ADR 0016), in the order architecture uses them: 1. RECTANG, OFFSET, TRIM, EXTEND (walls and openings); 2. FILLET, CHAMFER (corners); 3. STRETCH as a command (today only a grip mode), ARRAY, BREAK, JOIN (editing in bulk); 4. MATCHPROP; 5. ELLIPSE, SPLINE (new curves, new entities in the own model). Until 2026-11-10, 02.14 was Free Geometry, now phase 05 | ○ |
 | 02.15 Owned booleans | UNION, SUBTRACT and INTERSECT of every kind of solid by the owned kernel, no external kernel (maintainer, 2026-11-07; [ADR 0033](architecture/adr/0033-owned-booleans-milestone.md), proposed): in the order architecture needs, planar solids, planes with cylinders and cones, spheres and tori, curved with curved, NURBS; intersection curves exact where conics, fitted NURBS between curved surfaces; each delivery with exact architecture cases, volume identities, Truck where it works and ProgeCAD | ◐ delivery 1, planar solids, done (ADR 0032: #133, #137, #139, the codec's DWG 2000 voids #138); delivery 2, planes with cylinders and cones, in four pull requests: the 2D booleans with curved edges done (`CurvedRegion`: segments, ellipse arcs and the graphs a plane leaves on a cylinder or cone, kept exact), planes with cylinders in general position done (round holes, columns through slabs, ellipses where boxes cut columns askew), 2.3 in three (maintainer, 2026-11-07): flush columns and holes, columns standing on slabs and merged faces done (2.3a), cones done (2.3b, 2026-11-10: with flat-faced solids, pointed or cut short, flush too; ellipses exact, parabolas and hyperbolas as rational quadratic NURBS edges written to ACIS), cylinders on parallel axes (2.3c) next |
 
 ## Phase 03 — DWG/DXF ◐
@@ -201,13 +214,47 @@ annotations (ADR 0014); the **project container** (models, drawings, views,
 sheets, resources; an ADR first). Module M09.
 
 It opens with the engine its associativity stands on *(maintainer,
-2026-10-21)*:
+2026-10-21)*, and ends with the first release, which closes the vertical
+phases *(maintainer, 2026-11-10)*:
 
 | Milestone | Content | Status |
 |---|---|---|
-| 04.1 Parametric engine | ArqStudioCAD's own engine (ADR 0017 D6; an ADR first): a dependency graph that regenerates what depends on what changed; 2D geometric and dimensional constraints, solved and kept through DWG; dynamic blocks recomputed when a parameter changes (visibility, stretch, flip, lookup…), so the block editor accepts them (ADR 0023 D3a). Associative dimensions and views are built on it; BIM objects (phases 05 and 07) reuse it | ○ |
+| 04.1 Parametric engine | ArqStudioCAD's own engine (ADR 0017 D6; an ADR first): a dependency graph that regenerates what depends on what changed; 2D geometric and dimensional constraints, solved and kept through DWG; dynamic blocks recomputed when a parameter changes (visibility, stretch, flip, lookup…), so the block editor accepts them (ADR 0023 D3a). Associative dimensions and views are built on it; BIM objects (phases 06 and 08) reuse it | ○ |
+| 04.2 Dimensions | Dimensions created and edited, associative on the parametric engine; dimension styles kept through DWG | ○ |
+| 04.3 Hatches | Hatches created and edited, with their patterns drawn and kept through DWG | ○ |
+| 04.4 Layouts | Paper space: layouts, viewports, title blocks and scales | ○ |
+| 04.5 Plotting to PDF | Layouts and model space plotted to PDF | ○ |
+| 04.6 First release | The end of the vertical phases ([ADR 0035](architecture/adr/0035-phase-structure.md) D3, maintainer, 2026-11-10). Exit, beyond master plan §14: OpenGL drawing black on the Intel UHD 630 fixed, or excluded with the CPU as fallback (ADR 0034 D6.4); the curved booleans of 02.15 done, or refused with a clear message; `docs/KNOWN_LIMITATIONS.md` (or its equivalent), a CHANGELOG and a short guide to installing and using it; the installer tried on a clean machine, the reference floor machine included, with `--check`; a trademark note in both READMEs; a legal review of the name before it is publicized. The official release stays subject to the maintainer's decision that the application is mature (ADR 0014 D6) | ○ |
 
-## Phase 05 — BIM and IFC ○
+## Phase 05 — Free Geometry ○
+
+The first horizontal phase ([ADR 0035](architecture/adr/0035-phase-structure.md)):
+a workspace of its own for organic forms that CAD and BIM's strict volumes
+make hard (maintainer, 2026-11-04; [ADR 0031](architecture/adr/0031-free-geometry.md),
+proposed). Three ways of modeling, mixed by object in one drawing, with a
+mode filter for who wants one (maintainer, 2026-11-05): flat faces pushed
+and pulled after SketchUp and [IngeTrazo](references/ingetrazo.md), exact
+solids at once; subdivision meshes (Catmull-Clark, with creases) saved as
+AutoCAD's MESH and made exact solids on request; NURBS surfaces as in
+Rhino, saved as ACIS surfaces and solids. Meshes and NURBS are edited in an
+environment entered on the object; its tabs show only in its workspace,
+its commands are typed everywhere. Module M01. Until 2026-11-10 it was
+milestone 02.14.
+
+Exit: organic forms modeled in the three ways and mixed in one drawing,
+saved in DWG (MESH, ACIS surfaces and solids) and reopened, measured and
+combined in this application, in AutoCAD and in ProgeCAD; what a free
+form makes a solid is measured, saved and combined as any solid.
+
+Milestones 05.1… are defined with the maintainer. ADR 0031 D13 gives the
+order to start from: shading on the CPU; picking in 3D and a working plane;
+the workspace with its mode filter and flat faces; MESH and the subdivision
+environment; NURBS in the ACIS writer and a mesh made a solid; NURBS
+modeling. By ADR 0035 D2, what of this the core needs (shading, picking in
+3D, the working plane, the MESH entity, NURBS surfaces in the writer) is
+asked for as milestones of the vertical phases, not built here.
+
+## Phase 06 — BIM and IFC ○
 
 IfcOpenShell through a decoupled integration: semantic elements, properties,
 spatial relations, IFC import/export, exchange validation; GlobalId,
@@ -218,12 +265,12 @@ question 1). The BIM workspace takes ArchiCAD's interface as its reference
 decides whether DWG plus a project database suffice or the reserved `.ascad`
 format is implemented. Module M03.
 
-## Phase 06 — Topography and surfaces ○
+## Phase 07 — Topography and surfaces ○
 
 Survey points, triangulation (TIN), contour lines, profiles, sections,
 slopes, cut and fill volumes; QGIS bridge for maps. Module M04.
 
-## Phase 07 — Architecture, structures and MEP ○
+## Phase 08 — Architecture, structures and MEP ○
 
 Specialized modeling, links between disciplines, loads, analysis through
 appropriate engines (structural FEM verified against reference cases);
@@ -231,19 +278,19 @@ results independently verifiable. Modules M05 and M06; environmental
 studies (M07) and transport and infrastructure (M08) follow the same pattern
 as independent modules on public APIs.
 
-## Phase 08 — Rendering and animation ○
+## Phase 09 — Rendering and animation ○
 
 Blender + Cycles headless, model transfer, PBR materials, lighting, cameras,
 image sequences, FFmpeg for video, a render queue with progress and
 cancellation. Transversal capability.
 
-## Phase 09 — Coordination and walkthroughs ○
+## Phase 10 — Coordination and walkthroughs ○
 
 Clash detection, revision comparison, multidisciplinary review,
 traceability; interactive real-time navigation on the GPU renderer. Module
 M10.
 
-## Phase 10 — Extensions and advanced optimization ○
+## Phase 11 — Extensions and advanced optimization ○
 
 Plugin API, automation, performance profiles, large models and terrains,
 additional libraries, LuxCoreRender evaluated against Cycles on shared
@@ -252,18 +299,18 @@ scenes. Module M11.
 Automation-language direction recorded by the maintainer on 2026-11-01:
 Python remains the primary public automation API; ArqLISP is the first
 planned compatibility language, followed by evaluation of ArqBasic.
-See [master plan section 9.1](MASTER_PLAN.md#91-planned-automation-languages-m11-phase-10).
+See [master plan section 9.1](MASTER_PLAN.md#91-planned-automation-languages-m11-phase-11).
 The milestones below are planned, with no implementation started. They do
-not bring phase 10 ahead of the current work.
+not bring phase 11 ahead of the current work.
 
 | Milestone | Content and acceptance | Status |
 |---|---|---|
-| 10.1 Shared automation and plugin contract | Build on the existing typed Python core API (02.3) and application command/session/event machinery. Define supported extension entry points, loading and lifecycle, API versioning and compatibility tests, errors, permissions/trust, execution limits and cancellation. An ADR precedes interpreter/runtime selection; all adapters preserve Rust document ownership, transactions, undo/redo, event delivery and safe-save guards. | ○ planned; the current core API exists, but a complete public plugin/scripting environment is not implemented |
-| 10.2 ArqLISP initial source compatibility | Independently implement a documented subset of Lisp and AutoLISP `.lsp` routines through 10.1: language basics, command registration/execution, selection and supported entity queries/edits. Publish a supported/unsupported function matrix and representative routine tests, including invalid input, failed-operation rollback, cancellation and GUI event synchronization. Select a runtime only through the master plan section 16 review and the ADR. | ○ planned, after 10.1; no interpreter selected or implemented |
-| 10.3 ArqLISP compatibility expansion | Expand only against identified routine needs and regression tests. Evaluate DCL, Visual LISP/ActiveX and compiled `.fas`/`.vlx` support separately, with platform and licensing review; initial `.lsp` support does not imply those capabilities. | ○ planned, after 10.2; advanced compatibility scope undecided |
-| 10.4 ArqBasic feasibility | After the ArqLISP foundation, evaluate an independent BASIC dialect and a documented VBA-compatible subset using representative source macros. Assess language semantics, the CAD host-object model, forms, COM and `.dvb` projects separately. Record a go/no-go decision, licensing, platform limits and acceptance tests in an ADR before any implementation commitment. | ○ evaluation planned; neither Microsoft VBA integration nor a complete VBA clone is approved |
+| 11.1 Shared automation and plugin contract | Build on the existing typed Python core API (02.3) and application command/session/event machinery. Define supported extension entry points, loading and lifecycle, API versioning and compatibility tests, errors, permissions/trust, execution limits and cancellation. An ADR precedes interpreter/runtime selection; all adapters preserve Rust document ownership, transactions, undo/redo, event delivery and safe-save guards. | ○ planned; the current core API exists, but a complete public plugin/scripting environment is not implemented |
+| 11.2 ArqLISP initial source compatibility | Independently implement a documented subset of Lisp and AutoLISP `.lsp` routines through 11.1: language basics, command registration/execution, selection and supported entity queries/edits. Publish a supported/unsupported function matrix and representative routine tests, including invalid input, failed-operation rollback, cancellation and GUI event synchronization. Select a runtime only through the master plan section 16 review and the ADR. | ○ planned, after 11.1; no interpreter selected or implemented |
+| 11.3 ArqLISP compatibility expansion | Expand only against identified routine needs and regression tests. Evaluate DCL, Visual LISP/ActiveX and compiled `.fas`/`.vlx` support separately, with platform and licensing review; initial `.lsp` support does not imply those capabilities. | ○ planned, after 11.2; advanced compatibility scope undecided |
+| 11.4 ArqBasic feasibility | After the ArqLISP foundation, evaluate an independent BASIC dialect and a documented VBA-compatible subset using representative source macros. Assess language semantics, the CAD host-object model, forms, COM and `.dvb` projects separately. Record a go/no-go decision, licensing, platform limits and acceptance tests in an ADR before any implementation commitment. | ○ evaluation planned; neither Microsoft VBA integration nor a complete VBA clone is approved |
 
-**Portability gate for 10.1-10.4:** ArqLISP and any approved ArqBasic
+**Portability gate for 11.1-11.4:** ArqLISP and any approved ArqBasic
 implementation must keep their language core and common CAD API portable
 across Windows x86-64/ARM64, macOS Intel/Apple Silicon (universal2), and
 Linux x86-64; Linux ARM64 retains ADR 0003's feasibility condition. Select
@@ -287,7 +334,7 @@ they do not create separate document models or mutation paths. The plan
 approves future work and evaluation, not proprietary runtime redistribution
 or a claim of full AutoLISP/VBA compatibility.
 
-## Phase 11 — Cross-platform distribution ○
+## Phase 12 — Cross-platform distribution ○
 
 Installers, bundled dependencies, signing and notarization where they apply,
 updates, installation docs, tests on Windows (x86-64, ARM64), Linux (x86-64,
@@ -350,21 +397,24 @@ with MASSPROP, the first 3D command, in its Analysis group.
 
 | Module | Main phase |
 |---|---|
-| M01 CAD 2D/3D | 02 |
+| M01 CAD 2D/3D | 02 (core); 05 Free Geometry |
 | M02 DWG/DXF interoperability | 03 |
-| M03 BIM/IFC | 05 |
-| M04 Topography and civil works | 06 |
-| M05 Architecture and structures | 07 |
-| M06 Building services (MEP) | 07 |
-| M07 Environmental studies | 07 (pattern) |
-| M08 Transport and infrastructure | 07 (pattern) |
+| M03 BIM/IFC | 06 |
+| M04 Topography and civil works | 07 |
+| M05 Architecture and structures | 08 |
+| M06 Building services (MEP) | 08 |
+| M07 Environmental studies | 08 (pattern) |
+| M08 Transport and infrastructure | 08 (pattern) |
 | M09 Associative technical documentation | 04 |
-| M10 Coordination | 09 |
-| M11 Automation and extensions | 10 (the Python API exists since 02.3) |
+| M10 Coordination | 10 |
+| M11 Automation and extensions | 11 (the Python API exists since 02.3) |
 
-## Old names (ADR 0014 roadmap)
+## Old names
 
-| Before 2026-10-13 | Now |
+Before master plan 2.0, the ADR 0014 roadmap; the right-hand numbers are
+those of 2026-10-13, which the next table updates:
+
+| Before 2026-10-13 | Then |
 |---|---|
 | Phases 0, 1 | 00, 01 |
 | Milestones 2.1–2.5 | 02.1–02.5 |
@@ -374,6 +424,19 @@ with MASSPROP, the first 3D command, in its Analysis group.
 | Phase 3 CAD exchange and 2D documentation | 03 (exchange) and 04 (documentation) |
 | Phases 4–8 | 05–09 |
 | Phase 9 LuxCoreRender, 10 Optimization and distribution | 10, 11 |
+
+Before [ADR 0035](architecture/adr/0035-phase-structure.md) (2026-11-10):
+
+| Before 2026-11-10 | Now |
+|---|---|
+| 02.14 Free Geometry | Phase 05 Free Geometry (02.14 is now the basic 2D commands) |
+| Phase 05 BIM and IFC | 06 |
+| Phase 06 Topography and surfaces | 07 |
+| Phase 07 Architecture, structures and MEP | 08 |
+| Phase 08 Rendering and animation | 09 |
+| Phase 09 Coordination and walkthroughs | 10 |
+| Phase 10 Extensions and advanced optimization; milestones 10.1–10.4 (ArqLISP, ArqBasic) | 11; 11.1–11.4 |
+| Phase 11 Cross-platform distribution | 12 |
 
 ## Branches
 
