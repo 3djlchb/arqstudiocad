@@ -13,6 +13,8 @@ from typing import ClassVar, Literal, Protocol, SupportsFloat, SupportsIndex, fi
 __version__: str
 
 def probe_gpu_backend(backend: str) -> tuple[str, str, str]: ...
+def list_gpu_adapters(backend: str) -> list[tuple[str, str, int, int]]: ...
+def probe_gpu_adapter(backend: str, index: int) -> tuple[str, str, str]: ...
 
 __all__ = [
     "CadApplication",
@@ -48,6 +50,8 @@ __all__ = [
     "SaveNotVerifiedError",
     "UnsupportedFormatError",
     "__version__",
+    "list_gpu_adapters",
+    "probe_gpu_adapter",
     "probe_gpu_backend",
 ]
 
@@ -735,6 +739,7 @@ class CadView:
         window: int,
         antialias: bool = False,
         system: Literal["x11", "win32", "appkit"] = "x11",
+        adapter: tuple[int, str] | None = None,
     ) -> tuple[str, str, str]: ...
     def detach_window(self) -> None: ...
     @property

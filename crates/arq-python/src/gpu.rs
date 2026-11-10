@@ -5,7 +5,10 @@
 
 use arq_render::wgpu;
 use arq_render::wgpu::rwh;
-use arq_render::{GpuBackend, probe_gpu_backend as run_probe};
+use arq_render::{
+    GpuBackend, list_gpu_adapters as run_list, probe_gpu_adapter as run_adapter,
+    probe_gpu_backend as run_probe,
+};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -13,6 +16,29 @@ use pyo3::prelude::*;
 fn probe_gpu_backend(backend: &str) -> PyResult<(String, String, String)> {
     let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
     let result = Python::attach(|py| py.detach(move || run_probe(backend)))
+        .map_err(PyRuntimeError::new_err)?;
+    Ok((result.backend, result.adapter, result.device_type))
+}
+
+/// Every adapter `backend` offers, unchecked: `(name, device_type, vendor,
+/// device)` each, in the backend's order. In a child process (ADR 0007).
+#[pyfunction]
+fn list_gpu_adapters(backend: &str) -> PyResult<Vec<(String, String, u32, u32)>> {
+    let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
+    let adapters = Python::attach(|py| py.detach(move || run_list(backend)))
+        .map_err(PyRuntimeError::new_err)?;
+    Ok(adapters
+        .into_iter()
+        .map(|a| (a.name, a.device_type, a.vendor, a.device))
+        .collect())
+}
+
+/// Checks the `index`-th adapter of `list_gpu_adapters(backend)` as
+/// `probe_gpu_backend` checks the preferred one. In a child process.
+#[pyfunction]
+fn probe_gpu_adapter(backend: &str, index: usize) -> PyResult<(String, String, String)> {
+    let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
+    let result = Python::attach(|py| py.detach(move || run_adapter(backend, index)))
         .map_err(PyRuntimeError::new_err)?;
     Ok((result.backend, result.adapter, result.device_type))
 }
@@ -107,7 +133,12 @@ pub(crate) unsafe fn window_surface(
         }
         WindowSystem::Win32 => {
             let hwnd = std::num::NonZeroIsize::new(window as isize).ok_or("no window")?;
-            rwh::RawWindowHandle::Win32(rwh::Win32WindowHandle::new(hwnd))
+            let mut handle = rwh::Win32WindowHandle::new(hwnd);
+            // Vulkan needs the window's module too; DirectX 12 the window
+            // alone.
+            // SAFETY: the caller keeps the window alive.
+            handle.hinstance = unsafe { win32_hinstance(hwnd.get()) };
+            rwh::RawWindowHandle::Win32(handle)
         }
         WindowSystem::AppKit => {
             let view = std::ptr::NonNull::new(window as usize as *mut std::ffi::c_void)
@@ -128,7 +159,38 @@ pub(crate) unsafe fn window_surface(
     Ok((instance, surface))
 }
 
+#[cfg(all(windows, target_pointer_width = "64"))]
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn GetWindowLongPtrW(hwnd: isize, index: i32) -> isize;
+}
+
+/// The module that owns the window `hwnd` (its `HINSTANCE`), read from the
+/// window itself, as Vulkan's Win32 surface asks for it.
+///
+/// # Safety
+///
+/// `hwnd` must be a live window.
+#[cfg(all(windows, target_pointer_width = "64"))]
+unsafe fn win32_hinstance(hwnd: isize) -> Option<std::num::NonZeroIsize> {
+    const GWLP_HINSTANCE: i32 = -6;
+    // SAFETY: the caller's window is live; the call only reads it.
+    std::num::NonZeroIsize::new(unsafe { GetWindowLongPtrW(hwnd, GWLP_HINSTANCE) })
+}
+
+/// No `HINSTANCE` off 64-bit Windows: there are no Win32 windows.
+///
+/// # Safety
+///
+/// None needed; kept `unsafe` to match the Windows one.
+#[cfg(not(all(windows, target_pointer_width = "64")))]
+unsafe fn win32_hinstance(_hwnd: isize) -> Option<std::num::NonZeroIsize> {
+    None
+}
+
 /// Registers graphics diagnostics on the Python module.
 pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(probe_gpu_backend, module)?)
+    module.add_function(wrap_pyfunction!(probe_gpu_backend, module)?)?;
+    module.add_function(wrap_pyfunction!(list_gpu_adapters, module)?)?;
+    module.add_function(wrap_pyfunction!(probe_gpu_adapter, module)?)
 }

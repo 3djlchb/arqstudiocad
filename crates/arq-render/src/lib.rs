@@ -30,7 +30,10 @@ mod view;
 pub use aci::{aci_rgb, aci_rgb_on, luminance};
 pub use camera::Camera;
 pub use gpu::GpuRenderer;
-pub use gpu_probe::{GpuBackend, GpuProbeResult, probe_gpu_backend};
+pub use gpu_probe::{
+    GpuAdapterInfo, GpuBackend, GpuProbeResult, list_gpu_adapters, probe_gpu_adapter,
+    probe_gpu_backend,
+};
 pub use outline::{Polyline, outline};
 pub use overlay::{Overlay, OverlayItem, OverlayLabel};
 pub use raster::{Image, Style, preview, render};

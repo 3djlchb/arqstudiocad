@@ -155,12 +155,16 @@ impl CadView {
     /// window an `HWND`; or `"appkit"`, an `NSView*`; `display` is ignored
     /// but on X11. `antialias` asks for 4× multisampling, where a hardware
     /// adapter offers it; it doubles a frame's time on the reference
-    /// machine. Returns `(backend, adapter, device_type)`. The window
+    /// machine. `adapter` is the graphics card to draw with, `(index, name)`
+    /// as `list_gpu_adapters` lists it, the name checked; None takes the one
+    /// `backend` prefers, the discrete card where there are two. Returns
+    /// `(backend, adapter, device_type)`. The window
     /// and the connection must outlive the attachment: call
     /// `detach_window()` before the widget goes. An unknown backend raises
     /// `ValueError`; a GPU that cannot draw there, `RuntimeError`, and the
     /// view stays as it was.
-    #[pyo3(signature = (backend, display, window, antialias = false, system = "x11"))]
+    #[pyo3(signature = (backend, display, window, antialias = false, system = "x11", adapter = None))]
+    #[allow(clippy::too_many_arguments)]
     fn attach_window(
         &self,
         py: Python<'_>,
@@ -169,6 +173,7 @@ impl CadView {
         window: u64,
         antialias: bool,
         system: &str,
+        adapter: Option<(usize, String)>,
     ) -> PyResult<(String, String, String)> {
         let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
         let system = crate::gpu::WindowSystem::parse(system).map_err(PyValueError::new_err)?;
@@ -179,7 +184,14 @@ impl CadView {
                 // and its display alive until `detach_window`.
                 let (instance, surface) =
                     unsafe { crate::gpu::window_surface(backend, system, display, window) }?;
-                GpuRenderer::for_surface(backend, instance, surface, width, height, antialias)
+                GpuRenderer::for_surface(
+                    backend,
+                    instance,
+                    surface,
+                    (width, height),
+                    antialias,
+                    adapter.as_ref().map(|(i, name)| (*i, name.as_str())),
+                )
             })
             .map_err(PyRuntimeError::new_err)?;
         let adapter = renderer.adapter().clone();

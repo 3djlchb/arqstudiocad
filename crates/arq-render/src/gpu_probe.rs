@@ -92,7 +92,22 @@ pub struct GpuProbeResult {
     pub device_type: String,
 }
 
-/// Verifies an adapter with a small offscreen draw and a readback.
+/// An adapter a backend offers, as listed before any is checked: its name,
+/// its class, and its vendor's and device's PCI ids.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GpuAdapterInfo {
+    /// Name reported by the graphics adapter.
+    pub name: String,
+    /// Adapter class reported by wgpu (`DiscreteGpu`, `IntegratedGpu`, `Cpu`...).
+    pub device_type: String,
+    /// The vendor's PCI id, 0 where the backend gives none.
+    pub vendor: u32,
+    /// The device's PCI id, 0 where the backend gives none.
+    pub device: u32,
+}
+
+/// Verifies `backend`'s preferred adapter (the discrete one where there are
+/// two) with a small offscreen draw and a readback.
 ///
 /// Call this only in a child process with a parent-enforced timeout. Graphics
 /// driver initialization can crash or block independently of Rust errors.
@@ -100,15 +115,65 @@ pub fn probe_gpu_backend(backend: GpuBackend) -> Result<GpuProbeResult, String> 
     pollster::block_on(probe(backend))
 }
 
-/// The adapter `backend` offers for offscreen work: the one the probe
-/// checks and the renderer then draws with.
-pub(crate) async fn offscreen_adapter(backend: GpuBackend) -> Result<wgpu::Adapter, String> {
+/// Every adapter `backend` offers, in its own order, none checked yet: what
+/// [`probe_gpu_adapter`] takes by index. The software backend offers its
+/// fallback adapter alone. Run it in a child process, as the probe.
+pub fn list_gpu_adapters(backend: GpuBackend) -> Result<Vec<GpuAdapterInfo>, String> {
+    pollster::block_on(async {
+        Ok(adapters(backend)
+            .await?
+            .iter()
+            .map(|adapter| {
+                let info = adapter.get_info();
+                GpuAdapterInfo {
+                    name: info.name,
+                    device_type: format!("{:?}", info.device_type),
+                    vendor: info.vendor,
+                    device: info.device,
+                }
+            })
+            .collect())
+    })
+}
+
+/// Verifies the `index`-th adapter of [`list_gpu_adapters`] as
+/// [`probe_gpu_backend`] does the preferred one. In a child process.
+pub fn probe_gpu_adapter(backend: GpuBackend, index: usize) -> Result<GpuProbeResult, String> {
+    pollster::block_on(async {
+        let adapter = adapters(backend)
+            .await?
+            .into_iter()
+            .nth(index)
+            .ok_or_else(|| format!("{} has no adapter {index}", backend.name()))?;
+        check(backend, adapter).await
+    })
+}
+
+/// An instance of `backend` with no window, for offscreen work.
+fn offscreen_instance(backend: GpuBackend) -> wgpu::Instance {
     let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
     descriptor.backends = backend.wgpu_backends();
-    let instance = wgpu::Instance::new(descriptor);
-    instance
+    wgpu::Instance::new(descriptor)
+}
+
+/// Every adapter `backend` offers for offscreen work; the software
+/// backend's fallback adapter alone.
+async fn adapters(backend: GpuBackend) -> Result<Vec<wgpu::Adapter>, String> {
+    if backend.force_fallback() {
+        return Ok(vec![offscreen_adapter(backend).await?]);
+    }
+    Ok(offscreen_instance(backend)
+        .enumerate_adapters(backend.wgpu_backends())
+        .await)
+}
+
+/// The adapter `backend` prefers for offscreen work: the discrete card
+/// where there are two (high performance, maintainer 2026-11-10), the one
+/// the probe checks and the offscreen renderer draws with.
+pub(crate) async fn offscreen_adapter(backend: GpuBackend) -> Result<wgpu::Adapter, String> {
+    offscreen_instance(backend)
         .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
+            power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: backend.force_fallback(),
             compatible_surface: None,
             apply_limit_buckets: false,
@@ -118,7 +183,11 @@ pub(crate) async fn offscreen_adapter(backend: GpuBackend) -> Result<wgpu::Adapt
 }
 
 async fn probe(backend: GpuBackend) -> Result<GpuProbeResult, String> {
-    let adapter = offscreen_adapter(backend).await?;
+    check(backend, offscreen_adapter(backend).await?).await
+}
+
+/// A small offscreen draw and a readback on `adapter`.
+async fn check(backend: GpuBackend, adapter: wgpu::Adapter) -> Result<GpuProbeResult, String> {
     let info = adapter.get_info();
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor::default())
