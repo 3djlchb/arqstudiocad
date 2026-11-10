@@ -43,6 +43,61 @@ def test_probe_runs_native_command_in_a_child(monkeypatch: pytest.MonkeyPatch) -
     assert calls[0][1]["timeout"] == gpu.PROBE_TIMEOUT_SECONDS
 
 
+def test_a_backend_s_cards_are_listed_and_one_probed_in_a_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+    cards = [
+        {
+            "name": "Intel(R) UHD Graphics 630",
+            "device_type": "IntegratedGpu",
+            "vendor": 32902,
+            "device": 16027,
+        },
+        {
+            "name": "NVIDIA GeForce GTX 1050 Ti",
+            "device_type": "DiscreteGpu",
+            "vendor": 4318,
+            "device": 7308,
+        },
+    ]
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if "--gpu-adapters" in command:
+            answer = {"backend": "dx12", "adapters": cards}
+        else:
+            answer = {
+                "backend": "dx12",
+                "adapter": "NVIDIA GeForce GTX 1050 Ti",
+                "device_type": "DiscreteGpu",
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(answer), "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    listed, error = gpu.list_adapters("dx12")
+    assert error is None
+    assert [(c.index, c.name, c.device_type) for c in listed] == [
+        (0, "Intel(R) UHD Graphics 630", "IntegratedGpu"),
+        (1, "NVIDIA GeForce GTX 1050 Ti", "DiscreteGpu"),
+    ]
+    assert (listed[1].vendor, listed[1].device) == (4318, 7308)
+    assert calls[0][-2:] == ["--gpu-adapters", "dx12"]
+    result = gpu.probe_backend("dx12", 1)
+    assert result.available and result.adapter == "NVIDIA GeForce GTX 1050 Ti"
+    assert calls[1][-4:] == ["--gpu-probe", "dx12", "--adapter", "1"]
+
+
+def test_cards_that_cannot_be_listed_say_why(monkeypatch: pytest.MonkeyPatch) -> None:
+    def crashed(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 3221225477, "", "")
+
+    monkeypatch.setattr(subprocess, "run", crashed)
+    listed, error = gpu.list_adapters("vulkan")
+    assert listed == [] and error == "probe process returned invalid output"
+
+
 def test_probe_timeout_skips_unresponsive_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     def timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired("gpu probe", 1)
