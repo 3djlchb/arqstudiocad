@@ -326,7 +326,24 @@ zooming on the CPU.
   machine: OpenGL on the GT 730, 21.7 ms panning and 22.5 ms zooming
   against the CPU's 48.0 and 65.2, the overlays the same to the pixel.
 
-To try: Windows on the development laptop (GTX 1050 Ti, UHD 630; DirectX
-12, Vulkan, OpenGL), Wayland in a nested compositor on the reference
-machine, macOS when a Mac is at hand.
+**Wayland, tried (2026-11-10)** in weston 14 nested in the reference
+machine's X11 desktop, with XWayland:
+
+- In a Wayland session with an X server, the application started Qt on
+  `xcb` by itself and chose the GT 730. Its first frame disarmed the
+  sentinel, and the command window said so.
+- Captured by `weston-screenshooter`, the composed screen showed the
+  overlay scene as the CPU paints it, with no pixel apart under the tests'
+  comparison. Panning changed what is on screen.
+- Without an X server, Qt ran on Wayland and the CPU drew, quietly.
+- Reading a window's pixels from X gives nothing under XWayland, which
+  composes nothing, so the tests that compare captured windows skip in a
+  Wayland session; the composed screen was checked with weston instead.
+- weston crashed more than once ("double free"). The main window alone
+  brings it down on XWayland, with the CPU drawing as much as the GPU: a
+  weston bug the GPU viewport does not cause, to check under GNOME's and
+  KDE's compositors.
+
+Still to try: Windows on the development laptop (GTX 1050 Ti, UHD 630;
+DirectX 12, Vulkan, OpenGL), and macOS when a Mac is at hand.
 
