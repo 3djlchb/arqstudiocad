@@ -716,7 +716,9 @@ class MainWindow(QMainWindow):
         if backend is not None and self._sentinel is not None:
             # Until its first frame: a crash meanwhile is the driver's.
             self._sentinel.arm()
-        viewport.set_gpu(backend, self._options.antialias)
+        chosen = self._renderer
+        card = None if chosen.card is None else (chosen.card, chosen.adapter)
+        viewport.set_gpu(backend, self._options.antialias, card)
 
     def _gpu_presented(self) -> None:
         if self._sentinel is not None:

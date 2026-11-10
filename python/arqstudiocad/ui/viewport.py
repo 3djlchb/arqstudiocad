@@ -281,6 +281,7 @@ class Viewport(QWidget):
         # presents to, and Qt never paints it.
         self._gpu_backend: str | None = None
         self._antialias = False
+        self._gpu_adapter: tuple[int, str] | None = None
         self._gpu = False
         self._presented = False
         app = QGuiApplication.instance()
@@ -928,13 +929,20 @@ class Viewport(QWidget):
         """``(backend, adapter, device_type)`` while the GPU presents."""
         return self.view.gpu if self._gpu else None
 
-    def set_gpu(self, backend: str | None, antialias: bool = False) -> None:
-        """Draws with the GPU on ``backend``, 4x antialiased when asked, or
-        on the CPU when ``backend`` is None; at once, shown or not."""
-        if (backend, antialias) == (self._gpu_backend, self._antialias):
+    def set_gpu(
+        self,
+        backend: str | None,
+        antialias: bool = False,
+        adapter: tuple[int, str] | None = None,
+    ) -> None:
+        """Draws with the GPU on ``backend``, with the graphics card
+        ``adapter`` (its index in the backend's list and its name) or the
+        one the backend prefers, 4x antialiased when asked, or on the CPU
+        when ``backend`` is None; at once, shown or not."""
+        if (backend, antialias, adapter) == (self._gpu_backend, self._antialias, self._gpu_adapter):
             return
         self._detach_gpu()
-        self._gpu_backend, self._antialias = backend, antialias
+        self._gpu_backend, self._antialias, self._gpu_adapter = backend, antialias, adapter
         self._set_native(backend is not None)
         if backend is not None and self.isVisible():
             self._attach_gpu()
@@ -951,7 +959,7 @@ class Viewport(QWidget):
             return
         try:
             adapter = self.view.attach_window(
-                backend, display, int(self.winId()), self._antialias, system
+                backend, display, int(self.winId()), self._antialias, system, self._gpu_adapter
             )
         except (RuntimeError, ValueError) as error:
             self._gpu_failed(str(error))

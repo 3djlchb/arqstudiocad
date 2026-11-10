@@ -13,7 +13,7 @@ from pytestqt.qtbot import QtBot
 
 from arqstudiocad import renderer
 from arqstudiocad.commands import Outcome
-from arqstudiocad.gpu import GpuProbeResult
+from arqstudiocad.gpu import GpuAdapter, GpuProbeResult
 from arqstudiocad.renderer import (
     AUTOMATIC,
     CPU,
@@ -73,11 +73,20 @@ def test_untried_systems_use_the_graphics_card_only_when_chosen() -> None:
     assert plan("metal", window_system="appkit", platform="darwin", **kw) == ("metal",)
 
 
-def fake_probes(results: dict[str, GpuProbeResult]) -> Callable[[str], GpuProbeResult]:
-    def run(backend: str) -> GpuProbeResult:
+def fake_probes(
+    results: dict[str, GpuProbeResult],
+) -> Callable[[str, int | None], GpuProbeResult]:
+    """Each backend's preferred card, as its probe answers."""
+
+    def run(backend: str, index: int | None = None) -> GpuProbeResult:
         return results.get(backend, GpuProbeResult(backend, error="not here"))
 
     return run
+
+
+def unlisted(backend: str) -> tuple[list[GpuAdapter], str | None]:
+    """No backend's cards listed: each tries the card it prefers."""
+    return [], "not listed"
 
 
 def test_the_first_hardware_adapter_is_taken_never_a_software_one() -> None:
@@ -88,9 +97,11 @@ def test_the_first_hardware_adapter_is_taken_never_a_software_one() -> None:
             "opengl": GpuProbeResult("opengl", "NV106", "Other"),
         }
     )
-    assert probe(("vulkan", "opengl"), run) == Choice(backend="opengl", adapter="NV106")
+    assert probe(("vulkan", "opengl"), run, listing=unlisted) == Choice(
+        backend="opengl", adapter="NV106"
+    )
     only_software = fake_probes({"vulkan": GpuProbeResult("vulkan", "llvmpipe", "Cpu")})
-    choice = probe(("vulkan", "opengl"), only_software)
+    choice = probe(("vulkan", "opengl"), only_software, listing=unlisted)
     assert not choice.gpu and "no graphics card passed" in choice.message()
 
 
@@ -99,24 +110,90 @@ def test_a_backend_known_to_draw_black_is_passed_over() -> None:
     # window stays black (ADR 0034 D6.4).
     intel = GpuProbeResult("opengl", "Intel(R) UHD Graphics 630", "IntegratedGpu")
     run = fake_probes({"opengl": intel})
-    chosen = probe(("opengl",), run, platform="win32")
+    chosen = probe(("opengl",), run, platform="win32", listing=unlisted)
     assert not chosen.gpu
     assert "OpenGL leaves the window black with Intel(R) UHD Graphics 630" in chosen.message()
-    # Automatic goes on to the next that draws: DirectX 12 first anyway, or
-    # Vulkan after OpenGL.
+    # Automatic goes on to the next that draws: DirectX 12, which it tries
+    # first anyway.
     both = fake_probes(
         {
             "opengl": intel,
-            "vulkan": GpuProbeResult("vulkan", "Intel(R) UHD Graphics 630", "IntegratedGpu"),
+            "dx12": GpuProbeResult("dx12", "Intel(R) UHD Graphics 630", "IntegratedGpu"),
         }
     )
-    assert probe(("opengl", "vulkan"), both, platform="win32").backend == "vulkan"
+    assert probe(("opengl", "dx12"), both, platform="win32", listing=unlisted).backend == "dx12"
     # OpenGL on another card, or on Intel elsewhere, is taken.
     nvidia = fake_probes(
         {"opengl": GpuProbeResult("opengl", "NVIDIA GeForce GTX 1050 Ti/PCIe/SSE2", "Other")}
     )
-    assert probe(("opengl",), nvidia, platform="win32").backend == "opengl"
-    assert probe(("opengl",), run, platform="linux").backend == "opengl"
+    assert probe(("opengl",), nvidia, platform="win32", listing=unlisted).backend == "opengl"
+    assert probe(("opengl",), run, platform="linux", listing=unlisted).backend == "opengl"
+
+
+def test_vulkan_on_intel_under_windows_is_passed_over() -> None:
+    # Its probe passes offscreen, but drawing in a window closes the
+    # application (an access violation, the development laptop, 2026-11-10).
+    intel = GpuProbeResult("vulkan", "Intel(R) UHD Graphics 630", "IntegratedGpu")
+    chosen = probe(("vulkan",), fake_probes({"vulkan": intel}), platform="win32", listing=unlisted)
+    assert not chosen.gpu
+    assert "Vulkan closes" in chosen.message()
+    assert "when it draws in a window with Intel(R) UHD Graphics 630" in chosen.message()
+
+
+def two_cards(
+    passing: set[tuple[str, int]],
+) -> tuple[
+    Callable[[str], tuple[list[GpuAdapter], str | None]],
+    Callable[[str, int | None], GpuProbeResult],
+    list[tuple[str, int | None]],
+]:
+    """The development laptop's cards on every backend: the UHD 630 first
+    in their own order, the GTX 1050 Ti second; ``passing`` the (backend,
+    index) that pass their probe. The probes run are recorded."""
+    names = [
+        ("Intel(R) UHD Graphics 630", "IntegratedGpu"),
+        ("NVIDIA GeForce GTX 1050 Ti", "DiscreteGpu"),
+    ]
+    ran: list[tuple[str, int | None]] = []
+
+    def listing(backend: str) -> tuple[list[GpuAdapter], str | None]:
+        return [GpuAdapter(backend, i, n, kind) for i, (n, kind) in enumerate(names)], None
+
+    def run(backend: str, index: int | None = None) -> GpuProbeResult:
+        ran.append((backend, index))
+        if index is None or (backend, index) not in passing:
+            return GpuProbeResult(backend, error="failed")
+        name, kind = names[index]
+        return GpuProbeResult(backend, name, kind)
+
+    return listing, run, ran
+
+
+def test_the_discrete_card_is_tried_first() -> None:
+    # Both cards pass everywhere: the GTX on DirectX 12.
+    every = {(b, i) for b in ("dx12", "vulkan", "opengl") for i in (0, 1)}
+    listing, run, ran = two_cards(every)
+    chosen = probe(("dx12", "vulkan", "opengl"), run, platform="win32", listing=listing)
+    assert chosen == Choice(backend="dx12", adapter="NVIDIA GeForce GTX 1050 Ti", card=1)
+    assert ran == [("dx12", 1)]
+    # The GTX failing on DirectX 12: still the GTX, on Vulkan, before the
+    # UHD 630 on DirectX 12.
+    listing, run, ran = two_cards(every - {("dx12", 1)})
+    chosen = probe(("dx12", "vulkan", "opengl"), run, platform="win32", listing=listing)
+    assert (chosen.backend, chosen.adapter) == ("vulkan", "NVIDIA GeForce GTX 1050 Ti")
+    # The GTX failing everywhere: the integrated card, in the backends'
+    # order; OpenGL on it never probed (it draws black on Windows).
+    listing, run, ran = two_cards({("dx12", 0), ("opengl", 0)})
+    chosen = probe(("opengl", "dx12"), run, platform="win32", listing=listing)
+    assert (chosen.backend, chosen.adapter) == ("dx12", "Intel(R) UHD Graphics 630")
+    assert ("opengl", 0) not in ran
+
+
+def test_a_backend_whose_cards_cannot_be_listed_tries_its_own() -> None:
+    preferred = GpuProbeResult("vulkan", "NV106", "Other")
+    run = fake_probes({"vulkan": preferred})
+    chosen = probe(("vulkan",), run, platform="linux", listing=unlisted)
+    assert chosen == Choice(backend="vulkan", adapter="NV106")
 
 
 def test_a_choice_says_what_draws() -> None:

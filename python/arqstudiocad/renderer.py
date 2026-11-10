@@ -20,7 +20,13 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from arqstudiocad.gpu import GpuProbeResult, backend_order, probe_backend
+from arqstudiocad.gpu import (
+    GpuAdapter,
+    GpuProbeResult,
+    backend_order,
+    list_adapters,
+    probe_backend,
+)
 from arqstudiocad.i18n import tr
 
 #: The Renderer setting: chosen automatically, the CPU, or one backend.
@@ -55,6 +61,8 @@ class Choice:
 
     backend: str | None = None
     adapter: str = ""
+    #: The card's index in its backend's list, when it was chosen from it.
+    card: int | None = None
     reason: str = ""
     #: Nothing to tell at start: the CPU where it is expected or chosen.
     quiet: bool = False
@@ -126,48 +134,92 @@ def plan(
     return allowed
 
 
-#: Backends whose probe passes but whose windows stay black, as
-#: ``(platform, backend, word in the adapter's name)``: the probe draws
-#: offscreen and cannot see it (ADR 0034 D6.4). OpenGL on Intel's Windows
-#: driver: the UHD 630 presents black whatever the surface's format, alpha
-#: or present mode (2026-11-10); DirectX 12 draws on it.
-PRESENTS_BLACK = (("win32", "opengl", "intel"),)
+#: Backends whose probe passes, offscreen, but which fail in a window, as
+#: ``(platform, backend, word in the adapter's name, how)``: the probe cannot
+#: see it (ADR 0034 D6.4). On Intel's Windows driver, tried on the UHD 630
+#: (2026-11-10): OpenGL leaves the window black whatever the surface's
+#: format, alpha or present mode, and Vulkan closes the application when it
+#: draws in a window; DirectX 12 draws.
+FAILS_ON_SCREEN = (
+    ("win32", "opengl", "intel", "black"),
+    ("win32", "vulkan", "intel", "crash"),
+)
 
 
-def presents_black(backend: str, adapter: str, platform: str = sys.platform) -> bool:
-    """Whether ``backend`` on ``adapter`` is known to leave the window
-    black on ``platform`` though its probe passes."""
+def fails_on_screen(backend: str, adapter: str, platform: str = sys.platform) -> str | None:
+    """How ``backend`` on ``adapter`` is known to fail in a window on
+    ``platform`` though its probe passes (``"black"`` or ``"crash"``), or
+    None."""
     name = adapter.lower()
-    return any((p, b) == (platform, backend) and word in name for p, b, word in PRESENTS_BLACK)
+    for p, b, word, how in FAILS_ON_SCREEN:
+        if (p, b) == (platform, backend) and word in name:
+            return how
+    return None
+
+
+def _fails_message(backend: str, adapter: str, how: str) -> str:
+    """Why the CPU draws when the only cards left fail in a window."""
+    if how == "crash":
+        return tr(
+            "Drawing on the CPU: {backend} closes {app} when it draws in a window with "
+            "{adapter} on this system. Choose another renderer in Options.",
+            backend=renderer_title(backend),
+            adapter=adapter,
+        )
+    return tr(
+        "Drawing on the CPU: {backend} leaves the window black with {adapter} on "
+        "this system. Choose another renderer in Options.",
+        backend=renderer_title(backend),
+        adapter=adapter,
+    )
+
+
+#: How the graphics cards are tried: the discrete ones first, then the
+#: integrated, then the rest (maintainer, 2026-11-10: high performance).
+CARD_ORDER = {"DiscreteGpu": 0, "IntegratedGpu": 1}
 
 
 def probe(
     backends: Sequence[str],
-    run: Callable[[str], GpuProbeResult] = probe_backend,
+    run: Callable[[str, int | None], GpuProbeResult] = probe_backend,
     platform: str = sys.platform,
+    listing: Callable[[str], tuple[list[GpuAdapter], str | None]] = list_adapters,
 ) -> Choice:
-    """The first backend whose probe passes on a hardware adapter that
-    draws on screen; the CPU when none does, saying why. Each probe runs in
-    a child process."""
-    black: tuple[str, str] | None = None
-    for backend in backends:
-        result = run(backend)
+    """The first graphics card that passes its probe and draws on screen:
+    every hardware card of ``backends`` listed, the discrete ones tried
+    first, then the integrated, each kind in the backends' order; a backend
+    whose cards cannot be listed tries the one it prefers. The CPU when none
+    passes, saying why. Each listing and each probe runs in a child
+    process."""
+    tries: list[tuple[int, int, str, int | None, str]] = []
+    for order, backend in enumerate(backends):
+        adapters, error = listing(backend)
+        if error is not None or not adapters:
+            tries.append((len(CARD_ORDER), order, backend, None, ""))
+            continue
+        tries.extend(
+            (CARD_ORDER.get(a.device_type, len(CARD_ORDER)), order, backend, a.index, a.name)
+            for a in adapters
+            if not a.software
+        )
+    tries.sort(key=lambda t: (t[0], t[1]))
+    failed: tuple[str, str, str] | None = None
+    for _, _, backend, index, name in tries:
+        how = fails_on_screen(backend, name, platform) if name else None
+        if how is not None:
+            failed = failed or (backend, name, how)
+            continue
+        result = run(backend, index)
         if not result.available or result.software:
             continue
         adapter = result.adapter or ""
-        if presents_black(backend, adapter, platform):
-            black = black or (backend, adapter)
+        how = fails_on_screen(backend, adapter, platform)
+        if how is not None:
+            failed = failed or (backend, adapter, how)
             continue
-        return Choice(backend=backend, adapter=adapter)
-    if black is not None:
-        return Choice(
-            reason=tr(
-                "Drawing on the CPU: {backend} leaves the window black with {adapter} on "
-                "this system. Choose another renderer in Options.",
-                backend=renderer_title(black[0]),
-                adapter=black[1],
-            )
-        )
+        return Choice(backend=backend, adapter=adapter, card=index)
+    if failed is not None:
+        return Choice(reason=_fails_message(*failed))
     return Choice(reason=tr("Drawing on the CPU: no graphics card passed the check."))
 
 

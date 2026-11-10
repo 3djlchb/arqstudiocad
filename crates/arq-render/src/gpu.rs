@@ -181,27 +181,49 @@ impl GpuRenderer {
     }
 
     /// A renderer presenting to a window's `surface`, made by `instance`
-    /// on `backend`, `width` × `height` pixels. Making the surface from the
-    /// window's native handles is the caller's: the one `unsafe` step, kept
-    /// at the Python boundary (ADR 0034 D1).
+    /// on `backend`, `size` in pixels, with `adapter`: the card at that
+    /// index of the backend's list, checked by its name (a backend may list
+    /// one card twice, Vulkan the UHD 630, and one of the two crash), or
+    /// the one `backend` prefers (the discrete card where there are two)
+    /// when it is None. Making the surface from the window's native handles
+    /// is the caller's: the one `unsafe` step, kept at the Python boundary
+    /// (ADR 0034 D1).
     pub fn for_surface(
         backend: GpuBackend,
         instance: wgpu::Instance,
         surface: wgpu::Surface<'static>,
-        width: u32,
-        height: u32,
+        size: (u32, u32),
         antialias: bool,
+        adapter: Option<(usize, &str)>,
     ) -> Result<Self, String> {
+        let (width, height) = size;
         pollster::block_on(async {
-            let adapter = instance
-                .request_adapter(&wgpu::RequestAdapterOptions {
-                    power_preference: wgpu::PowerPreference::LowPower,
-                    force_fallback_adapter: false,
-                    compatible_surface: Some(&surface),
-                    apply_limit_buckets: false,
-                })
-                .await
-                .map_err(|e| e.to_string())?;
+            let adapter = match adapter {
+                Some((index, name)) => {
+                    let found = instance
+                        .enumerate_adapters(backend.wgpu_backends())
+                        .await
+                        .into_iter()
+                        .nth(index)
+                        .filter(|a| a.get_info().name == name)
+                        .ok_or_else(|| {
+                            format!("{name} is no longer card {index} of {}", backend.name())
+                        })?;
+                    if !found.is_surface_supported(&surface) {
+                        return Err(format!("{name} cannot draw in this window"));
+                    }
+                    found
+                }
+                None => instance
+                    .request_adapter(&wgpu::RequestAdapterOptions {
+                        power_preference: wgpu::PowerPreference::HighPerformance,
+                        force_fallback_adapter: false,
+                        compatible_surface: Some(&surface),
+                        apply_limit_buckets: false,
+                    })
+                    .await
+                    .map_err(|e| e.to_string())?,
+            };
             let caps = surface.get_capabilities(&adapter);
             let format = caps
                 .formats

@@ -489,3 +489,52 @@ fn overlay_draws(gpu: &mut GpuRenderer) {
     assert_eq!(pixel(&img, 50, 40), blue);
     assert_eq!(pixel(&img, 50, 37), bg);
 }
+
+#[test]
+fn every_card_of_a_backend_is_listed_and_one_checked_by_its_index() {
+    // Listing creates no device: safe in this process for every backend. A
+    // card is checked only on the software backend: a driver may crash on
+    // a real one, which the application does in a child process (Vulkan
+    // on the UHD 630 under Windows).
+    let mut listed = Vec::new();
+    for backend in [
+        GpuBackend::Dx12,
+        GpuBackend::Metal,
+        GpuBackend::Vulkan,
+        GpuBackend::OpenGl,
+        GpuBackend::Software,
+    ] {
+        let Ok(cards) = crate::list_gpu_adapters(backend) else {
+            continue;
+        };
+        for card in &cards {
+            assert!(
+                !card.name.is_empty(),
+                "{}: a card without a name",
+                backend.name()
+            );
+            assert!(
+                ["DiscreteGpu", "IntegratedGpu", "VirtualGpu", "Cpu", "Other"]
+                    .contains(&card.device_type.as_str()),
+                "{}: {card:?}",
+                backend.name()
+            );
+        }
+        if !cards.is_empty() {
+            let past = crate::probe_gpu_adapter(backend, cards.len()).unwrap_err();
+            assert!(past.contains("has no adapter"), "{past}");
+            listed.push((backend.name(), cards));
+        }
+    }
+    if let Some((_, cards)) = listed.iter().find(|(name, _)| *name == "software") {
+        let checked = crate::probe_gpu_adapter(GpuBackend::Software, 0)
+            .unwrap_or_else(|e| panic!("the software card, listed, fails its check: {e}"));
+        assert_eq!(checked.adapter, cards[0].name);
+    }
+    let required = std::env::var("ARQ_GPU_TESTS").is_ok_and(|v| v == "require");
+    assert!(
+        !required || !listed.is_empty(),
+        "ARQ_GPU_TESTS=require but no card listed"
+    );
+    eprintln!("cards listed: {listed:?}");
+}
