@@ -3,12 +3,14 @@
 //! builders write it; the codec turns it into the binary form the drawing's
 //! version expects when it saves (SAB from DWG 2004 on, ADR 0024 step 4a).
 //!
-//! Planes and cones (cylinders among them) bounded by straight and
-//! circular edges, a cone's apex, and whole spheres and tori, so far;
-//! NURBS come with the solids that use them. Every edge runs forward along a curve of
-//! its own: a straight edge gets a line from its start to its end, a
-//! circular one an ellipse turned the way it runs, its parameters the
-//! angles of its ends.
+//! Planes and cones (cylinders among them) bounded by straight, circular
+//! and elliptic edges and by NURBS curves (a cone's parabolas and
+//! hyperbolas, ADR 0033 D3), a cone's apex, and whole spheres and tori, so
+//! far; NURBS surfaces come with the solids that use them. Every edge runs
+//! forward along a curve of its own: a straight edge gets a line from its
+//! start to its end, an elliptic one an ellipse turned the way it runs, its
+//! parameters the angles of its ends, and a NURBS one its curve turned
+//! round when the edge runs against it, as an exact `intcurve`.
 
 use std::collections::HashMap;
 use std::f64::consts::TAU;
@@ -18,7 +20,7 @@ use acadrust::EntityType;
 use acadrust::entities::Solid3D;
 use acadrust::entities::acis::types::{SatDocument, SatPointer, SatToken, Sense, Sidedness};
 use arq_geometry::{Point3, Vector3};
-use arq_kernel::{Body, BrepError, Curve, Surface};
+use arq_kernel::{Body, BrepError, Curve, NurbsCurve, Surface};
 
 use crate::document::Document;
 use crate::entity::EntityId;
@@ -127,6 +129,19 @@ impl Document {
         })?;
         self.add_solid(&body)
     }
+}
+
+/// The same NURBS curve run the other way: knots mirrored in its domain,
+/// points and weights reversed.
+fn turned_round(n: &NurbsCurve) -> Option<NurbsCurve> {
+    let (a, b) = (n.knots()[0], n.knots()[n.knots().len() - 1]);
+    NurbsCurve::new(
+        n.degree(),
+        n.knots().iter().rev().map(|k| a + b - k).collect(),
+        n.points().iter().rev().copied().collect(),
+        n.weights().iter().rev().copied().collect(),
+    )
+    .ok()
 }
 
 /// The parameter range of an edge that is a point, a cone's apex: empty,
@@ -259,7 +274,39 @@ pub(crate) fn sat_of(body: &Body) -> Result<SatDocument, Unwritable> {
                 );
                 (ptr(curve), from, to)
             }
-            Some(Curve::Nurbs(_)) => return Err(Unwritable::Unsupported("NURBS curve")),
+            Some(Curve::Nurbs(n)) => {
+                let n = if edge.reversed {
+                    turned_round(n).ok_or(Unwritable::Unsupported("NURBS curve"))?
+                } else {
+                    n.clone()
+                };
+                // The knots once each, with how many times they repeat.
+                let mut knots: Vec<(f64, i32)> = Vec::new();
+                for &k in n.knots() {
+                    match knots.last_mut() {
+                        Some(last) if last.0 == k => last.1 += 1,
+                        _ => knots.push((k, 1)),
+                    }
+                }
+                let control: Vec<[f64; 3]> = n.points().iter().map(|&q| xyz(q)).collect();
+                let rational = n.weights().iter().any(|&w| w != 1.0);
+                let curve = sat.add_spline_curve(
+                    rational,
+                    i32::try_from(n.degree())
+                        .map_err(|_| Unwritable::Unsupported("NURBS curve"))?,
+                    false,
+                    &knots,
+                    &control,
+                    rational.then_some(n.weights()),
+                    0.0,
+                );
+                let (from, to) = if edge.start == edge.end {
+                    n.domain()
+                } else {
+                    (n.closest_parameter(start), n.closest_parameter(end))
+                };
+                (ptr(curve), from, to)
+            }
             // A point the face closes on, a cone's apex: no curve.
             None => (SatPointer::NULL, APEX_RANGE.0, APEX_RANGE.1),
         };

@@ -842,7 +842,8 @@ fn codec_solids_transformed_as_a_whole() {
 fn codec_solids_written_by_us_read_back() {
     // AutoCAD's and LibreDWG's solids, written again by our ACIS writer
     // (ADR 0024 step 4), read back as the same bodies: what the writer
-    // writes so far (planes, cones, circles, apexes), the rest refused.
+    // writes so far (planes, cones, circles, apexes, NURBS curves), the
+    // rest refused.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
     let mut counts = Vec::new();
     for name in [
@@ -887,11 +888,13 @@ fn codec_solids_written_by_us_read_back() {
         }
         counts.push((name, written, refused));
     }
-    // ATMOS's other two hold what the writer does not write yet.
+    // ATMOS's other one holds what the writer does not write yet (an
+    // elliptic cylinder); NURBS edges are written since ADR 0033 delivery
+    // 2.3b.
     assert_eq!(
         counts,
         [
-            ("2007/ATMOS-DC22S.dwg", 56, 2),
+            ("2007/ATMOS-DC22S.dwg", 57, 1),
             ("example_2000.dwg", 1, 0),
             ("example_2013.dwg", 1, 0),
         ]

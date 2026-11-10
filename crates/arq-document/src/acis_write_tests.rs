@@ -553,3 +553,90 @@ fn a_void_and_a_second_lump_survive_dwg_2000() {
     }
     assert_eq!(seen, 2);
 }
+
+/// A cone cut by planes into a hyperbola, a parabola and an ellipse (ADR
+/// 0033 delivery 2.3b), with the half-spaces that cut them.
+fn cut_cones() -> Vec<(&'static str, Body)> {
+    let tip = Body::cone(p(0.0, 0.0, 0.0), 1.0, 0.0, 2.0).unwrap();
+    let half_space = |alpha: f64, q: (f64, f64, f64)| {
+        let t = Transform3::rotation(Vector3::new(1.0, 0.0, 0.0).unwrap(), alpha)
+            .unwrap()
+            .then(Transform3::translation(
+                Vector3::new(q.0, q.1, q.2).unwrap(),
+            ));
+        Body::cuboid(p(-10.0, -10.0, 0.0), p(10.0, 10.0, 20.0))
+            .unwrap()
+            .transformed(t, 1.0)
+            .unwrap()
+    };
+    let cut = |name, alpha: f64, q| {
+        let b = tip.intersection(&half_space(alpha, q)).unwrap().unwrap();
+        (name, b)
+    };
+    vec![
+        cut("hyperbola", std::f64::consts::FRAC_PI_2, (0.0, 0.3, 0.0)),
+        cut(
+            "parabola",
+            std::f64::consts::PI - 2f64.atan(),
+            (0.0, 0.4, 0.0),
+        ),
+        cut("ellipse", 0.3, (0.0, 0.0, 0.8)),
+    ]
+}
+
+#[test]
+fn cut_cones_read_back_the_same() {
+    for (name, body) in cut_cones() {
+        let nurbs = body
+            .edges()
+            .iter()
+            .filter(|e| matches!(e.curve, Some(Curve::Nurbs(_))))
+            .count();
+        assert_eq!(nurbs, usize::from(name != "ellipse"), "{name}");
+        let sat = sat_of(&body).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let measures = body.mass_properties().unwrap();
+        for back in read_back(&sat) {
+            back.check(Tolerance::DEFAULT).unwrap();
+            assert_eq!(back.edges().len(), body.edges().len(), "{name}");
+            same(&back.mass_properties().unwrap(), &measures);
+        }
+    }
+}
+
+#[test]
+fn cut_cones_are_saved_and_read_back() {
+    use acadrust::types::DxfVersion;
+    let dir = tempfile::tempdir().unwrap();
+    for version in [DxfVersion::AC1015, DxfVersion::AC1024, DxfVersion::AC1032] {
+        let mut doc = Document::new();
+        doc.cad_mut().version = version;
+        let mut volumes = Vec::new();
+        for (_, body) in cut_cones() {
+            volumes.push(body.mass_properties().unwrap().volume);
+            doc.add_solid(&body).unwrap();
+        }
+        for ext in ["dwg", "dxf"] {
+            let path = dir.path().join(format!("conos-{version:?}.{ext}"));
+            doc.save(&path)
+                .unwrap_or_else(|e| panic!("{version:?} {ext}: {e}"));
+            let back = Document::open(&path).unwrap();
+            let read: Vec<f64> = back
+                .entities()
+                .into_iter()
+                .filter(|e| e.kind() == "3DSOLID")
+                .map(|e| {
+                    back.solid(e.id())
+                        .unwrap()
+                        .unwrap()
+                        .mass_properties()
+                        .unwrap()
+                        .volume
+                })
+                .collect();
+            assert_eq!(read.len(), volumes.len(), "{version:?} {ext}");
+            for (a, b) in read.iter().zip(&volumes) {
+                assert!((a - b).abs() < 1e-9 * b, "{version:?} {ext}: {a} {b}");
+            }
+        }
+    }
+}
