@@ -82,7 +82,7 @@ class Choice:
 #: The window systems where the graphics card has been seen drawing on
 #: real hardware (ADR 0034 D6.4): there Automatic uses it. Elsewhere it is
 #: used when a backend is chosen in Options, until it is tried.
-VALIDATED = frozenset({"x11"})
+VALIDATED = frozenset({"x11", "win32"})
 
 
 def plan(

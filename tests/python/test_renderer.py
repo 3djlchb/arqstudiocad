@@ -57,17 +57,20 @@ def test_otherwise_the_backends_to_probe_in_order() -> None:
     assert plan(AUTOMATIC, platform="linux", **kw) == ("vulkan", "opengl")
     assert plan("opengl", platform="linux", **kw) == ("opengl",)
     assert plan("metal", platform="linux", **kw) == ("vulkan", "opengl"), "not here"
+    # Windows, seen drawing on real hardware (ADR 0034 D6.4): DirectX 12
+    # first.
+    windows = {**kw, "window_system": "win32", "platform": "win32"}
+    assert plan(AUTOMATIC, **windows) == ("dx12", "vulkan", "opengl")
 
 
 def test_untried_systems_use_the_graphics_card_only_when_chosen() -> None:
-    # Windows and macOS until seen drawing on real hardware (ADR 0034 D6.4):
-    # Automatic keeps the CPU, quietly; a backend chosen in Options is tried.
+    # macOS until seen drawing on real hardware (ADR 0034 D6.4): Automatic
+    # keeps the CPU, quietly; a backend chosen in Options is tried.
     kw: dict[str, Any] = {"safe_mode": False, "crashed": False}
-    for system, platform, chosen in (("win32", "win32", "dx12"), ("appkit", "darwin", "metal")):
-        automatic = plan(AUTOMATIC, window_system=system, platform=platform, **kw)
-        assert isinstance(automatic, Choice) and not automatic.gpu and automatic.quiet
-        assert "Choose a renderer in Options" in automatic.message()
-        assert plan(chosen, window_system=system, platform=platform, **kw) == (chosen,)
+    automatic = plan(AUTOMATIC, window_system="appkit", platform="darwin", **kw)
+    assert isinstance(automatic, Choice) and not automatic.gpu and automatic.quiet
+    assert "Choose a renderer in Options" in automatic.message()
+    assert plan("metal", window_system="appkit", platform="darwin", **kw) == ("metal",)
 
 
 def fake_probes(results: dict[str, GpuProbeResult]) -> Callable[[str], GpuProbeResult]:
