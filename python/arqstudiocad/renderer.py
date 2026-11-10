@@ -126,16 +126,48 @@ def plan(
     return allowed
 
 
+#: Backends whose probe passes but whose windows stay black, as
+#: ``(platform, backend, word in the adapter's name)``: the probe draws
+#: offscreen and cannot see it (ADR 0034 D6.4). OpenGL on Intel's Windows
+#: driver: the UHD 630 presents black whatever the surface's format, alpha
+#: or present mode (2026-11-10); DirectX 12 draws on it.
+PRESENTS_BLACK = (("win32", "opengl", "intel"),)
+
+
+def presents_black(backend: str, adapter: str, platform: str = sys.platform) -> bool:
+    """Whether ``backend`` on ``adapter`` is known to leave the window
+    black on ``platform`` though its probe passes."""
+    name = adapter.lower()
+    return any((p, b) == (platform, backend) and word in name for p, b, word in PRESENTS_BLACK)
+
+
 def probe(
     backends: Sequence[str],
     run: Callable[[str], GpuProbeResult] = probe_backend,
+    platform: str = sys.platform,
 ) -> Choice:
-    """The first backend whose probe passes on a hardware adapter; the CPU
-    when none does. Each probe runs in a child process."""
+    """The first backend whose probe passes on a hardware adapter that
+    draws on screen; the CPU when none does, saying why. Each probe runs in
+    a child process."""
+    black: tuple[str, str] | None = None
     for backend in backends:
         result = run(backend)
-        if result.available and not result.software:
-            return Choice(backend=backend, adapter=result.adapter or "")
+        if not result.available or result.software:
+            continue
+        adapter = result.adapter or ""
+        if presents_black(backend, adapter, platform):
+            black = black or (backend, adapter)
+            continue
+        return Choice(backend=backend, adapter=adapter)
+    if black is not None:
+        return Choice(
+            reason=tr(
+                "Drawing on the CPU: {backend} leaves the window black with {adapter} on "
+                "this system. Choose another renderer in Options.",
+                backend=renderer_title(black[0]),
+                adapter=black[1],
+            )
+        )
     return Choice(reason=tr("Drawing on the CPU: no graphics card passed the check."))
 
 
