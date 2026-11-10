@@ -11,7 +11,7 @@
 #
 # Needs: Xcode command line tools, rustup, and the python.org universal2
 # Python 3.13 (PYTHON may point elsewhere). Not signed or notarized yet
-# (phase 9): first launch needs right click > Open.
+# (phase 12, distribution): first launch needs right click > Open.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

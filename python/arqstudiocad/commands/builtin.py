@@ -1,4 +1,4 @@
-"""The document and view commands of phase 5 (ADR 0013, D5.4).
+"""The document and view commands of milestone 02.4 (ADR 0013, D5.4).
 
 NEW, OPEN, SAVE, SAVEAS, CLOSE, UNDO, REDO, ZOOM and LAYER; ID (ADR 0016) shows
 a point's coordinates. The registry also holds the drawing commands of
@@ -38,7 +38,7 @@ from arqstudiocad.core import (
 from arqstudiocad.i18n import tr
 
 #: Saving defaults to DXF until the round-trip corpus makes DWG the default
-#: (contract §10, phase 8).
+#: (contract §10, milestone 03.6).
 DEFAULT_SAVE_EXTENSION = ".dxf"
 
 #: Zoom factor of ZOOM In and Out.
