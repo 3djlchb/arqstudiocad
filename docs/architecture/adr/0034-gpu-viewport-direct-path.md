@@ -377,6 +377,18 @@ per frame:
   maintainer and on the desktop's capture. Automatic never reaches it after
   DirectX 12; chosen in Options › Graphics, the viewport is black. On the
   GTX 1050 Ti, OpenGL draws as the CPU does.
+  - **Passed over (2026-11-10).** No surface setting draws: sRGB or linear
+    format, opaque alpha (premultiplied and inherited are not offered),
+    immediate or unsynchronized presentation all leave the window black,
+    captured from the desktop. The fault is in how Intel's Windows driver
+    presents OpenGL to a Qt child window. So the choice passes it over:
+    `renderer.PRESENTS_BLACK` lists, by platform, backend and a word of the
+    adapter's name, what passes its probe but draws black (OpenGL on an
+    Intel adapter under Windows); such a backend is skipped for the next
+    that draws, and when none is left the CPU draws and the command window
+    and Options › Graphics say why. `ARQ_GPU_VIEWPORT` and
+    `tools/gpu_viewport_check.py` still reach it, to see whether a later
+    driver draws.
 - **Vulkan crashes in its probe**: the child process ends with an access
   violation (0xC0000005) and no output, so it is reported as failed and
   never used. The probe in a child process (ADR 0007) keeps the
