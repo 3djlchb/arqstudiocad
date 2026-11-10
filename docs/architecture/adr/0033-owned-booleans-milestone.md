@@ -185,6 +185,41 @@ As ADR 0032 D4, for the new kinds:
   - **Merged faces:** kept flat faces lying in one plane and facing the
     same way are united, a subtracted solid's turned faces included, so a
     cut's floor flush with a step beside it is one face.
+- **2.3b (done, 2026-11-10):** cones with flat-faced solids, in general
+  position and flush, pointed or cut short (maintainer, 2026-11-10: a cone
+  with a cylinder or another cone stays refused, for 2.3c or delivery 4;
+  one pull request).
+  - **Domain:** a cone's, as a cylinder's, its angle and height; a
+    cylinder is the cone whose radius does not change with height. A plane
+    cuts the side where `h(θ) = (c − r m·e(θ)) / (m·axis + k m·e(θ))`, the
+    graphs `CurvedRegion` already keeps, on the face's side of the apex,
+    between the heights the two faces span. Through the apex the plane
+    leaves the two lines along the side where it holds them.
+  - **The apex:** where a region reaches it, the apex's line closes it in
+    the domain, all round or between two curves that meet there; lifted,
+    the apex is a point the face closes on (an edge without a curve), or a
+    corner.
+  - **Conics:** an ellipse's arc stays an ellipse; a parabola's or a
+    hyperbola's is a rational quadratic, from its ends, their tangents and
+    its middle (D3), a NURBS edge of one span, written as an exact
+    `intcurve` and read back. `CurvedRegion` gained the rational quadratic
+    trim, so a flat face can be bounded by one.
+  - **Found on the way:** pieces of one curve the window's seam cut are
+    one edge again; a point of a closed curve's image is placed on it by
+    its angle, never by the nearest point, which near the curve's start can
+    be its end; a box turned a right angle has faces whose normals cross in
+    a vector of 1e-17, taken as parallel; a NURBS edge is measured with at
+    least as many pieces as an ellipse.
+  - **Evidence:** exact or integrated volumes for a slab across a cone,
+    a box round its apex, planes through its axis, along it (hyperbola),
+    along a side line (parabola) and across it all round (ellipse), a cut
+    cone cut again, a cone standing on a slab, a frustum flush through it,
+    a countersink, a conical void; the volume identities on 30 cones
+    (pointed, cut short, upside down) and turned boxes; the cut cones
+    written as ACIS, saved in DWG 2000, 2010 and 2018 and in DXF, and read
+    back. With NURBS edges written, 57 of ATMOS's 58 AutoCAD solids are
+    written again and read back measuring the same (the other holds an
+    elliptic cylinder).
 
 ## Consequences
 
