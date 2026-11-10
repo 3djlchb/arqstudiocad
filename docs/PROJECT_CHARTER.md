@@ -8,7 +8,7 @@ building-services design, with coordinated information models and CAD
 drawings of professional quality.
 
 This charter states what the project is and where it goes. The governing
-document is the [master plan](MASTER_PLAN.md) (version 2.2); how the
+document is the [master plan](MASTER_PLAN.md) (version 2.3); how the
 project is built is in the [system architecture](SYSTEM_ARCHITECTURE.md),
 the [technical contract](architecture/technical-contract.md) and the
 [ADRs](architecture/adr/); the order of work is in
@@ -43,7 +43,7 @@ and technical and visual deliverables tied to the project.**
 - Modular architecture, stable APIs, automated tests and measured performance.
 - Every dependency is chosen for function, license, compatibility and upkeep.
 
-## Scope: eleven modules
+## Scope: fourteen modules
 
 | | Module | Content |
 |---|---|---|
@@ -58,6 +58,9 @@ and technical and visual deliverables tied to the project.**
 | M09 | Associative technical documentation | Plans, sections, elevations, profiles, details, hatches, lineweights, dimensions, labels, title blocks, scales, sheets tied to the model |
 | M10 | Coordination | Federated models, model comparison, clash detection, change review, quantities, validation, traceability |
 | M11 | Automation and extensions | Public API, Python scripts, plugins, custom commands, importers and exporters, external engines, automated tasks |
+| M12 | Texture | Texture maps painted, generated and mapped onto the model; node-based authoring; later, a separate texturing application on the same core |
+| M13 | Nodes | Node graphs on the owned geometry kernel, the base of every node-based capability |
+| M14 | Materials | Physically based materials: library, assignment to objects, layers and faces, carried to the viewport, renders and IFC |
 
 Mechanical modeling (parametric parts, assemblies, fabrication drawings) may
 become a workspace once its scope is defined.

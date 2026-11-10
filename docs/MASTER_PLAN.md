@@ -1,11 +1,13 @@
 # ArqStudioCAD — Master plan
 
-Version 2.2 · November 2026 · The project's governing document, adopted by the
+Version 2.3 · November 2026 · The project's governing document, adopted by the
 maintainer on 2026-10-13; 2.1 (same day) keeps DWG as the working format, after
 BricsCAD, with an own internal model and the native format reserved
 (ADR 0018); 2.2 (2026-11-10) splits the phases into vertical and horizontal
 ones, ends the vertical ones with the first release and makes Free Geometry
-phase 05 ([ADR 0035](architecture/adr/0035-phase-structure.md)). The other governing documents
+phase 05 ([ADR 0035](architecture/adr/0035-phase-structure.md)); 2.3 (same day) adds the
+horizontal phases Texture, Nodes and Materials and their modules
+([ADR 0036](architecture/adr/0036-texture-nodes-materials.md)). The other governing documents
 ([index](README.md)) develop it; where they disagree, this plan and the
 ADRs that implement it prevail.
 
@@ -102,6 +104,9 @@ need, and the Rust core never depends on interface classes. Details:
 | M09 | Associative technical documentation | Plans, dimensions, sections, elevations, labels, title blocks, scales, sheets tied to the model |
 | M10 | Coordination | Model comparison, clash detection, change review, traceability |
 | M11 | Automation and extensions | Public API, plugins, scripting, automated tasks, third-party tools |
+| M12 | Texture | Texture maps painted, generated and mapped onto the model; node-based authoring; a core that a separate texturing application can build on |
+| M13 | Nodes | Node graphs evaluated on the owned geometry kernel, the base of every node-based capability |
+| M14 | Materials | Physically based materials, their library and assignment, carried to the viewport, the render and IFC |
 
 Rendering, animation and walkthroughs are **transversal capabilities**, not a
 module isolated from the data model. Advanced modules depend on the core
@@ -238,6 +243,9 @@ Two rules hold for the horizontal phases
 | 10 | Coordination and walkthroughs | horizontal | clash detection, revision comparison, multidisciplinary review, interactive visualization |
 | 11 | Extensions and advanced optimization | horizontal | plugin API, automation, performance profiles, large models, additional libraries, LuxCoreRender evaluation |
 | 12 | Cross-platform distribution | horizontal | installers, bundled dependencies, signing where it applies, updates, installation docs, tests on Windows, Linux, macOS |
+| 13 | Texture | horizontal | the volumes the application makes, textured: maps painted, generated or loaded, mapped onto them and feeding their materials, kept with the drawing and seen in the viewport and the render ([ADR 0036](architecture/adr/0036-texture-nodes-materials.md)) |
+| 14 | Nodes | horizontal | geometry built and changed by node graphs evaluated on the owned kernel, the graphs kept with the drawing, used by at least one other phase |
+| 15 | Materials | horizontal | a library of physically based materials assigned to objects, layers and faces, kept in the DWG, seen in the viewport, carried to the render and IFC |
 
 ### 9.1. Planned automation languages (M11, phase 11)
 

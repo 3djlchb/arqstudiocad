@@ -6,11 +6,11 @@ its reasons.
 
 | Document | What it settles |
 |---|---|
-| [Master plan](MASTER_PLAN.md) | Vision, official decisions, modules, phases, rules (version 2.2) |
-| [Project charter](PROJECT_CHARTER.md) | Mission, principles, scope (M01–M11), success criteria, limits |
+| [Master plan](MASTER_PLAN.md) | Vision, official decisions, modules, phases, rules (version 2.3) |
+| [Project charter](PROJECT_CHARTER.md) | Mission, principles, scope (M01–M14), success criteria, limits |
 | [System architecture](SYSTEM_ARCHITECTURE.md) | Layers and responsibilities; today's tree and the target layout |
 | [Technical contract](architecture/technical-contract.md) | The binding Rust–Python–PySide6 contracts |
-| [Modules and roadmap](MODULES_AND_ROADMAP.md) | Phases 00–12 (vertical and horizontal), milestones and where the project stands |
+| [Modules and roadmap](MODULES_AND_ROADMAP.md) | Phases 00–15 (vertical and horizontal), milestones and where the project stands |
 | [AI agent workflow](AI_AGENT_WORKFLOW.md) | Shared scan, implementation and handoff process for any coding agent |
 | [Data and formats](DATA_AND_FORMATS.md) | Document model, working format, exchange formats, conversion rule |
 | [DWG/DXF interoperability](DWG_DXF_INTEROPERABILITY.md) | The engine decision, protections, capability matrix |

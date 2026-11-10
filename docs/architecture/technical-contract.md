@@ -404,7 +404,7 @@ foundation, 02 CAD core, 03 DWG/DXF, 04 associative technical documentation
 and the first release (the vertical phases, the core); 05 Free Geometry, 06
 BIM and IFC, 07 topography, 08 architecture, structures and MEP, 09
 rendering and animation, 10 coordination and walkthroughs, 11 extensions and
-optimization, 12 distribution (the horizontal phases, modules on the core,
-which never change it on their own: [ADR 0035](adr/0035-phase-structure.md)).
+optimization, 12 distribution, 13 texture, 14 nodes, 15 materials (the
+horizontal phases, modules on the core, which never change it on their own: [ADR 0035](adr/0035-phase-structure.md)).
 The project's goals are in the
 [project charter](../PROJECT_CHARTER.md).

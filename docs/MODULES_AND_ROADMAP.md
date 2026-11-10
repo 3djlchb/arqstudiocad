@@ -1,6 +1,6 @@
 # ArqStudioCAD — Modules and roadmap
 
-The order of work of the [master plan](MASTER_PLAN.md) (version 2.2,
+The order of work of the [master plan](MASTER_PLAN.md) (version 2.3,
 2026-11-10), and where the project stands. Phases are not dates: a phase
 ends when its exit criterion is met and tested, not when its code exists.
 
@@ -20,6 +20,9 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   dimensions, hatches, layouts and plotting to PDF (04.2–04.5); milestone
   02.14 is now the basic 2D commands; Free Geometry, milestone 02.14 until
   then, is phase 05, and the phases after it moved one number up.
+- **New horizontal phases (2026-11-10, [ADR 0036](architecture/adr/0036-texture-nodes-materials.md)):**
+  13 Texture, 14 Nodes and 15 Materials, each with a Rust core of its own
+  on top of the core; their milestones come as the project needs them.
 - **Technical MVP: 8 of 8** (master plan §15): milestone 02.6 saves and
   recovers the working document (DWG) from the own internal model.
 - **Working format:** DWG, as BricsCAD does, with an own internal model; the
@@ -342,6 +345,76 @@ ARM64; native packages, AppImage, Flatpak) and macOS (Apple Silicon, Intel);
 public releases only when the release criteria of the master plan (§14) are
 met.
 
+## Phase 13 — Texture ○
+
+Texturing the volumes the application models, milestone by milestone as
+the need comes (maintainer, 2026-11-10; [ADR 0036](architecture/adr/0036-texture-nodes-materials.md),
+proposed): the image maps that feed materials' channels, mapped by
+projections and texture coordinates, painted on the model, generated
+procedurally and, with phase 14, authored by node graphs. Its own core,
+the `arq-texture` crate, on top of the core and never inside it, designed
+so that a separate node-based texturing application of our own, in the
+manner of ArmorPaint and Substance Designer, can be built on it later
+(where and under what name, decided by its own ADR). References: the
+textures of [IngeTrazo](references/ingetrazo.md) and ArmorPaint. Module
+M12.
+
+Exit: the volumes the application makes, textured: maps painted, generated
+or loaded, mapped onto them and feeding their materials, kept with the
+drawing, reopened, and seen in the viewport and in the render.
+
+Milestones 13.1… are defined with the maintainer. Order to start from: a
+study of the references; texture coordinates on faces and meshes (a
+vertical milestone, ADR 0035 D2); image maps through materials (phase 15);
+projections and unwrapping; painting on the model; procedural maps;
+node-based authoring with phase 14.
+
+## Phase 14 — Nodes ○
+
+A node system of our own after Blender's Geometry Nodes and the node graph
+[Open CAD Studio](references/opencadstudio.md) is building (opencadgraph,
+dataflow over objects' properties), its geometry our own kernel's
+(maintainer, 2026-11-10; [ADR 0036](architecture/adr/0036-texture-nodes-materials.md),
+proposed): typed values flowing through nodes, evaluated and cached, with
+no external geometry engine; what a graph makes is ordinary geometry,
+measured, saved and combined like the rest. Its own core, the `arq-nodes`
+crate, on top of the core. The base of every later horizontal phase that
+needs nodes, Texture's node-based authoring among them. Module M13.
+
+Exit: geometry built and changed by node graphs evaluated on the owned
+kernel, the graphs kept with the drawing and evaluated again when it is
+reopened, their results usable as any solid or mesh, and the system used
+by at least one other phase.
+
+Milestones 14.1… are defined with the maintainer. Order to start from: a
+study of Geometry Nodes and opencadgraph; the graph (nodes, typed sockets,
+fields) and its evaluation and caching; basic geometry nodes (primitives, transforms,
+booleans, instances); graphs kept with the drawing (a vertical milestone if
+the document must change, ADR 0035 D2); the node editor; then its use by
+other phases.
+
+## Phase 15 — Materials ○
+
+Physically based (PBR) materials for what the application models
+(maintainer, 2026-11-10; [ADR 0036](architecture/adr/0036-texture-nodes-materials.md),
+proposed): base color, roughness, metalness, normal, opacity and emission,
+in a library, assigned to objects, layers and faces, kept with the drawing
+and carried to the viewport, the render (phase 09) and IFC (phase 06);
+physical properties for BIM (density, cost) join them when BIM arrives.
+Textures, the image maps that feed their channels, are phase 13. Its own
+core, the `arq-material` crate, on top of the core. Module M14.
+
+Exit: a library of PBR materials, assigned to objects, layers and faces,
+kept in the DWG (AutoCAD's materials where they apply) and reopened, seen
+in the viewport, and carried to the render and to IFC.
+
+Milestones 15.1… are defined with the maintainer. Order to start from: a
+study of the references (IngeTrazo's materials, glTF 2.0's metallic-
+roughness model, AutoCAD's materials in the DWG); the material model and
+its library; assigning materials in the document and keeping them in the
+DWG (vertical milestones, ADR 0035 D2); shading with materials in the
+viewport; then the render and IFC.
+
 ### Milestone 02.8 sequence
 
 Milestone 02.8 proceeds in independently reviewable steps:
@@ -408,6 +481,9 @@ with MASSPROP, the first 3D command, in its Analysis group.
 | M09 Associative technical documentation | 04 |
 | M10 Coordination | 10 |
 | M11 Automation and extensions | 11 (the Python API exists since 02.3) |
+| M12 Texture | 13 |
+| M13 Nodes | 14 |
+| M14 Materials | 15 |
 
 ## Old names
 
