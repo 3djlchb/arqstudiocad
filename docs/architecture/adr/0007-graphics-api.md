@@ -198,3 +198,47 @@ rasterizer stays the fallback, behind the same widget. `GpuRenderer`'s
 device, pipeline, shader and trace carry over. Its offscreen image stays
 for the equivalence tests and wherever no window is drawn.
 
+## Release gate passed on the reference machine (2026-11-10)
+
+The GPU viewport of ADR 0034 passed this ADR's release gate on the
+reference machine with the code of `main` at `a2b6a72`. The renderer and
+its Qt presentation, open since 2026-10-17, are done: wgpu presents
+straight into the viewport's native window.
+
+- **Machine:** GeForce GT 730 (GK208B, `10de:1287`) on nouveau, Mesa
+  25.0.7 (`25.0.7-2+deb13u1`), OpenGL 4.3 and OpenGL ES 3.2, LMDE 7 with
+  kernel 6.12.116, X11 (Cinnamon), Core i7-2600 without AVX2.
+- **Backend:** OpenGL ES on the GT 730 (`NV106`, device type `Other`).
+  Vulkan is lavapipe and the software backend llvmpipe, both of device type
+  `Cpu`, and both passed over.
+- **`tools/reference_machine_report.sh`:** build, Rust tests, Python tests
+  (907 passed, 2 skipped, with `ARQ_GPU_TESTS=require`), the installation
+  self-check and the timings all pass. The 100,000-line drawing opens in
+  337 ms, moves 1,000 entities in 3.5 ms and saves as DWG in 439 ms.
+- **GPU tests with `ARQ_GPU_TESTS=require`:** `arq-render`'s renderer ran
+  on `NV106` with 1 and with 4 samples. All 49 of its tests passed, the
+  CPU-against-GPU comparisons included. Python's GPU, viewport and renderer
+  tests passed (28): the three that open a real X11 window ran, none
+  skipped.
+- **`tools/gpu_viewport_check.py`,** 1200 × 650 viewport, 100,000
+  entities, the median frame (95th percentile):
+
+  | Path | Pan | Zoom |
+  |---|---|---|
+  | GPU, OpenGL ES on the GT 730 | 16.8 ms (20.4) | 16.9 ms (21.3) |
+  | CPU rasterizer | 44.1 ms (50.8) | 60.6 ms (67.0) |
+
+  The GPU holds the display's 60 Hz. Its overlays (selection, highlight,
+  grips, a window, a dropped block's note, the crosshair) are the same as
+  the CPU's: 0 pixels apart. Both captures show the drawing and every
+  overlay, neither blank.
+- **The application started normally:**
+  - Automatic chose the GT 730 (OpenGL), and the command window and
+    Options › Graphics said so.
+  - With `--safe-mode` the CPU drew, and both said that too.
+  - The crash sentinel was gone once the first frame was presented, and
+    it was not left after a normal close.
+
+Best-effort platforms do not block a release (this ADR's tiers). macOS
+remains to try when a Mac is at hand (ADR 0034 D6.4).
+
