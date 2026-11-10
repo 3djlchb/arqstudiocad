@@ -1,4 +1,4 @@
-"""The command system, the session and the phase 5 commands (contract §5,
+"""The command system, the session and the milestone 02.4 commands (contract §5,
 ADR 0006, ADR 0013 D5.4). No Qt: commands run here as from a script."""
 
 import logging

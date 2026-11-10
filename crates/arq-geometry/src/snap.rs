@@ -1,7 +1,8 @@
 //! Characteristic points of curves: the geometry behind object snaps.
 //!
 //! Pure geometry only. Choosing which snaps are active, the pick aperture
-//! and the markers drawn on screen belong to the application (phase 6).
+//! and the markers drawn on screen belong to the application (milestone
+//! 02.5).
 
 use crate::geometry::Geometry2;
 use crate::intersect::intersect;

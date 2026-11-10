@@ -2,6 +2,10 @@
 
 Date: 2026-10-21 · Status: Accepted · Settles ADR 0014 question 4
 
+> **Amended by [ADR 0035](0035-phase-structure.md) (2026-11-10):** the
+> phases after 04 moved one number up (BIM and IFC, named here as phase
+> 05, is now phase 06). The text below keeps its history.
+
 ## Context
 
 ADR 0014 left open what the core edits in 3D, and how 3D solids (ACIS in

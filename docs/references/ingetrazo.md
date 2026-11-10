@@ -49,7 +49,7 @@ volumes. Linux first, also Windows and macOS; about 1,400 stars and some
 | Take | Why |
 |---|---|
 | Its tools and their behaviour: push/pull, offset, bridge, follow me, inference, typed lengths, the guard against broken solids | They are what makes free modeling quick; a reference for [ADR 0031](../architecture/adr/0031-free-geometry.md) |
-| BIM as tags on free geometry | It fits phase 05 and our budgets (ADRs 0027, 0028) |
+| BIM as tags on free geometry | It fits phase 06 (BIM and IFC) and our budgets (ADRs 0027, 0028) |
 | `.skp` through OpenSKP | The same library, if `.skp` import comes |
 
 | Do not take | Why |

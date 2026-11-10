@@ -126,7 +126,7 @@ bash packaging/macos/build.sh     # -> dist/macos/ArqStudioCAD-<v>-macos-univers
 The build checks with `lipo` that the executable and the extension contain
 both architectures, then runs `--check` natively and again with
 `arch -x86_64` (Rosetta), so the Intel half is proven on Apple Silicon too.
-Minimum macOS: 14 Sonoma. Not signed or notarized until phase 9: open it the
+Minimum macOS: 14 Sonoma. Not signed or notarized until phase 12 (distribution): open it the
 first time with right click > Open.
 
 ## All platforms in CI

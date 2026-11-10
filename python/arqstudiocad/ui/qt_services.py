@@ -76,7 +76,7 @@ class QtUiServices:
     def choose_save_path(self, suggested: str) -> Path | None:
         start = str(Path(self.last_folder) / suggested) if self.last_folder else suggested
         # DXF first until the round-trip corpus makes DWG the default
-        # (contract section 10, phase 8).
+        # (contract section 10, milestone 03.6).
         filters = tr("DXF drawings (*.dxf);;DWG drawings (*.dwg)")
         path, _ = QFileDialog.getSaveFileName(self._parent, tr("Save drawing as"), start, filters)
         return self._remember(path)

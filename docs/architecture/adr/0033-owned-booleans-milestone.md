@@ -2,6 +2,11 @@
 
 Date: 2026-11-07 · Status: Proposed
 
+> **Amended by [ADR 0035](0035-phase-structure.md) (2026-11-10):** 02.15
+> keeps its number. The first release (milestone 04.6) needs its curved
+> booleans done, or refused with a clear message. The phases this text
+> names after 04 moved one number up.
+
 ## Context
 
 [ADR 0032](0032-owned-planar-booleans.md) brought the owned kernel's

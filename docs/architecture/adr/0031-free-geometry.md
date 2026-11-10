@@ -2,6 +2,12 @@
 
 Date: 2026-11-05 · Status: Proposed · Amended 2026-11-05 (D10 to D13: three ways of modeling)
 
+> **Amended by [ADR 0035](0035-phase-structure.md) (2026-11-10):** Free
+> Geometry is no longer milestone 02.14 but phase 05, the first horizontal
+> phase; what it needs of the core is asked for as milestones of the
+> vertical phases. Milestone 02.14 is now the basic 2D commands. The text
+> below keeps its history.
+
 ## Context
 
 CAD and BIM programs are strict about how volumes are made: primitives,

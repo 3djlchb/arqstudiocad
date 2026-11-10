@@ -28,13 +28,13 @@ one is for, its adapter and its state. Master plan §5–§6; decisions in
 | `.ascad` (reserved) | Native format for when DWG plus a project database are not enough | — | designed, not implemented (ADR 0018 D5) |
 | Project database | Project-wide data shared by several drawings (as BricsCAD's `.bsyslib`) | — | decided by the multidisciplinary test (ADR 0018 D4) |
 | DXF (R12–2018) | Open exchange | AcadRust | read and write |
-| IFC | BIM interoperability | IfcOpenShell, decoupled | phase 05 |
+| IFC | BIM interoperability | IfcOpenShell, decoupled | phase 06 |
 | 3DM / openNURBS | Exchange with Rhino | to be evaluated | later |
 | STEP and other 3D | Per use case | to be evaluated | later |
 | SVG / PDF | Documentation, printing, delivery | — | phase 04 |
-| OBJ / glTF, meshes | Visualization, geometry exchange, walkthroughs | — | phases 08–09 |
-| Blender / Cycles | High-quality external rendering | external process | phase 08 |
-| FFmpeg | Sequences and video | external process | phase 08 |
+| OBJ / glTF, meshes | Visualization, geometry exchange, walkthroughs | — | phases 09–10 |
+| Blender / Cycles | High-quality external rendering | external process | phase 09 |
+| FFmpeg | Sequences and video | external process | phase 09 |
 | PNG | Viewport images, previews | tiny-skia (`arq-render`) | in use |
 
 Each format has an independent adapter; none of them is the project's only

@@ -3,6 +3,12 @@
 Date: 2026-10-13 · Status: Accepted · Amends the phase list of the technical
 contract (§15)
 
+> **Amended by [ADR 0035](0035-phase-structure.md) (2026-11-10):** the
+> phases are vertical (00–04, the core, ending with the first release) and
+> horizontal (05 on, modules on the core); Free Geometry is phase 05 and
+> the phases after it moved one number up. The text below keeps its
+> history.
+
 ## Context
 
 ArqStudioCAD started as a 2D/3D CAD with DWG as its native format. On

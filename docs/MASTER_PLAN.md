@@ -1,9 +1,11 @@
 # ArqStudioCAD — Master plan
 
-Version 2.1 · October 2026 · The project's governing document, adopted by the
+Version 2.2 · November 2026 · The project's governing document, adopted by the
 maintainer on 2026-10-13; 2.1 (same day) keeps DWG as the working format, after
 BricsCAD, with an own internal model and the native format reserved
-(ADR 0018). The other governing documents
+(ADR 0018); 2.2 (2026-11-10) splits the phases into vertical and horizontal
+ones, ends the vertical ones with the first release and makes Free Geometry
+phase 05 ([ADR 0035](architecture/adr/0035-phase-structure.md)). The other governing documents
 ([index](README.md)) develop it; where they disagree, this plan and the
 ADRs that implement it prevail.
 
@@ -204,26 +206,40 @@ ADRs.
 ## 9. Phases
 
 Incremental phases; dates are set once the real pace is known, never
-invented. Phases are sequential where there are technical dependencies and
-may run in parallel once contracts are defined. Status and milestones:
-[modules and roadmap](MODULES_AND_ROADMAP.md).
+invented. Status and milestones: [modules and roadmap](MODULES_AND_ROADMAP.md).
 
-| | Phase | Exit criterion |
-|---|---|---|
-| 00 | Specification and contracts | decisions documented and a compilable skeleton |
-| 01 | Technological foundation | a minimal reproducible application on Windows showing a result computed in Rust |
-| 02 | CAD core | create, edit, save and recover a basic drawing |
-| 03 | DWG/DXF | a documented compatibility matrix and no known silent losses in the cases covered |
-| 04 | Associative technical documentation | the parametric engine first (constraints, dynamic blocks, dependencies); dimensions, texts, annotations, views, scales, sheets, printing, documentation tied to the model |
-| 05 | BIM and IFC | semantic elements, properties, spatial relations, IFC import/export, exchange validation |
-| 06 | Topography and surfaces | points, triangulation, contour lines, profiles, sections, terrain calculations |
-| 07 | Architecture, structures and MEP | specialized modeling, links between disciplines, loads and analysis through engines; results independently verifiable |
-| 08 | Rendering and animation | Blender/Cycles, model transfer, materials, lighting, sequences, FFmpeg |
-| 09 | Coordination and walkthroughs | clash detection, revision comparison, multidisciplinary review, interactive visualization |
-| 10 | Extensions and advanced optimization | plugin API, automation, performance profiles, large models, additional libraries, LuxCoreRender evaluation |
-| 11 | Cross-platform distribution | installers, bundled dependencies, signing where it applies, updates, installation docs, tests on Windows, Linux, macOS |
+- **Vertical phases, 00–04:** the core, in sequence. They end with the
+  first release, milestone 04.6, after the parametric engine (04.1),
+  dimensions, hatches, layouts and plotting to PDF (04.2–04.5).
+- **Horizontal phases, 05 on:** modules on the core, through its APIs.
+  New phases are added at the end as the project grows.
 
-### 9.1. Planned automation languages (M11, phase 10)
+Two rules hold for the horizontal phases
+([ADR 0035](architecture/adr/0035-phase-structure.md)):
+
+1. A horizontal phase never changes the core on its own. What it needs of
+   the core is asked for as a milestone of a vertical phase, or, when how
+   the core changes must be decided, by an ADR.
+2. A horizontal phase's number tells when it was added, not a strict
+   dependency. New phases go at the end; none is renumbered.
+
+| | Phase | Kind | Exit criterion |
+|---|---|---|---|
+| 00 | Specification and contracts | vertical | decisions documented and a compilable skeleton |
+| 01 | Technological foundation | vertical | a minimal reproducible application on Windows showing a result computed in Rust |
+| 02 | CAD core | vertical | create, edit, save and recover a basic drawing, with the basic 2D commands (02.14) |
+| 03 | DWG/DXF | vertical | a documented compatibility matrix and no known silent losses in the cases covered |
+| 04 | Associative technical documentation | vertical | the parametric engine first (constraints, dynamic blocks, dependencies); dimensions, hatches, texts, annotations, views, scales, layouts, plotting to PDF, documentation tied to the model; then the first release (04.6), which closes the vertical phases |
+| 05 | Free Geometry | horizontal | organic forms modeled by flat faces, subdivision and NURBS, mixed in one drawing, saved in DWG and reopened, measured and combined here and in other CAD applications ([ADR 0031](architecture/adr/0031-free-geometry.md)) |
+| 06 | BIM and IFC | horizontal | semantic elements, properties, spatial relations, IFC import/export, exchange validation |
+| 07 | Topography and surfaces | horizontal | points, triangulation, contour lines, profiles, sections, terrain calculations |
+| 08 | Architecture, structures and MEP | horizontal | specialized modeling, links between disciplines, loads and analysis through engines; results independently verifiable |
+| 09 | Rendering and animation | horizontal | Blender/Cycles, model transfer, materials, lighting, sequences, FFmpeg |
+| 10 | Coordination and walkthroughs | horizontal | clash detection, revision comparison, multidisciplinary review, interactive visualization |
+| 11 | Extensions and advanced optimization | horizontal | plugin API, automation, performance profiles, large models, additional libraries, LuxCoreRender evaluation |
+| 12 | Cross-platform distribution | horizontal | installers, bundled dependencies, signing where it applies, updates, installation docs, tests on Windows, Linux, macOS |
+
+### 9.1. Planned automation languages (M11, phase 11)
 
 Maintainer direction recorded on 2026-11-01: Python remains the primary
 public automation API. Plan **ArqLISP** as an independently implemented Lisp
@@ -231,7 +247,7 @@ dialect that can execute a documented subset of AutoLISP source routines
 (`.lsp`); evaluate **ArqBasic** afterward as a possible independently
 implemented BASIC dialect with a documented subset of VBA compatibility.
 These are future M11 work, not implemented capabilities or a change to the
-current phase priorities. The [phase 10 milestones](MODULES_AND_ROADMAP.md)
+current phase priorities. The [phase 11 milestones](MODULES_AND_ROADMAP.md)
 record their order and acceptance criteria.
 
 All language adapters must use the same controlled application operations
@@ -367,6 +383,11 @@ licenses and attributions right; installs and starts on the platforms it
 announces; destroys no data when an operation fails; warns clearly before
 lossy conversions; has reproducible build and packaging procedures; has
 enough documentation to install, use and extend it.
+
+The first release, milestone 04.6, closes the vertical phases and adds its
+own minimums to these (ADR 0035 D3, listed in the
+[roadmap](MODULES_AND_ROADMAP.md)); like every official release, it waits
+for the maintainer's decision that the application is mature.
 
 ## 15. First official milestone: the technical MVP
 
