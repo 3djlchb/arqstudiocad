@@ -648,8 +648,11 @@ fn coedge_nodes(body: &Body, coedge: &Coedge, fine: usize, out: &mut Vec<Node>) 
     };
     cuts.sort_by(f64::total_cmp);
     cuts.dedup();
+    // An ellipse's sixteen pieces a turn; a spline's two between knots, at
+    // least as many as an ellipse's in all (a conic's arc is one span).
     let per_cut = match &edge.curve {
         Some(Curve::Ellipse(_)) => 16,
+        Some(Curve::Nurbs(_)) => 2usize.max(16_usize.div_ceil(cuts.len() - 1)),
         _ => 2,
     } * fine;
     let mut nodes = Vec::with_capacity((cuts.len() - 1) * per_cut * NODES.len());

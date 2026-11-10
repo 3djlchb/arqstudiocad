@@ -9,7 +9,9 @@
 //! - a segment;
 //! - an arc of an ellipse, a circle among them;
 //! - the graph of a rational trigonometric function: what a plane leaves on
-//!   a cylinder or a cone, in its parameters `(u, v)`.
+//!   a cylinder or a cone, in its parameters `(u, v)`;
+//! - an arc of a conic as a rational quadratic: what a cone leaves on a
+//!   plane, a parabola or a hyperbola among them.
 //!
 //! # Method
 //!
@@ -79,6 +81,20 @@ pub enum Trim {
         /// Where `x` ends.
         to: f64,
     },
+    /// The rational quadratic arc from `from` to `to`, pulled toward
+    /// `control` by `weight`: `((1−t)² F + 2t(1−t) w C + t² T) / ((1−t)² +
+    /// 2t(1−t) w + t²)`. An arc of an ellipse when the weight is below 1, a
+    /// parabola at 1, a hyperbola above; it turns less than a half turn.
+    Conic {
+        /// Where it starts.
+        from: Point2,
+        /// Where the tangents at its ends meet.
+        control: Point2,
+        /// Where it ends.
+        to: Point2,
+        /// The control point's weight, positive.
+        weight: f64,
+    },
 }
 
 impl Trim {
@@ -121,11 +137,23 @@ impl Trim {
                 from: to,
                 to: from,
             },
+            Self::Conic {
+                from,
+                control,
+                to,
+                weight,
+            } => Self::Conic {
+                from: to,
+                control,
+                to: from,
+                weight,
+            },
         }
     }
 
-    /// The part from `t0` to `t1`.
-    fn part(&self, t0: f64, t1: f64) -> Self {
+    /// The part from `t0` to `t1`, run by a parameter of its own from 0
+    /// to 1.
+    pub fn part(&self, t0: f64, t1: f64) -> Self {
         match *self {
             Self::Segment { .. } => Self::Segment {
                 from: self.point(t0),
@@ -150,6 +178,29 @@ impl Trim {
                 from: from + (to - from) * t0,
                 to: from + (to - from) * t1,
             },
+            Self::Conic {
+                from,
+                control,
+                to,
+                weight,
+            } => {
+                // In homogeneous coordinates the arc is a quadratic: its
+                // part's control points are its blossom's values.
+                let h = |p: Point2, w: f64| [p.x() * w, p.y() * w, w];
+                let (f, c, e) = (h(from, 1.0), h(control, weight), h(to, 1.0));
+                let blossom = |a: f64, b: f64| {
+                    let k = [(1.0 - a) * (1.0 - b), (1.0 - a) * b + a * (1.0 - b), a * b];
+                    [0, 1, 2].map(|i| k[0] * f[i] + k[1] * c[i] + k[2] * e[i])
+                };
+                let (p0, p1, p2) = (blossom(t0, t0), blossom(t0, t1), blossom(t1, t1));
+                let point = |q: [f64; 3]| Point2::from_finite(q[0] / q[2], q[1] / q[2]);
+                Self::Conic {
+                    from: point(p0),
+                    control: point(p1),
+                    to: point(p2),
+                    weight: p1[2] / (p0[2] * p2[2]).sqrt(),
+                }
+            }
         }
     }
 
@@ -177,6 +228,20 @@ impl Trim {
                 let x = from + (to - from) * t;
                 [x - o[0], graph(num, den, x) - o[1]]
             }
+            Self::Conic {
+                from,
+                control,
+                to,
+                weight,
+            } => {
+                let b = [(1.0 - t) * (1.0 - t), 2.0 * t * (1.0 - t) * weight, t * t];
+                let d = b[0] + b[1] + b[2];
+                let mix = |f: f64, c: f64, e: f64| (b[0] * f + b[1] * c + b[2] * e) / d;
+                [
+                    mix(from.x() - o[0], control.x() - o[0], to.x() - o[0]),
+                    mix(from.y() - o[1], control.y() - o[1], to.y() - o[1]),
+                ]
+            }
         }
     }
 
@@ -198,6 +263,27 @@ impl Trim {
                 let (n, dn) = trig(num, x);
                 let (d, dd) = trig(den, x);
                 [to - from, (to - from) * (dn * d - n * dd) / (d * d)]
+            }
+            Self::Conic {
+                from,
+                control,
+                to,
+                weight,
+            } => {
+                let b = [(1.0 - t) * (1.0 - t), 2.0 * t * (1.0 - t) * weight, t * t];
+                let db = [-2.0 * (1.0 - t), 2.0 * (1.0 - 2.0 * t) * weight, 2.0 * t];
+                let (d, dd) = (b[0] + b[1] + b[2], db[0] + db[1] + db[2]);
+                let axis = |f: f64, c: f64, e: f64| {
+                    let (n, dn) = (
+                        b[0] * f + b[1] * c + b[2] * e,
+                        db[0] * f + db[1] * c + db[2] * e,
+                    );
+                    (dn * d - n * dd) / (d * d)
+                };
+                [
+                    axis(from.x(), control.x(), to.x()),
+                    axis(from.y(), control.y(), to.y()),
+                ]
             }
         }
     }
@@ -283,8 +369,69 @@ impl Trim {
                     },
                 )
             }
+            (Self::Conic { from, .. }, Self::Conic { to: end, .. }) => {
+                // One conic when the arc through both far ends, with their
+                // tangents there, passes through the corner between them.
+                let corner = self.at(1.0, [0.0, 0.0]);
+                let joined = Self::conic_through(
+                    [from.x(), from.y()],
+                    self.derivative(0.0),
+                    [end.x(), end.y()],
+                    next.derivative(1.0),
+                    corner,
+                )?;
+                let on = |piece: &Self| {
+                    (1..8).all(|i| {
+                        let q = piece.at(i as f64 / 8.0, [0.0, 0.0]);
+                        project(&joined, q, [0.0, 0.0]).1 <= tol
+                    })
+                };
+                (on(self) && on(next)).then_some(joined)
+            }
             _ => None,
         }
+    }
+
+    /// The conic arc from `a` to `b`, leaving `a` along `da` and reaching
+    /// `b` along `db`, through the point `through`; none when the tangents
+    /// do not meet ahead (a half turn or more) or no such arc passes there.
+    pub fn conic_through(a: P, da: P, b: P, db: P, through: P) -> Option<Self> {
+        // The control point: a + s da = b − u db, both ahead, so
+        // s da + u db = b − a.
+        let det = da[0] * db[1] - da[1] * db[0];
+        if det.abs() <= 1e-300 {
+            return None;
+        }
+        let r = [b[0] - a[0], b[1] - a[1]];
+        let s = (r[0] * db[1] - r[1] * db[0]) / det;
+        let u = (da[0] * r[1] - da[1] * r[0]) / det;
+        if s <= 0.0 || u <= 0.0 {
+            return None;
+        }
+        let c = [a[0] + da[0] * s, a[1] + da[1] * s];
+        // `through` in the triangle's barycentric coordinates: on the arc at
+        // t they are (1−t)², 2t(1−t)w and t² over their sum, so
+        // w = k₁ / (2 √(k₀ k₂)).
+        let area = |p: P, q: P, r: P| (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+        let whole = area(a, c, b);
+        if whole.abs() <= 1e-300 {
+            return None;
+        }
+        let k = [
+            area(through, c, b) / whole,
+            area(a, through, b) / whole,
+            area(a, c, through) / whole,
+        ];
+        if k.iter().any(|&x| x <= 0.0) {
+            return None;
+        }
+        let point = |p: P| Point2::new(p[0], p[1]).ok();
+        Some(Self::Conic {
+            from: point(a)?,
+            control: point(c)?,
+            to: point(b)?,
+            weight: k[1] / (2.0 * (k[0] * k[2]).sqrt()),
+        })
     }
 }
 

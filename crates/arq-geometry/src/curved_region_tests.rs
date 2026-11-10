@@ -406,3 +406,156 @@ fn trims_running_along_each_other_up_to_near_their_end() {
     let rest = face.difference(&section, TOL);
     assert!(close(rest.area(), face.area() - both.area()));
 }
+
+/// The parabola `y = x²` from `x = −1` to `x = 1`, as a rational quadratic.
+fn parabola() -> Trim {
+    Trim::Conic {
+        from: p(-1.0, 1.0),
+        control: p(0.0, -1.0),
+        to: p(1.0, 1.0),
+        weight: 1.0,
+    }
+}
+
+/// The region between `y = x²` and `y = 1`: area 4/3.
+fn parabolic_segment() -> CurvedRegion {
+    let back = Trim::Segment {
+        from: p(1.0, 1.0),
+        to: p(-1.0, 1.0),
+    };
+    CurvedRegion::new(vec![vec![parabola(), back]], TOL).unwrap()
+}
+
+#[test]
+fn conic_arcs_are_exact() {
+    // A parabola, its points on y = x².
+    let curve = parabola();
+    for i in 0..=10 {
+        let q = curve.point(i as f64 / 10.0);
+        assert!((q.y() - q.x() * q.x()).abs() < 1e-14, "{q:?}");
+    }
+    assert!(close(parabolic_segment().area(), 4.0 / 3.0));
+    // A quarter circle, the weight √2 / 2: a quarter disc with its radii.
+    let quarter = Trim::Conic {
+        from: p(1.0, 0.0),
+        control: p(1.0, 1.0),
+        to: p(0.0, 1.0),
+        weight: 0.5f64.sqrt(),
+    };
+    for i in 0..=10 {
+        let q = quarter.point(i as f64 / 10.0);
+        assert!((q.x().hypot(q.y()) - 1.0).abs() < 1e-14);
+    }
+    let wedge = CurvedRegion::new(
+        vec![vec![
+            Trim::Segment {
+                from: p(0.0, 0.0),
+                to: p(1.0, 0.0),
+            },
+            quarter,
+            Trim::Segment {
+                from: p(0.0, 1.0),
+                to: p(0.0, 0.0),
+            },
+        ]],
+        TOL,
+    )
+    .unwrap();
+    assert!(close(wedge.area(), PI / 4.0));
+}
+
+#[test]
+fn a_conic_through_a_point_with_its_end_tangents() {
+    // The hyperbola x y = 1 from (1/2, 2) to (2, 1/2), through (1, 1).
+    let arc = Trim::conic_through(
+        [0.5, 2.0],
+        [1.0, -4.0],
+        [2.0, 0.5],
+        [1.0, -0.25],
+        [1.0, 1.0],
+    )
+    .expect("an arc");
+    let Trim::Conic { weight, .. } = arc else {
+        panic!("a conic");
+    };
+    assert!(weight > 1.0, "a hyperbola: {weight}");
+    for i in 0..=10 {
+        let q = arc.point(i as f64 / 10.0);
+        assert!((q.x() * q.y() - 1.0).abs() < 1e-13, "{q:?}");
+    }
+    // Between it and its chord: ∫ (5/2 − x − 1/x) = 15/8 − ln 4.
+    let chord = Trim::Segment {
+        from: p(2.0, 0.5),
+        to: p(0.5, 2.0),
+    };
+    let sliver = CurvedRegion::new(vec![vec![arc, chord]], TOL).unwrap();
+    assert!(
+        close(sliver.area(), 15.0 / 8.0 - 4f64.ln()),
+        "{}",
+        sliver.area()
+    );
+    // Tangents meeting behind: no arc.
+    assert!(
+        Trim::conic_through([0.0, 0.0], [1.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [0.5, 0.1]).is_none()
+    );
+}
+
+#[test]
+fn a_conic_split_and_joined_again() {
+    let curve = parabola();
+    let (head, tail) = (curve.part(0.0, 0.3), curve.part(0.3, 1.0));
+    for piece in [head, tail] {
+        for i in 0..=8 {
+            let q = piece.point(i as f64 / 8.0);
+            assert!((q.y() - q.x() * q.x()).abs() < 1e-13);
+        }
+    }
+    assert!((head.end() - tail.start()).length() < 1e-15);
+    // A hyperbola's parts: their weights brought back to the ends' 1.
+    let arc = Trim::conic_through(
+        [0.5, 2.0],
+        [1.0, -4.0],
+        [2.0, 0.5],
+        [1.0, -0.25],
+        [1.0, 1.0],
+    )
+    .unwrap();
+    for piece in [arc.part(0.0, 0.3), arc.part(0.3, 0.8), arc.part(0.8, 1.0)] {
+        for i in 0..=8 {
+            let q = piece.point(i as f64 / 8.0);
+            assert!((q.x() * q.y() - 1.0).abs() < 1e-13, "{q:?}");
+        }
+    }
+    // A region of the two pieces comes out of a boolean as one arc again.
+    let back = Trim::Segment {
+        from: p(1.0, 1.0),
+        to: p(-1.0, 1.0),
+    };
+    let split = CurvedRegion::new(vec![vec![head, tail, back]], TOL).unwrap();
+    // A box over its top, overlapping it by 0.4 × 0.1.
+    let same = split.union(&rect(-0.2, 0.9, 0.2, 1.5), TOL);
+    let arcs = same
+        .contours()
+        .iter()
+        .flatten()
+        .filter(|t| matches!(t, Trim::Conic { .. }))
+        .count();
+    assert_eq!(arcs, 1, "{:?}", same.contours());
+    assert!(close(same.area(), 4.0 / 3.0 + 0.24 - 0.04));
+}
+
+#[test]
+fn booleans_with_a_parabolic_segment() {
+    let segment = parabolic_segment();
+    let d = disc(0.6, 0.4, 0.5);
+    let both = segment.intersection(&d, TOL);
+    let union = segment.union(&d, TOL);
+    let rest = segment.difference(&d, TOL);
+    assert!(both.area() > 0.05 && both.area() < d.area());
+    assert!(close(union.area(), segment.area() + d.area() - both.area()));
+    assert!(close(rest.area(), segment.area() - both.area()));
+    // Cut by a line: under y = 1/4, the part between x = ±1/2 is 1/6 of
+    // the parabola's: ∫ (1/4 − x²) over [−1/2, 1/2] = 1/6.
+    let low = segment.intersection(&rect(-2.0, -1.0, 2.0, 0.25), TOL);
+    assert!(close(low.area(), 1.0 / 6.0), "{}", low.area());
+}

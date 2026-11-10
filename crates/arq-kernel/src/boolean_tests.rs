@@ -283,9 +283,15 @@ fn curved_solids_are_refused() {
         volume(&a.difference(&c).unwrap().unwrap()),
         8.0 - PI * 0.25 * 2.0
     ));
-    // A cone and a whole sphere wait for their deliveries.
+    // A cone too (delivery 2.3b): a tapered hole, a frustum from radius
+    // 0.425 at z = 0 to 0.275 at z = 2 taken away.
     let cone = Body::cone(p(1.0, 1.0, -1.0), 0.5, 0.2, 4.0).unwrap();
-    assert_eq!(a.difference(&cone), Err(BooleanError::Curved));
+    let frustum = PI * 2.0 / 3.0 * (0.425f64.powi(2) + 0.425 * 0.275 + 0.275f64.powi(2));
+    assert!(close(
+        volume(&a.difference(&cone).unwrap().unwrap()),
+        8.0 - frustum
+    ));
+    // A whole sphere waits for delivery 3.
     let ball = Body::sphere(p(1.0, 1.0, 1.0), 0.5).unwrap();
     assert_eq!(a.intersection(&ball), Err(BooleanError::Curved));
 }
