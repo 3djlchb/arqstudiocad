@@ -148,7 +148,10 @@ part of this ADR.
     its area. A torus face whose loops wind both ways is refused.
   - Gauss–Legendre rules on the edges, cut at a spline's knots, are
     doubled until each quantity settles to `1e-11` of the body's size to
-    its power. The inner integrals are exact for planes, cones, spheres
+    its power; the finest rules to `1e-9`, where on a thin face rounding,
+    not the rule, changes the moments, by different amounts on each
+    system (2026-11-10, a sliver of a cone cut by a box, ADR 0033 delivery
+    2.3b). The inner integrals are exact for planes, cones, spheres
     and tori; an elliptic section's settles on its own; a spline's is
     refined with the loops.
   - NURBS curves and surfaces now give their derivatives exactly, from
@@ -216,7 +219,8 @@ part of this ADR.
   - **Precision:** volumes and areas show ten significant digits of
     their own value, coordinates ten of the selection's size, never more
     than a double keeps of them. The kernel refines each measure until it
-    settles to 1e-11, so ten hold.
+    settles to 1e-11, so ten hold (nine on a thin face whose finest rules
+    settle only to rounding, 1e-9).
   - **Where:** the ribbon's new 3D tab, its Analysis group, and Tools >
     Inquiry, as AutoCAD's.
   - **Later:** moments of inertia, and writing the report to a file
