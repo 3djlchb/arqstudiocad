@@ -37,7 +37,7 @@ exact kind below.
   them with analytic faces; creating them is step 5 of the kernel.
 - **CSG**: IFC uses it for openings (a wall minus a window). It is solved
   by the boolean operations, step 7 of the kernel.
-- **Meshes**: needed for terrain (TIN, phase 06), STL/OBJ import and
+- **Meshes**: needed for terrain (TIN, phase 07), STL/OBJ import and
   rendering. A mesh is a view of a solid or a separate kind of data, never
   a solid's truth (ADR 0024 D2).
 - **SubD, T-splines, implicit solids**: useful for free forms and lattices;

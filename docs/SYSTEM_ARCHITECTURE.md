@@ -56,7 +56,7 @@ A format or engine library lives behind a contract of ours, in one place:
 | DWG/DXF (AcadRust) | `crates/arq-document` | read with diagnostics, write to an explicit version, capabilities, round-trip validation (ADR 0017 D4) |
 | Own internal model | `crates/arq-document` (02.6) | ADR 0018 D2; `.ascad` reserved (D5) |
 | Rendering on the CPU (tiny-skia) | `crates/arq-render` | scene from change sets, camera, image (ADR 0013) |
-| IFC (IfcOpenShell), 3DM, Blender | not yet | phase 05, 08 |
+| IFC (IfcOpenShell), 3DM, Blender | not yet | phase 06, 09 |
 
 When an adapter grows beyond its crate it moves to its own crate
 (`arq-interop`) or to `adapters/`, without changing its contract.
@@ -79,7 +79,7 @@ is not moved for the sake of the layout (maintainer, 2026-10-13).
 | `crates/arq-render` | `crates/arq-render` | — |
 | `crates/arq-interop` | — | when a second exchange format (IFC, 3DM) arrives |
 | `crates/arq-python` | `crates/arq-python` | — |
-| `apps/desktop` | `python/arqstudiocad/ui` + `application.py` | with packaging work (phase 11), if useful |
+| `apps/desktop` | `python/arqstudiocad/ui` + `application.py` | with packaging work (phase 12), if useful |
 | `python/arq_app` | `python/arqstudiocad` (the name of ADR 0004) | not renamed: the package name is public API |
 | `adapters/`, `modules/` | — | with the first IFC adapter (05) and the first discipline module (05–07) |
 | `tests/unit`, `integration`, `interoperability`, `performance`, `fixtures` | Rust tests beside their crates; `tests/python`; corpus in `crates/arq-core/tests/corpus.rs` | interoperability and performance suites get their own folders when they grow beyond one file |
