@@ -40,12 +40,12 @@ def test_the_settings_follow_each_platform_without_software() -> None:
 
 
 def test_the_cpu_is_chosen_at_once_and_says_why() -> None:
-    kw: dict[str, Any] = {"crashed": False, "gpu_platform": True, "platform": "linux"}
+    kw: dict[str, Any] = {"crashed": False, "window_system": "x11", "platform": "linux"}
     for setting, extra, why in (
         (AUTOMATIC, {"safe_mode": True}, "safe mode"),
         (CPU, {"safe_mode": False}, "as chosen in Options"),
         (AUTOMATIC, {"safe_mode": False, "crashed": True}, "Choose a renderer in Options"),
-        (AUTOMATIC, {"safe_mode": False, "gpu_platform": False}, "X11"),
+        (AUTOMATIC, {"safe_mode": False, "window_system": None}, "this window system"),
     ):
         choice = plan(setting, **{**kw, **extra})
         assert isinstance(choice, Choice) and not choice.gpu
@@ -53,10 +53,21 @@ def test_the_cpu_is_chosen_at_once_and_says_why() -> None:
 
 
 def test_otherwise_the_backends_to_probe_in_order() -> None:
-    kw: dict[str, Any] = {"safe_mode": False, "crashed": False, "gpu_platform": True}
+    kw: dict[str, Any] = {"safe_mode": False, "crashed": False, "window_system": "x11"}
     assert plan(AUTOMATIC, platform="linux", **kw) == ("vulkan", "opengl")
     assert plan("opengl", platform="linux", **kw) == ("opengl",)
     assert plan("metal", platform="linux", **kw) == ("vulkan", "opengl"), "not here"
+
+
+def test_untried_systems_use_the_graphics_card_only_when_chosen() -> None:
+    # Windows and macOS until seen drawing on real hardware (ADR 0034 D6.4):
+    # Automatic keeps the CPU, quietly; a backend chosen in Options is tried.
+    kw: dict[str, Any] = {"safe_mode": False, "crashed": False}
+    for system, platform, chosen in (("win32", "win32", "dx12"), ("appkit", "darwin", "metal")):
+        automatic = plan(AUTOMATIC, window_system=system, platform=platform, **kw)
+        assert isinstance(automatic, Choice) and not automatic.gpu and automatic.quiet
+        assert "Choose a renderer in Options" in automatic.message()
+        assert plan(chosen, window_system=system, platform=platform, **kw) == (chosen,)
 
 
 def fake_probes(results: dict[str, GpuProbeResult]) -> Callable[[str], GpuProbeResult]:
@@ -158,7 +169,7 @@ def make_window(
 def test_offscreen_qt_draws_on_the_cpu(make_window: Callable[..., MainWindow]) -> None:
     window = make_window()
     assert not window.renderer.gpu
-    assert "X11" in window.renderer.message(), "Options says why"
+    assert "this window system" in window.renderer.message(), "Options says why"
     assert history(window) == "", "the CPU where expected: nothing to tell at start"
     window.apply_options(Options(renderer=CPU))
     assert history(window) == "", "nor when chosen"
@@ -235,5 +246,22 @@ def test_the_probe_runs_off_the_gui_thread(monkeypatch: pytest.MonkeyPatch) -> N
     # never run by plan() itself.
     called: list[str] = []
     monkeypatch.setattr(renderer, "probe_backend", lambda b: called.append(b))
-    plan(AUTOMATIC, safe_mode=False, crashed=False, gpu_platform=True, platform="linux")
+    plan(AUTOMATIC, safe_mode=False, crashed=False, window_system="x11", platform="linux")
     assert called == []
+
+
+def test_a_wayland_session_runs_qt_on_xwayland_for_the_graphics_card() -> None:
+    from arqstudiocad.application import qt_platform_for_gpu
+
+    wayland = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0"}
+    assert qt_platform_for_gpu(wayland, AUTOMATIC, False, "linux") == "xcb"
+    assert qt_platform_for_gpu(wayland, None, False, "linux") == "xcb", "nothing saved yet"
+    # Qt's own choice stands: the CPU draws, safe mode, no X server, the
+    # user chose a platform, or not Linux.
+    assert qt_platform_for_gpu(wayland, CPU, False, "linux") is None
+    assert qt_platform_for_gpu(wayland, AUTOMATIC, True, "linux") is None
+    assert qt_platform_for_gpu({"WAYLAND_DISPLAY": "w"}, AUTOMATIC, False, "linux") is None
+    chosen = {**wayland, "QT_QPA_PLATFORM": "wayland"}
+    assert qt_platform_for_gpu(chosen, AUTOMATIC, False, "linux") is None
+    assert qt_platform_for_gpu(wayland, AUTOMATIC, False, "darwin") is None
+    assert qt_platform_for_gpu({"DISPLAY": ":0"}, AUTOMATIC, False, "linux") is None, "X11"

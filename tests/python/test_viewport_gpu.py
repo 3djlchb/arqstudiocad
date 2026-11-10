@@ -25,6 +25,20 @@ from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV, Viewport
 REQUIRED = os.environ.get("ARQ_GPU_TESTS") == "require"
 
 
+def _need_window_pixels() -> None:
+    """Skips, or fails under ``ARQ_GPU_TESTS=require``, where a window's
+    pixels cannot be read back from X: without an X server, or in a Wayland
+    session, whose XWayland composes nothing and answers with whatever lies
+    there. There the composed screen is checked with weston-screenshooter
+    instead (ADR 0034 D6.4)."""
+    if not os.environ.get("DISPLAY"):
+        if REQUIRED:
+            pytest.fail("ARQ_GPU_TESTS=require, but there is no X11 display")
+        pytest.skip("no X11 display")
+    if os.environ.get("WAYLAND_DISPLAY"):
+        pytest.skip("a Wayland session: XWayland gives no window's pixels")
+
+
 def view() -> CadView:
     document = CadApplication().create_document("Plano")
     document.add_line((0, 0), (100, 50))
@@ -135,10 +149,7 @@ WINDOW_SCRIPT = textwrap.dedent(
 
 
 def test_a_real_window_is_presented_by_the_gpu(tmp_path: Path) -> None:
-    if not os.environ.get("DISPLAY"):
-        if REQUIRED:
-            pytest.fail("ARQ_GPU_TESTS=require, but there is no X11 display")
-        pytest.skip("no X11 display")
+    _need_window_pixels()
     backend = os.environ.get("ARQ_GPU_BACKEND") or "opengl"
     env = dict(os.environ, QT_QPA_PLATFORM="xcb", **{GPU_VIEWPORT_ENV: backend})
     script = tmp_path / "window.py"
@@ -255,10 +266,7 @@ def test_the_gpu_draws_the_overlays_the_cpu_paints(tmp_path: Path) -> None:
     """One description, two painters (ADR 0034 D4): the selection, the
     highlight, the grips, the window, the drop note and the crosshair look
     the same on both, to within a pixel of antialiasing."""
-    if not os.environ.get("DISPLAY"):
-        if REQUIRED:
-            pytest.fail("ARQ_GPU_TESTS=require, but there is no X11 display")
-        pytest.skip("no X11 display")
+    _need_window_pixels()
     backend = os.environ.get("ARQ_GPU_BACKEND") or "opengl"
     path, _, gpu_png = _shot(tmp_path, "gpu", backend)
     if path != "gpu":

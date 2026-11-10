@@ -14,7 +14,6 @@ from PySide6.QtGui import (
     QActionGroup,
     QCloseEvent,
     QColor,
-    QGuiApplication,
     QKeySequence,
 )
 from PySide6.QtWidgets import (
@@ -95,7 +94,7 @@ from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
-from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV, Viewport
+from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV, Viewport, window_system
 from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
 from arqstudiocad.workspaces import BLOCK_EDITOR, WorkspaceRegistry, builtin_workspaces
 
@@ -684,7 +683,7 @@ class MainWindow(QMainWindow):
             self._options.renderer,
             safe_mode=self._safe_mode,
             crashed=self._sentinel is not None and self._sentinel.armed,
-            gpu_platform=QGuiApplication.platformName() == "xcb",
+            window_system=window_system(),
         )
         if isinstance(planned, Choice):
             self._use_renderer(planned)

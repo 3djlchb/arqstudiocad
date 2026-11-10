@@ -149,16 +149,18 @@ impl CadView {
     }
 
     /// Presents the view with the GPU straight into a native window (ADR
-    /// 0034): `window` is the X11 window (`QWidget.winId()`) and `display`
-    /// Qt's `Display*` (`QGuiApplication.nativeInterface().display()`), both
-    /// as integers. `antialias` asks for 4× multisampling, where a hardware
+    /// 0034), `QWidget.winId()` as an integer, of the window `system`:
+    /// `"x11"`, with `display` Qt's `Display*`
+    /// (`QGuiApplication.nativeInterface().display()`); `"win32"`, the
+    /// window an `HWND`; or `"appkit"`, an `NSView*`; `display` is ignored
+    /// but on X11. `antialias` asks for 4× multisampling, where a hardware
     /// adapter offers it; it doubles a frame's time on the reference
     /// machine. Returns `(backend, adapter, device_type)`. The window
     /// and the connection must outlive the attachment: call
     /// `detach_window()` before the widget goes. An unknown backend raises
     /// `ValueError`; a GPU that cannot draw there, `RuntimeError`, and the
     /// view stays as it was.
-    #[pyo3(signature = (backend, display, window, antialias = false))]
+    #[pyo3(signature = (backend, display, window, antialias = false, system = "x11"))]
     fn attach_window(
         &self,
         py: Python<'_>,
@@ -166,15 +168,17 @@ impl CadView {
         display: usize,
         window: u64,
         antialias: bool,
+        system: &str,
     ) -> PyResult<(String, String, String)> {
         let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
+        let system = crate::gpu::WindowSystem::parse(system).map_err(PyValueError::new_err)?;
         let (width, height) = self.state().camera.size();
         let renderer = py
             .detach(|| {
                 // SAFETY: the caller's contract above: Qt keeps the window
                 // and its display alive until `detach_window`.
                 let (instance, surface) =
-                    unsafe { crate::gpu::window_surface(backend, display, window) }?;
+                    unsafe { crate::gpu::window_surface(backend, system, display, window) }?;
                 GpuRenderer::for_surface(backend, instance, surface, width, height, antialias)
             })
             .map_err(PyRuntimeError::new_err)?;

@@ -79,15 +79,23 @@ class Choice:
         return self.reason
 
 
+#: The window systems where the graphics card has been seen drawing on
+#: real hardware (ADR 0034 D6.4): there Automatic uses it. Elsewhere it is
+#: used when a backend is chosen in Options, until it is tried.
+VALIDATED = frozenset({"x11"})
+
+
 def plan(
     setting: str,
     *,
     safe_mode: bool,
     crashed: bool,
-    gpu_platform: bool,
+    window_system: str | None,
     platform: str = sys.platform,
 ) -> Choice | tuple[str, ...]:
-    """The CPU at once, with why, or the backends to probe in order."""
+    """The CPU at once, with why, or the backends to probe in order.
+    ``window_system`` is what the viewports would present to (``"x11"``,
+    ``"win32"``, ``"appkit"``), None where they cannot."""
     if safe_mode:
         return Choice(reason=tr("Drawing on the CPU: safe mode."))
     if setting == CPU:
@@ -99,14 +107,22 @@ def plan(
                 "used the graphics card. Choose a renderer in Options to try it again."
             )
         )
-    if not gpu_platform:
+    if window_system is None:
         return Choice(
-            reason=tr("Drawing on the CPU: the graphics card draws on Linux with X11 for now."),
+            reason=tr("Drawing on the CPU: the graphics card cannot draw in this window system."),
             quiet=True,
         )
     allowed = renderer_settings(platform)[2:]
     if setting in allowed:
         return (setting,)
+    if window_system not in VALIDATED:
+        return Choice(
+            reason=tr(
+                "Drawing on the CPU: the graphics card is not yet tried on this system. "
+                "Choose a renderer in Options to use it."
+            ),
+            quiet=True,
+        )
     return allowed
 
 

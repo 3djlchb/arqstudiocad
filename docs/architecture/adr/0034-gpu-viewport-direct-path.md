@@ -299,3 +299,51 @@ zooming on the CPU.
   CPU is expected (another platform until D6.4) or chosen, nothing is said
   at start; Options › Graphics says it in every case.
 
+### D6.4, the other platforms (2026-11-10)
+
+- **Windows and macOS present.** The surface is made from the viewport's
+  `winId()`: an `HWND` on Windows (DirectX 12, Vulkan or OpenGL), an
+  `NSView*` on macOS, to which wgpu gives a Metal layer. The window system
+  comes from Qt's platform (`xcb`, `windows`, `cocoa`). CI builds and tests
+  it on Windows and macOS, but its runners have no real graphics card: only
+  WARP and llvmpipe, which the probe refuses on purpose.
+- **Automatic waits for a try on real hardware** (maintainer, 2026-11-10).
+  Where the graphics card has not yet been seen drawing (`renderer.VALIDATED`,
+  X11 alone so far), Automatic keeps the CPU without saying so at start. A
+  backend chosen in Options › Graphics is probed and used, with the crash
+  sentinel and the fallback. A platform joins `VALIDATED` once its report
+  is recorded here.
+- **Wayland runs on XWayland.** PySide6 gives Qt's `wl_display` but not a
+  window's `wl_surface`, so in a Wayland session with an X server the
+  application starts Qt on `xcb` before the window exists
+  (`application.qt_platform_for_gpu`), unless the CPU draws, safe mode is
+  on, or the user chose a platform with `QT_QPA_PLATFORM`.
+- **`tools/gpu_viewport_check.py`** is the check to run on a machine to try.
+  It probes every backend, then opens a real viewport with each hardware
+  backend that passes and with the CPU, times panning and zooming the
+  100,000-entity drawing, and compares the overlays' pixels with the CPU's.
+  It writes `target/gpu-viewport-report-<date>.txt`. On the reference
+  machine: OpenGL on the GT 730, 21.7 ms panning and 22.5 ms zooming
+  against the CPU's 48.0 and 65.2, the overlays the same to the pixel.
+
+**Wayland, tried (2026-11-10)** in weston 14 nested in the reference
+machine's X11 desktop, with XWayland:
+
+- In a Wayland session with an X server, the application started Qt on
+  `xcb` by itself and chose the GT 730. Its first frame disarmed the
+  sentinel, and the command window said so.
+- Captured by `weston-screenshooter`, the composed screen showed the
+  overlay scene as the CPU paints it, with no pixel apart under the tests'
+  comparison. Panning changed what is on screen.
+- Without an X server, Qt ran on Wayland and the CPU drew, quietly.
+- Reading a window's pixels from X gives nothing under XWayland, which
+  composes nothing, so the tests that compare captured windows skip in a
+  Wayland session; the composed screen was checked with weston instead.
+- weston crashed more than once ("double free"). The main window alone
+  brings it down on XWayland, with the CPU drawing as much as the GPU: a
+  weston bug the GPU viewport does not cause, to check under GNOME's and
+  KDE's compositors.
+
+Still to try: Windows on the development laptop (GTX 1050 Ti, UHD 630;
+DirectX 12, Vulkan, OpenGL), and macOS when a Mac is at hand.
+

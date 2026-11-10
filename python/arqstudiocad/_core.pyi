@@ -729,7 +729,12 @@ class CadView:
     def view(self, value: str) -> None: ...
     def render(self) -> bytes: ...
     def attach_window(
-        self, backend: str, display: int, window: int, antialias: bool = False
+        self,
+        backend: str,
+        display: int,
+        window: int,
+        antialias: bool = False,
+        system: Literal["x11", "win32", "appkit"] = "x11",
     ) -> tuple[str, str, str]: ...
     def detach_window(self) -> None: ...
     @property
