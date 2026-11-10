@@ -405,3 +405,22 @@ per frame:
   for want of an X display; on Windows this check stands in for them.
 
 Still to try: macOS when a Mac is at hand.
+
+### D6, complete (2026-11-10)
+
+Milestone 02.7 is complete, as D6.4 sets: the reference machine passed its
+release gate (ADR 0007, "Release gate passed on the reference machine").
+There, on the code of `main` at `a2b6a72`:
+
+- the GPU tests ran on the GT 730 and passed, with
+  `ARQ_GPU_TESTS=require`;
+- `tools/gpu_viewport_check.py` timed the GPU viewport at 16.8 ms panning
+  and 16.9 ms zooming against the CPU's 44.1 and 60.6, with the overlays 0
+  pixels apart;
+- the application chose the GT 730 by itself, `--safe-mode` kept the CPU,
+  and no crash sentinel was left behind.
+
+X11 and Windows are validated. Wayland draws through XWayland. macOS is
+written but untried: it waits for a Mac and does not block (ADR 0007's
+best-effort tier).
+
