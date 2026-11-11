@@ -183,30 +183,9 @@ fn piece(a: Point2, b: Point2, bulge: f64) -> Option<ProfilePiece> {
             backward: false,
         });
     }
-    let chord = b - a;
-    let c = chord.length();
-    // The center lies off the chord's middle, to its left for a positive
-    // bulge below a half circle: by (1 - b²) / 4b of the chord.
-    let left = (-chord.y() / c, chord.x() / c);
-    let off = (1.0 - bulge * bulge) / (4.0 * bulge) * c;
-    let center = Point2::new(
-        (a.x() + b.x()) / 2.0 + left.0 * off,
-        (a.y() + b.y()) / 2.0 + left.1 * off,
-    )
-    .ok()?;
-    let radius = center.distance_to(a);
-    let angle = |p: Point2| {
-        (p.y() - center.y())
-            .atan2(p.x() - center.x())
-            .rem_euclid(TAU)
-    };
-    let (from, to, backward) = if bulge > 0.0 {
-        (angle(a), angle(b), false)
-    } else {
-        (angle(b), angle(a), true)
-    };
+    let (arc, backward) = Arc::from_bulge(a, b, bulge).ok()?;
     Some(ProfilePiece {
-        curve: Geometry2::Arc(Arc::new(center, radius, from, to).ok()?),
+        curve: Geometry2::Arc(arc),
         backward,
     })
 }
