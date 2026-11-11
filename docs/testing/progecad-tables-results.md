@@ -18,7 +18,8 @@ Three independently saved native inputs contain the same four ACAD_TABLE
 entities, with 5 rows and 3 columns each. Each title spans three columns;
 all 60 stored cell texts, including hidden title cells, are measured.
 The nondefault border case was edited through ProgeCAD's native dialog.
-Sources are local under `EJERCICIOS DWG/Tables-ProgeCAD-20261026/source`.
+Sources are local, in the maintainer's drawings folder (`<drawings>`, never
+committed), under `Tables-ProgeCAD-20261026/source`.
 The JSON manifest records source versions, hashes, counts and output hashes.
 
 | Native input | Product read | Strict DWG save | Strict DXF save |

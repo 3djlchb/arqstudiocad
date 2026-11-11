@@ -69,7 +69,7 @@ unchanged. Only a new review copy and observation capture were created.
   source and validates the strict rewrite against native DXF measurements.
 
 ```powershell
-$env:ARQ_NATIVE_TABLE_ROOT = 'D:/PROGRAMACION/EJERCICIOS DWG/Tables-ProgeCAD-20261026/source'
+$env:ARQ_NATIVE_TABLE_ROOT = '<drawings>/Tables-ProgeCAD-20261026/source'  # <drawings>: your local drawings folder, never committed
 cargo test --lib legacy_table_
 cargo test --test table_2007_native -- --include-ignored
 ```

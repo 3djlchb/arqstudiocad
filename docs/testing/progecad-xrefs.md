@@ -14,7 +14,8 @@ independently authored DWG files or external application behavior.
 
 ## 1. Author the source set
 
-Suggested folder: `D:\PROGRAMACION\EJERCICIOS DWG\Xrefs-ProgeCAD\source`.
+Suggested folder: `<drawings>\Xrefs-ProgeCAD\source`, where `<drawings>` is
+your local drawings folder, outside the repository and never committed.
 Create it yourself in Explorer. Keep all six drawings together. Use the same
 units in every drawing, world UCS, model space, base point (0,0,0), and the
 same DWG save version. Record INSUNITS and any automatic insertion-unit scaling.
@@ -75,8 +76,8 @@ The small fixture set should contain no real client data.
 From the repository root, after the files exist:
 
 ```powershell
-uv run python tools/compatibility_matrix.py "D:\PROGRAMACION\EJERCICIOS DWG\Xrefs-ProgeCAD\source" --format json --output target/progecad-xrefs-matrix.json
-uv run python tools/compatibility_matrix.py "D:\PROGRAMACION\EJERCICIOS DWG\Xrefs-ProgeCAD\source" --output target/progecad-xrefs-matrix.md
+uv run python tools/compatibility_matrix.py "<drawings>\Xrefs-ProgeCAD\source" --format json --output target/progecad-xrefs-matrix.json
+uv run python tools/compatibility_matrix.py "<drawings>\Xrefs-ProgeCAD\source" --output target/progecad-xrefs-matrix.md
 ```
 
 This tool measures reading and safe saving; it cannot certify Xref resolution.

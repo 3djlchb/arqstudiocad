@@ -36,8 +36,8 @@ Save separate DWG 2007 and DWG 2018 sources and export ASCII DXF 2010 at
 16-digit precision using ProgeCAD's format controls. Check actual headers:
 AC1021, AC1032 and AC1024 respectively. A filename or a COM SaveAs argument
 alone does not establish the file version. Keep all originals unchanged.
-The recorded run lives in the maintainer's local folder
-`D:\PROGRAMACION\EJERCICIOS DWG\Tables-ProgeCAD-20261026\source`.
+The recorded run lives in the maintainer's local drawings folder, written
+`<drawings>` below, under `Tables-ProgeCAD-20261026/source`.
 The DWGs/DXF are not committed or downloaded by the sample-fetch tool.
 
 Acceptance requires clean reads of all four tables, strict saves without
@@ -50,7 +50,7 @@ A core-verified save alone does not establish external fidelity.
 Run the existing tool unchanged from the task worktree:
 
 ```powershell
-uv run python tools/compatibility_matrix.py "D:/PROGRAMACION/EJERCICIOS DWG/Tables-ProgeCAD-20261026/source" --format json --output target/progecad-table-matrix.json
+uv run python tools/compatibility_matrix.py "<drawings>/Tables-ProgeCAD-20261026/source" --format json --output target/progecad-table-matrix.json
 ```
 
 Retain output copies through `CadDocument.save`, only after confirming
@@ -66,8 +66,8 @@ are local to the drawing. Do not combine opening another drawing and calling
 helpers defined in the previous drawing's namespace.
 
 ```lisp
-(load "D:/PROGRAMACION/ARQSTUDIOCAD/arqstudiocad-progecad-table-corpus/tools/progecad_table_corpus.lsp")
-(arq:audit "D:/PROGRAMACION/EJERCICIOS DWG/Tables-ProgeCAD-20261026/observations/new-capture.tsv")
+(load "<worktree>/tools/progecad_table_corpus.lsp")
+(arq:audit "<drawings>/Tables-ProgeCAD-20261026/observations/new-capture.tsv")
 ```
 
 The audit refuses to overwrite an observation. It captures rows, columns,

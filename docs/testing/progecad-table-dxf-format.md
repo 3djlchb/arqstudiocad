@@ -89,7 +89,7 @@ unasserted defaults, and ASCII/binary DXF 2010/2013/2018. The native case checks
 all four tables' expected margins and heights.
 
 ```powershell
-$env:ARQ_NATIVE_TABLE_ROOT = 'D:/PROGRAMACION/EJERCICIOS DWG/Tables-ProgeCAD-20261026/source'
+$env:ARQ_NATIVE_TABLE_ROOT = '<drawings>/Tables-ProgeCAD-20261026/source'  # <drawings>: your local drawings folder, never committed
 cargo test --test table_dxf_format -- --include-ignored
 ```
 
