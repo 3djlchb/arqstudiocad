@@ -17,6 +17,7 @@ its reasons.
 | [ProgeCAD Xref exercise](testing/progecad-xrefs.md) | Independent reference set; [executed results](testing/progecad-xrefs-results.md) and [unloaded-state correction](testing/progecad-dxf-unloaded.md) |
 | [ProgeCAD table corpus](testing/progecad-tables.md) | Reproducible native table measurements, [baseline defects](testing/progecad-tables-results.md) and [instance-format correction](testing/progecad-table-instance-formatting.md) and [DWG 2007 reader correction](testing/progecad-table-2007-reader.md) |
 | [Testing and performance](TESTING_AND_PERFORMANCE.md) | Test pyramid, measurements, benchmark rules |
+| [Security policy](../SECURITY.md) | Reporting vulnerabilities, how the project keeps secure, principles for plugins and scripts ([ADR 0037](architecture/adr/0037-security-baseline.md)) |
 | [Licenses and distribution](LICENSES_AND_DISTRIBUTION.md) | Licenses, obligations, new-technology rule, platforms, release criteria |
 | [CONTRIBUTING](../CONTRIBUTING.md) ([español](../CONTRIBUTING.es.md)) | Workflow and contributions |
 | [ADRs](architecture/adr/README.md) | Every architectural decision and its reasons |

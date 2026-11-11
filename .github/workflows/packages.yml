@@ -6,6 +6,12 @@ name: Packages
 on:
   workflow_dispatch:
 
+# Least privilege (ADR 0037): the token only reads the repository. Actions
+# are pinned to a commit, with the release in a comment; Dependabot keeps
+# them current (.github/dependabot.yml).
+permissions:
+  contents: read
+
 concurrency:
   group: packages-${{ github.ref }}
   cancel-in-progress: true
@@ -26,13 +32,15 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10.3.0  # no major-version tag is published
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
       - name: Build installer and portable ZIP
         shell: pwsh
         run: ./packaging/windows/build.ps1
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: windows-${{ matrix.arch }}
           path: |
@@ -53,7 +61,9 @@ jobs:
             arch: aarch64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: Packaging tools
         run: |
           sudo apt-get update -qq
@@ -62,7 +72,7 @@ jobs:
         run: bash packaging/linux/build.sh
       - name: Install and self-check in clean distributions
         run: bash packaging/linux/test-packages.sh
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: linux-${{ matrix.arch }}
           path: |
@@ -79,7 +89,9 @@ jobs:
     env:
       PYTHON_VERSION: "3.13.16"
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: Universal2 Python from python.org
         run: |
           curl -fsSL -o python.pkg \
@@ -89,7 +101,7 @@ jobs:
         run: softwareupdate --install-rosetta --agree-to-license || true
       - name: Build .app and .dmg
         run: bash packaging/macos/build.sh
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: macos-universal2
           path: dist/macos/*.dmg

@@ -103,6 +103,10 @@ la carpeta principal se queda en `main` (consulta "Working copies" en
 
 ## Informar de un dibujo que se abre, se dibuja o se guarda mal
 
+Si un archivo hace que la aplicación haga algo más que dibujar mal (ejecutar
+algo, tocar otros archivos o cerrarse de una forma que parezca aprovechable),
+infórmalo en privado, como explica [SECURITY.md](SECURITY.md).
+
 Es el tipo de informe más valioso, y es imposible de resolver sin el archivo.
 Adjunta el DWG/DXF (comprímelo en zip si GitHub rechaza la extensión). Si es
 trabajo de un cliente que no puedes compartir, una copia reducida a las
