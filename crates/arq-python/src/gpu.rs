@@ -12,12 +12,19 @@ use arq_render::{
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 
+/// Checks `backend`'s preferred card: `(backend, adapter, device_type,
+/// driver)`. In a child process (ADR 0007).
 #[pyfunction]
-fn probe_gpu_backend(backend: &str) -> PyResult<(String, String, String)> {
+fn probe_gpu_backend(backend: &str) -> PyResult<(String, String, String, String)> {
     let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
     let result = Python::attach(|py| py.detach(move || run_probe(backend)))
         .map_err(PyRuntimeError::new_err)?;
-    Ok((result.backend, result.adapter, result.device_type))
+    Ok((
+        result.backend,
+        result.adapter,
+        result.device_type,
+        result.driver,
+    ))
 }
 
 /// Every adapter `backend` offers, unchecked: `(name, device_type, vendor,
@@ -36,11 +43,16 @@ fn list_gpu_adapters(backend: &str) -> PyResult<Vec<(String, String, u32, u32)>>
 /// Checks the `index`-th adapter of `list_gpu_adapters(backend)` as
 /// `probe_gpu_backend` checks the preferred one. In a child process.
 #[pyfunction]
-fn probe_gpu_adapter(backend: &str, index: usize) -> PyResult<(String, String, String)> {
+fn probe_gpu_adapter(backend: &str, index: usize) -> PyResult<(String, String, String, String)> {
     let backend = GpuBackend::parse(backend).map_err(PyValueError::new_err)?;
     let result = Python::attach(|py| py.detach(move || run_adapter(backend, index)))
         .map_err(PyRuntimeError::new_err)?;
-    Ok((result.backend, result.adapter, result.device_type))
+    Ok((
+        result.backend,
+        result.adapter,
+        result.device_type,
+        result.driver,
+    ))
 }
 
 /// The window system a viewport's native window belongs to, as Qt runs on

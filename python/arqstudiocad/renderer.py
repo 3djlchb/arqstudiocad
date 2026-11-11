@@ -63,6 +63,8 @@ class Choice:
     adapter: str = ""
     #: The card's index in its backend's list, when it was chosen from it.
     card: int | None = None
+    #: The card's driver and its version, as it reports them.
+    driver: str = ""
     reason: str = ""
     #: Nothing to tell at start: the CPU where it is expected or chosen.
     quiet: bool = False
@@ -223,7 +225,7 @@ def probe(
         if how is not None:
             failed = failed or (backend, adapter, how)
             continue
-        return Choice(backend=backend, adapter=adapter, card=index)
+        return Choice(backend=backend, adapter=adapter, card=index, driver=result.driver)
     if failed is not None:
         return Choice(reason=_fails_message(*failed))
     if card is not None:

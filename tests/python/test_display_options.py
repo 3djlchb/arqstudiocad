@@ -189,8 +189,7 @@ def test_display_holds_the_crosshair_and_the_block_editor(qtbot: QtBot) -> None:
     assert [g.title() for g in page.findChildren(QGroupBox)] == [
         "Crosshair",
         "Block editor",
-        "Graphics",
-    ]
+    ], "Graphics has a section of its own"
     assert (d.size_slider.value(), d.size_spin.value()) == (5, 5)
     assert (d.size_spin.minimum(), d.size_spin.maximum()) == (1, 100)
     assert d.size_help.text().startswith("Percent of the drawing area.")

@@ -71,6 +71,7 @@ def test_a_backend_s_cards_are_listed_and_one_probed_in_a_child(
                 "backend": "dx12",
                 "adapter": "NVIDIA GeForce GTX 1050 Ti",
                 "device_type": "DiscreteGpu",
+                "driver": "NVIDIA 527.37",
             }
         return subprocess.CompletedProcess(command, 0, json.dumps(answer), "")
 
@@ -86,6 +87,7 @@ def test_a_backend_s_cards_are_listed_and_one_probed_in_a_child(
     assert calls[0][-2:] == ["--gpu-adapters", "dx12"]
     result = gpu.probe_backend("dx12", 1)
     assert result.available and result.adapter == "NVIDIA GeForce GTX 1050 Ti"
+    assert result.driver == "NVIDIA 527.37", "the driver, for Options"
     assert calls[1][-4:] == ["--gpu-probe", "dx12", "--adapter", "1"]
 
 

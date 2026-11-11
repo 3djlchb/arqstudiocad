@@ -90,6 +90,18 @@ pub struct GpuProbeResult {
     pub adapter: String,
     /// Adapter class reported by wgpu.
     pub device_type: String,
+    /// The driver and its version, as the adapter reports them; empty when
+    /// it reports none.
+    pub driver: String,
+}
+
+/// The driver's name and version an adapter reports, as one line.
+pub(crate) fn driver_of(info: &wgpu::AdapterInfo) -> String {
+    [info.driver.trim(), info.driver_info.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// An adapter a backend offers, as listed before any is checked: its name,
@@ -380,6 +392,7 @@ async fn check(backend: GpuBackend, adapter: wgpu::Adapter) -> Result<GpuProbeRe
 
     Ok(GpuProbeResult {
         backend: backend.name().to_owned(),
+        driver: driver_of(&info),
         adapter: info.name,
         device_type: format!("{:?}", info.device_type),
     })

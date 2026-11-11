@@ -41,6 +41,7 @@ from arqstudiocad.renderer import (
     AUTOMATIC,
     CPU,
     CardState,
+    Choice,
     card_kind,
     renderer_settings,
     renderer_title,
@@ -127,11 +128,9 @@ SECTIONS: dict[str, tuple[str, ...]] = {
         "marker_color",
         "command_line_color",
         "block_editor_background",
-        "graphics_card",
-        "renderer",
-        "antialias",
     ),
     "user_preferences": ("zoom_wheel_reversed", "zoom_factor", "right_click"),
+    "graphics": ("graphics_card", "renderer", "antialias"),
 }
 #: The settings kept under ``options/``; language and theme keep their own
 #: keys, shared with the Tools menu (ADR 0029 D5).
@@ -143,11 +142,27 @@ STORED = {
 }
 
 
+#: What chose the renderer this session, as Options > Graphics says it.
+CHOSEN_BY = ("automatic", "options", "override", "safe_mode")
+
+
+def chosen_by_title(key: str) -> str:
+    """What chose the renderer, as Options names it."""
+    titles = {
+        "automatic": tr("automatic"),
+        "options": tr("chosen in Options"),
+        "override": "ARQ_GPU_VIEWPORT",
+        "safe_mode": tr("safe mode"),
+    }
+    return titles.get(key, "—")
+
+
 def section_title(key: str) -> str:
     return {
         "general": tr("General"),
         "display": tr("Display"),
         "user_preferences": tr("User preferences"),
+        "graphics": tr("Graphics"),
     }[key]
 
 
@@ -233,11 +248,16 @@ class OptionsDialog(QDialog):
         renderer_status: str = "",
         survey: Sequence[CardState] | None = None,
         check_again: Callable[[Callable[[Sequence[CardState]], None]], None] | None = None,
+        session: Choice | None = None,
+        chosen_by: str = "",
     ) -> None:
         super().__init__(parent)
         self.setObjectName("options_dialog")
         #: What draws the viewports now, in a sentence.
         self._renderer_status = renderer_status
+        #: What draws this session, and what chose it (``CHOSEN_BY``).
+        self._session = session or Choice()
+        self._chosen_by = chosen_by
         #: Every graphics card on every API and whether it draws; None while
         #: they are being checked.
         self._survey: Sequence[CardState] | None = survey
@@ -325,6 +345,8 @@ class OptionsDialog(QDialog):
             self._group(rows, self.theme_group, [(self.theme_label, self.theme)])
         elif key == "display":
             self._display_page(rows)
+        elif key == "graphics":
+            self._graphics_page(rows)
         elif key == "user_preferences":
             self.zoom_group = QGroupBox()
             self.zoom_wheel_reversed = QCheckBox()
@@ -440,6 +462,49 @@ class OptionsDialog(QDialog):
             self.block_editor_group,
             [(self.block_editor_label, self.block_editor_background)],
         )
+        self._helps += [self.size_help, self.preview_caption]
+        for field in self._color_fields():
+            field.changed.connect(self._changed)
+
+    def _graphics_page(self, rows: QVBoxLayout) -> None:
+        """Graphics, after the maintainer's mockup (`09-graphics.png`): what
+        draws this session, read only; the graphics card and its API, applied
+        at once (ADR 0034 D6.3, "After 02.7")."""
+        self.session_group = QGroupBox()
+        self.session_card_label = QLabel()
+        self.session_card = QLabel()
+        self.session_card.setObjectName("session_card")
+        self.session_driver_label = QLabel()
+        self.session_driver = QLabel()
+        self.session_driver.setObjectName("session_driver")
+        self.session_api_label = QLabel()
+        self.session_api = QLabel()
+        self.session_api.setObjectName("session_api")
+        self.session_chosen_label = QLabel()
+        self.session_chosen = QLabel()
+        self.session_chosen.setObjectName("session_chosen")
+        for value in (
+            self.session_card,
+            self.session_driver,
+            self.session_api,
+            self.session_chosen,
+        ):
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            value.setWordWrap(True)
+        self.renderer_status = QLabel()
+        self.renderer_status.setObjectName("renderer_status")
+        self.renderer_status.setWordWrap(True)
+        self._group(
+            rows,
+            self.session_group,
+            [
+                (self.session_card_label, self.session_card),
+                (self.session_driver_label, self.session_driver),
+                (self.session_api_label, self.session_api),
+                (self.session_chosen_label, self.session_chosen),
+            ],
+            [self.renderer_status],
+        )
         self.graphics_group = QGroupBox()
         self.card_label = QLabel()
         self.card = QComboBox()
@@ -456,9 +521,6 @@ class OptionsDialog(QDialog):
         self.antialias = QCheckBox()
         self.antialias.setObjectName("antialias")
         self.antialias.toggled.connect(self._changed)
-        self.renderer_status = QLabel()
-        self.renderer_status.setObjectName("renderer_status")
-        self.renderer_status.setWordWrap(True)
         self.cards_status = QLabel()
         self.cards_status.setObjectName("cards_status")
         self.cards_status.setWordWrap(True)
@@ -473,11 +535,8 @@ class OptionsDialog(QDialog):
                 (None, self.check_button),
                 (None, self.antialias),
             ],
-            [self.renderer_status, self.cards_status, self.graphics_help],
+            [self.cards_status, self.graphics_help],
         )
-        self._helps += [self.size_help, self.preview_caption]
-        for field in self._color_fields():
-            field.changed.connect(self._changed)
 
     def _color_fields(self) -> tuple[ColorField, ...]:
         return (
@@ -588,18 +647,32 @@ class OptionsDialog(QDialog):
         )
         self.block_editor_group.setTitle(tr("Block editor"))
         self.block_editor_label.setText(tr("Background color"))
-        self.graphics_group.setTitle(tr("Graphics"))
+        self.session_group.setTitle(tr("This session"))
+        self.session_card_label.setText(tr("Graphics card"))
+        self.session_driver_label.setText(tr("Driver"))
+        self.session_api_label.setText(tr("Graphics API"))
+        self.session_chosen_label.setText(tr("Chosen by"))
+        session = self._session
+        self.session_card.setText(session.adapter if session.gpu else tr("CPU (no graphics card)"))
+        self.session_driver.setText(session.driver if session.gpu and session.driver else "—")
+        self.session_api.setText(renderer_title(session.backend) if session.backend else "—")
+        self.session_chosen.setText(chosen_by_title(self._chosen_by))
+        self.graphics_group.setTitle(tr("Choice"))
         self.card_label.setText(tr("Graphics card"))
         self.renderer_label.setText(tr("Graphics API"))
         self.check_button.setText(tr("Check the graphics cards again"))
         self.antialias.setText(tr("Smooth lines on the graphics card (antialiasing)"))
-        self.renderer_status.setText(self._renderer_status)
-        self.renderer_status.setVisible(bool(self._renderer_status))
+        # Why the CPU draws, when it does; what draws is in the rows above.
+        why = "" if session.gpu else self._renderer_status
+        self.renderer_status.setText(why)
+        self.renderer_status.setVisible(bool(why))
         self.graphics_help.setText(
             tr(
-                "Automatic draws with the dedicated graphics card when it passes a check, "
-                "then the integrated one, and on the CPU otherwise. Antialiasing can halve "
-                "the speed on older cards."
+                "Changes apply at once. Automatic draws with the dedicated graphics card "
+                "when it passes a check, then the integrated one, and on the CPU otherwise. "
+                "Antialiasing can halve the speed on older cards. For one session, "
+                "--safe-mode draws on the CPU, and the ARQ_GPU_VIEWPORT variable (dx12, "
+                "vulkan, opengl or metal) overrides this page, for developers."
             )
         )
         for field in self._color_fields():
@@ -702,6 +775,9 @@ class OptionsDialog(QDialog):
                 if card == AUTOMATIC and not states:
                     continue  # no card listed on it: Automatic tries its own
                 why = next((s.reason for s in states), tr("this card does not offer it"))
+                if card == AUTOMATIC and states:
+                    # Which card "this card" is, when none is chosen.
+                    why = f"{why} ({states[0].name})"
                 self._enable(self.renderer, self.renderer.count() - 1, False, why)
                 reasons.append(tr("{api}: {why}.", api=renderer_title(backend), why=why))
             self.renderer.setEnabled(card != CPU)
