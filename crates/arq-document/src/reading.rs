@@ -16,6 +16,7 @@ use std::path::Path;
 use acadrust::io::dwg::DwgReadOptions;
 use acadrust::io::dxf::DxfReaderConfiguration;
 use acadrust::io::read::{ReadOutcome, ReadStats};
+use acadrust::tables::layer::Layer as CodecLayer;
 use acadrust::{CadDocument, DwgReader, DxfReader};
 
 use crate::error::{DocumentError, DocumentResult};
@@ -59,6 +60,42 @@ pub(crate) struct Read {
 /// recovery report if the file is damaged but drawing data could be read,
 /// and the objects kept undecoded.
 pub(crate) fn read(bytes: Vec<u8>, format: FileFormat, path: &Path) -> DocumentResult<Read> {
+    let mut read = read_engine(bytes, format, path)?;
+    add_missing_layer_zero(&mut read).map_err(|problem| damaged(path, vec![problem]))?;
+    Ok(read)
+}
+
+/// What [`Recovery`] says of a drawing that had no layer "0".
+pub(crate) const LAYER_ZERO_ADDED: &str = "layer 0 was missing; it was added";
+
+/// Every drawing has layer "0", AutoCAD's rule and the model's. A file
+/// without it is damaged: the layer is added with AutoCAD's defaults and
+/// the drawing opens recovered, as AUDIT would repair it. Found by fuzzing
+/// (ADR 0037 D2): before, opening such a file panicked outside the reader.
+fn add_missing_layer_zero(read: &mut Read) -> Result<(), String> {
+    if read.cad.layers.contains("0") {
+        return Ok(());
+    }
+    let mut layer = CodecLayer::new("0");
+    layer.handle = read.cad.allocate_handle();
+    read.cad
+        .layers
+        .add(layer)
+        .map_err(|e| format!("layer 0 is missing and could not be added: {e}"))?;
+    let note = LAYER_ZERO_ADDED.to_owned();
+    match &mut read.recovery {
+        Some(recovery) => recovery.problems.push(note),
+        None => {
+            read.recovery = Some(Recovery {
+                problems: vec![note],
+            })
+        }
+    }
+    Ok(())
+}
+
+/// The engine's read, strict and then in recovery mode (see the module).
+fn read_engine(bytes: Vec<u8>, format: FileFormat, path: &Path) -> DocumentResult<Read> {
     let mut problems = match attempt(bytes.clone(), format, false) {
         Ok(outcome) => {
             let problems = damage(&outcome.stats, format);

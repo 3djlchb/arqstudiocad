@@ -208,3 +208,56 @@ fn long_problem_lists_are_capped() {
     assert_eq!(capped.len(), super::MAX_PROBLEMS + 1);
     assert_eq!(capped.last().unwrap(), "and 10 more");
 }
+
+/// A drawing whose layer table lacks "0", as DWG and as DXF: the engine
+/// reads it so, and opening it once panicked (found by fuzzing, ADR 0037).
+fn without_layer_zero(format: FileFormat) -> Vec<u8> {
+    let mut cad = drawing(DxfVersion::AC1032);
+    let mut other = acadrust::tables::layer::Layer::new("WALLS");
+    other.handle = cad.allocate_handle();
+    cad.layers.add(other).unwrap();
+    cad.header.current_layer_name = "WALLS".to_owned();
+    cad.layers.remove("0").expect("a new drawing has layer 0");
+    match format {
+        FileFormat::Dwg => DwgWriter::write_to_vec(&cad).unwrap(),
+        FileFormat::Dxf => DxfWriter::new(&cad).write_to_vec().unwrap(),
+    }
+}
+
+#[test]
+fn a_drawing_without_layer_zero_opens_recovered_with_it_added() {
+    for format in [FileFormat::Dwg, FileFormat::Dxf] {
+        let bytes = without_layer_zero(format);
+        let raw = match format {
+            FileFormat::Dwg => {
+                acadrust::DwgReader::from_stream(std::io::Cursor::new(bytes.clone()))
+                    .read()
+                    .unwrap()
+            }
+            FileFormat::Dxf => {
+                acadrust::DxfReader::from_reader(std::io::Cursor::new(bytes.clone()))
+                    .unwrap()
+                    .read()
+                    .unwrap()
+            }
+        };
+        if raw.layers.contains("0") {
+            // The engine adds layer 0 itself when reading this format:
+            // nothing to repair, and the drawing opens intact.
+            let (cad, recovery) = read(bytes, format, Path::new("x")).unwrap();
+            assert!(cad.layers.contains("0") && recovery.is_none(), "{format:?}");
+            continue;
+        }
+        let doc = crate::Document::read(bytes, format, Path::new("x")).expect("opens");
+        let recovery = doc.recovery().expect("marked recovered");
+        assert!(
+            recovery
+                .problems()
+                .iter()
+                .any(|p| p == super::LAYER_ZERO_ADDED),
+            "{format:?}: {:?}",
+            recovery.problems()
+        );
+        assert!(doc.layers().iter().any(|l| l.name() == "0"), "{format:?}");
+    }
+}
