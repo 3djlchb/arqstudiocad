@@ -71,7 +71,7 @@ pub use change::{Change, ChangeSet};
 pub use combining::{Combination, Combined};
 pub use document::Document;
 pub use drawing::{DrawItem, Shape, SpaceItem};
-pub use entity::{Color, Entity, EntityId, PlanGeometry, TextData};
+pub use entity::{Color, Entity, EntityId, PlanGeometry, PolylineStyle, TextData};
 pub use error::{DocumentError, DocumentResult};
 pub use extruding::{Extruded, Unextruded};
 pub use format::FileFormat;

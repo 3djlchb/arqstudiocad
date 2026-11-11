@@ -590,15 +590,24 @@ impl CadDocument {
     /// Draws a polyline on the current layer (PLINE): `vertices` as
     /// `(point, bulge)` pairs, the bulge of the segment leaving each vertex
     /// (0 straight, positive counterclockwise); `closed` joins the last
-    /// vertex to the first.
-    #[pyo3(signature = (vertices, closed = false))]
+    /// vertex to the first. At `elevation`, with `thickness` and a constant
+    /// `width` (RECTANG's options): finite, the width not negative.
+    #[pyo3(signature = (vertices, closed = false, elevation = 0.0, thickness = 0.0, width = 0.0))]
     fn add_polyline(
         &self,
         vertices: Vec<(PyPoint, f64)>,
         closed: bool,
+        elevation: f64,
+        thickness: f64,
+        width: f64,
     ) -> PyResult<(EntityId, CadChangeSet)> {
         let vertices: Vec<_> = vertices.into_iter().map(|(p, b)| (p.0, b)).collect();
-        self.create(|cad| cad.add_polyline(&vertices, closed))
+        let style = arq_core::PolylineStyle {
+            elevation,
+            thickness,
+            width,
+        };
+        self.create(|cad| cad.add_polyline_with(&vertices, closed, style))
     }
 
     /// Makes block `name` from `entity_ids` with its base point at `base`,

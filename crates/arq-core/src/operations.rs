@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 
 use arq_document::{
     BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Combined, Currencies,
-    Document, DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, Revolved,
+    Document, DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, PolylineStyle,
+    Revolved,
 };
 use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Point3, Transform2, Vector2};
 
@@ -276,7 +277,21 @@ impl CadDocument {
         vertices: &[(Point2, f64)],
         closed: bool,
     ) -> CadResult<(EntityId, ChangeSet)> {
-        self.transact("PLINE", |doc| Ok(doc.add_polyline(vertices, closed)?))
+        self.add_polyline_with(vertices, closed, PolylineStyle::default())
+    }
+
+    /// [`add_polyline`](Self::add_polyline) at an elevation, with a
+    /// thickness and a constant width (RECTANG's options); nothing changes
+    /// when one is not finite or the width is negative.
+    pub fn add_polyline_with(
+        &mut self,
+        vertices: &[(Point2, f64)],
+        closed: bool,
+        style: PolylineStyle,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("PLINE", |doc| {
+            Ok(doc.add_polyline_with(vertices, closed, style)?)
+        })
     }
 
     /// Makes block `name` from `ids`, base point `base`, and puts a

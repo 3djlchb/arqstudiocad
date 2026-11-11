@@ -1,6 +1,6 @@
 //! `Entity`: our read-only view of one drawing entity.
 
-use arq_geometry::{Bounds2, Geometry2, Point2};
+use arq_geometry::{Bounds2, Geometry2, GeometryError, Point2};
 
 use crate::error::{DocumentError, DocumentResult};
 
@@ -80,6 +80,39 @@ impl PlanGeometry {
     /// Same elevation, new geometry.
     pub fn with_geometry(self, geometry: Geometry2) -> Self {
         Self { geometry, ..self }
+    }
+}
+
+/// What a lightweight polyline holds beyond its path: its elevation
+/// (its plane's height), its thickness (how far its sides rise from it)
+/// and its constant width, as DWG keeps them (RECTANG's Elevation,
+/// Thickness and Width). Zero, all three, for a plain polyline.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PolylineStyle {
+    /// The polyline's height above the XY plane.
+    pub elevation: f64,
+    /// How far its sides rise from it, negative for down.
+    pub thickness: f64,
+    /// Its constant width, not negative.
+    pub width: f64,
+}
+
+impl PolylineStyle {
+    /// Every value finite, the width not negative.
+    pub fn check(self) -> DocumentResult<Self> {
+        let bad = |what| Err(DocumentError::Geometry(GeometryError::NonFinite { what }));
+        if !self.elevation.is_finite() {
+            return bad("elevation");
+        }
+        if !self.thickness.is_finite() {
+            return bad("thickness");
+        }
+        if !(self.width.is_finite() && self.width >= 0.0) {
+            return Err(DocumentError::Geometry(
+                GeometryError::NegativeOrNonFinite { what: "width" },
+            ));
+        }
+        Ok(self)
     }
 }
 

@@ -481,6 +481,66 @@ fn a_polyline_is_drawn_with_its_arcs_in_one_step() {
 }
 
 #[test]
+fn a_polyline_keeps_its_elevation_thickness_and_width() {
+    let mut cad = CadDocument::new();
+    let square = [
+        (p(0.0, 0.0), 0.0),
+        (p(4.0, 0.0), 0.0),
+        (p(4.0, 2.0), 0.0),
+        (p(0.0, 2.0), 0.0),
+    ];
+    let style = PolylineStyle {
+        elevation: -2.5,
+        thickness: 3.0,
+        width: 0.25,
+    };
+    let (id, _) = cad.add_polyline_with(&square, true, style).unwrap();
+    let e = cad.document().entity(id).unwrap();
+    let details: Vec<_> = e.details().to_vec();
+    for (name, value) in [
+        ("Elevation", "-2.500000"),
+        ("Thickness", "3.000000"),
+        ("Constant width", "0.250000"),
+        ("Closed", "true"),
+    ] {
+        assert!(
+            details.contains(&(name.to_owned(), value.to_owned())),
+            "{name}: {details:?}"
+        );
+    }
+    // A plain polyline holds none of them.
+    let (plain, _) = cad.add_polyline(&square, true).unwrap();
+    let plain = cad.document().entity(plain).unwrap();
+    assert!(
+        plain
+            .details()
+            .contains(&("Thickness".to_owned(), "0.000000".to_owned()))
+    );
+    // Refused, and nothing drawn.
+    let before = cad.document().entities().len();
+    for bad in [
+        PolylineStyle {
+            elevation: f64::NAN,
+            ..style
+        },
+        PolylineStyle {
+            thickness: f64::INFINITY,
+            ..style
+        },
+        PolylineStyle {
+            width: -0.1,
+            ..style
+        },
+    ] {
+        assert!(
+            cad.add_polyline_with(&square, true, bad).is_err(),
+            "{bad:?}"
+        );
+    }
+    assert_eq!(cad.document().entities().len(), before);
+}
+
+#[test]
 fn repeated_ids_are_edited_once() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();

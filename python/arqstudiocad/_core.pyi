@@ -382,7 +382,12 @@ class CadDocument:
         self, content: str, anchor: _PointLike, height: float, rotation: float
     ) -> tuple[int, CadChangeSet]: ...
     def add_polyline(
-        self, vertices: Sequence[tuple[_PointLike, float]], closed: bool = False
+        self,
+        vertices: Sequence[tuple[_PointLike, float]],
+        closed: bool = False,
+        elevation: float = 0.0,
+        thickness: float = 0.0,
+        width: float = 0.0,
     ) -> tuple[int, CadChangeSet]: ...
     def create_block(
         self, name: str, base: _PointLike, entity_ids: _Ids

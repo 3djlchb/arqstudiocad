@@ -78,8 +78,8 @@ pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
     BlockData, BlockDefinition, BlockInfo, BlockObjects, ClashChoice, Color, Currencies, Currency,
     Document, DrawItem, Entity, EntityId, FileFormat, Grip, GripKind, Layer, LayerId,
-    MassProperties, MeasureError, Money, PlanGeometry, Shape, SolidMeasures, SpaceItem, TextData,
-    Unmeasured,
+    MassProperties, MeasureError, Money, PlanGeometry, PolylineStyle, Shape, SolidMeasures,
+    SpaceItem, TextData, Unmeasured,
 };
 pub use arq_document::{
     Combination, Combined, Extruded, KeptView, ProfileError, Revolved, Unextruded, Unrevolved,
