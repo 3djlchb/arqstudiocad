@@ -10,6 +10,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least privilege (ADR 0037): the token only reads the repository. Actions
+# are pinned to a commit, with the release in a comment; Dependabot keeps
+# them current (.github/dependabot.yml).
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -28,10 +34,12 @@ jobs:
         os: [ubuntu-24.04, windows-2025, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       # rustup installs the exact toolchain from rust-toolchain.toml.
       - run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
@@ -43,7 +51,7 @@ jobs:
       # Round-trip corpus, source 2 (ADR 0011, D3.12): the codec's sample
       # drawings, downloaded and checksummed. Source 1 runs in `cargo test`;
       # source 3 (real drawings) is local only and never reaches CI.
-      - uses: astral-sh/setup-uv@v10.3.0  # no major-version tag is published
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
       - name: Fetch the codec's sample drawings
         run: uv run --no-project --python 3.13 tools/fetch_codec_samples.py
       - name: Round-trip corpus (codec samples)
@@ -68,7 +76,9 @@ jobs:
         python: ["3.12", "3.13", "3.14"]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: System libraries Qt needs, even offscreen (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -76,8 +86,8 @@ jobs:
           sudo apt-get install -y -qq libgl1 libegl1 libxkbcommon0 libfontconfig1 \
             libdbus-1-3 libglib2.0-0t64
       - run: rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
-      - uses: astral-sh/setup-uv@v10.3.0  # no major-version tag is published
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
         with:
           python-version: ${{ matrix.python }}
       - name: Build extension and dev environment
@@ -102,5 +112,23 @@ jobs:
     name: Licenses and advisories
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25  # v2.1.1
+
+  pip-audit:
+    name: Python advisories
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+      # Every locked Python package, development tools included, against the
+      # Python Packaging Advisory Database (ADR 0037). pip-audit runs from
+      # uvx at a fixed version; it is not a dependency of the project.
+      - name: Audit the locked Python packages
+        run: |
+          uv export --locked --no-emit-project --format requirements-txt -o "$RUNNER_TEMP/requirements.txt"
+          uvx pip-audit@2.10.1 --strict --require-hashes --disable-pip -r "$RUNNER_TEMP/requirements.txt"

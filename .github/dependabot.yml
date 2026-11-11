@@ -1,0 +1,14 @@
+# Keeps the actions pinned to commits current (ADR 0037 D3): one grouped
+# pull request a month, reviewed like any other. Rust and Python packages
+# are checked by cargo deny and pip-audit in CI and upgraded by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "CI"
