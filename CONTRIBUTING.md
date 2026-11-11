@@ -98,6 +98,10 @@ a sibling folder on its own branch, made with `tools/new_worktree.ps1 <topic>`
 
 ## Reporting a drawing that opens, draws or saves wrong
 
+If a file makes the application do more than draw wrong (run something, touch
+other files, or crash in a way that looks exploitable), report it privately
+instead, as [SECURITY.md](SECURITY.md) explains.
+
 This is the most valuable kind of report — and impossible to act on without
 the file. Attach the DWG/DXF (zip it if GitHub refuses the extension). If it
 is client work you cannot share, a copy reduced to the entities that misbehave
