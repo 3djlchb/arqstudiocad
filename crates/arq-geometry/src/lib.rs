@@ -24,6 +24,7 @@
 //! | Curves | [`Line`], [`Circle`], [`Arc`], and [`Geometry2`] for any of them |
 //! | Move, rotate, scale, mirror | [`Transform2`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
+//! | The rectangles RECTANG draws | [`Rectangle`] |
 //! | Polygons with holes, their union, intersection and difference | [`Region`] |
 //! | The same with curved edges: arcs, and a plane seen on a cylinder or a cone | [`CurvedRegion`] of [`Trim`]s |
 //! | Object-snap points | [`snap`] |
@@ -72,6 +73,7 @@ mod intersect;
 mod line;
 mod point;
 mod point3;
+mod rectangle;
 mod region;
 pub mod snap;
 mod tolerance;
@@ -91,6 +93,7 @@ pub use intersect::{Intersections, intersect};
 pub use line::Line;
 pub use point::Point2;
 pub use point3::Point3;
+pub use rectangle::Rectangle;
 pub use region::{Containment, Region};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
