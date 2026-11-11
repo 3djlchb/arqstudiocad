@@ -115,6 +115,8 @@ class Prompt:
     base: tuple[float, float] | None = None
     optional: bool = False
     drag: Drag | None = None
+    #: A number prompt that takes zero too (a fillet radius: none).
+    zero: bool = False
 
     @property
     def picks(self) -> bool:
@@ -401,11 +403,12 @@ class CommandContext:
         shown = None if default is None else f"{math.degrees(default):.10g}"
         return Prompt(message, "angle", tuple(options), shown, base, optional, drag)
 
-    def number(self, message: str, default: float | None = None) -> Prompt:
+    def number(self, message: str, default: float | None = None, zero: bool = False) -> Prompt:
         """A prompt for a number greater than zero that is not a distance
-        (an area), only typed; yield it to get a float."""
+        (an area), only typed; or zero too, when ``zero`` (a fillet radius,
+        where zero means none). Yield it to get a float."""
         shown = None if default is None else f"{default:.10g}"
-        return Prompt(message, "number", (), shown)
+        return Prompt(message, "number", (), shown, zero=zero)
 
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
         """A prompt while the user selects in the viewport (ADR 0016 D3);
@@ -665,11 +668,17 @@ class CommandRunner:
         self._advance(lambda script: script.send(angle))
 
     def _answer_number(self, prompt: Prompt, text: str) -> None:
-        """A typed number greater than zero, or the default for Enter."""
+        """A typed number greater than zero (or zero too, if the prompt
+        takes it), or the default for Enter."""
         typed = text or prompt.default or ""
         number = _number(typed) if typed else None
-        if number is None or not (math.isfinite(number) and number > 0.0):
-            self.context.message(tr("Type a number greater than zero."))
+        least_ok = number is not None and (number >= 0.0 if prompt.zero else number > 0.0)
+        if number is None or not (math.isfinite(number) and least_ok):
+            self.context.message(
+                tr("Type a number zero or greater.")
+                if prompt.zero
+                else tr("Type a number greater than zero.")
+            )
             self._show(prompt)
             return
         self._advance(lambda script: script.send(number))

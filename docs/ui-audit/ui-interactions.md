@@ -78,7 +78,7 @@ names its implementation; the registry lives at the end of the linked module.
 | LAYER / BLOCKSPALETTE | Open/raise respective panel; Blocks action also has explicit toggle-close behavior | Same module, `layer`:311, `blocks_palette`:320; `MainWindow._palette_button` |
 | LINE | Repeated points, Undo/Close options, Enter finishes; Esc keeps drawn segments as one undo group | [draw.py](../../python/arqstudiocad/commands/draw.py), `line`:49 |
 | PLINE | Straight and tangent-arc segments; Arc/Line/Undo/Close; Esc keeps accumulated polyline | Same module, `pline`:89 |
-| RECTANG | First corner, then the opposite corner or Area/Dimensions/Rotation (Pick points), the rectangle previewed under the cursor; one closed polyline, one undo step; rotation, sizes and area remembered (milestone 02.14) | Same module, `rectang`:262 |
+| RECTANG | First corner or Chamfer/Fillet (one replaces the other, zero squares the corners), then the opposite corner or Area/Dimensions/Rotation (Pick points), the rectangle previewed under the cursor as drawn; one closed polyline, one undo step; corners, rotation, sizes and area remembered (milestone 02.14) | Same module, `rectang`:262 |
 | CIRCLE | Center/radius or diameter; two-point diameter or three-point circle | Same module, `circle`:163 |
 | ARC | Three points or center/start/end variants; counterclockwise core convention | Same module, `arc`:202 |
 | TEXT | Start, height, rotation, repeated text lines until empty input; grouped undo | Same module, `text`:257 |

@@ -1,8 +1,8 @@
 """RECTANG (milestone 02.14, ADR 0035 D4): AutoCAD's rectangle by two
-corners, Area, Dimensions and Rotation, as one closed polyline; the
-values it remembers, its prompt for a number, its preview, its name in
-Spanish and its place in the interface. Every expected shape is worked
-out by hand."""
+corners, Area, Dimensions and Rotation, its corners square, filleted or
+chamfered, as one closed polyline; the values it remembers, its prompt
+for a number, its preview, its name in Spanish and its place in the
+interface. Every expected shape is worked out by hand."""
 
 import math
 from pathlib import Path
@@ -20,6 +20,8 @@ from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 
 OTHER = "Specify other corner point [Area(A)/Dimensions(D)/Rotation(R)]:"
+FIRST = "Specify first corner point [Chamfer(C)/Fillet(F)]:"
+Q = math.tan(math.pi / 8)  # a quarter circle's bulge
 
 
 class Harness:
@@ -54,7 +56,7 @@ class Harness:
 def test_two_corners_draw_one_closed_polyline_as_one_undo_step() -> None:
     h = Harness()
     h.run("RECTANG")
-    assert h.prompt().text == "Specify first corner point:"
+    assert h.prompt().text == FIRST
     h.run("0,0")
     assert h.prompt().text == OTHER
     assert h.prompt().drag == Drag("rectangle", band=False, rotation=0.0)
@@ -64,6 +66,16 @@ def test_two_corners_draw_one_closed_polyline_as_one_undo_step() -> None:
     [only] = h.polylines()
     assert ("Closed", "true") in h.document.get_entity(only).details
     assert h.runner.active is None, "the command ends"
+
+
+def test_the_step_is_in_the_history_when_the_change_is_reported() -> None:
+    from arqstudiocad.events import DocumentChanged
+
+    h = Harness()
+    seen: list[list[str]] = []
+    h.bus.subscribe(DocumentChanged, lambda e: seen.append(list(h.document.undo_history)))
+    h.run("RECTANG", "0,0", "4,3")
+    assert seen == [["RECTANG"]], "the History panel refreshes on this event"
 
 
 def test_the_corners_run_counterclockwise_from_the_first_in_any_quarter() -> None:
@@ -276,13 +288,43 @@ def test_the_viewport_previews_the_rectangle(qtbot: QtBot, tmp_path: Path) -> No
     shown = preview(Drag("rectangle", band=False), (30.0, 25.0))
     assert shown is not None and shown.other == pytest.approx((30.0, 25.0))
     assert viewport.preview is None, "nothing is moved"
-    corners = [viewport.screen_point(c) for c in shown.corners]
-    strokes = [i for i in viewport.overlay().items if isinstance(i, Stroke) and i.closed]
-    assert any(
-        len(s.points) == 4
-        and all(math.dist(p, (c.x(), c.y())) < 1e-6 for p, c in zip(s.points, corners, strict=True))
-        for s in strokes
-    ), "the rectangle is drawn over the drawing"
+
+    def drawn(rectangle: CadRectangle) -> list[tuple[float, float]]:
+        """The overlay's closed stroke inside the rectangle's box."""
+        corners = [viewport.screen_point(c) for c in rectangle.corners]
+        strokes = [i for i in viewport.overlay().items if isinstance(i, Stroke)]
+        found = [s for s in strokes if math.dist(s.points[-1], s.points[0]) < 1e-6]
+        on_box = [
+            s
+            for s in found
+            if all(
+                min(c.x() for c in corners) - 1e-6 <= x <= max(c.x() for c in corners) + 1e-6
+                and min(c.y() for c in corners) - 1e-6 <= y <= max(c.y() for c in corners) + 1e-6
+                for x, y in s.points
+            )
+        ]
+        assert on_box, "the rectangle is drawn over the drawing"
+        return list(on_box[-1].points)
+
+    corners = [(c.x(), c.y()) for c in (viewport.screen_point(c) for c in shown.corners)]
+    points = drawn(shown)
+    assert len(points) == 5 and all(
+        math.dist(p, c) < 1e-6 for p, c in zip(points, [*corners, corners[0]], strict=True)
+    ), "square corners: the four corners, closed"
+
+    # Filleted, the preview rounds the corners: none of them is drawn.
+    shown = preview(Drag("rectangle", band=False, fillet=2.0), (30.0, 25.0))
+    assert shown is not None
+    points = drawn(shown)
+    assert len(points) > 9, "arcs drawn as fine polylines"
+    for corner in corners:
+        assert all(math.dist(p, corner) > 1.0 for p in points), "the corner is rounded"
+    # Too small for them: the square rectangle RECTANG will draw.
+    shown = preview(Drag("rectangle", band=False, fillet=20.0), (30.0, 25.0))
+    assert shown is not None and len(drawn(shown)) == 5
+    # Chamfered: eight vertices, closed.
+    shown = preview(Drag("rectangle", band=False, chamfer=(2.0, 1.0)), (30.0, 25.0))
+    assert shown is not None and len(drawn(shown)) == 9
 
     # Dimensions: the size is kept, the point only picks the quarter.
     shown = preview(Drag("rectangle", band=False, size=(4.0, 3.0)), (0.0, 25.0))
@@ -292,3 +334,184 @@ def test_the_viewport_previews_the_rectangle(qtbot: QtBot, tmp_path: Path) -> No
     assert shown is not None and (shown.length, shown.width) == pytest.approx((10.0, 5.0))
     # On a side's line there is no rectangle yet.
     assert preview(Drag("rectangle", band=False), (30.0, 20.0)) is None
+
+
+def saved_path(
+    h: Harness, folder: Path, name: str = "r.dxf"
+) -> list[tuple[tuple[float, float], float]]:
+    """The last polyline's vertices and bulges as the saved DXF holds them
+    (codes 10, 20 and 42 of its LWPOLYLINE), read back by hand."""
+    path = folder / name
+    h.session.save(h.document, path)
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    pairs = list(zip(lines[0::2], lines[1::2], strict=False))
+    vertices: list[list[float]] = []
+    inside = False
+    for code, value in ((c.strip(), v.strip()) for c, v in pairs):
+        if code == "0":
+            inside = value == "LWPOLYLINE"
+            if inside:
+                vertices = []
+            continue
+        if not inside:
+            continue
+        if code == "10":
+            vertices.append([float(value), 0.0, 0.0])
+        elif code == "20":
+            vertices[-1][1] = float(value)
+        elif code == "42":
+            vertices[-1][2] = float(value)
+    return [((round(x, 9) + 0.0, round(y, 9) + 0.0), b) for x, y, b in vertices]
+
+
+def same_path(
+    got: list[tuple[tuple[float, float], float]], expected: list[tuple[tuple[float, float], float]]
+) -> bool:
+    return len(got) == len(expected) and all(
+        math.dist(p, q) < 1e-9 and abs(b - c) < 1e-9
+        for (p, b), (q, c) in zip(got, expected, strict=True)
+    )
+
+
+def test_fillet_rounds_the_corners(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "F")
+    assert h.prompt().text == "Specify fillet radius for rectangles <0>:"
+    assert not h.prompt().point, "a radius is typed"
+    h.run("0.5")
+    assert h.prompt().text == FIRST, "then the first corner again"
+    h.run("0,0")
+    assert h.prompt().drag == Drag("rectangle", band=False, rotation=0.0, fillet=0.5)
+    h.run("4,2")
+    assert same_path(
+        saved_path(h, tmp_path),
+        [
+            ((0.5, 0.0), 0.0),
+            ((3.5, 0.0), Q),
+            ((4.0, 0.5), 0.0),
+            ((4.0, 1.5), Q),
+            ((3.5, 2.0), 0.0),
+            ((0.5, 2.0), Q),
+            ((0.0, 1.5), 0.0),
+            ((0.0, 0.5), Q),
+        ],
+    )
+    assert h.document.undo_history == ["RECTANG"]
+    # Remembered: the next rectangle says so and rounds its corners too.
+    h.run("RECTANG")
+    assert h.messages()[-1] == "Current rectangle modes: Fillet=0.5"
+    h.run("10,0", "12,2")
+    assert len(saved_path(h, tmp_path)) == 8
+
+
+def test_chamfer_cuts_the_length_by_the_first_distance(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "C")
+    assert h.prompt().text == "Specify first chamfer distance for rectangles <0>:"
+    h.run("1")
+    assert h.prompt().text == "Specify second chamfer distance for rectangles <1>:", (
+        "the second defaults to the first"
+    )
+    h.run("0.5", "0,0", "4,2")
+    assert same_path(
+        saved_path(h, tmp_path),
+        [
+            ((1.0, 0.0), 0.0),
+            ((3.0, 0.0), 0.0),
+            ((4.0, 0.5), 0.0),
+            ((4.0, 1.5), 0.0),
+            ((3.0, 2.0), 0.0),
+            ((1.0, 2.0), 0.0),
+            ((0.0, 1.5), 0.0),
+            ((0.0, 0.5), 0.0),
+        ],
+    )
+    h.run("RECTANG")
+    assert h.messages()[-1] == "Current rectangle modes: Chamfer=1 x 0.5"
+    assert h.prompt().text == FIRST
+
+
+def test_fillet_and_chamfer_replace_each_other_and_zero_squares_them(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "F", "0.5", "C", "1", "0.5")
+    h.run("0,0", "4,2")
+    path = saved_path(h, tmp_path)
+    assert len(path) == 8 and all(b == 0.0 for _, b in path), "the chamfer replaced the fillet"
+    h.run("RECTANG", "F")
+    assert h.prompt().text == "Specify fillet radius for rectangles <0>:", "the fillet was cleared"
+    h.run("0", "0,0", "4,2")
+    assert same_path(
+        saved_path(h, tmp_path),
+        [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0), ((4.0, 2.0), 0.0), ((0.0, 2.0), 0.0)],
+    )
+    # No modes to report now.
+    count = len(h.messages())
+    h.run("RECTANG")
+    assert len(h.messages()) == count
+    h.runner.cancel()
+
+
+@pytest.mark.parametrize("typed", ["abc", "-1", "nan"])
+def test_a_radius_must_be_zero_or_more(typed: str) -> None:
+    h = Harness()
+    h.run("RECTANG", "F", typed)
+    assert h.messages()[-1] == "Type a number zero or greater."
+    assert h.prompt().text == "Specify fillet radius for rectangles <0>:"
+
+
+def test_corners_too_large_leave_the_rectangle_square(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "F", "1.5", "0,0", "4,2")
+    assert h.messages()[-1] == "The rectangle is too small for its fillets; its corners are square."
+    assert same_path(
+        saved_path(h, tmp_path),
+        [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0), ((4.0, 2.0), 0.0), ((0.0, 2.0), 0.0)],
+    )
+    h.run("RECTANG", "C", "3", "0.5", "0,0", "4,2")
+    assert (
+        h.messages()[-1] == "The rectangle is too small for its chamfers; its corners are square."
+    )
+    # Exactly half the width: two half circles and two straight sides.
+    h.run("RECTANG", "F", "1", "0,0", "4,2")
+    path = saved_path(h, tmp_path)
+    assert len(path) == 6 and sum(1 for _, b in path if b) == 4
+
+
+def test_area_counts_what_the_corners_take(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "C", "1", "0.5", "0,0", "A", "7", "L", "4")
+    # 4 x 2 less four triangles of 1 x 0.5: the area typed.
+    path = saved_path(h, tmp_path)
+    assert len(path) == 8
+    xs, ys = [p[0] for p, _ in path], [p[1] for p, _ in path]
+    assert (max(xs) - min(xs), max(ys) - min(ys)) == pytest.approx((4.0, 2.0))
+    h.run("RECTANG", "F", "0.5", "0,0", "A", "12", "L", "4")
+    rectangle = CadRectangle.of_area((0, 0), 12.0, 4.0, True, 0.0, fillet=0.5)
+    assert rectangle.area_with(fillet=0.5) == pytest.approx(12.0)
+    assert same_path(saved_path(h, tmp_path), [(p, b) for p, b in rectangle.path(fillet=0.5)])
+
+
+def test_turned_and_filleted_it_survives_dwg(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "F", "0.25", "100000.5,200000.25", "R", "30", "D", "4", "3", "100010,200010")
+    expected = saved_path(h, tmp_path, "r.dxf")
+    assert len(expected) == 8 and sum(1 for _, b in expected if abs(b - Q) < 1e-12) == 4
+    path = tmp_path / "r.dwg"
+    h.session.save(h.document, path)
+    again = Harness()
+    again.document = again.session.open_document(path)
+    assert same_path(saved_path(again, tmp_path, "again.dxf"), expected)
+
+
+def test_core_rectangle_corners() -> None:
+    r = CadRectangle((0.0, 0.0), (4.0, 2.0))
+    assert r.path() == r.vertices
+    assert len(r.path(fillet=0.5)) == 8 and r.fits(fillet=1.0) and not r.fits(fillet=1.01)
+    assert r.area_with(chamfer=(1.0, 0.5)) == pytest.approx(7.0)
+    assert r.area_with(fillet=1.0) == pytest.approx(8.0 - (4.0 - math.pi))
+    with pytest.raises(InvalidGeometryError):
+        r.path(fillet=1.5)
+    with pytest.raises(InvalidGeometryError):
+        r.path(chamfer=(-1.0, 1.0))
+    with pytest.raises(ValueError, match="not both"):
+        r.path(fillet=0.5, chamfer=(1.0, 1.0))

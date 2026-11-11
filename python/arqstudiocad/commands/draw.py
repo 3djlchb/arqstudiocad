@@ -36,14 +36,19 @@ from arqstudiocad.points import Point
 #: The last circle radius, remembered as AutoCAD's CIRCLERAD.
 CIRCLE_RADIUS = "CIRCLERAD"
 #: RECTANG's last rotation, length, width, area and the side the area
-#: was given with, kept for the session as AutoCAD keeps them; AutoCAD's
-#: defaults until then.
+#: was given with, and its corners' fillet radius or chamfer distances
+#: (one of them at most, zero for none), kept for the session as AutoCAD
+#: keeps them; AutoCAD's defaults until then.
+RECTANG_FILLET = "RECTANG_FILLET"
+RECTANG_CHAMFER = "RECTANG_CHAMFER"
 RECTANG_ROTATION = "RECTANG_ROTATION"
 RECTANG_LENGTH = "RECTANG_LENGTH"
 RECTANG_WIDTH = "RECTANG_WIDTH"
 RECTANG_AREA = "RECTANG_AREA"
 RECTANG_AREA_SIDE = "RECTANG_AREA_SIDE"
 RECTANG_DEFAULTS = {
+    RECTANG_FILLET: 0.0,
+    RECTANG_CHAMFER: (0.0, 0.0),
     RECTANG_ROTATION: 0.0,
     RECTANG_LENGTH: 10.0,
     RECTANG_WIDTH: 10.0,
@@ -263,18 +268,23 @@ def rectang(ctx: CommandContext) -> CommandScript:
     """A rectangle, a closed polyline, as AutoCAD's RECTANG: by its first
     and opposite corners, or by its Area and one side, or by its
     Dimensions and the quarter a point picks; its sides along the
-    Rotation typed or shown by two points. The rotation, sizes and area
-    are remembered for the next one."""
+    Rotation typed or shown by two points; its corners square, or
+    rounded by a Fillet or cut by a Chamfer, set before the first corner.
+    The corners, rotation, sizes and area are remembered for the next
+    one."""
     document = ctx.document()
     memory = ctx.remembered
     for key, value in RECTANG_DEFAULTS.items():
         memory.setdefault(key, value)
-    first = yield ctx.point(tr("Specify first corner point"))
+    first = yield from _rectangle_first_corner(ctx, memory)
+    fillet, chamfer = memory[RECTANG_FILLET], memory[RECTANG_CHAMFER]
     options = [Option("A", tr("Area")), Option("D", tr("Dimensions")), Option("R", tr("Rotation"))]
     size: tuple[float, float] | None = None
     while True:
         rotation = memory[RECTANG_ROTATION]
-        drag = Drag("rectangle", band=False, rotation=rotation, size=size)
+        drag = Drag(
+            "rectangle", band=False, rotation=rotation, size=size, fillet=fillet, chamfer=chamfer
+        )
         answer = yield ctx.point(
             tr("Specify other corner point"), base=first, options=options, drag=drag
         )
@@ -295,7 +305,9 @@ def rectang(ctx: CommandContext) -> CommandScript:
                 default=memory[known],
             )
             try:
-                rectangle = CadRectangle.of_area(first, area, given, by_length, rotation)
+                rectangle = CadRectangle.of_area(
+                    first, area, given, by_length, rotation, fillet, chamfer
+                )
             except InvalidGeometryError:
                 ctx.message(tr("That area and side leave no rectangle."))
                 continue
@@ -323,13 +335,70 @@ def rectang(ctx: CommandContext) -> CommandScript:
             ctx.message(tr("The corners must differ in both directions."))
             continue
         break
-    # One undo step under RECTANG's name, not the polyline's.
+    try:
+        vertices = rectangle.path(fillet, chamfer)
+    except InvalidGeometryError:
+        # Too small for its corners: drawn square, as AutoCAD draws it.
+        vertices = rectangle.vertices
+        ctx.message(
+            tr("The rectangle is too small for its fillets; its corners are square.")
+            if fillet
+            else tr("The rectangle is too small for its chamfers; its corners are square.")
+        )
+    # One undo step under RECTANG's name, not the polyline's; reported once
+    # the step is closed, so whoever listens sees it in the history.
     document.begin_group("RECTANG")
     try:
-        _, changes = document.add_polyline(rectangle.vertices, True)
-        ctx.session.report(document, changes)
+        _, changes = document.add_polyline(vertices, True)
     finally:
         document.end_group()
+    ctx.session.report(document, changes)
+
+
+def _rectangle_first_corner(
+    ctx: CommandContext, memory: dict[str, Any]
+) -> Generator[Prompt | Background, Any, Point]:
+    """RECTANG's first corner, after its Chamfer or Fillet, which set the
+    corners of this rectangle and the next ones: one replaces the other,
+    and zero draws square corners."""
+    fillet, chamfer = memory[RECTANG_FILLET], memory[RECTANG_CHAMFER]
+    if fillet:
+        ctx.message(tr("Current rectangle modes: Fillet={radius}", radius=f"{fillet:.10g}"))
+    elif chamfer[0] and chamfer[1]:
+        ctx.message(
+            tr(
+                "Current rectangle modes: Chamfer={first} x {second}",
+                first=f"{chamfer[0]:.10g}",
+                second=f"{chamfer[1]:.10g}",
+            )
+        )
+    options = [Option("C", tr("Chamfer")), Option("F", tr("Fillet"))]
+    while True:
+        answer = yield ctx.point(tr("Specify first corner point"), options=options)
+        if answer == "C":
+            first_distance = yield ctx.number(
+                tr("Specify first chamfer distance for rectangles"),
+                default=memory[RECTANG_CHAMFER][0],
+                zero=True,
+            )
+            second_distance = yield ctx.number(
+                tr("Specify second chamfer distance for rectangles"),
+                default=first_distance,
+                zero=True,
+            )
+            memory[RECTANG_CHAMFER] = (first_distance, second_distance)
+            memory[RECTANG_FILLET] = 0.0
+            continue
+        if answer == "F":
+            memory[RECTANG_FILLET] = yield ctx.number(
+                tr("Specify fillet radius for rectangles"),
+                default=memory[RECTANG_FILLET],
+                zero=True,
+            )
+            memory[RECTANG_CHAMFER] = (0.0, 0.0)
+            continue
+        corner: Point = answer
+        return corner
 
 
 def _rectangle_rotation(

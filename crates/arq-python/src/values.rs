@@ -8,7 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use arq_core::{Color, Grip, SnapKind, SnapPoint};
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Rectangle, Tolerance, Vector2};
+use arq_geometry::{Arc, Bounds2, Circle, Corners, Line, Point2, Rectangle, Tolerance, Vector2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -513,14 +513,21 @@ impl CadRectangle {
 
     /// The rectangle of `area` from `first`, the positive way along
     /// `rotation` and square to it (RECTANG's Area): `side` is its length
-    /// when `side_is_length`, else its width.
+    /// when `side_is_length`, else its width. The area is the one the
+    /// corners leave, `fillet` or `chamfer` as in `path`.
     #[staticmethod]
+    #[pyo3(
+        signature = (first, area, side, side_is_length, rotation, fillet = 0.0, chamfer = (0.0, 0.0)),
+        text_signature = "(first, area, side, side_is_length, rotation, fillet=0.0, chamfer=(0.0, 0.0))"
+    )]
     fn of_area(
         first: PyPoint,
         area: f64,
         side: f64,
         side_is_length: bool,
         rotation: f64,
+        fillet: f64,
+        chamfer: (f64, f64),
     ) -> PyResult<Self> {
         Rectangle::from_area(
             first.0,
@@ -528,6 +535,7 @@ impl CadRectangle {
             side,
             side_is_length,
             rotation,
+            corners(fillet, chamfer)?,
             Tolerance::DEFAULT,
         )
         .py()
@@ -588,6 +596,35 @@ impl CadRectangle {
         self.0.corners().map(|p| (xy(p), 0.0)).to_vec()
     }
 
+    /// The closed polyline with its corners rounded by `fillet` or cut by
+    /// `chamfer` (the first distance along the length, the second along the
+    /// width), as `CadDocument.add_polyline` takes it: counterclockwise,
+    /// from where the first corner's fillet or chamfer ends. Corners too
+    /// large for the sides are an `InvalidGeometryError`; a zero radius or
+    /// distance leaves them square.
+    #[pyo3(signature = (fillet = 0.0, chamfer = (0.0, 0.0)), text_signature = "(self, /, fillet=0.0, chamfer=(0.0, 0.0))")]
+    fn path(&self, fillet: f64, chamfer: (f64, f64)) -> PyResult<Vec<((f64, f64), f64)>> {
+        let vertices = self
+            .0
+            .vertices(corners(fillet, chamfer)?, Tolerance::DEFAULT)
+            .py()?;
+        Ok(vertices.into_iter().map(|(p, b)| (xy(p), b)).collect())
+    }
+
+    /// Whether `fillet` or `chamfer` fit its sides.
+    #[pyo3(signature = (fillet = 0.0, chamfer = (0.0, 0.0)), text_signature = "(self, /, fillet=0.0, chamfer=(0.0, 0.0))")]
+    fn fits(&self, fillet: f64, chamfer: (f64, f64)) -> PyResult<bool> {
+        let corners = corners(fillet, chamfer)?.checked().py()?;
+        Ok(self.0.fits(corners, Tolerance::DEFAULT))
+    }
+
+    /// Its area with `fillet` or `chamfer`: what the corners leave.
+    #[pyo3(signature = (fillet = 0.0, chamfer = (0.0, 0.0)), text_signature = "(self, /, fillet=0.0, chamfer=(0.0, 0.0))")]
+    fn area_with(&self, fillet: f64, chamfer: (f64, f64)) -> PyResult<f64> {
+        let corners = corners(fillet, chamfer)?.checked().py()?;
+        Ok(self.0.area_with(corners))
+    }
+
     fn __hash__(&self) -> u64 {
         let (a, b) = (self.0.first(), self.0.other());
         hash_floats(&[a.x(), a.y(), b.x(), b.y(), self.0.rotation()])
@@ -601,6 +638,22 @@ impl CadRectangle {
             fmt_f64(self.0.rotation())
         )
     }
+}
+
+/// RECTANG's corners from Python's two settings: a fillet or a chamfer,
+/// never both (AutoCAD keeps one of them at a time).
+fn corners(fillet: f64, chamfer: (f64, f64)) -> PyResult<Corners> {
+    let chamfered = chamfer != (0.0, 0.0);
+    if fillet != 0.0 && chamfered {
+        return Err(PyValueError::new_err(
+            "a rectangle's corners are filleted or chamfered, not both",
+        ));
+    }
+    Ok(if chamfered {
+        Corners::Chamfer(chamfer.0, chamfer.1)
+    } else {
+        Corners::Fillet(fillet)
+    })
 }
 
 /// Adds the value classes to the module.

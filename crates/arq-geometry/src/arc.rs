@@ -119,6 +119,46 @@ impl Arc {
         Ok(((half / 2.0).tan(), angle::normalize(direction + 2.0 * half)))
     }
 
+    /// The arc a polyline segment from `start` to `end` with `bulge` draws
+    /// (the tangent of a quarter of its sweep, positive counterclockwise),
+    /// and whether it runs backward: stored counterclockwise, a negative
+    /// bulge's arc runs from `end` to `start`. A zero or non-finite bulge
+    /// is a straight segment, not an arc, and is refused; so are `start`
+    /// and `end` on one point.
+    pub fn from_bulge(start: Point2, end: Point2, bulge: f64) -> GeometryResult<(Self, bool)> {
+        if !bulge.is_finite() {
+            return Err(GeometryError::NonFinite { what: "bulge" });
+        }
+        if bulge == 0.0 {
+            return Err(GeometryError::OutOfRange { what: "bulge" });
+        }
+        let chord = end - start;
+        let c = chord.length();
+        if c == 0.0 {
+            return Err(GeometryError::ZeroLength);
+        }
+        // The center lies off the chord's middle, to its left for a positive
+        // bulge below a half circle: by (1 - b²) / 4b of the chord.
+        let left = (-chord.y() / c, chord.x() / c);
+        let off = (1.0 - bulge * bulge) / (4.0 * bulge) * c;
+        let center = Point2::new(
+            (start.x() + end.x()) / 2.0 + left.0 * off,
+            (start.y() + end.y()) / 2.0 + left.1 * off,
+        )?;
+        let radius = center.distance_to(start);
+        let angle = |p: Point2| {
+            (p.y() - center.y())
+                .atan2(p.x() - center.x())
+                .rem_euclid(TAU)
+        };
+        let (from, to, backward) = if bulge > 0.0 {
+            (angle(start), angle(end), false)
+        } else {
+            (angle(end), angle(start), true)
+        };
+        Ok((Self::new(center, radius, from, to)?, backward))
+    }
+
     /// Center point.
     pub fn center(self) -> Point2 {
         self.center
@@ -242,6 +282,47 @@ impl Arc {
 mod tests {
     use super::*;
     use std::f64::consts::PI;
+
+    #[test]
+    fn arcs_from_polyline_bulges() {
+        let at = |x: f64, y: f64| Point2::new(x, y).unwrap();
+        let close = |a: f64, b: f64| (a - b).abs() < 1e-12;
+        // Bulge 1: a half circle, to the left of (0,0) -> (2,0) when positive.
+        let (arc, backward) = Arc::from_bulge(at(0.0, 0.0), at(2.0, 0.0), 1.0).unwrap();
+        assert!(!backward && arc.center().approx_eq(at(1.0, 0.0), Tolerance::DEFAULT));
+        assert!(
+            close(arc.radius(), 1.0) && close(arc.start_angle(), PI) && close(arc.end_angle(), 0.0)
+        );
+        let (arc, backward) = Arc::from_bulge(at(0.0, 0.0), at(2.0, 0.0), -1.0).unwrap();
+        // Negative: clockwise from the start, stored counterclockwise from the end.
+        assert!(backward && close(arc.start_angle(), 0.0) && close(arc.end_angle(), PI));
+        assert!(
+            arc.start_point()
+                .approx_eq(at(2.0, 0.0), Tolerance::DEFAULT)
+        );
+        assert!(arc.end_point().approx_eq(at(0.0, 0.0), Tolerance::DEFAULT));
+        assert!(close(arc.sweep(), PI));
+        // A quarter circle: tan(π/8), from (1,0) to (0,1) about the origin.
+        let (arc, _) = Arc::from_bulge(at(1.0, 0.0), at(0.0, 1.0), (PI / 8.0).tan()).unwrap();
+        assert!(arc.center().approx_eq(at(0.0, 0.0), Tolerance::DEFAULT));
+        assert!(close(arc.radius(), 1.0) && close(arc.sweep(), PI / 2.0));
+        // Survey coordinates keep the arc.
+        let (arc, _) = Arc::from_bulge(at(5e5, 9e6), at(5e5 + 2.0, 9e6), 1.0).unwrap();
+        assert!((arc.radius() - 1.0).abs() < 1e-9);
+        // Refused: no arc.
+        assert_eq!(
+            Arc::from_bulge(at(0.0, 0.0), at(2.0, 0.0), 0.0),
+            Err(GeometryError::OutOfRange { what: "bulge" })
+        );
+        assert_eq!(
+            Arc::from_bulge(at(0.0, 0.0), at(2.0, 0.0), f64::NAN),
+            Err(GeometryError::NonFinite { what: "bulge" })
+        );
+        assert_eq!(
+            Arc::from_bulge(at(1.0, 1.0), at(1.0, 1.0), 1.0),
+            Err(GeometryError::ZeroLength)
+        );
+    }
 
     #[test]
     fn tangent_arcs_as_polyline_bulges() {

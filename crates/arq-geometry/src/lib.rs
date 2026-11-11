@@ -93,7 +93,7 @@ pub use intersect::{Intersections, intersect};
 pub use line::Line;
 pub use point::Point2;
 pub use point3::Point3;
-pub use rectangle::Rectangle;
+pub use rectangle::{Corners, Rectangle};
 pub use region::{Containment, Region};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
