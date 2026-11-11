@@ -139,6 +139,25 @@ menus; those menus stay, and the dialog shows the same settings.
   Prefer OpenGL on older GPUs (automatic backend only) (on); help about
   falling back and about `--backend` / `WGPU_BACKEND` overriding the page.
 
+*As built (2026-11-10, ADR 0034 "After 02.7"; maintainer, 2026-11-10: as
+close to the mockup as the decisions since allow):*
+- A section of its own, last in the sidebar, as mocked.
+- *This session*, read only: Graphics card, Driver (the version the card
+  reports), Graphics API, Chosen by (automatic, chosen in Options,
+  `ARQ_GPU_VIEWPORT`, safe mode); and, when the CPU draws, why.
+- *Choice* instead of *Next launch*: changes apply at once, as ADR 0034
+  D6.3 decided after the mockup, so nothing waits for a restart. The
+  graphics card (Automatic, the CPU, each card with its kind) and its API
+  (Automatic, DirectX 12, Vulkan, OpenGL, Metal), which the maintainer
+  asked for after the mockup; an entry that cannot be chosen disabled,
+  why in a line below; "Check the graphics cards again"; antialiasing
+  (D6.3).
+- Not shown: the compatibility renderer and "Prefer OpenGL on older GPUs",
+  which are Open CAD Studio's features and not ours; nothing pretends
+  (ADR 0029).
+- The help names our overrides instead: `--safe-mode` and the
+  `ARQ_GPU_VIEWPORT` variable.
+
 ### 3.1 Crosshair preview
 
 A small box (about 150 × 100 px) to the right of the size controls, with

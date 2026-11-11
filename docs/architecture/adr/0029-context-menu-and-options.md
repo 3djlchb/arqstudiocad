@@ -334,3 +334,11 @@ Later steps add each hidden setting with its feature (D4).
   same on every platform.
 - **Nothing in Options pretends.** Missing features stay out of sight
   instead of being shown disabled.
+
+## Note (2026-11-10)
+
+Graphics, hidden here while the GPU viewport was on hold, is shown since
+ADR 0034 D6.3 and is a section of its own since 2026-11-10, after the
+maintainer's mockup (`09-graphics.png`, [brief](../../design/options-dialog.md)):
+what draws this session, read only, and the graphics card and its API,
+applied at once ([ADR 0034](0034-gpu-viewport-direct-path.md), "After 02.7").

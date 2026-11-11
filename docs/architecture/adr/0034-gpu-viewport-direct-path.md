@@ -494,3 +494,14 @@ On the development laptop: the GTX 1050 Ti offers DirectX 12 and Vulkan;
 the UHD 630 DirectX 12 only, Vulkan disabled ("it closes the application
 when it draws in a window with this card") and OpenGL disabled ("it leaves
 the window black with this card").
+
+**Graphics, a section of its own, after the mockup** (2026-11-10, the
+maintainer's choice): Options gives Graphics its own place in the sidebar,
+as `09-graphics.png` drew it. A read-only *This session* group says the
+card, its driver's version (wgpu's `driver` and `driver_info`, now carried
+from the probe), the API, and what chose them (automatic, Options,
+`ARQ_GPU_VIEWPORT`, safe mode); the *Choice* group holds the card, the API,
+the check on demand and antialiasing. Changes still apply at once (D6.3),
+and the mockup's compatibility renderer and "prefer OpenGL" are left out,
+as features we lack. On the development laptop: the GTX 1050 Ti, driver
+31.0.15.2737, DirectX 12, chosen automatically.
