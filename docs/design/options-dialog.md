@@ -157,6 +157,9 @@ close to the mockup as the decisions since allow):*
   (ADR 0029).
 - The help names our overrides instead: `--safe-mode` and the
   `ARQ_GPU_VIEWPORT` variable.
+- On Windows, OpenGL is not offered on a card Windows does not give
+  the application; the reason says so and names Windows Settings › System ›
+  Display › Graphics (ADR 0034, "OpenGL on Windows").
 
 ### 3.1 Crosshair preview
 
