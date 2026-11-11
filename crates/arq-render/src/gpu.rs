@@ -342,6 +342,7 @@ impl GpuRenderer {
         let renderer = Self {
             adapter: GpuProbeResult {
                 backend: backend.name().to_owned(),
+                driver: crate::gpu_probe::driver_of(&info),
                 adapter: info.name,
                 device_type: format!("{:?}", info.device_type),
             },

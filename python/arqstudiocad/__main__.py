@@ -54,15 +54,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         try:
             if args.adapter is None:
-                backend, adapter, device_type = _core.probe_gpu_backend(args.gpu_probe)
+                found = _core.probe_gpu_backend(args.gpu_probe)
             else:
-                backend, adapter, device_type = _core.probe_gpu_adapter(
-                    args.gpu_probe, args.adapter
-                )
+                found = _core.probe_gpu_adapter(args.gpu_probe, args.adapter)
+            backend, adapter, device_type, driver = found
         except Exception as exc:
             print(json.dumps({"backend": args.gpu_probe, "error": str(exc)}))
             return 1
-        print(json.dumps({"backend": backend, "adapter": adapter, "device_type": device_type}))
+        print(
+            json.dumps(
+                {
+                    "backend": backend,
+                    "adapter": adapter,
+                    "device_type": device_type,
+                    "driver": driver,
+                }
+            )
+        )
         return 0
 
     from arqstudiocad.application import run

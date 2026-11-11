@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QSettings
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QGuiApplication
 from pytestqt.qtbot import QtBot
 
@@ -23,6 +23,7 @@ from arqstudiocad.renderer import (
     plan,
     probe,
     renderer_settings,
+    renderer_title,
     survey,
 )
 from arqstudiocad.ui import main_window
@@ -469,6 +470,15 @@ def test_options_lists_the_cards_and_their_apis_with_why_not(qtbot: QtBot) -> No
     assert all("does not offer it" in d.cards_status.text() for _ in others)
 
 
+def test_with_no_card_chosen_a_reason_names_its_card(qtbot: QtBot) -> None:
+    black = "it leaves the window black with this card"
+    d = OptionsDialog(
+        Options(), lambda values: None, survey=[CardState(HERE, UHD, "IntegratedGpu", reason=black)]
+    )
+    qtbot.addWidget(d)
+    assert f"{black} ({UHD})" in d.cards_status.text()
+
+
 def test_a_card_no_longer_found_is_kept_and_said(qtbot: QtBot) -> None:
     d = OptionsDialog(Options(graphics_card="Old card"), lambda values: None, survey=[])
     qtbot.addWidget(d)
@@ -519,3 +529,70 @@ def test_the_card_chosen_goes_to_the_probe(
     assert asked[-1] == GTX
     window.apply_options(Options(graphics_card=AUTOMATIC))
     assert asked[-1] is None
+
+
+# Options > Graphics, after the mockup (09-graphics.png)
+
+
+def test_this_session_says_what_draws_and_what_chose_it(qtbot: QtBot) -> None:
+    session = Choice(backend=HERE, adapter=GTX, driver="NVIDIA 527.37")
+    d = OptionsDialog(Options(), lambda values: None, session=session, chosen_by="options")
+    qtbot.addWidget(d)
+    rows = (d.session_card, d.session_driver, d.session_api, d.session_chosen)
+    assert [r.text() for r in rows] == [
+        GTX,
+        "NVIDIA 527.37",
+        renderer_title(HERE),
+        "chosen in Options",
+    ]
+    assert not d.renderer_status.isVisibleTo(d), "the rows say what draws"
+    cpu = Choice(reason="Drawing on the CPU: safe mode.")
+    d = OptionsDialog(
+        Options(),
+        lambda values: None,
+        renderer_status=cpu.message(),
+        session=cpu,
+        chosen_by="safe_mode",
+    )
+    qtbot.addWidget(d)
+    assert [
+        r.text() for r in (d.session_card, d.session_driver, d.session_api, d.session_chosen)
+    ] == [
+        "CPU (no graphics card)",
+        "—",
+        "—",
+        "safe mode",
+    ]
+    assert d.renderer_status.text() == "Drawing on the CPU: safe mode.", "and why"
+
+
+def test_graphics_is_a_section_of_its_own(qtbot: QtBot) -> None:
+    d = OptionsDialog(Options(), lambda values: None)
+    qtbot.addWidget(d)
+    keys = [d.sidebar.item(r).data(Qt.ItemDataRole.UserRole) for r in range(d.sidebar.count())]
+    assert keys[-1] == "graphics"
+    d.sidebar.setCurrentRow(len(keys) - 1)
+    d.card.setCurrentIndex(d.card.findData(CPU))
+    d.reset_section()
+    assert d.pending.graphics_card == AUTOMATIC, "Reset section resets the card"
+
+
+def test_the_window_says_what_chose_the_renderer(
+    make_window: Callable[..., MainWindow], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = make_window()
+    assert window.options_dialog().session_chosen.text() == "automatic"
+    window.apply_options(Options(graphics_card=CPU))
+    assert window.options_dialog().session_chosen.text() == "chosen in Options"
+    window = make_window(safe_mode=True)
+    assert window.options_dialog().session_chosen.text() == "safe mode"
+    monkeypatch.setenv(GPU_VIEWPORT_ENV, HERE)
+    window = make_window()
+    assert window.options_dialog().session_chosen.text() == "ARQ_GPU_VIEWPORT"
+
+
+def test_the_card_s_driver_comes_from_the_probe() -> None:
+    result = GpuProbeResult(HERE, GTX, "DiscreteGpu", driver="NVIDIA 527.37")
+    run = fake_probes({HERE: result})
+    chosen = probe((HERE,), run, platform="win32", listing=unlisted)
+    assert chosen.driver == "NVIDIA 527.37"

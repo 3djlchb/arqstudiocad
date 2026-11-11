@@ -19,6 +19,8 @@ class GpuProbeResult:
     adapter: str | None = None
     device_type: str | None = None
     error: str | None = None
+    #: The driver and its version, as the card reports them.
+    driver: str = ""
 
     @property
     def available(self) -> bool:
@@ -129,6 +131,7 @@ def probe_backend(
         backend=str(payload["backend"]),
         adapter=str(payload["adapter"]),
         device_type=str(payload["device_type"]),
+        driver=str(payload.get("driver", "")),
     )
 
 

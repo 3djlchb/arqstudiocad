@@ -68,16 +68,17 @@ def test_general_holds_the_language_and_the_theme(qtbot: QtBot) -> None:
     d, _ = dialog(qtbot)
     assert d.windowTitle() == "Options" and d.isModal()
     sections = [d.sidebar.item(r).text() for r in range(d.sidebar.count())]
-    assert sections == ["General", "Display", "User preferences"]
+    assert sections == ["General", "Display", "User preferences", "Graphics"]
     assert d.section() == "general" and d.size() == SIZE
     assert titles(d) == [
         "Language",
         "Theme",
         "Crosshair",
         "Block editor",
-        "Graphics",
         "Zoom",
         "Right-click in model space",
+        "This session",
+        "Choice",
     ]
     languages = [d.language.itemText(i) for i in range(d.language.count())]
     assert languages == ["System language", "English", "Español"], "each by its own name"
@@ -152,12 +153,14 @@ def test_a_language_applied_names_the_dialog_again(qtbot: QtBot) -> None:
             "Tema",
             "Cursor en cruz",
             "Editor de bloques",
-            "Gráficos",
             "Zoom",
             "Clic derecho en el espacio modelo",
+            "Esta sesión",
+            "Elección",
         ]
         assert d.sidebar.item(1).text() == "Visualización"
         assert d.sidebar.item(2).text() == "Preferencias de usuario"
+        assert d.sidebar.item(3).text() == "Gráficos"
         assert d.right_click.itemText(1) == "Repetir el último comando"
         assert d.during_command.itemText(0) == "Equivale a Intro"
     finally:
@@ -315,9 +318,9 @@ def test_the_keyboard_moves_between_sections(
     d.language.setFocus()
     d.theme.setCurrentIndex(d.theme.findData("light"))
     forward = key in (Qt.Key.Key_Tab, Qt.Key.Key_PageDown)
-    order = ["display", "user_preferences", "general"]
+    order = ["display", "user_preferences", "graphics", "general"]
     if not forward:
-        order = ["user_preferences", "display", "general"]
+        order = ["graphics", "user_preferences", "display", "general"]
     for expected in order:
         QTest.keyClick(d.focusWidget() or d, key, modifiers)
         assert d.section() == expected, "around"
@@ -329,10 +332,10 @@ def test_next_section_wraps_both_ways(qtbot: QtBot) -> None:
     d, _ = dialog(qtbot)
     d.next_section(1)
     assert d.section() == "display"
-    d.next_section(2)
+    d.next_section(3)
     assert d.section() == "general"
     d.next_section(-1)
-    assert d.section() == "user_preferences"
+    assert d.section() == "graphics"
 
 
 def test_the_right_click_setting_as_saved(tmp_path: Path) -> None:

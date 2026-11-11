@@ -133,6 +133,8 @@ class MainWindow(QMainWindow):
         self._survey: list[CardState] | None = None
         self._surveying: list[Callable[[Sequence[CardState]], None]] = []
         self._survey_running = False
+        #: What chose the renderer this session (``CHOSEN_BY``).
+        self._chosen_by = "automatic"
         self._safe_mode = safe_mode
         self._sentinel = sentinel
         #: Counts the choices asked, so an older probe's answer is dropped.
@@ -695,9 +697,16 @@ class MainWindow(QMainWindow):
         self._choosing += 1
         forced = os.environ.get(GPU_VIEWPORT_ENV, "").strip()
         if forced:
+            self._chosen_by = "override"
             self._use_renderer(Choice(backend=forced))
             return
         card = self._options.graphics_card
+        if self._safe_mode:
+            self._chosen_by = "safe_mode"
+        elif card != AUTOMATIC or self._options.renderer != AUTOMATIC:
+            self._chosen_by = "options"
+        else:
+            self._chosen_by = "automatic"
         planned = plan(
             self._options.renderer,
             safe_mode=self._safe_mode,
@@ -792,6 +801,8 @@ class MainWindow(QMainWindow):
             renderer_status=self._renderer.message(),
             survey=self._survey,
             check_again=self.survey_cards,
+            session=self._renderer,
+            chosen_by=self._chosen_by,
         )
 
     def show_options(self) -> bool:
