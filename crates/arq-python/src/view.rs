@@ -19,7 +19,7 @@ use pyo3::types::PyBytes;
 use crate::changes::CadChangeSet;
 use crate::documents::CadDocument;
 use crate::errors::IntoPy;
-use crate::values::CadBounds2;
+use crate::values::{CadBounds2, PyPoint};
 
 struct State {
     scene: Scene,
@@ -336,6 +336,17 @@ impl CadView {
         let (right, up) = view.axes();
         let (u, v) = (x * right[0] + y * right[1], x * up[0] + y * up[1]);
         state.camera.to_screen(u, v)
+    }
+
+    /// A path of the XY plane, each vertex with the bulge of the segment
+    /// leaving it, in pixels as this view sees it, closed back to its first
+    /// point when `closed`: a shape being drawn, before it is an entity
+    /// (RECTANG's preview).
+    #[pyo3(signature = (vertices, closed = true))]
+    fn path_outline(&self, vertices: Vec<(PyPoint, f64)>, closed: bool) -> Vec<(f64, f64)> {
+        let state = self.state();
+        let path: Vec<_> = vertices.into_iter().map(|(p, b)| (p.0, b)).collect();
+        arq_render::path_outline(&state.camera, state.scene.view(), &path, closed)
     }
 
     /// The outlines of these entities in pixels, as polylines, for an

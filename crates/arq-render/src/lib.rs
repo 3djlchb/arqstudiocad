@@ -34,7 +34,7 @@ pub use gpu_probe::{
     GpuAdapterInfo, GpuBackend, GpuProbeResult, list_gpu_adapters, probe_gpu_adapter,
     probe_gpu_backend,
 };
-pub use outline::{Polyline, outline};
+pub use outline::{Polyline, outline, path_outline};
 pub use overlay::{Overlay, OverlayItem, OverlayLabel};
 pub use raster::{Image, Style, preview, render};
 pub use scene::Scene;
