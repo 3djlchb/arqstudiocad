@@ -77,3 +77,12 @@ def test_the_fuzzers_run_weekly_on_a_pinned_nightly() -> None:
     workflow = (GITHUB / "workflows" / "fuzz.yml").read_text(encoding="utf-8")
     assert "schedule:" in workflow
     assert "target: [read_dwg, read_dxf]" in workflow
+
+
+def test_an_action_is_pinned_to_the_same_commit_everywhere() -> None:
+    pins: dict[str, set[str]] = {}
+    for workflow in WORKFLOWS:
+        for found in re.finditer(r"- uses: ([\w./-]+)@(\w+)", workflow.read_text(encoding="utf-8")):
+            pins.setdefault(found[1], set()).add(found[2])
+    apart = {action: commits for action, commits in pins.items() if len(commits) > 1}
+    assert not apart, f"one commit per action in every workflow: {apart}"
