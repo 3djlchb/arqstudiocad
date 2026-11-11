@@ -1,0 +1,82 @@
+name: Fuzz
+
+# The DWG/DXF readers fuzzed (ADR 0037 D2): weekly for half an hour each,
+# by hand for as long as asked, and for a minute on pull requests that touch
+# the readers or the fuzzers. A finding fails the job and is uploaded; it is
+# fixed and kept as a stable regression test (crates/arq-core/tests/hostile).
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds to fuzz each reader
+        default: "1800"
+  pull_request:
+    branches: [main]
+    paths:
+      - "fuzz/**"
+      - "crates/arq-document/src/reading.rs"
+      - "crates/arq-document/src/model.rs"
+      - ".github/workflows/fuzz.yml"
+
+# Least privilege (ADR 0037): the token only reads the repository. Actions
+# are pinned to a commit, with the release in a comment; Dependabot keeps
+# them current (.github/dependabot.yml).
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [read_dwg, read_dxf]
+    runs-on: ubuntu-24.04
+    env:
+      TARGET: ${{ matrix.target }}
+      SECONDS_EACH: ${{ github.event_name == 'pull_request' && '60' || inputs.seconds || '1800' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+      # Nightly only here, at the date fuzz/rust-toolchain.toml pins.
+      - name: Nightly and cargo-fuzz
+        run: |
+          rustup toolchain install "$(sed -n 's/^channel = "\(.*\)"/\1/p' fuzz/rust-toolchain.toml)" --profile minimal
+          cargo install cargo-fuzz --version 0.13.2 --locked
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0  # v2.9.3
+        with:
+          workspaces: "fuzz -> target"
+      # Seeds: the hand-made hostile drawings and the codec's public samples.
+      - name: Seeds
+        run: |
+          uv run --no-project --python 3.13 tools/fetch_codec_samples.py
+          ext="${TARGET#read_}"
+          mkdir -p "$RUNNER_TEMP/seeds" "$RUNNER_TEMP/corpus" "$RUNNER_TEMP/findings"
+          cp crates/arq-core/tests/hostile/*."$ext" "$RUNNER_TEMP/seeds/"
+          find target/corpus -type f -iname "*.$ext" -size -2M -exec cp {} "$RUNNER_TEMP/seeds/" \;
+          ls "$RUNNER_TEMP/seeds" | wc -l
+      - name: Fuzz
+        working-directory: fuzz
+        run: >
+          cargo fuzz run -O "$TARGET" "$RUNNER_TEMP/corpus" "$RUNNER_TEMP/seeds" --
+          -max_total_time="$SECONDS_EACH" -timeout=20 -rss_limit_mb=2048
+          -max_len=1048576 -artifact_prefix="$RUNNER_TEMP/findings/" -print_final_stats=1
+      # What broke the reader, to reproduce with `cargo fuzz run <target> <file>`.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        if: failure()
+        with:
+          name: findings-${{ matrix.target }}
+          path: ${{ runner.temp }}/findings
+          retention-days: 7
+          if-no-files-found: ignore
