@@ -97,7 +97,9 @@ class Prompt:
     an option's key), ``"distance"`` (a positive number, typed, or the
     distance from ``base`` to a point typed or picked; the command receives
     a float), ``"angle"`` (degrees, typed, or the direction from ``base``
-    to a point; the command receives radians, ADR 0010) or ``"select"``
+    to a point; the command receives radians, ADR 0010), ``"number"`` (a
+    number greater than zero, only typed: an area; the command receives a
+    float) or ``"select"``
     (the viewport selects; Enter sends ``None``, an option its key).
     ``base`` is the last point, for relative input, ORTHO and the rubber
     band; ``drag`` what follows the cursor. An empty answer takes
@@ -107,7 +109,7 @@ class Prompt:
     """
 
     message: str
-    kind: Literal["option", "text", "point", "distance", "angle", "select"] = "text"
+    kind: Literal["option", "text", "point", "distance", "angle", "number", "select"] = "text"
     options: tuple[Option, ...] = ()
     default: str | None = None
     base: tuple[float, float] | None = None
@@ -399,6 +401,12 @@ class CommandContext:
         shown = None if default is None else f"{math.degrees(default):.10g}"
         return Prompt(message, "angle", tuple(options), shown, base, optional, drag)
 
+    def number(self, message: str, default: float | None = None) -> Prompt:
+        """A prompt for a number greater than zero that is not a distance
+        (an area), only typed; yield it to get a float."""
+        shown = None if default is None else f"{default:.10g}"
+        return Prompt(message, "number", (), shown)
+
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
         """A prompt while the user selects in the viewport (ADR 0016 D3);
         yield it to get ``None`` when Enter ends the selection, or the key
@@ -576,6 +584,9 @@ class CommandRunner:
         if prompt.kind == "select":
             self._answer_select(prompt, text)
             return
+        if prompt.kind == "number":
+            self._answer_number(prompt, text)
+            return
         answer: str | None = text or prompt.default
         if answer is None and prompt.optional:
             answer = ""  # Enter on an optional text prompt
@@ -652,6 +663,16 @@ class CommandRunner:
             self._show(prompt)
             return
         self._advance(lambda script: script.send(angle))
+
+    def _answer_number(self, prompt: Prompt, text: str) -> None:
+        """A typed number greater than zero, or the default for Enter."""
+        typed = text or prompt.default or ""
+        number = _number(typed) if typed else None
+        if number is None or not (math.isfinite(number) and number > 0.0):
+            self.context.message(tr("Type a number greater than zero."))
+            self._show(prompt)
+            return
+        self._advance(lambda script: script.send(number))
 
     def _answer_select(self, prompt: Prompt, text: str) -> None:
         """Enter ends a selection; an option is sent by its key."""

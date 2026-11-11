@@ -1,6 +1,6 @@
 """The drawing commands of milestone 2.5 (ADR 0016 D8): LINE, CIRCLE and ARC;
 TEXT and MTEXT, AutoCAD's single-line and multiline texts, and PLINE, in
-milestone 02.8 (ADR 0022).
+milestone 02.8 (ADR 0022); RECTANG, in milestone 02.14 (ADR 0035 D4).
 
 They ask for points as AutoCAD does (typed or picked, with snaps and
 ORTHO) and build the curve with the core's constructors: Python never
@@ -9,21 +9,47 @@ draws is one undo step; what was drawn before Esc stays, as in AutoCAD.
 """
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from typing import Any
 
 from arqstudiocad.commands import (
+    Background,
     Command,
     CommandCancelledError,
     CommandContext,
     CommandScript,
     Option,
+    Prompt,
 )
-from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadLine, InvalidGeometryError
+from arqstudiocad.core import (
+    CadArc,
+    CadCircle,
+    CadDocument,
+    CadLine,
+    CadRectangle,
+    InvalidGeometryError,
+)
+from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point
 
 #: The last circle radius, remembered as AutoCAD's CIRCLERAD.
 CIRCLE_RADIUS = "CIRCLERAD"
+#: RECTANG's last rotation, length, width, area and the side the area
+#: was given with, kept for the session as AutoCAD keeps them; AutoCAD's
+#: defaults until then.
+RECTANG_ROTATION = "RECTANG_ROTATION"
+RECTANG_LENGTH = "RECTANG_LENGTH"
+RECTANG_WIDTH = "RECTANG_WIDTH"
+RECTANG_AREA = "RECTANG_AREA"
+RECTANG_AREA_SIDE = "RECTANG_AREA_SIDE"
+RECTANG_DEFAULTS = {
+    RECTANG_ROTATION: 0.0,
+    RECTANG_LENGTH: 10.0,
+    RECTANG_WIDTH: 10.0,
+    RECTANG_AREA: 100.0,
+    RECTANG_AREA_SIDE: "L",
+}
 #: The last text height and rotation, remembered as AutoCAD remembers them.
 TEXT_HEIGHT = "TEXTSIZE"
 TEXT_ROTATION = "TEXT_ROTATION"
@@ -233,6 +259,101 @@ def arc(ctx: CommandContext) -> CommandScript:
     _add(ctx, document, geometry)
 
 
+def rectang(ctx: CommandContext) -> CommandScript:
+    """A rectangle, a closed polyline, as AutoCAD's RECTANG: by its first
+    and opposite corners, or by its Area and one side, or by its
+    Dimensions and the quarter a point picks; its sides along the
+    Rotation typed or shown by two points. The rotation, sizes and area
+    are remembered for the next one."""
+    document = ctx.document()
+    memory = ctx.remembered
+    for key, value in RECTANG_DEFAULTS.items():
+        memory.setdefault(key, value)
+    first = yield ctx.point(tr("Specify first corner point"))
+    options = [Option("A", tr("Area")), Option("D", tr("Dimensions")), Option("R", tr("Rotation"))]
+    size: tuple[float, float] | None = None
+    while True:
+        rotation = memory[RECTANG_ROTATION]
+        drag = Drag("rectangle", band=False, rotation=rotation, size=size)
+        answer = yield ctx.point(
+            tr("Specify other corner point"), base=first, options=options, drag=drag
+        )
+        if answer == "A":
+            area = yield ctx.number(
+                tr("Enter area of rectangle in current units"), default=memory[RECTANG_AREA]
+            )
+            side = yield ctx.choose(
+                tr("Calculate rectangle dimensions based on"),
+                [Option("L", tr("Length")), Option("W", tr("Width"))],
+                default=memory[RECTANG_AREA_SIDE],
+            )
+            by_length = side == "L"
+            known = RECTANG_LENGTH if by_length else RECTANG_WIDTH
+            given = yield ctx.distance(
+                tr("Enter rectangle length") if by_length else tr("Enter rectangle width"),
+                base=first,
+                default=memory[known],
+            )
+            try:
+                rectangle = CadRectangle.of_area(first, area, given, by_length, rotation)
+            except InvalidGeometryError:
+                ctx.message(tr("That area and side leave no rectangle."))
+                continue
+            memory[RECTANG_AREA], memory[RECTANG_AREA_SIDE], memory[known] = area, side, given
+            break
+        if answer == "D":
+            length = yield ctx.distance(
+                tr("Specify length for rectangles"), base=first, default=memory[RECTANG_LENGTH]
+            )
+            width = yield ctx.distance(
+                tr("Specify width for rectangles"), base=first, default=memory[RECTANG_WIDTH]
+            )
+            memory[RECTANG_LENGTH], memory[RECTANG_WIDTH] = length, width
+            size = (length, width)
+            continue
+        if answer == "R":
+            memory[RECTANG_ROTATION] = yield from _rectangle_rotation(ctx, first, rotation)
+            continue
+        try:
+            if size is not None:
+                rectangle = CadRectangle.sized(first, size[0], size[1], rotation, answer)
+            else:
+                rectangle = CadRectangle(first, answer, rotation)
+        except InvalidGeometryError:
+            ctx.message(tr("The corners must differ in both directions."))
+            continue
+        break
+    # One undo step under RECTANG's name, not the polyline's.
+    document.begin_group("RECTANG")
+    try:
+        _, changes = document.add_polyline(rectangle.vertices, True)
+        ctx.session.report(document, changes)
+    finally:
+        document.end_group()
+
+
+def _rectangle_rotation(
+    ctx: CommandContext, first: Point, last: float
+) -> Generator[Prompt | Background, Any, float]:
+    """RECTANG's Rotation: an angle typed or shown from the first corner,
+    or the direction between two points picked (Pick points)."""
+    while True:
+        answer = yield ctx.angle(
+            tr("Specify rotation angle"),
+            base=first,
+            default=last,
+            options=[Option("P", tr("Pick points"))],
+        )
+        if answer != "P":
+            return float(answer)
+        a = yield ctx.point(tr("Specify first point"))
+        b = yield ctx.point(tr("Specify second point"), base=a)
+        try:
+            return CadLine(a, b).direction
+        except InvalidGeometryError:
+            ctx.message(tr("The two points must differ."))
+
+
 def _start_center_end(start: Point, center: Point, end: Point) -> CadArc:
     return _build(
         lambda: CadArc.from_start_center_end(start, center, end),
@@ -360,6 +481,7 @@ DRAW_COMMANDS = (
     Command("PLINE", pline, ("PL",)),
     Command("CIRCLE", circle, ("C",)),
     Command("ARC", arc, ("A",)),
+    Command("RECTANG", rectang, ("REC", "RECTANGLE")),
     Command("TEXT", text, ("DT",)),
     Command("MTEXT", mtext, ("T", "MT")),
 )
