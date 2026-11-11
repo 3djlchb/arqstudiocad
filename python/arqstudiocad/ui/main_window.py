@@ -3,6 +3,7 @@ properties and history panels, language switch and About."""
 
 import os
 import platform
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from functools import partial
 from html import escape
@@ -67,7 +68,16 @@ from arqstudiocad.events import (
 from arqstudiocad.i18n import available_languages, current_language, set_language, tr
 from arqstudiocad.product import APP_NAME
 from arqstudiocad.recent_files import same_file
-from arqstudiocad.renderer import Choice, Sentinel, plan, probe
+from arqstudiocad.renderer import (
+    AUTOMATIC,
+    CardState,
+    Choice,
+    Sentinel,
+    plan,
+    probe,
+    renderer_settings,
+    survey,
+)
 from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
@@ -118,6 +128,11 @@ class MainWindow(QMainWindow):
         self._settings = settings
         #: What draws the viewports (ADR 0034 D5), the CPU until chosen.
         self._renderer = Choice()
+        #: Every graphics card on every API and whether it draws, for
+        #: Options; None until surveyed (ADR 0034, "After 02.7").
+        self._survey: list[CardState] | None = None
+        self._surveying: list[Callable[[Sequence[CardState]], None]] = []
+        self._survey_running = False
         self._safe_mode = safe_mode
         self._sentinel = sentinel
         #: Counts the choices asked, so an older probe's answer is dropped.
@@ -378,6 +393,9 @@ class MainWindow(QMainWindow):
         self.workspaces.show_remembered()
         self.auto_hide.restore()
         self.choose_renderer()
+        if window_system() is not None and not self._safe_mode:
+            # Where the graphics card may draw: for Options to show them.
+            self.survey_cards()
 
     def retranslate(self) -> None:
         """Set every user-visible text from the active language."""
@@ -649,7 +667,7 @@ class MainWindow(QMainWindow):
         self._options = values
         if self._settings is not None:
             save_options(self._settings, values, keys)
-        if "renderer" in keys:
+        if "renderer" in keys or "graphics_card" in keys:
             # Choosing a renderer is trying the graphics card again.
             if self._sentinel is not None:
                 self._sentinel.disarm()
@@ -679,11 +697,13 @@ class MainWindow(QMainWindow):
         if forced:
             self._use_renderer(Choice(backend=forced))
             return
+        card = self._options.graphics_card
         planned = plan(
             self._options.renderer,
             safe_mode=self._safe_mode,
             crashed=self._sentinel is not None and self._sentinel.armed,
             window_system=window_system(),
+            card=card,
         )
         if isinstance(planned, Choice):
             self._use_renderer(planned)
@@ -702,7 +722,29 @@ class MainWindow(QMainWindow):
                 )
                 self._use_renderer(Choice(reason=reason))
 
-        self.worker.run(lambda: probe(planned), done)
+        chosen = None if card == AUTOMATIC else card
+        self.worker.run(lambda: probe(planned, card=chosen), done)
+
+    def survey_cards(self, then: Callable[[Sequence[CardState]], None] | None = None) -> None:
+        """Checks every graphics card on every API in the background, for
+        Options > Graphics; ``then`` called with the answer. One survey at
+        a time: asked again meanwhile, it answers both."""
+        if then is not None:
+            self._surveying.append(then)
+        if len(self._surveying) > 1 or self._survey_running:
+            return
+        self._survey_running = True
+
+        def done(outcome: Outcome) -> None:
+            self._survey_running = False
+            states = outcome.value if isinstance(outcome.value, list) else []
+            self._survey = states
+            waiting, self._surveying = self._surveying, []
+            for callback in waiting:
+                callback(states)
+
+        backends = renderer_settings()[2:]
+        self.worker.run(lambda: survey(backends), done)
 
     def _use_renderer(self, choice: Choice) -> None:
         self._renderer = choice
@@ -748,6 +790,8 @@ class MainWindow(QMainWindow):
             self._settings,
             self,
             renderer_status=self._renderer.message(),
+            survey=self._survey,
+            check_again=self.survey_cards,
         )
 
     def show_options(self) -> bool:

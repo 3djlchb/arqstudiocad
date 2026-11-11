@@ -100,13 +100,17 @@ def plan(
     crashed: bool,
     window_system: str | None,
     platform: str = sys.platform,
+    card: str = AUTOMATIC,
 ) -> Choice | tuple[str, ...]:
     """The CPU at once, with why, or the backends to probe in order.
-    ``window_system`` is what the viewports would present to (``"x11"``,
-    ``"win32"``, ``"appkit"``), None where they cannot."""
+    ``setting`` is the graphics API chosen in Options (or the CPU, as kept
+    before the card was chosen apart); ``card`` the graphics card: automatic,
+    the CPU, or a card's name. ``window_system`` is what the viewports would
+    present to (``"x11"``, ``"win32"``, ``"appkit"``), None where they
+    cannot."""
     if safe_mode:
         return Choice(reason=tr("Drawing on the CPU: safe mode."))
-    if setting == CPU:
+    if setting == CPU or card == CPU:
         return Choice(reason=tr("Drawing on the CPU, as chosen in Options."), quiet=True)
     if crashed:
         return Choice(
@@ -123,7 +127,7 @@ def plan(
     allowed = renderer_settings(platform)[2:]
     if setting in allowed:
         return (setting,)
-    if window_system not in VALIDATED:
+    if window_system not in VALIDATED and card == AUTOMATIC:
         return Choice(
             reason=tr(
                 "Drawing on the CPU: the graphics card is not yet tried on this system. "
@@ -184,23 +188,25 @@ def probe(
     run: Callable[[str, int | None], GpuProbeResult] = probe_backend,
     platform: str = sys.platform,
     listing: Callable[[str], tuple[list[GpuAdapter], str | None]] = list_adapters,
+    card: str | None = None,
 ) -> Choice:
     """The first graphics card that passes its probe and draws on screen:
     every hardware card of ``backends`` listed, the discrete ones tried
     first, then the integrated, each kind in the backends' order; a backend
-    whose cards cannot be listed tries the one it prefers. The CPU when none
-    passes, saying why. Each listing and each probe runs in a child
-    process."""
+    whose cards cannot be listed tries the one it prefers. Only the card
+    named ``card`` when one is chosen in Options. The CPU when none passes,
+    saying why. Each listing and each probe runs in a child process."""
     tries: list[tuple[int, int, str, int | None, str]] = []
     for order, backend in enumerate(backends):
         adapters, error = listing(backend)
         if error is not None or not adapters:
-            tries.append((len(CARD_ORDER), order, backend, None, ""))
+            if card is None:
+                tries.append((len(CARD_ORDER), order, backend, None, ""))
             continue
         tries.extend(
             (CARD_ORDER.get(a.device_type, len(CARD_ORDER)), order, backend, a.index, a.name)
             for a in adapters
-            if not a.software
+            if not a.software and (card is None or a.name == card)
         )
     tries.sort(key=lambda t: (t[0], t[1]))
     failed: tuple[str, str, str] | None = None
@@ -220,7 +226,72 @@ def probe(
         return Choice(backend=backend, adapter=adapter, card=index)
     if failed is not None:
         return Choice(reason=_fails_message(*failed))
+    if card is not None:
+        return Choice(
+            reason=tr(
+                "Drawing on the CPU: {card} did not pass the check. Choose another graphics "
+                "card in Options.",
+                card=card,
+            )
+        )
     return Choice(reason=tr("Drawing on the CPU: no graphics card passed the check."))
+
+
+@dataclass(frozen=True)
+class CardState:
+    """A graphics card on one graphics API, as surveyed for Options:
+    ``reason`` says why it cannot draw, empty when it can."""
+
+    backend: str
+    name: str
+    device_type: str
+    reason: str = ""
+
+    @property
+    def usable(self) -> bool:
+        return not self.reason
+
+
+def card_kind(device_type: str) -> str:
+    """A card's kind, as Options names it."""
+    kinds = {
+        "DiscreteGpu": tr("dedicated"),
+        "IntegratedGpu": tr("integrated"),
+        "VirtualGpu": tr("virtual"),
+    }
+    return kinds.get(device_type, tr("other"))
+
+
+def survey(
+    backends: Sequence[str],
+    run: Callable[[str, int | None], GpuProbeResult] = probe_backend,
+    platform: str = sys.platform,
+    listing: Callable[[str], tuple[list[GpuAdapter], str | None]] = list_adapters,
+) -> list[CardState]:
+    """Every hardware card of every one of ``backends``, each probed, for
+    Options > Graphics to show which can draw and why the others cannot;
+    discrete cards first, as Automatic tries them. A backend whose cards
+    cannot be listed adds none. Each listing and probe runs in a child
+    process."""
+    states: list[tuple[int, int, CardState]] = []
+    for order, backend in enumerate(backends):
+        adapters, _ = listing(backend)
+        for a in adapters:
+            if a.software:
+                continue
+            how = fails_on_screen(backend, a.name, platform)
+            if how == "black":
+                reason = tr("it leaves the window black with this card")
+            elif how == "crash":
+                reason = tr("it closes {app} when it draws in a window with this card")
+            else:
+                result = run(backend, a.index)
+                passed = result.available and not result.software
+                reason = "" if passed else tr("this card fails its check with it")
+            rank = CARD_ORDER.get(a.device_type, len(CARD_ORDER))
+            states.append((rank, order, CardState(backend, a.name, a.device_type, reason)))
+    states.sort(key=lambda s: (s[0], s[1]))
+    return [state for _, _, state in states]
 
 
 class Sentinel:

@@ -9,7 +9,7 @@ and User preferences (the wheel's zoom, what a right-click in model space
 does).
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, fields, replace
 from functools import partial
 from typing import Any, Literal
@@ -37,7 +37,14 @@ from PySide6.QtWidgets import (
 )
 
 from arqstudiocad.i18n import available_languages, tr
-from arqstudiocad.renderer import AUTOMATIC, renderer_settings, renderer_title
+from arqstudiocad.renderer import (
+    AUTOMATIC,
+    CPU,
+    CardState,
+    card_kind,
+    renderer_settings,
+    renderer_title,
+)
 from arqstudiocad.ui.crosshair import (
     CROSSHAIR_TYPES,
     SIZES,
@@ -96,8 +103,10 @@ class Options:
     command_line_color: str = ""
     #: Always a color.
     block_editor_background: str = QColor(*BLOCK_EDITOR_BACKGROUND).name()
-    #: What draws the viewports (ADR 0034 D5): automatic, the CPU, or a
-    #: graphics backend; and whether the graphics card antialiases.
+    #: What draws the viewports (ADR 0034 D5): the graphics card (automatic,
+    #: the CPU, or a card's name) and its graphics API (automatic or a
+    #: backend); and whether the graphics card antialiases.
+    graphics_card: str = AUTOMATIC
     renderer: str = AUTOMATIC
     antialias: bool = False
 
@@ -118,6 +127,7 @@ SECTIONS: dict[str, tuple[str, ...]] = {
         "marker_color",
         "command_line_color",
         "block_editor_background",
+        "graphics_card",
         "renderer",
         "antialias",
     ),
@@ -157,6 +167,10 @@ def checked(name: str, saved: object) -> Any:
         return number if low <= number <= high else None
     if name == "renderer":
         return saved if saved in renderer_settings() else None
+    if name == "graphics_card":
+        # A card's name: one this machine may no longer have is kept, and
+        # the choice says so.
+        return saved if isinstance(saved, str) and saved else None
     if name in ("zoom_wheel_reversed", "antialias"):
         # An INI file keeps it as text.
         if saved is True or saved == "true":
@@ -180,6 +194,9 @@ def saved_options(
         value = checked(name, settings.value(key)) if settings is not None else None
         if value is not None:
             values[name] = value
+    if values.get("renderer") == CPU and "graphics_card" not in values:
+        # Kept before the card was chosen apart: the CPU is now a card.
+        values["graphics_card"], values["renderer"] = CPU, AUTOMATIC
     return Options(language=language, theme=theme, **values)
 
 
@@ -214,11 +231,17 @@ class OptionsDialog(QDialog):
         settings: QSettings | None = None,
         parent: QWidget | None = None,
         renderer_status: str = "",
+        survey: Sequence[CardState] | None = None,
+        check_again: Callable[[Callable[[Sequence[CardState]], None]], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("options_dialog")
         #: What draws the viewports now, in a sentence.
         self._renderer_status = renderer_status
+        #: Every graphics card on every API and whether it draws; None while
+        #: they are being checked.
+        self._survey: Sequence[CardState] | None = survey
+        self._check_again = check_again
         self.setModal(True)
         self._apply = apply
         self._settings = settings
@@ -418,23 +441,39 @@ class OptionsDialog(QDialog):
             [(self.block_editor_label, self.block_editor_background)],
         )
         self.graphics_group = QGroupBox()
+        self.card_label = QLabel()
+        self.card = QComboBox()
+        self.card.setObjectName("graphics_card")
+        self.card.currentIndexChanged.connect(self._card_changed)
         self.renderer_label = QLabel()
         self.renderer = QComboBox()
         self.renderer.setObjectName("renderer")
         self.renderer.currentIndexChanged.connect(self._changed)
+        self.check_button = QPushButton()
+        self.check_button.setObjectName("check_cards")
+        self.check_button.clicked.connect(self.check_cards)
+        self.check_button.setEnabled(self._check_again is not None)
         self.antialias = QCheckBox()
         self.antialias.setObjectName("antialias")
         self.antialias.toggled.connect(self._changed)
         self.renderer_status = QLabel()
         self.renderer_status.setObjectName("renderer_status")
         self.renderer_status.setWordWrap(True)
+        self.cards_status = QLabel()
+        self.cards_status.setObjectName("cards_status")
+        self.cards_status.setWordWrap(True)
         self.graphics_help = QLabel()
         self.graphics_help.setWordWrap(True)
         self._group(
             rows,
             self.graphics_group,
-            [(self.renderer_label, self.renderer), (None, self.antialias)],
-            [self.renderer_status, self.graphics_help],
+            [
+                (self.card_label, self.card),
+                (self.renderer_label, self.renderer),
+                (None, self.check_button),
+                (None, self.antialias),
+            ],
+            [self.renderer_status, self.cards_status, self.graphics_help],
         )
         self._helps += [self.size_help, self.preview_caption]
         for field in self._color_fields():
@@ -550,14 +589,17 @@ class OptionsDialog(QDialog):
         self.block_editor_group.setTitle(tr("Block editor"))
         self.block_editor_label.setText(tr("Background color"))
         self.graphics_group.setTitle(tr("Graphics"))
-        self.renderer_label.setText(tr("Renderer"))
+        self.card_label.setText(tr("Graphics card"))
+        self.renderer_label.setText(tr("Graphics API"))
+        self.check_button.setText(tr("Check the graphics cards again"))
         self.antialias.setText(tr("Smooth lines on the graphics card (antialiasing)"))
         self.renderer_status.setText(self._renderer_status)
         self.renderer_status.setVisible(bool(self._renderer_status))
         self.graphics_help.setText(
             tr(
-                "Automatic draws with the graphics card when it passes a check, and on "
-                "the CPU otherwise. Antialiasing can halve the speed on older cards."
+                "Automatic draws with the dedicated graphics card when it passes a check, "
+                "then the integrated one, and on the CPU otherwise. Antialiasing can halve "
+                "the speed on older cards."
             )
         )
         for field in self._color_fields():
@@ -599,15 +641,108 @@ class OptionsDialog(QDialog):
             )
             for field in self._color_fields():
                 field.set_value(getattr(self.pending, self._field_name(field)))
-            self.renderer.clear()
-            for setting in renderer_settings():
-                self.renderer.addItem(renderer_title(setting), setting)
-            self.renderer.setCurrentIndex(max(0, self.renderer.findData(self.pending.renderer)))
+            self._fill_cards()
             self.antialias.setChecked(self.pending.antialias)
         finally:
             self._filling = False
         self.apply_button.setEnabled(self.pending != self.applied)
         self.preview.set_crosshair(self.pending.crosshair)
+
+    # Graphics cards (ADR 0034, "After 02.7")
+
+    def _states(self, card: str) -> list[CardState]:
+        """The surveyed states of ``card``, every card's for Automatic."""
+        states = self._survey or ()
+        return [s for s in states if card == AUTOMATIC or s.name == card]
+
+    def _fill_cards(self) -> None:
+        """The card list: Automatic, the CPU, then each card the survey
+        found, a card none of whose APIs draws disabled; then its APIs."""
+        was = self._filling
+        self._filling = True
+        try:
+            self.card.clear()
+            self.card.addItem(tr("Automatic"), AUTOMATIC)
+            self.card.addItem(tr("CPU (no graphics card)"), CPU)
+            names: list[str] = []
+            for state in self._survey or ():
+                if state.name not in names:
+                    names.append(state.name)
+                    kind = card_kind(state.device_type)
+                    self.card.addItem(f"{state.name} ({kind})", state.name)
+                    usable = any(s.usable for s in self._states(state.name))
+                    self._enable(self.card, self.card.count() - 1, usable)
+            wanted = self.pending.graphics_card
+            if self.card.findData(wanted) < 0:
+                # A card chosen before, not found now.
+                self.card.addItem(tr("{card} (not found)", card=wanted), wanted)
+                self._enable(self.card, self.card.count() - 1, False)
+            self.card.setCurrentIndex(self.card.findData(wanted))
+            self._fill_apis()
+        finally:
+            self._filling = was
+
+    def _fill_apis(self) -> None:
+        """The API list for the card chosen: Automatic and each API, one
+        on which the card cannot draw disabled; the reasons in a line below."""
+        was = self._filling
+        self._filling = True
+        try:
+            card = self.card.currentData() or AUTOMATIC
+            self.renderer.clear()
+            self.renderer.addItem(tr("Automatic"), AUTOMATIC)
+            reasons: list[str] = []
+            for backend in renderer_settings()[2:]:
+                self.renderer.addItem(renderer_title(backend), backend)
+                if self._survey is None or card == CPU:
+                    continue
+                states = [s for s in self._states(card) if s.backend == backend]
+                if any(s.usable for s in states):
+                    continue
+                if card == AUTOMATIC and not states:
+                    continue  # no card listed on it: Automatic tries its own
+                why = next((s.reason for s in states), tr("this card does not offer it"))
+                self._enable(self.renderer, self.renderer.count() - 1, False, why)
+                reasons.append(tr("{api}: {why}.", api=renderer_title(backend), why=why))
+            self.renderer.setEnabled(card != CPU)
+            self.renderer.setCurrentIndex(max(0, self.renderer.findData(self.pending.renderer)))
+            if self._survey is None:
+                self.cards_status.setText(tr("Checking the graphics cards…"))
+            else:
+                self.cards_status.setText(" ".join(reasons))
+            self.cards_status.setVisible(bool(self.cards_status.text()))
+        finally:
+            self._filling = was
+
+    @staticmethod
+    def _enable(combo: QComboBox, row: int, enabled: bool, why: str = "") -> None:
+        """Row ``row`` of ``combo`` enabled or not, saying why."""
+        item = combo.model().item(row)  # type: ignore[attr-defined]
+        item.setEnabled(enabled)
+        if why:
+            item.setToolTip(why)
+
+    def _card_changed(self) -> None:
+        if self._filling:
+            return
+        self._fill_apis()
+        self._changed()
+
+    def check_cards(self) -> None:
+        """Checks every graphics card again, in the background; the lists
+        follow when the answer comes."""
+        if self._check_again is None:
+            return
+        self._survey = None
+        self.check_button.setEnabled(False)
+        self._fill_apis()
+        self._check_again(self.set_survey)
+
+    def set_survey(self, states: Sequence[CardState]) -> None:
+        """The cards as checked: the lists filled from them."""
+        self._survey = list(states)
+        self.check_button.setEnabled(self._check_again is not None)
+        self._fill_cards()
 
     def _field_name(self, field: ColorField) -> str:
         """The setting a color field edits."""
@@ -646,6 +781,7 @@ class OptionsDialog(QDialog):
         right_click = self.right_click.currentData()
         kind = self.crosshair_type.currentData()
         renderer = self.renderer.currentData()
+        card = self.card.currentData()
         self.pending = replace(
             self.pending,
             language=str(language) if language is not None else "",
@@ -655,6 +791,7 @@ class OptionsDialog(QDialog):
             zoom_factor=self.zoom_spin.value(),
             crosshair_size=self.size_spin.value(),
             crosshair_type=kind if kind in CROSSHAIR_TYPES else self.pending.crosshair_type,
+            graphics_card=str(card) if card else self.pending.graphics_card,
             renderer=renderer if renderer in renderer_settings() else self.pending.renderer,
             antialias=self.antialias.isChecked(),
             **{self._field_name(field): field.value() for field in self._color_fields()},
