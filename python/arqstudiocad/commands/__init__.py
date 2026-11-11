@@ -98,8 +98,8 @@ class Prompt:
     distance from ``base`` to a point typed or picked; the command receives
     a float), ``"angle"`` (degrees, typed, or the direction from ``base``
     to a point; the command receives radians, ADR 0010), ``"number"`` (a
-    number greater than zero, only typed: an area; the command receives a
-    float) or ``"select"``
+    number greater than zero, only typed: an area; zero too or any sign when
+    the prompt says so; the command receives a float) or ``"select"``
     (the viewport selects; Enter sends ``None``, an option its key).
     ``base`` is the last point, for relative input, ORTHO and the rubber
     band; ``drag`` what follows the cursor. An empty answer takes
@@ -115,8 +115,10 @@ class Prompt:
     base: tuple[float, float] | None = None
     optional: bool = False
     drag: Drag | None = None
-    #: A number prompt that takes zero too (a fillet radius: none).
+    #: A number prompt that takes zero too (a fillet radius: none), or any
+    #: sign (an elevation).
     zero: bool = False
+    signed: bool = False
 
     @property
     def picks(self) -> bool:
@@ -403,12 +405,19 @@ class CommandContext:
         shown = None if default is None else f"{math.degrees(default):.10g}"
         return Prompt(message, "angle", tuple(options), shown, base, optional, drag)
 
-    def number(self, message: str, default: float | None = None, zero: bool = False) -> Prompt:
+    def number(
+        self,
+        message: str,
+        default: float | None = None,
+        zero: bool = False,
+        signed: bool = False,
+    ) -> Prompt:
         """A prompt for a number greater than zero that is not a distance
         (an area), only typed; or zero too, when ``zero`` (a fillet radius,
-        where zero means none). Yield it to get a float."""
+        where zero means none); or any number, when ``signed`` (an
+        elevation). Yield it to get a float."""
         shown = None if default is None else f"{default:.10g}"
-        return Prompt(message, "number", (), shown, zero=zero)
+        return Prompt(message, "number", (), shown, zero=zero, signed=signed)
 
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
         """A prompt while the user selects in the viewport (ADR 0016 D3);
@@ -668,17 +677,24 @@ class CommandRunner:
         self._advance(lambda script: script.send(angle))
 
     def _answer_number(self, prompt: Prompt, text: str) -> None:
-        """A typed number greater than zero (or zero too, if the prompt
-        takes it), or the default for Enter."""
+        """A typed number greater than zero (or zero too, or any finite
+        number, as the prompt takes), or the default for Enter."""
         typed = text or prompt.default or ""
         number = _number(typed) if typed else None
-        least_ok = number is not None and (number >= 0.0 if prompt.zero else number > 0.0)
-        if number is None or not (math.isfinite(number) and least_ok):
-            self.context.message(
-                tr("Type a number zero or greater.")
-                if prompt.zero
-                else tr("Type a number greater than zero.")
-            )
+        if number is None or not math.isfinite(number):
+            least_ok = False
+        elif prompt.signed:
+            least_ok = True
+        else:
+            least_ok = number >= 0.0 if prompt.zero else number > 0.0
+        if not least_ok:
+            if prompt.signed:
+                why = tr("Type a number.")
+            elif prompt.zero:
+                why = tr("Type a number zero or greater.")
+            else:
+                why = tr("Type a number greater than zero.")
+            self.context.message(why)
             self._show(prompt)
             return
         self._advance(lambda script: script.send(number))
