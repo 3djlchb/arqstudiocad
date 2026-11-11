@@ -1,6 +1,7 @@
 """RECTANG (milestone 02.14, ADR 0035 D4): AutoCAD's rectangle by two
 corners, Area, Dimensions and Rotation, its corners square, filleted or
-chamfered, as one closed polyline; the values it remembers, its prompt
+chamfered, at an elevation, with a thickness and a width, as one closed
+polyline; the values it remembers, its prompt
 for a number, its preview, its name in Spanish and its place in the
 interface. Every expected shape is worked out by hand."""
 
@@ -20,7 +21,7 @@ from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 
 OTHER = "Specify other corner point [Area(A)/Dimensions(D)/Rotation(R)]:"
-FIRST = "Specify first corner point [Chamfer(C)/Fillet(F)]:"
+FIRST = "Specify first corner point [Chamfer(C)/Elevation(E)/Fillet(F)/Thickness(T)/Line width(W)]:"
 Q = math.tan(math.pi / 8)  # a quarter circle's bulge
 
 
@@ -515,3 +516,88 @@ def test_core_rectangle_corners() -> None:
         r.path(chamfer=(-1.0, 1.0))
     with pytest.raises(ValueError, match="not both"):
         r.path(fillet=0.5, chamfer=(1.0, 1.0))
+
+
+def details_of(document: CadDocument) -> dict[str, str]:
+    [polyline] = [e for e in document.get_entities() if e.kind == "LWPOLYLINE"][-1:]
+    return dict(document.get_entity(polyline.id).details)
+
+
+def test_elevation_thickness_and_width_are_kept_in_the_polyline(tmp_path: Path) -> None:
+    h = Harness()
+    h.run("RECTANG", "E")
+    assert h.prompt().text == "Specify the elevation for rectangles <0>:"
+    h.run("-2.5")
+    assert h.prompt().text == FIRST
+    h.run("T")
+    assert h.prompt().text == "Specify thickness for rectangles <0>:"
+    h.run("-3", "W")
+    assert h.prompt().text == "Specify line width for rectangles <0>:"
+    h.run("0.25", "0,0", "4,2")
+    shown = details_of(h.document)
+    assert (shown["Elevation"], shown["Thickness"], shown["Constant width"]) == (
+        "-2.500000",
+        "-3.000000",
+        "0.250000",
+    )
+    # Kept in DWG and DXF, read back.
+    for name in ("r.dwg", "r.dxf"):
+        path = tmp_path / name
+        h.session.save(h.document, path)
+        again = h.session.open_document(path)
+        back = details_of(again)
+        assert (back["Elevation"], back["Thickness"], back["Constant width"]) == (
+            "-2.500000",
+            "-3.000000",
+            "0.250000",
+        ), name
+
+
+def test_the_modes_are_remembered_and_said_together() -> None:
+    h = Harness()
+    h.run("RECTANG", "F", "0.5", "E", "2", "T", "3", "W", "0.25", "0,0", "4,2")
+    h.run("RECTANG")
+    assert h.messages()[-1] == (
+        "Current rectangle modes: Fillet=0.5  Elevation=2  Thickness=3  Line width=0.25"
+    )
+    # Remembered as defaults; zero takes each away.
+    h.run("E")
+    assert h.prompt().text == "Specify the elevation for rectangles <2>:"
+    h.run("0", "T", "0", "W", "0", "F", "0", "0,0", "1,1")
+    shown = details_of(h.document)
+    assert (shown["Elevation"], shown["Thickness"], shown["Constant width"]) == (
+        "0.000000",
+        "0.000000",
+        "0.000000",
+    )
+    count = len(h.messages())
+    h.run("RECTANG")
+    assert len(h.messages()) == count, "no modes to say"
+    h.runner.cancel()
+
+
+def test_elevation_and_thickness_take_any_number_width_none_below_zero() -> None:
+    h = Harness()
+    h.run("RECTANG", "E", "abc")
+    assert h.messages()[-1] == "Type a number."
+    assert h.prompt().text == "Specify the elevation for rectangles <0>:"
+    h.run("inf")
+    assert h.messages()[-1] == "Type a number."
+    h.run("-1e3", "T", "nan")
+    assert h.messages()[-1] == "Type a number."
+    h.run("0", "W", "-0.5")
+    assert h.messages()[-1] == "Type a number zero or greater."
+    assert h.prompt().text == "Specify line width for rectangles <0>:"
+    h.run("0", "0,0", "1,1")
+    assert details_of(h.document)["Elevation"] == "-1000.000000"
+
+
+def test_a_polyline_style_out_of_range_is_refused() -> None:
+    from arqstudiocad.core import CadApplication
+
+    document = CadApplication().create_document("t")
+    square = [((0.0, 0.0), 0.0), ((1.0, 0.0), 0.0), ((1.0, 1.0), 0.0)]
+    for bad in ({"elevation": math.nan}, {"thickness": math.inf}, {"width": -1.0}):
+        with pytest.raises(InvalidGeometryError):
+            document.add_polyline(square, True, **bad)
+    assert document.get_entities() == []

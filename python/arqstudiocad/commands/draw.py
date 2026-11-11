@@ -36,9 +36,10 @@ from arqstudiocad.points import Point
 #: The last circle radius, remembered as AutoCAD's CIRCLERAD.
 CIRCLE_RADIUS = "CIRCLERAD"
 #: RECTANG's last rotation, length, width, area and the side the area
-#: was given with, and its corners' fillet radius or chamfer distances
-#: (one of them at most, zero for none), kept for the session as AutoCAD
-#: keeps them; AutoCAD's defaults until then.
+#: was given with; its corners' fillet radius or chamfer distances (one
+#: of them at most, zero for none); and its polyline's elevation,
+#: thickness and width, kept for the session as AutoCAD keeps them;
+#: AutoCAD's defaults until then.
 RECTANG_FILLET = "RECTANG_FILLET"
 RECTANG_CHAMFER = "RECTANG_CHAMFER"
 RECTANG_ROTATION = "RECTANG_ROTATION"
@@ -46,6 +47,9 @@ RECTANG_LENGTH = "RECTANG_LENGTH"
 RECTANG_WIDTH = "RECTANG_WIDTH"
 RECTANG_AREA = "RECTANG_AREA"
 RECTANG_AREA_SIDE = "RECTANG_AREA_SIDE"
+RECTANG_ELEVATION = "RECTANG_ELEVATION"
+RECTANG_THICKNESS = "RECTANG_THICKNESS"
+RECTANG_LINE_WIDTH = "RECTANG_LINE_WIDTH"
 RECTANG_DEFAULTS = {
     RECTANG_FILLET: 0.0,
     RECTANG_CHAMFER: (0.0, 0.0),
@@ -54,6 +58,9 @@ RECTANG_DEFAULTS = {
     RECTANG_WIDTH: 10.0,
     RECTANG_AREA: 100.0,
     RECTANG_AREA_SIDE: "L",
+    RECTANG_ELEVATION: 0.0,
+    RECTANG_THICKNESS: 0.0,
+    RECTANG_LINE_WIDTH: 0.0,
 }
 #: The last text height and rotation, remembered as AutoCAD remembers them.
 TEXT_HEIGHT = "TEXTSIZE"
@@ -349,7 +356,13 @@ def rectang(ctx: CommandContext) -> CommandScript:
     # the step is closed, so whoever listens sees it in the history.
     document.begin_group("RECTANG")
     try:
-        _, changes = document.add_polyline(vertices, True)
+        _, changes = document.add_polyline(
+            vertices,
+            True,
+            elevation=memory[RECTANG_ELEVATION],
+            thickness=memory[RECTANG_THICKNESS],
+            width=memory[RECTANG_LINE_WIDTH],
+        )
     finally:
         document.end_group()
     ctx.session.report(document, changes)
@@ -358,21 +371,21 @@ def rectang(ctx: CommandContext) -> CommandScript:
 def _rectangle_first_corner(
     ctx: CommandContext, memory: dict[str, Any]
 ) -> Generator[Prompt | Background, Any, Point]:
-    """RECTANG's first corner, after its Chamfer or Fillet, which set the
-    corners of this rectangle and the next ones: one replaces the other,
-    and zero draws square corners."""
-    fillet, chamfer = memory[RECTANG_FILLET], memory[RECTANG_CHAMFER]
-    if fillet:
-        ctx.message(tr("Current rectangle modes: Fillet={radius}", radius=f"{fillet:.10g}"))
-    elif chamfer[0] and chamfer[1]:
-        ctx.message(
-            tr(
-                "Current rectangle modes: Chamfer={first} x {second}",
-                first=f"{chamfer[0]:.10g}",
-                second=f"{chamfer[1]:.10g}",
-            )
-        )
-    options = [Option("C", tr("Chamfer")), Option("F", tr("Fillet"))]
+    """RECTANG's first corner, after the options that set this rectangle
+    and the next ones, as AutoCAD's: Chamfer or Fillet for the corners
+    (one replaces the other, zero squares them), and the polyline's
+    Elevation, Thickness and Width. The modes not at zero are said first."""
+    modes = _rectangle_modes(memory)
+    if modes:
+        ctx.message(tr("Current rectangle modes: {modes}", modes=modes))
+    options = [
+        Option("C", tr("Chamfer")),
+        Option("E", tr("Elevation")),
+        Option("F", tr("Fillet")),
+        Option("T", tr("Thickness")),
+        # "Width" is Area's side too, translated otherwise (Anchura).
+        Option("W", tr("Line width")),
+    ]
     while True:
         answer = yield ctx.point(tr("Specify first corner point"), options=options)
         if answer == "C":
@@ -397,8 +410,53 @@ def _rectangle_first_corner(
             )
             memory[RECTANG_CHAMFER] = (0.0, 0.0)
             continue
+        if answer == "E":
+            memory[RECTANG_ELEVATION] = yield ctx.number(
+                tr("Specify the elevation for rectangles"),
+                default=memory[RECTANG_ELEVATION],
+                signed=True,
+            )
+            continue
+        if answer == "T":
+            memory[RECTANG_THICKNESS] = yield ctx.number(
+                tr("Specify thickness for rectangles"),
+                default=memory[RECTANG_THICKNESS],
+                signed=True,
+            )
+            continue
+        if answer == "W":
+            memory[RECTANG_LINE_WIDTH] = yield ctx.number(
+                tr("Specify line width for rectangles"),
+                default=memory[RECTANG_LINE_WIDTH],
+                zero=True,
+            )
+            continue
         corner: Point = answer
         return corner
+
+
+def _rectangle_modes(memory: dict[str, Any]) -> str:
+    """RECTANG's modes not at zero, as AutoCAD lists them: the corners,
+    then elevation, thickness and width."""
+
+    def shown(value: float) -> str:
+        return f"{value:.10g}"
+
+    fillet, chamfer = memory[RECTANG_FILLET], memory[RECTANG_CHAMFER]
+    modes = []
+    if fillet:
+        modes.append(tr("Fillet={radius}", radius=shown(fillet)))
+    elif chamfer[0] and chamfer[1]:
+        modes.append(
+            tr("Chamfer={first} x {second}", first=shown(chamfer[0]), second=shown(chamfer[1]))
+        )
+    if memory[RECTANG_ELEVATION]:
+        modes.append(tr("Elevation={value}", value=shown(memory[RECTANG_ELEVATION])))
+    if memory[RECTANG_THICKNESS]:
+        modes.append(tr("Thickness={value}", value=shown(memory[RECTANG_THICKNESS])))
+    if memory[RECTANG_LINE_WIDTH]:
+        modes.append(tr("Line width={value}", value=shown(memory[RECTANG_LINE_WIDTH])))
+    return "  ".join(modes)
 
 
 def _rectangle_rotation(

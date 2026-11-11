@@ -7,7 +7,7 @@ use arq_geometry::{Bounds2, GeometryError, Point2, Transform2};
 
 use crate::document::Document;
 use crate::entity::Color;
-use crate::entity::{Entity, EntityId, PlanGeometry};
+use crate::entity::{Entity, EntityId, PlanGeometry, PolylineStyle};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
 use crate::ocs::plan_normal;
@@ -307,6 +307,19 @@ impl Document {
         vertices: &[(Point2, f64)],
         closed: bool,
     ) -> DocumentResult<EntityId> {
+        self.add_polyline_with(vertices, closed, PolylineStyle::default())
+    }
+
+    /// [`add_polyline`](Self::add_polyline) at an elevation, with a
+    /// thickness and a constant width (RECTANG's Elevation, Thickness and
+    /// Width): each finite, the width not negative.
+    pub fn add_polyline_with(
+        &mut self,
+        vertices: &[(Point2, f64)],
+        closed: bool,
+        style: PolylineStyle,
+    ) -> DocumentResult<EntityId> {
+        style.check()?;
         if vertices.len() < 2 {
             return Err(DocumentError::Geometry(GeometryError::OutOfRange {
                 what: "polyline vertices",
@@ -334,6 +347,9 @@ impl Document {
             polyline.add_point_with_bulge(Vector2::new(point.x(), point.y()), bulge);
         }
         polyline.is_closed = closed;
+        polyline.elevation = style.elevation;
+        polyline.thickness = style.thickness;
+        polyline.constant_width = style.width;
         polyline.common.layer = self.current_layer().name().to_owned();
         let h = self
             .cad_mut()
