@@ -85,8 +85,10 @@ from arqstudiocad.core import (
     CadChangeSet,
     CadDocument,
     CadGrip,
+    CadRectangle,
     CadSnap,
     CadView,
+    InvalidGeometryError,
 )
 from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import Drag
@@ -359,6 +361,8 @@ class Viewport(QWidget):
         transform the point under the cursor would apply to them."""
         if self._dragged is None or self._base is None or self._target is None:
             return None
+        if self._dragged.kind == "rectangle":
+            return None  # drawn by its corners, not moved
         (bx, by), (tx, ty) = self._base, self._target
         world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
         if world is None:
@@ -807,6 +811,7 @@ class Viewport(QWidget):
             self._outline_strokes(out, self._dragged.entity_ids, text, 1.0, preview)
         self._grip_items(out)
         if self._asking:
+            self._rectangle_items(out, text)
             self._point_items(out, text)
         if self._drop_name is not None:
             highlight = rgba(self.palette().highlight().color())
@@ -868,6 +873,28 @@ class Viewport(QWidget):
             a, b = (x / ratio - r, y / ratio - r), (x / ratio + r, y / ratio + r)
             out.items.append(Fill(a, b, rgba(HOT if grip == self._hot else SELECTED)))
             out.items.append(Stroke(rectangle(a, b), edge, 1.0, closed=True))
+
+    def rectangle_preview(self) -> CadRectangle | None:
+        """The rectangle RECTANG would draw from the base point to the point
+        under the cursor; none while there is no such rectangle."""
+        dragged, base, target = self._dragged, self._base, self._target
+        if dragged is None or dragged.kind != "rectangle" or base is None or target is None:
+            return None
+        try:
+            if dragged.size is not None:
+                length, width = dragged.size
+                return CadRectangle.sized(base, length, width, dragged.rotation, target)
+            return CadRectangle(base, target, dragged.rotation)
+        except InvalidGeometryError:
+            return None  # the cursor on a side's line: no area yet
+
+    def _rectangle_items(self, out: Overlay, text: RGBA) -> None:
+        """The rectangle being drawn, following the cursor."""
+        rectangle = self.rectangle_preview()
+        if rectangle is None:
+            return
+        corners = [self.screen_point(corner) for corner in rectangle.corners]
+        out.items.append(Stroke(tuple((p.x(), p.y()) for p in corners), text, 1.0, closed=True))
 
     def _point_items(self, out: Overlay, text: RGBA) -> None:
         """The rubber band from the last point and the snap marker."""

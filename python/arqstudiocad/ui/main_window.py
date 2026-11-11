@@ -343,7 +343,7 @@ class MainWindow(QMainWindow):
         for name in ("BEDIT", "BSAVE", "BCLOSE"):
             self._insert_menu.addAction(self.command_actions[name])
         self._draw_menu = menu_bar.addMenu("")
-        for name in ("LINE", "PLINE", "CIRCLE", "ARC", "MTEXT", "TEXT", "BLOCK"):
+        for name in ("LINE", "PLINE", "RECTANG", "CIRCLE", "ARC", "MTEXT", "TEXT", "BLOCK"):
             self._draw_menu.addAction(self.command_actions[name])
         # Solids, as AutoCAD's Draw > Modeling.
         self._modeling_menu = self._draw_menu.addMenu("")

@@ -8,7 +8,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use arq_core::{Color, Grip, SnapKind, SnapPoint};
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Tolerance, Vector2};
+use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Rectangle, Tolerance, Vector2};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -469,6 +469,140 @@ impl CadArc {
     }
 }
 
+/// A rectangle as RECTANG draws it: from a first corner to the opposite
+/// one, its sides along a rotation (radians) and square to it.
+#[pyclass(frozen, eq, from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, Copy, PartialEq)]
+pub struct CadRectangle(pub Rectangle);
+
+#[pymethods]
+impl CadRectangle {
+    /// The rectangle from `first` to the opposite corner `other`, its sides
+    /// along `rotation`; `other` must not lie on a side's line through
+    /// `first`.
+    #[new]
+    #[pyo3(signature = (first, other, rotation = 0.0))]
+    fn new(first: PyPoint, other: PyPoint, rotation: f64) -> PyResult<Self> {
+        Rectangle::from_corners(first.0, other.0, rotation, Tolerance::DEFAULT)
+            .py()
+            .map(Self)
+    }
+
+    /// The rectangle `length` along `rotation` and `width` square to it,
+    /// from `first` into the quarter `toward` lies in (RECTANG's
+    /// Dimensions).
+    #[staticmethod]
+    fn sized(
+        first: PyPoint,
+        length: f64,
+        width: f64,
+        rotation: f64,
+        toward: PyPoint,
+    ) -> PyResult<Self> {
+        Rectangle::from_size(
+            first.0,
+            length,
+            width,
+            rotation,
+            toward.0,
+            Tolerance::DEFAULT,
+        )
+        .py()
+        .map(Self)
+    }
+
+    /// The rectangle of `area` from `first`, the positive way along
+    /// `rotation` and square to it (RECTANG's Area): `side` is its length
+    /// when `side_is_length`, else its width.
+    #[staticmethod]
+    fn of_area(
+        first: PyPoint,
+        area: f64,
+        side: f64,
+        side_is_length: bool,
+        rotation: f64,
+    ) -> PyResult<Self> {
+        Rectangle::from_area(
+            first.0,
+            area,
+            side,
+            side_is_length,
+            rotation,
+            Tolerance::DEFAULT,
+        )
+        .py()
+        .map(Self)
+    }
+
+    #[classattr]
+    fn __match_args__() -> (&'static str, &'static str, &'static str) {
+        ("first", "other", "rotation")
+    }
+
+    /// The first corner.
+    #[getter]
+    fn first(&self) -> (f64, f64) {
+        xy(self.0.first())
+    }
+
+    /// The corner opposite the first.
+    #[getter]
+    fn other(&self) -> (f64, f64) {
+        xy(self.0.other())
+    }
+
+    /// The direction of the length, radians from East.
+    #[getter]
+    fn rotation(&self) -> f64 {
+        self.0.rotation()
+    }
+
+    /// The size along the rotation.
+    #[getter]
+    fn length(&self) -> f64 {
+        self.0.length()
+    }
+
+    /// The size square to the rotation.
+    #[getter]
+    fn width(&self) -> f64 {
+        self.0.width()
+    }
+
+    /// Its area.
+    #[getter]
+    fn area(&self) -> f64 {
+        self.0.area()
+    }
+
+    /// The four corners, counterclockwise from the first.
+    #[getter]
+    fn corners(&self) -> Vec<(f64, f64)> {
+        self.0.corners().map(xy).to_vec()
+    }
+
+    /// The corners as `CadDocument.add_polyline` takes them, each with the
+    /// bulge of the straight side leaving it.
+    #[getter]
+    fn vertices(&self) -> Vec<((f64, f64), f64)> {
+        self.0.corners().map(|p| (xy(p), 0.0)).to_vec()
+    }
+
+    fn __hash__(&self) -> u64 {
+        let (a, b) = (self.0.first(), self.0.other());
+        hash_floats(&[a.x(), a.y(), b.x(), b.y(), self.0.rotation()])
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "CadRectangle(first={}, other={}, rotation={})",
+            fmt_xy(self.0.first()),
+            fmt_xy(self.0.other()),
+            fmt_f64(self.0.rotation())
+        )
+    }
+}
+
 /// Adds the value classes to the module.
 /// Every object snap, by AutoCAD's key.
 const SNAP_KINDS: [SnapKind; 8] = [
@@ -606,5 +740,6 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadLine>()?;
     m.add_class::<CadCircle>()?;
     m.add_class::<CadArc>()?;
+    m.add_class::<CadRectangle>()?;
     Ok(())
 }

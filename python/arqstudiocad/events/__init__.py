@@ -171,12 +171,18 @@ class CommandCancelled(Event):
 class Drag:
     """What a point prompt shows following the cursor (ADR 0016 D3): the
     entities, moved, rotated, scaled or mirrored as the point picked at
-    that moment would leave them, from the prompt's base point."""
+    that moment would leave them, from the prompt's base point; or, for
+    ``"rectangle"``, the rectangle RECTANG would draw from the base point
+    to it."""
 
-    kind: Literal["move", "rotate", "scale", "mirror"]
-    entity_ids: tuple[int, ...]
+    kind: Literal["move", "rotate", "scale", "mirror", "rectangle"]
+    entity_ids: tuple[int, ...] = ()
     #: Whether a rubber band joins the base point to the cursor.
     band: bool = True
+    #: A rectangle's: the direction of its length, radians, and its length
+    #: and width when they are given (the point then only picks the quarter).
+    rotation: float = 0.0
+    size: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)

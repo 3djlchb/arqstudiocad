@@ -58,7 +58,7 @@ QApplication
 Menus are built in `MainWindow.__init__`: File exposes NEW, OPEN, recent files,
 SAVE, SAVEAS, CLOSE, Exit; Edit UNDO/REDO; View ZOOM, dock toggles and Workspace;
 Tools Language/Theme; Insert INSERT/BEDIT/BSAVE/BCLOSE; Draw
-LINE/PLINE/CIRCLE/ARC/MTEXT/TEXT/BLOCK; Modify
+LINE/PLINE/RECTANG/CIRCLE/ARC/MTEXT/TEXT/BLOCK; Modify
 ERASE/MOVE/COPY/ROTATE/SCALE/MIRROR/EXPLODE; Help About. The menu bar exists in
 both layouts. This is the real menu, not the smaller historical ADR example.
 
