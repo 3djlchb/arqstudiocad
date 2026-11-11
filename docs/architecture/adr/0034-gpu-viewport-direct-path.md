@@ -505,3 +505,20 @@ the check on demand and antialiasing. Changes still apply at once (D6.3),
 and the mockup's compatibility renderer and "prefer OpenGL" are left out,
 as features we lack. On the development laptop: the GTX 1050 Ti, driver
 31.0.15.2737, DirectX 12, chosen automatically.
+
+**OpenGL on Windows** (2026-11-10, the maintainer's choice): WGL makes its
+context on the card Windows gives the process, so on a laptop with two
+cards OpenGL lists only that one (the UHD 630 on the development laptop).
+Options says so for the other cards, and names where to change it:
+Windows Settings › System › Display › Graphics. With the GTX 1050 Ti set
+there, OpenGL drew on it as the CPU does (the Windows validation above).
+We do not export `NvOptimusEnablement` or
+`AmdPowerXpressRequestHighPerformance`: the drivers read them only from
+the process's executable, not from a DLL or our `.pyd`, and ours is
+PyInstaller's prebuilt bootloader, so it would take a bootloader of our
+own or patching the built `.exe`. They would also send the whole process
+to the dedicated card even when Options chooses the integrated card or
+the CPU. Automatic already draws with DirectX 12 on the dedicated card,
+chosen by its adapter, so the exports would only move OpenGL, the last
+API tried. ProgeCAD gets the dedicated card from NVIDIA's own driver
+profile for `pcad.exe`, not from these exports.
