@@ -43,6 +43,7 @@ from arqstudiocad.renderer import (
     CardState,
     Choice,
     card_kind,
+    not_offered,
     renderer_settings,
     renderer_title,
 )
@@ -774,7 +775,7 @@ class OptionsDialog(QDialog):
                     continue
                 if card == AUTOMATIC and not states:
                     continue  # no card listed on it: Automatic tries its own
-                why = next((s.reason for s in states), tr("this card does not offer it"))
+                why = next((s.reason for s in states), not_offered(backend))
                 if card == AUTOMATIC and states:
                     # Which card "this card" is, when none is chosen.
                     why = f"{why} ({states[0].name})"

@@ -916,6 +916,7 @@
   "integrated": "integrada",
   "it closes {app} when it draws in a window with this card": "cierra {app} al dibujar en una ventana con esta tarjeta",
   "it leaves the window black with this card": "deja la ventana en negro con esta tarjeta",
+  "on Windows it draws only on the card Windows gives {app}; to change that card, open Windows Settings > System > Display > Graphics": "en Windows dibuja solo en la tarjeta que Windows le asigna a {app}; para cambiar esa tarjeta, abre Configuración de Windows > Sistema > Pantalla > Gráficos",
   "other": "otra",
   "principal": "principal",
   "safe mode": "modo seguro",

@@ -254,6 +254,19 @@ class CardState:
         return not self.reason
 
 
+def not_offered(backend: str, platform: str = sys.platform) -> str:
+    """Why a card is not listed on ``backend``, for Options. On Windows,
+    OpenGL makes its context on the card Windows gives the application, so
+    only that card is listed; the user chooses it in Windows' settings,
+    which we leave to them (ADR 0034, "OpenGL on Windows")."""
+    if platform == "win32" and backend == "opengl":
+        return tr(
+            "on Windows it draws only on the card Windows gives {app}; to change that card, "
+            "open Windows Settings > System > Display > Graphics"
+        )
+    return tr("this card does not offer it")
+
+
 def card_kind(device_type: str) -> str:
     """A card's kind, as Options names it."""
     kinds = {

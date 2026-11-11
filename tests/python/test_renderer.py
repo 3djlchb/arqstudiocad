@@ -2,6 +2,7 @@
 hardware adapter passes the probe, the CPU otherwise; the crash sentinel;
 the Renderer and Antialiasing settings; the command window told."""
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from arqstudiocad.renderer import (
     CardState,
     Choice,
     Sentinel,
+    not_offered,
     plan,
     probe,
     renderer_settings,
@@ -596,3 +598,25 @@ def test_the_card_s_driver_comes_from_the_probe() -> None:
     run = fake_probes({HERE: result})
     chosen = probe((HERE,), run, platform="win32", listing=unlisted)
     assert chosen.driver == "NVIDIA 527.37"
+
+
+def test_opengl_on_windows_says_which_card_draws_and_where_to_change_it() -> None:
+    why = not_offered("opengl", "win32")
+    assert "the card Windows gives" in why and "Display > Graphics" in why
+    plain = "this card does not offer it"
+    assert not_offered("vulkan", "win32") == plain, "only OpenGL is Windows' choice"
+    assert not_offered("opengl", "linux") == plain, "on Linux each card offers its own"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="OpenGL's card is Windows' choice")
+def test_options_says_why_opengl_is_not_offered_on_the_dedicated_card(qtbot: QtBot) -> None:
+    states = [
+        CardState("dx12", GTX, "DiscreteGpu"),
+        CardState("dx12", UHD, "IntegratedGpu"),
+        CardState("opengl", UHD, "IntegratedGpu"),
+    ]
+    d = OptionsDialog(Options(), lambda values: None, survey=states)
+    qtbot.addWidget(d)
+    d.card.setCurrentIndex(d.card.findData(GTX))
+    assert not enabled(d.renderer, "opengl")
+    assert "OpenGL: " + not_offered("opengl") in d.cards_status.text()
