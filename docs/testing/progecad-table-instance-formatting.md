@@ -75,7 +75,7 @@ the native DWG control and checks both red right borders.
 Run in the fork, with the private source corpus available:
 
 ```powershell
-$env:ARQ_NATIVE_TABLE_ROOT = 'D:/PROGRAMACION/EJERCICIOS DWG/Tables-ProgeCAD-20261026/source'
+$env:ARQ_NATIVE_TABLE_ROOT = '<drawings>/Tables-ProgeCAD-20261026/source'  # <drawings>: your local drawings folder, never committed
 cargo test --test table_instance_format -- --include-ignored
 ```
 

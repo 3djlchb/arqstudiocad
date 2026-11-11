@@ -5,7 +5,7 @@ benchmark, dependency installation or implementation was performed.
 
 ## Scope and authority
 
-The repository root is `D:\PROGRAMACION\ARQSTUDIOCAD\arqstudiocad`.
+The repository root is the main working copy, `arqstudiocad/`.
 The audit branch is `fix/docs-roadmap-ci-sync`, created from
 `feature/blocks-palette-details` at `f8b3a23` (PR #52). The working tree is
 part of the evidence: eight pre-existing Rust/Python modifications add block
