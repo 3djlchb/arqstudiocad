@@ -1,5 +1,7 @@
 # Install once with: uv run pre-commit install
 # Local hooks reuse the pinned toolchain (rust-toolchain.toml) and the uv environment.
+# Hostile drawings are broken on purpose (ADR 0037 D2): no hook fixes them.
+exclude: ^crates/arq-core/tests/hostile/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

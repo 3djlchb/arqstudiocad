@@ -83,7 +83,14 @@ impl Document {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
-        let read = crate::reading::read(bytes, format, path)?;
+        Self::read(bytes, format, path)
+    }
+
+    /// Reads a drawing from a file's bytes exactly as [`open`](Self::open)
+    /// reads the file: a damaged one is recovered or refused alike. `name`
+    /// only names the file in messages. The fuzzers call it (ADR 0037 D2).
+    pub fn read(bytes: Vec<u8>, format: FileFormat, name: &Path) -> DocumentResult<Self> {
+        let read = crate::reading::read(bytes, format, name)?;
         let mut doc = Self::from_cad(read.cad);
         doc.recovery = read.recovery;
         doc.undecoded = read.undecoded;

@@ -30,6 +30,12 @@ allow = [
     "Zlib",
 ]
 
+# libFuzzer, for the fuzzers only (fuzz/, ADR 0037 D2); never shipped. NCSA
+# is GPL-compatible (FSF), but allowed for this crate alone.
+[[licenses.exceptions]]
+crate = "libfuzzer-sys"
+allow = ["NCSA"]
+
 [[licenses.clarify]]
 # Our own crates inherit the workspace license.
 crate = "arq-*"

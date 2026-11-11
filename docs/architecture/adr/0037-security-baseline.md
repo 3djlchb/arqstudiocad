@@ -91,3 +91,28 @@ stay unsigned, as packaging says.
   Its findings become stable regression tests.
 - **Release criteria:** the first release gains signed installers among
   its criteria (milestone 04.6).
+
+## Note (2026-11-11): D2 done
+
+The fuzzers are in [`fuzz/`](../../../fuzz/README.md):
+- `read_dwg` and `read_dxf` open their input as the application does
+  (`Document::read`, then index, measure, draw);
+- they run on nightly-2026-10-27;
+- `.github/workflows/fuzz.yml` runs them weekly, by hand, and for a minute
+  on pull requests touching the readers.
+
+**First finding.** Within seconds the DWG fuzzer found a drawing whose
+layer table lacks "0". Building the model then panicked, outside the
+reader's guard. Every read now adds a missing layer "0", as AUDIT would,
+and the drawing opens recovered. After the fix, about 11,400 more DWG
+inputs and 10,500 DXF inputs found nothing.
+
+**Hostile drawings.** Seventeen drawings made by hand
+(`tools/make_hostile_drawings.py`) open in every `cargo test`
+(`crates/arq-core/tests/hostile_files.rs`), and are kept byte for byte
+from git and the hooks.
+
+**Licenses.** A finding derived from a third-party sample is not committed;
+a test that builds the same damage stands for it. `deny.toml` allows NCSA
+(LLVM's libFuzzer) for `libfuzzer-sys` alone. It is a fuzzing tool, never
+shipped.

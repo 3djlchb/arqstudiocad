@@ -5,3 +5,6 @@
 *.png binary
 *.ico binary
 *.icns binary
+
+# Broken on purpose (ADR 0037 D2): kept byte for byte, never normalized.
+crates/arq-core/tests/hostile/** binary

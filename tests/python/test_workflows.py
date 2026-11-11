@@ -59,3 +59,21 @@ def test_the_security_policy_says_how_to_report() -> None:
     text = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
     assert "security/advisories/new" in text
     assert "## Principles for what is not built yet" in text
+
+
+def test_the_fuzzers_read_the_application_s_acadrust() -> None:
+    def patch(path: Path) -> list[str]:
+        text = path.read_text(encoding="utf-8")
+        return re.findall(r"(?m)^acadrust = \{ git = .*\}$", text)
+
+    root = patch(ROOT / "Cargo.toml")
+    assert len(root) == 1, "the root Cargo.toml patches AcadRust once"
+    assert patch(ROOT / "fuzz" / "Cargo.toml") == root, "fuzz/Cargo.toml: the same AcadRust"
+
+
+def test_the_fuzzers_run_weekly_on_a_pinned_nightly() -> None:
+    toolchain = (ROOT / "fuzz" / "rust-toolchain.toml").read_text(encoding="utf-8")
+    assert re.search(r'(?m)^channel = "nightly-\d{4}-\d{2}-\d{2}"$', toolchain)
+    workflow = (GITHUB / "workflows" / "fuzz.yml").read_text(encoding="utf-8")
+    assert "schedule:" in workflow
+    assert "target: [read_dwg, read_dxf]" in workflow

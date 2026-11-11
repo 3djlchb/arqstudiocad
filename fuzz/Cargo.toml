@@ -1,0 +1,42 @@
+# Fuzzers for the DWG/DXF readers (ADR 0037 D2), run with cargo-fuzz:
+#   cd fuzz && cargo fuzz run read_dxf
+# A workspace of its own, on the nightly pinned in rust-toolchain.toml
+# here: nightly and libFuzzer never reach the application's build.
+[package]
+name = "arq-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+arq-core = { path = "../crates/arq-core" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "read_dwg"
+path = "fuzz_targets/read_dwg.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "read_dxf"
+path = "fuzz_targets/read_dxf.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1
+
+# The same AcadRust as the application: this line must match the root
+# Cargo.toml's (tests/python/test_workflows.py checks it).
+[patch.crates-io]
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "f10cc742384aa84baea9376d486cb8023a39b1e0" }

@@ -1,0 +1,6 @@
+[toolchain]
+# Only the fuzzers use nightly (ADR 0037 D2); the application builds on the
+# stable toolchain pinned at the repository's root. Bump deliberately.
+channel = "nightly-2026-10-27"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
