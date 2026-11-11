@@ -17,11 +17,13 @@ from arqstudiocad.gpu import GpuAdapter, GpuProbeResult
 from arqstudiocad.renderer import (
     AUTOMATIC,
     CPU,
+    CardState,
     Choice,
     Sentinel,
     plan,
     probe,
     renderer_settings,
+    survey,
 )
 from arqstudiocad.ui import main_window
 from arqstudiocad.ui.main_window import MainWindow
@@ -229,17 +231,20 @@ def test_renderer_and_antialias_are_kept(tmp_path: Path) -> None:
     assert saved_options(settings).renderer == AUTOMATIC, "unknown: the default"
 
 
-def test_the_dialog_offers_the_renderer_and_says_what_draws(qtbot: QtBot) -> None:
+def test_the_dialog_offers_the_card_and_its_api_and_says_what_draws(qtbot: QtBot) -> None:
     applied: list[Options] = []
     d = OptionsDialog(Options(), applied.append, renderer_status="Drawing on the CPU: safe mode.")
     qtbot.addWidget(d)
-    items = [d.renderer.itemData(i) for i in range(d.renderer.count())]
-    assert items == list(renderer_settings())
+    cards = [d.card.itemData(i) for i in range(d.card.count())]
+    assert cards == [AUTOMATIC, CPU], "no card checked yet"
+    apis = [d.renderer.itemData(i) for i in range(d.renderer.count())]
+    assert apis == [AUTOMATIC, *renderer_settings()[2:]]
     assert d.renderer_status.text() == "Drawing on the CPU: safe mode."
-    d.renderer.setCurrentIndex(d.renderer.findData(CPU))
+    d.card.setCurrentIndex(d.card.findData(CPU))
+    assert not d.renderer.isEnabled(), "the CPU has no graphics API"
     d.antialias.setChecked(True)
     d.apply()
-    assert (applied[-1].renderer, applied[-1].antialias) == (CPU, True)
+    assert (applied[-1].graphics_card, applied[-1].antialias) == (CPU, True)
 
 
 class SyncWorker:
@@ -285,6 +290,7 @@ def test_safe_mode_and_a_crash_keep_the_cpu(
     make_window: Callable[..., MainWindow], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(QGuiApplication, "platformName", staticmethod(lambda: "xcb"))
+    monkeypatch.setattr(main_window, "survey", lambda backends: [])
     window = make_window(safe_mode=True)
     assert not window.renderer.gpu and "safe mode" in history(window)
     sentinel = Sentinel(tmp_path / "gpu-starting")
@@ -297,7 +303,7 @@ def test_safe_mode_and_a_crash_keep_the_cpu(
     # Choosing a renderer in Options tries the graphics card again.
     probed: list[tuple[str, ...]] = []
 
-    def fake_probe(backends: tuple[str, ...]) -> Choice:
+    def fake_probe(backends: tuple[str, ...], card: str | None = None) -> Choice:
         probed.append(backends)
         return Choice(reason="Drawing on the CPU: no graphics card passed the check.")
 
@@ -317,8 +323,11 @@ def test_a_probe_that_passes_gives_every_viewport_the_gpu_and_a_failure_takes_it
     # viewport's attach fails: the full path from choice to fallback.
     monkeypatch.setattr(QGuiApplication, "platformName", staticmethod(lambda: "xcb"))
     monkeypatch.setattr(
-        main_window, "probe", lambda backends: Choice(backend="opengl", adapter="Fake GPU")
+        main_window,
+        "probe",
+        lambda backends, card=None: Choice(backend="opengl", adapter="Fake GPU"),
     )
+    monkeypatch.setattr(main_window, "survey", lambda backends: [])
     sentinel = Sentinel(tmp_path / "gpu-starting")
     window = make_window(sentinel=sentinel)
     assert window.renderer == Choice(backend="opengl", adapter="Fake GPU")
@@ -370,3 +379,143 @@ def test_a_wayland_session_runs_qt_on_xwayland_for_the_graphics_card() -> None:
     assert qt_platform_for_gpu(chosen, AUTOMATIC, False, "linux") is None
     assert qt_platform_for_gpu(wayland, AUTOMATIC, False, "darwin") is None
     assert qt_platform_for_gpu({"DISPLAY": ":0"}, AUTOMATIC, False, "linux") is None, "X11"
+
+
+# The graphics card chosen in Options (ADR 0034, "After 02.7")
+
+GTX = "NVIDIA GeForce GTX 1050 Ti"
+UHD = "Intel(R) UHD Graphics 630"
+
+
+def test_every_card_is_surveyed_with_why_it_cannot_draw() -> None:
+    def listing(backend: str) -> tuple[list[GpuAdapter], str | None]:
+        if backend == "vulkan":
+            return [], "crashed"
+        return [
+            GpuAdapter(backend, 0, UHD, "IntegratedGpu"),
+            GpuAdapter(backend, 1, GTX, "DiscreteGpu"),
+            GpuAdapter(backend, 2, "Microsoft Basic Render Driver", "Cpu"),
+        ], None
+
+    def run(backend: str, index: int | None = None) -> GpuProbeResult:
+        if (backend, index) == ("dx12", 0):
+            return GpuProbeResult(backend, error="no device")
+        return GpuProbeResult(backend, "card", "Other")
+
+    states = survey(("dx12", "vulkan", "opengl"), run, platform="win32", listing=listing)
+    found = [(st.backend, st.name, st.usable) for st in states]
+    # The discrete cards first; Vulkan listed nothing; no software card.
+    assert found == [
+        ("dx12", GTX, True),
+        ("opengl", GTX, True),
+        ("dx12", UHD, False),
+        ("opengl", UHD, False),
+    ]
+    assert "fails its check" in states[2].reason
+    assert "leaves the window black" in states[3].reason, "OpenGL on Intel under Windows"
+
+
+def test_a_card_chosen_is_the_only_one_tried() -> None:
+    every = {(b, i) for b in ("dx12", "vulkan") for i in (0, 1)}
+    listing, run, ran = two_cards(every)
+    chosen = probe(("dx12", "vulkan"), run, platform="win32", listing=listing, card=UHD)
+    assert (chosen.backend, chosen.adapter) == ("dx12", UHD)
+    assert ran == [("dx12", 0)]
+    gone = probe(("dx12",), run, platform="win32", listing=listing, card="Old card")
+    assert not gone.gpu and "Old card did not pass the check" in gone.message()
+
+
+def test_the_cpu_card_draws_on_the_cpu() -> None:
+    kw: dict[str, Any] = {"safe_mode": False, "crashed": False, "window_system": "win32"}
+    chosen = plan(AUTOMATIC, platform="win32", card=CPU, **kw)
+    assert isinstance(chosen, Choice) and not chosen.gpu and chosen.quiet
+
+
+def test_a_cpu_renderer_kept_before_becomes_the_cpu_card(tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "old.ini"), QSettings.Format.IniFormat)
+    settings.setValue("options/renderer", CPU)
+    kept = saved_options(settings)
+    assert (kept.graphics_card, kept.renderer) == (CPU, AUTOMATIC)
+    settings.setValue("options/graphics_card", GTX)
+    settings.setValue("options/renderer", HERE)
+    assert (saved_options(settings).graphics_card, saved_options(settings).renderer) == (GTX, HERE)
+
+
+def enabled(combo: Any, data: str) -> bool:
+    return bool(combo.model().item(combo.findData(data)).isEnabled())
+
+
+def test_options_lists_the_cards_and_their_apis_with_why_not(qtbot: QtBot) -> None:
+    black = "it leaves the window black with this card"
+    states = [
+        CardState(HERE, GTX, "DiscreteGpu"),
+        CardState(HERE, UHD, "IntegratedGpu", reason=black),
+    ]
+    d = OptionsDialog(Options(), lambda values: None, survey=states)
+    qtbot.addWidget(d)
+    cards = [d.card.itemData(i) for i in range(d.card.count())]
+    assert cards == [AUTOMATIC, CPU, GTX, UHD]
+    assert d.card.itemText(2) == f"{GTX} (dedicated)"
+    assert d.card.itemText(3) == f"{UHD} (integrated)"
+    assert enabled(d.card, GTX) and not enabled(d.card, UHD), "no API draws on the UHD 630"
+    d.card.setCurrentIndex(d.card.findData(UHD))
+    assert not enabled(d.renderer, HERE)
+    assert black in d.cards_status.text()
+    d.card.setCurrentIndex(d.card.findData(GTX))
+    assert enabled(d.renderer, HERE)
+    assert black not in d.cards_status.text()
+    others = renderer_settings()[3:]
+    assert all(not enabled(d.renderer, api) for api in others), "not offered by this card"
+    assert all("does not offer it" in d.cards_status.text() for _ in others)
+
+
+def test_a_card_no_longer_found_is_kept_and_said(qtbot: QtBot) -> None:
+    d = OptionsDialog(Options(graphics_card="Old card"), lambda values: None, survey=[])
+    qtbot.addWidget(d)
+    assert d.card.currentData() == "Old card"
+    assert d.card.currentText() == "Old card (not found)"
+    assert not enabled(d.card, "Old card")
+
+
+def test_the_cards_are_checked_again_on_demand(qtbot: QtBot) -> None:
+    asked: list[Callable[[Any], None]] = []
+    d = OptionsDialog(Options(), lambda values: None, survey=[], check_again=asked.append)
+    qtbot.addWidget(d)
+    d.check_button.click()
+    assert asked and not d.check_button.isEnabled()
+    assert d.cards_status.text() == "Checking the graphics cards…"
+    asked[0]([CardState(HERE, GTX, "DiscreteGpu")])
+    assert d.check_button.isEnabled()
+    assert d.card.findData(GTX) >= 0
+
+
+def test_the_window_surveys_the_cards_and_gives_options_them(
+    make_window: Callable[..., MainWindow], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    states = [CardState(HERE, GTX, "DiscreteGpu")]
+    monkeypatch.setattr(main_window, "survey", lambda backends: states)
+    window = make_window()
+    assert window.options_dialog().card.findData(GTX) < 0, "offscreen: not surveyed at start"
+    answered: list[Any] = []
+    window.survey_cards(answered.append)
+    assert answered == [states]
+    assert window.options_dialog().card.findData(GTX) >= 0
+
+
+def test_the_card_chosen_goes_to_the_probe(
+    make_window: Callable[..., MainWindow], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(QGuiApplication, "platformName", staticmethod(lambda: "xcb"))
+    monkeypatch.setattr(main_window, "survey", lambda backends: [])
+    asked: list[str | None] = []
+
+    def fake_probe(backends: tuple[str, ...], card: str | None = None) -> Choice:
+        asked.append(card)
+        return Choice(reason="Drawing on the CPU: no graphics card passed the check.")
+
+    monkeypatch.setattr(main_window, "probe", fake_probe)
+    window = make_window()
+    window.apply_options(Options(graphics_card=GTX))
+    assert asked[-1] == GTX
+    window.apply_options(Options(graphics_card=AUTOMATIC))
+    assert asked[-1] is None

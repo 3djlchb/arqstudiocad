@@ -462,6 +462,35 @@ On the development laptop, measured with the code of this change:
 | Vulkan | UHD 630, GTX 1050 Ti, UHD 630 | first UHD 630 crashes; the others pass | GTX draws; UHD 630 closes the application |
 | OpenGL | UHD 630 | passes | black |
 
-Automatic now takes DirectX 12 on the GTX 1050 Ti. Options › Graphics,
-with a list of the cards and one of their APIs, entries that cannot be
-chosen disabled with why, and a check on demand, is the next pull request.
+Automatic now takes DirectX 12 on the GTX 1050 Ti.
+
+**Options › Graphics, the card and its API** (the second pull request,
+2026-11-10, as the maintainer set it):
+
+- **Two lists.** Graphics card: Automatic, the CPU, then each card found,
+  with its kind (dedicated, integrated). Graphics API: Automatic, then the
+  platform's APIs. The CPU has no API; the API list is then off.
+- **The cards surveyed.** At start, where the graphics card may draw (a
+  window system it presents to, no safe mode), every hardware card of
+  every API is probed in the background (`renderer.survey`, each listing
+  and probe in a child process: 7.2 s on the development laptop, the start
+  not waiting). Options shows the answer at once; "Check the graphics cards
+  again" asks for a new one, the lists saying "Checking the graphics
+  cards…" meanwhile.
+- **What cannot be chosen is disabled, and why is said.** A card none of
+  whose APIs draws is disabled; for the card chosen, an API it does not
+  offer, whose probe fails, or which `FAILS_ON_SCREEN` lists, is disabled,
+  each with its reason in a line below and as the entry's tooltip. A card
+  chosen before and no longer found stays chosen, "(not found)".
+- **The choice follows them.** The card chosen is the only one tried
+  (`probe(card=)`), on the API chosen or, with Automatic, on each in order;
+  the CPU card draws on the CPU at once. A card that fails says so and the
+  CPU draws.
+- **Settings.** `options/graphics_card` (Automatic, `cpu`, or a card's
+  name) beside `options/renderer`, now the API. A `renderer` of `cpu` kept
+  before becomes the CPU card.
+
+On the development laptop: the GTX 1050 Ti offers DirectX 12 and Vulkan;
+the UHD 630 DirectX 12 only, Vulkan disabled ("it closes the application
+when it draws in a window with this card") and OpenGL disabled ("it leaves
+the window black with this card").
