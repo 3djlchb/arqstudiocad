@@ -36,8 +36,10 @@ it as [CONTRIBUTING.md](CONTRIBUTING.md) explains.
 ## How the project keeps it secure
 
 - **Untrusted files.** The readers are in Rust, with `unsafe` kept to the
-  graphics and Python boundaries. Fuzzing of the DWG/DXF readers is planned
-  (ADR 0037 D2). Every input that breaks them stays as a regression test.
+  graphics and Python boundaries. The DWG/DXF readers are fuzzed weekly in
+  CI ([fuzz/](fuzz/README.md), ADR 0037 D2), and hand-made hostile drawings
+  open in every `cargo test`. Every input that breaks them stays as a
+  regression test.
 - **Dependencies.**
   - `cargo deny` checks every Rust dependency's license and advisories on
     every pull request.
