@@ -180,9 +180,12 @@ class Drag:
     #: Whether a rubber band joins the base point to the cursor.
     band: bool = True
     #: A rectangle's: the direction of its length, radians, and its length
-    #: and width when they are given (the point then only picks the quarter).
+    #: and width when they are given (the point then only picks the quarter);
+    #: its corners' fillet radius or chamfer distances, one of them at most.
     rotation: float = 0.0
     size: tuple[float, float] | None = None
+    fillet: float = 0.0
+    chamfer: tuple[float, float] = (0.0, 0.0)
 
 
 @dataclass(frozen=True, slots=True)

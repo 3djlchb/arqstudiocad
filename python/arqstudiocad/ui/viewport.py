@@ -889,12 +889,20 @@ class Viewport(QWidget):
             return None  # the cursor on a side's line: no area yet
 
     def _rectangle_items(self, out: Overlay, text: RGBA) -> None:
-        """The rectangle being drawn, following the cursor."""
+        """The rectangle being drawn, following the cursor, its corners
+        filleted or chamfered as RECTANG will draw them: square when they
+        do not fit."""
         rectangle = self.rectangle_preview()
-        if rectangle is None:
+        dragged = self._dragged
+        if rectangle is None or dragged is None:
             return
-        corners = [self.screen_point(corner) for corner in rectangle.corners]
-        out.items.append(Stroke(tuple((p.x(), p.y()) for p in corners), text, 1.0, closed=True))
+        try:
+            path = rectangle.path(dragged.fillet, dragged.chamfer)
+        except InvalidGeometryError:
+            path = rectangle.vertices
+        ratio = self.devicePixelRatioF()
+        points = self.view.path_outline(path, True)
+        out.items.append(Stroke(tuple((x / ratio, y / ratio) for x, y in points), text, 1.0))
 
     def _point_items(self, out: Overlay, text: RGBA) -> None:
         """The rubber band from the last point and the snap marker."""
