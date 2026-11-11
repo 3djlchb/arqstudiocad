@@ -1,0 +1,103 @@
+GPU information, reference machine, 2026-11-11
+
+== uname -r
+6.12.116+deb13-amd64
+
+== glxinfo -B
+name of display: :0
+display: :0  screen: 0
+direct rendering: Yes
+Extended renderer info (GLX_MESA_query_renderer):
+    Vendor: Mesa (0x10de)
+    Device: NV106 (0x1287)
+    Version: 25.0.7
+    Accelerated: yes
+    Video memory: 2039MB
+    Unified memory: no
+    Preferred profile: core (0x1)
+    Max core profile version: 4.3
+    Max compat profile version: 4.3
+    Max GLES1 profile version: 1.1
+    Max GLES[23] profile version: 3.2
+Memory info (GL_ATI_meminfo):
+    VBO free memory - total: 1635 MB, largest block: 1635 MB
+    VBO free aux. memory - total: 838860 MB, largest block: 838860 MB
+    Texture free memory - total: 1635 MB, largest block: 1635 MB
+    Texture free aux. memory - total: 838860 MB, largest block: 838860 MB
+    Renderbuffer free memory - total: 1635 MB, largest block: 1635 MB
+    Renderbuffer free aux. memory - total: 838860 MB, largest block: 838860 MB
+Memory info (GL_NVX_gpu_memory_info):
+    Dedicated video memory: 2039 MB
+    Total available memory: 1050614 MB
+    Currently available dedicated video memory: 1635 MB
+OpenGL vendor string: Mesa
+OpenGL renderer string: NV106
+OpenGL core profile version string: 4.3 (Core Profile) Mesa 25.0.7-2+deb13u1
+OpenGL core profile shading language version string: 4.30
+OpenGL core profile context flags: (none)
+OpenGL core profile profile mask: core profile
+
+OpenGL version string: 4.3 (Compatibility Profile) Mesa 25.0.7-2+deb13u1
+OpenGL shading language version string: 4.30
+OpenGL context flags: (none)
+OpenGL profile mask: compatibility profile
+
+OpenGL ES profile version string: OpenGL ES 3.2 Mesa 25.0.7-2+deb13u1
+OpenGL ES profile shading language version string: OpenGL ES GLSL ES 3.20
+
+
+== vulkaninfo --summary
+==========
+VULKANINFO
+==========
+
+Vulkan Instance Version: 1.4.309
+
+
+Instance Extensions: count = 24
+-------------------------------
+VK_EXT_acquire_drm_display             : extension revision 1
+VK_EXT_acquire_xlib_display            : extension revision 1
+VK_EXT_debug_report                    : extension revision 10
+VK_EXT_debug_utils                     : extension revision 2
+VK_EXT_direct_mode_display             : extension revision 1
+VK_EXT_display_surface_counter         : extension revision 1
+VK_EXT_headless_surface                : extension revision 1
+VK_EXT_surface_maintenance1            : extension revision 1
+VK_EXT_swapchain_colorspace            : extension revision 5
+VK_KHR_device_group_creation           : extension revision 1
+VK_KHR_display                         : extension revision 23
+VK_KHR_external_fence_capabilities     : extension revision 1
+VK_KHR_external_memory_capabilities    : extension revision 1
+VK_KHR_external_semaphore_capabilities : extension revision 1
+VK_KHR_get_display_properties2         : extension revision 1
+VK_KHR_get_physical_device_properties2 : extension revision 2
+VK_KHR_get_surface_capabilities2       : extension revision 1
+VK_KHR_portability_enumeration         : extension revision 1
+VK_KHR_surface                         : extension revision 25
+VK_KHR_surface_protected_capabilities  : extension revision 1
+VK_KHR_wayland_surface                 : extension revision 6
+VK_KHR_xcb_surface                     : extension revision 6
+VK_KHR_xlib_surface                    : extension revision 6
+VK_LUNARG_direct_driver_loading        : extension revision 1
+
+Instance Layers: count = 4
+--------------------------
+VK_LAYER_FROG_gamescope_wsi_x86_64 Gamescope WSI (XWayland Bypass) Layer (x86_64) 1.3.221  version 1
+VK_LAYER_INTEL_nullhw              INTEL NULL HW                                  1.1.73   version 1
+VK_LAYER_MESA_device_select        Linux device selection layer                   1.4.303  version 1
+VK_LAYER_MESA_overlay              Mesa Overlay layer                             1.4.303  version 1
+
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.305
+	driverVersion      = 0.0.1
+	vendorID           = 0x10005
+	deviceID           = 0x0000
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 19.1.7, 256 bits)
+	driverID           = DRIVER_ID_MESA_LLVMPIPE
+	driverName         = llvmpipe
+	driverInfo         = Mesa 25.0.7-2+deb13u1 (LLVM 19.1.7)
+	conformanceVersion = 1.3.1.1

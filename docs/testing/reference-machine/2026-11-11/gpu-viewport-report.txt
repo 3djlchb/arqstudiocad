@@ -1,0 +1,23 @@
+GPU viewport check, 2026-11-11T16:09:37
+version 0.1.0; Linux-6.12.116+deb13-amd64-x86_64-with-glibc2.41; Python 3.13.5
+processor x86_64; cores 8
+
+== Probes (each in a child process)
+  vulkan    software llvmpipe (LLVM 19.1.7, 256 bits) (Cpu)
+  opengl    hardware NV106 (Other)
+  software  software llvmpipe (LLVM 19.1.7, 256 bits) (Cpu)
+
+== Viewport: opengl
+  drawn by: ['opengl', 'NV106', 'Other']
+  pan  median 16.6 ms, p95 22.3 ms
+  zoom median 16.6 ms, p95 22.4 ms
+
+== Viewport: cpu
+  drawn by: the CPU
+  pan  median 44.5 ms, p95 49.8 ms
+  zoom median 61.9 ms, p95 69.8 ms
+
+== Overlays, GPU against CPU (pixels the other did not draw within one)
+  opengl    0 pixel(s): the same
+
+Images: target/gpu-viewport-20261111-1609

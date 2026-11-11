@@ -1,0 +1,36 @@
+Options > Graphics in the real application, reference machine, 2026-11-11
+(main 06132ad; fresh settings; the dialog opened after the card survey
+ended; read from the dialog's widgets in English and Spanish)
+
+This session:
+  Graphics card: NV106
+  Driver: 4.3 (Core Profile) Mesa 25.0.7-2+deb13u1
+  Graphics API: OpenGL
+  Chosen by: automatic
+
+Choice, with Graphics card = Automatic:
+  Graphics card: Automatic, CPU (no graphics card), NV106 (other), all enabled
+  Graphics API:  Automatic, Vulkan, OpenGL, all enabled
+  Status line:   none
+
+Choice, with Graphics card = NV106 (other):
+  Graphics API:  Automatic (enabled), Vulkan (disabled, tooltip "this card
+                 does not offer it"), OpenGL (enabled)
+  Status line:   "Vulkan: this card does not offer it."
+
+Notes for this machine:
+- With Automatic as the card, Vulkan is offered enabled and gives no
+  reason, although here Vulkan is only llvmpipe (software). Choosing it
+  (plan -> ('vulkan',), then probe) ends on the CPU with "Drawing on the
+  CPU: no graphics card passed the check." The reason only appears once
+  the NV106 is chosen as the card.
+- The card is named "NV106 (other)": nouveau reports the chip's code name
+  and wgpu's GL backend the device type Other; "GeForce GT 730" appears
+  nowhere, and "other" says little about a dedicated card.
+- The driver row shows the OpenGL version string, "4.3 (Core Profile) Mesa
+  25.0.7-2+deb13u1": clear enough, though the driver's name (nouveau) is
+  not in it.
+- The help text speaks of "the dedicated graphics card ... then the
+  integrated one"; this machine's only card is classed "other", so neither
+  word matches what the list shows.
+- Spanish: "NV106 (otra)" and "esta tarjeta no la ofrece" read the same way.
