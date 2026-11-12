@@ -33,6 +33,10 @@ changing logic, or editing code, perform this fresh-start review:
 6. Make the smallest coherent change, add or update the appropriate tests, and
    update the roadmap or governing documentation when the status or a decision
    changes. Do not create a second implementation of logic that already exists.
+   If the change may cost time, measure it before and after and compare it
+   with the reference machine's figures, as
+   [the reference machine's page](testing/reference-machine.md) says: they,
+   not the machine at hand, decide whether the floor still holds.
 7. Before handing work off, review the diff and record in the final summary what
    changed, what remains, and which checks were run (or not run). Durable
    project decisions belong in the governing documents, not only in chat.

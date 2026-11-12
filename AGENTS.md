@@ -58,6 +58,14 @@ right layer (contract §12). A check that inspects nothing is a failure, not a
 pass. GitHub Actions CI runs on every pull request and push to `main` (ADR 0014);
 it is not a substitute for running the checks locally.
 
+Performance is judged against the reference machine, the floor
+([docs/testing/reference-machine.md](docs/testing/reference-machine.md)),
+never against the machine at hand. A change that may cost time (start-up,
+opening or saving, drawing, background work) is measured before and after on
+the development machine, comparing ratios, not raw times. If a ratio worsens,
+or the change touches start-up, the GPU or the codec, it is measured again on
+the reference machine, which adds a row to that table.
+
 ## Git
 
 One branch per feature or fix (`feature/<topic>`, `fix/<topic>`), small commits,
