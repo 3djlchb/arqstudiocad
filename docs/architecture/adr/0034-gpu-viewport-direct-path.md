@@ -522,3 +522,14 @@ the CPU. Automatic already draws with DirectX 12 on the dedicated card,
 chosen by its adapter, so the exports would only move OpenGL, the last
 API tried. ProgeCAD gets the dedicated card from NVIDIA's own driver
 profile for `pcad.exe`, not from these exports.
+
+**The graphics checks on a thread of their own** (2026-11-11). The reference
+machine found a drawing opened right at start 290 ms slower since the
+cards' survey (835 ms against 545 ms, [measurements](../../testing/reference-machine.md)):
+the renderer's probe and the survey held both threads of the background
+pool that opens and saves. They now run one after the other on a thread of
+their own (`MainWindow.graphics_worker`, `GRAPHICS_WORKERS = 1`), and opening
+and saving keep both of theirs. On the development laptop, where the survey
+takes about 7 s, the same drawing opened at start went from 2763 ms to
+526 ms (median of 5); the window shows as before. The reference machine
+measures it again, as `AGENTS.md` asks for a change to start-up.

@@ -81,7 +81,7 @@ from arqstudiocad.renderer import (
 from arqstudiocad.session import Session
 from arqstudiocad.ui.actions import CommandActions
 from arqstudiocad.ui.auto_hide import AutoHide
-from arqstudiocad.ui.background import QtWorker
+from arqstudiocad.ui.background import GRAPHICS_WORKERS, QtWorker
 from arqstudiocad.ui.blocks_panel import BlocksPanel
 from arqstudiocad.ui.budget_panel import BudgetPanel
 from arqstudiocad.ui.command_window import CommandWindow
@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
         ui: UiServices | None = None,
         worker: Worker | None = None,
         workspaces: WorkspaceRegistry | None = None,
+        graphics_worker: Worker | None = None,
         safe_mode: bool = False,
         sentinel: Sentinel | None = None,
     ) -> None:
@@ -152,6 +153,15 @@ class MainWindow(QMainWindow):
             else QtUiServices(self, self.viewport_for, self.show_panel, settings, self.show_options)
         )
         self.worker = worker if worker is not None else QtWorker(self)
+        #: The graphics checks' own thread: the renderer's probe and the
+        #: cards' survey never hold one of opening and saving's (2026-11-11).
+        #: A worker given for the window serves both, as tests give one.
+        if graphics_worker is not None:
+            self.graphics_worker: Worker = graphics_worker
+        elif worker is not None:
+            self.graphics_worker = worker
+        else:
+            self.graphics_worker = QtWorker(self, GRAPHICS_WORKERS, "arq-graphics")
         self.runner = CommandRunner(
             builtin_registry(), CommandContext(self.session, self.ui, self.worker)
         )
@@ -732,7 +742,7 @@ class MainWindow(QMainWindow):
                 self._use_renderer(Choice(reason=reason))
 
         chosen = None if card == AUTOMATIC else card
-        self.worker.run(lambda: probe(planned, card=chosen), done)
+        self.graphics_worker.run(lambda: probe(planned, card=chosen), done)
 
     def survey_cards(self, then: Callable[[Sequence[CardState]], None] | None = None) -> None:
         """Checks every graphics card on every API in the background, for
@@ -753,7 +763,7 @@ class MainWindow(QMainWindow):
                 callback(states)
 
         backends = renderer_settings()[2:]
-        self.worker.run(lambda: survey(backends), done)
+        self.graphics_worker.run(lambda: survey(backends), done)
 
     def _use_renderer(self, choice: Choice) -> None:
         self._renderer = choice
@@ -913,8 +923,9 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
         self.workspaces.save_state()
-        if isinstance(self.worker, QtWorker):
-            self.worker.shutdown()
+        for worker in {self.worker, self.graphics_worker}:
+            if isinstance(worker, QtWorker):
+                worker.shutdown()
         # Quitting is no crash, whatever the graphics card had drawn.
         if self._sentinel is not None:
             self._sentinel.disarm()

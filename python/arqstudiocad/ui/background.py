@@ -16,15 +16,25 @@ from arqstudiocad.commands import Outcome
 #: uses every core inside each of them.
 WORKERS = 2
 
+#: The graphics checks at start (the renderer's probe, then the cards'
+#: survey) run one after the other on a thread of their own, so opening and
+#: saving keep both of theirs: sharing them cost a drawing opened at start
+#: 290 ms on the reference machine (2026-11-11).
+GRAPHICS_WORKERS = 1
+
 
 class QtWorker(QObject):
     """Runs tasks on worker threads and calls back on the GUI thread."""
 
     _finished = Signal(object, object)  # (done callback, Outcome)
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(
+        self, parent: QObject | None = None, workers: int = WORKERS, name: str = "arq-work"
+    ) -> None:
         super().__init__(parent)
-        self._pool = ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="arq-work")
+        #: How many tasks run at once.
+        self.workers = workers
+        self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix=name)
         self._finished.connect(self._deliver)
         self.destroyed.connect(lambda: self._pool.shutdown(wait=False))
 
