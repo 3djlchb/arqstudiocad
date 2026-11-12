@@ -29,6 +29,7 @@ from arqstudiocad.renderer import (
     survey,
 )
 from arqstudiocad.ui import main_window
+from arqstudiocad.ui.background import WORKERS, QtWorker
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.options_dialog import Options, OptionsDialog, saved_options
 from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV
@@ -620,3 +621,44 @@ def test_options_says_why_opengl_is_not_offered_on_the_dedicated_card(qtbot: QtB
     d.card.setCurrentIndex(d.card.findData(GTX))
     assert not enabled(d.renderer, "opengl")
     assert "OpenGL: " + not_offered("opengl") in d.cards_status.text()
+
+
+class CountingWorker(SyncWorker):
+    """A SyncWorker that counts the tasks it is given."""
+
+    def __init__(self) -> None:
+        self.tasks = 0
+
+    def run(self, task: Callable[[], Any], done: Callable[[Outcome], None]) -> None:
+        self.tasks += 1
+        super().run(task, done)
+
+
+def test_the_graphics_checks_leave_opening_and_saving_both_threads(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On the reference machine the probe and the survey held both threads
+    # of opening and saving at start: a drawing opened then took 290 ms
+    # more (2026-11-11). They run on a thread of their own now.
+    monkeypatch.delenv(GPU_VIEWPORT_ENV, raising=False)
+    monkeypatch.setattr(QGuiApplication, "platformName", staticmethod(lambda: "xcb"))
+    monkeypatch.setattr(main_window, "probe", lambda backends, card=None: Choice(reason="no"))
+    monkeypatch.setattr(main_window, "survey", lambda backends: [])
+    files, graphics = CountingWorker(), CountingWorker()
+    settings = QSettings(str(tmp_path / "w.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings, worker=files, graphics_worker=graphics)
+    qtbot.addWidget(window)
+    assert graphics.tasks == 2, "the renderer's probe and the cards' survey"
+    assert files.tasks == 0, "opening and saving keep both their threads"
+
+
+def test_by_default_the_graphics_checks_have_one_thread_of_their_own(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    settings = QSettings(str(tmp_path / "w.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings)
+    qtbot.addWidget(window)
+    assert isinstance(window.worker, QtWorker) and isinstance(window.graphics_worker, QtWorker)
+    assert window.graphics_worker is not window.worker
+    assert (window.worker.workers, window.graphics_worker.workers) == (WORKERS, 1)
+    window.close()
