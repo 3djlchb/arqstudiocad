@@ -45,7 +45,9 @@ Each names its input files, environment (machine, OS, build profile) and
 repetitions, and is reproducible; figures from incompatible machines are not
 compared. The **floor** is the reference machine (GeForce GT 730, i7-2600,
 16 GB, LMDE 7, ADR 0013 D5.8): what must run there is measured there or
-under its emulated CPU (`tools/check_cpu_floor.sh`).
+under its emulated CPU (`tools/check_cpu_floor.sh`). Its measurements,
+the reference every development machine compares against, are in
+[testing/reference-machine.md](testing/reference-machine.md).
 
 ## Engineering results
 

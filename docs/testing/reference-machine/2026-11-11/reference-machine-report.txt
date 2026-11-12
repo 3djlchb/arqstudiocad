@@ -1,0 +1,1032 @@
+
+==================== System ====================
+2026-11-11T16:07:44 (local time)
+PRETTY_NAME="LMDE 7 (gigi)"
+VERSION="7 (gigi)"
+Linux 6.12.116+deb13-amd64 x86_64
+session: x11  desktop: X-Cinnamon
+cores: 8
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       6.6Gi       1.9Gi       182Mi       7.6Gi       9.0Gi
+model name	: Intel(R) Core(TM) i7-2600 CPU @ 3.40GHz
+  cpu has sse4_2
+  cpu has popcnt
+  cpu has avx
+  cpu lacks avx2
+  cpu lacks fma
+  cpu lacks avx512f
+
+==================== Graphics ====================
+01:00.0 VGA compatible controller [0300]: NVIDIA Corporation GK208B [GeForce GT 730] [10de:1287] (rev a1)
+	Subsystem: ASUSTeK Computer Inc. Device [1043:84f5]
+	Kernel driver in use: nouveau
+	Kernel modules: nouveau
+name of display: :0
+display: :0  screen: 0
+direct rendering: Yes
+Extended renderer info (GLX_MESA_query_renderer):
+    Vendor: Mesa (0x10de)
+    Device: NV106 (0x1287)
+    Version: 25.0.7
+    Accelerated: yes
+    Video memory: 2043MB
+    Unified memory: no
+    Preferred profile: core (0x1)
+    Max core profile version: 4.3
+    Max compat profile version: 4.3
+    Max GLES1 profile version: 1.1
+    Max GLES[23] profile version: 3.2
+Memory info (GL_ATI_meminfo):
+    VBO free memory - total: 1631 MB, largest block: 1631 MB
+    VBO free aux. memory - total: 838860 MB, largest block: 838860 MB
+    Texture free memory - total: 1631 MB, largest block: 1631 MB
+    Texture free aux. memory - total: 838860 MB, largest block: 838860 MB
+    Renderbuffer free memory - total: 1631 MB, largest block: 1631 MB
+    Renderbuffer free aux. memory - total: 838860 MB, largest block: 838860 MB
+Memory info (GL_NVX_gpu_memory_info):
+    Dedicated video memory: 2043 MB
+    Total available memory: 1050618 MB
+    Currently available dedicated video memory: 1631 MB
+OpenGL vendor string: Mesa
+OpenGL renderer string: NV106
+OpenGL core profile version string: 4.3 (Core Profile) Mesa 25.0.7-2+deb13u1
+OpenGL core profile shading language version string: 4.30
+OpenGL core profile context flags: (none)
+OpenGL core profile profile mask: core profile
+
+OpenGL version string: 4.3 (Compatibility Profile) Mesa 25.0.7-2+deb13u1
+OpenGL shading language version string: 4.30
+OpenGL context flags: (none)
+OpenGL profile mask: compatibility profile
+
+OpenGL ES profile version string: OpenGL ES 3.2 Mesa 25.0.7-2+deb13u1
+OpenGL ES profile shading language version string: OpenGL ES GLSL ES 3.20
+
+Vulkan Instance Version: 1.4.309
+Devices:
+========
+GPU0:
+	apiVersion         = 1.4.305
+	driverVersion      = 0.0.1
+	vendorID           = 0x10005
+	deviceID           = 0x0000
+	deviceType         = PHYSICAL_DEVICE_TYPE_CPU
+	deviceName         = llvmpipe (LLVM 19.1.7, 256 bits)
+	driverID           = DRIVER_ID_MESA_LLVMPIPE
+	driverName         = llvmpipe
+	driverInfo         = Mesa 25.0.7-2+deb13u1 (LLVM 19.1.7)
+	conformanceVersion = 1.3.1.1
+
+==================== Toolchain ====================
+commit 06132ad Merge pull request #166 from 3djlchb/dependabot/github_actions/actions-7313d4f700 (2026-11-11)
+branch: main
+cargo 1.99.0 (5f94df478 2026-08-27)
+uv 0.13.7 (x86_64-unknown-linux-gnu)
+
+==================== Build ====================
+Resolved 39 packages in 1ms
+Checked 31 packages in 1ms
+
+==================== Rust tests ====================
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.43s
+     Running unittests src/lib.rs (target/debug/deps/arq_core-1da348ae8daabbc4)
+
+running 71 tests
+test app::tests::a_block_editor_is_a_document_saved_into_its_drawing ... ok
+test app::tests::a_panic_while_editing_disables_only_that_document ... ok
+test app::tests::an_unknown_document_is_an_error_everywhere ... ok
+test app::tests::a_block_is_copied_from_another_document_with_insert_in_one_step ... ok
+test app::tests::documents_are_created_listed_and_closed ... ok
+test app::tests::the_store_and_snapshots_cross_threads ... ok
+test history::tests::a_failed_operation_changes_nothing_and_makes_no_step ... ok
+test history::tests::a_failure_inside_a_group_rolls_back_the_whole_group ... ok
+test history::tests::a_group_is_undone_as_one_step ... ok
+test history::tests::a_group_is_undone_in_reverse_order ... ok
+test history::tests::a_kept_view_is_no_step_and_survives_undo_and_redo ... ok
+test history::tests::a_new_operation_clears_redo ... ok
+test app::tests::a_save_that_does_not_read_back_changes_nothing ... ok
+test history::tests::an_empty_group_makes_no_step ... ok
+test history::tests::an_open_group_with_changes_is_a_modification ... ok
+test history::tests::an_operation_that_changes_nothing_makes_no_step ... ok
+test history::tests::cancelling_a_group_puts_everything_back ... ok
+test history::tests::each_operation_is_one_undo_step ... ok
+test app::tests::a_snapshot_is_saved_on_another_thread_while_drawing_goes_on ... ok
+test history::tests::ids_are_not_reused_after_undo ... ok
+test history::tests::nested_groups_make_one_step_named_by_the_outermost ... ok
+test history::tests::nothing_to_undo_or_redo_is_an_error ... ok
+test app::tests::a_damaged_file_with_nothing_to_recover_does_not_open ... ok
+test history::tests::the_history_lists_its_steps_in_order ... ok
+test history::tests::undo_and_redo_are_refused_inside_a_group ... ok
+test operations::tests::a_block_drawn_through_another_redraws_that_reference_too ... ok
+test operations::tests::a_polyline_is_drawn_with_its_arcs_in_one_step ... ok
+test operations::tests::block_and_insert_undo_and_redo_whole ... ok
+test operations::tests::block_data_and_currencies_are_one_undo_step_each ... ok
+test operations::tests::blocks_and_polylines_transform_as_a_whole_and_undo ... ok
+test operations::tests::color_index_zero_is_an_invalid_operation ... ok
+test operations::tests::copying_fails_whole_on_what_cannot_be_copied ... ok
+test operations::tests::copying_makes_one_undo_step ... ok
+test history::tests::modified_follows_the_history ... ok
+test operations::tests::editing_a_read_only_entity_fails_the_whole_operation ... ok
+test operations::tests::defining_a_block_is_one_undo_step_in_every_way ... ok
+test operations::tests::invalid_geometry_is_rejected_before_anything_changes ... ok
+test operations::tests::exploding_a_block_replaces_it_atomically_and_is_undoable ... ok
+test operations::tests::locked_layers_protect_their_entities ... ok
+test operations::tests::mirroring_an_arc_keeps_it_counterclockwise ... ok
+test operations::tests::layer_operations_report_and_undo ... ok
+test app::tests::save_and_open_carry_name_path_and_state ... ok
+test operations::tests::new_entities_go_to_the_current_layer ... ok
+test operations::tests::move_rotate_scale_and_mirror_land_where_expected ... ok
+test operations::tests::purging_blocks_is_one_undo_step ... ok
+test operations::tests::properties_change_and_undo ... ok
+test operations::tests::repeated_ids_are_edited_once ... ok
+test operations::tests::renaming_a_block_is_one_undo_step ... ok
+test operations::tests::new_geometry_of_the_same_kind_keeps_the_entity ... ok
+test history::tests::a_snapshot_marks_saved_only_its_own_state ... ok
+test operations::tests::texts_are_written_and_edited_all_or_nothing ... ok
+test operations::tests::stretching_one_polyline_vertex_is_transactional_and_undoable ... ok
+test operations::tests::saving_a_block_editor_is_one_step_that_redraws_the_references ... ok
+test queries::tests::a_block_is_found_on_what_it_draws_not_only_at_its_insertion_point ... ok
+test queries::tests::a_polyline_is_found_on_its_arcs ... ok
+test queries::tests::an_empty_drawing_has_no_bounds_and_finds_nothing ... ok
+test queries::tests::bounds_cover_every_entity ... ok
+test queries::tests::an_aperture_must_be_a_finite_distance ... ok
+test queries::tests::entities_on_locked_layers_are_picked_but_not_edited ... ok
+test queries::tests::pick_window_and_snap_answer_on_drawn_geometry ... ok
+test queries::tests::queries_ignore_layer_state ... ok
+test queries::tests::query_finds_the_entities_whose_box_touches_the_area ... ok
+test history::tests::saved_files_follow_undo ... ok
+test tests::version_matches_workspace ... ok
+test queries::tests::query_follows_edits_and_undo ... ok
+test queries::tests::read_only_entities_are_found_by_their_codec_box ... ok
+test app::tests::a_recovered_drawing_is_not_saved_over_its_damaged_file_unasked ... ok
+test app::tests::losses_are_accepted_once_per_document ... ok
+test app::tests::concurrent_edits_form_one_stream ... ok
+test queries::tests::indexed_interactions_match_the_exact_full_drawing_queries ... ok
+test queries::tests::a_large_opened_drawing_takes_new_entities ... ok
+
+test result: ok. 71 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.61s
+
+     Running tests/corpus.rs (target/debug/deps/corpus-938a5c1fdbb1014e)
+
+running 11 tests
+test codec_regression_constraints_read ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_regression_fork_fixes ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_samples_round_trip ... ignored, needs the codec samples: uv run python tools/fetch_codec_samples.py
+test codec_solids_are_measured ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_solids_match_another_application ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_solids_measured_together ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_solids_read_into_our_brep ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_solids_transformed_as_a_whole ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test codec_solids_written_by_us_read_back ... ignored, needs the regression drawings: uv run python tools/fetch_codec_samples.py
+test local_drawings_round_trip ... ignored, needs ARQ_CORPUS_DIR: real drawings (a folder or one file), never committed
+test generated_drawings_round_trip_in_every_version ... ok
+
+test result: ok. 1 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 1.38s
+
+     Running tests/hostile_files.rs (target/debug/deps/hostile_files-783a994ce6fad140)
+
+running 1 test
+test hostile_files_open_or_are_refused_never_crash_or_hang ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running unittests src/lib.rs (target/debug/deps/arq_document-a7ec6e4b9256af64)
+
+running 333 tests
+test acis::tests::a_wireframe_still_boxes_the_body_when_present ... ok
+test acis::transform_tests::a_body_whose_data_does_not_read_is_left_alone ... ok
+test acis::tests::a_body_without_its_wireframe_is_boxed_from_its_vertices ... ok
+test acis::transform_tests::a_scaled_round_solid_scales_its_radii ... ok
+test acis::transform_tests::a_size_folded_into_the_matrix_still_scales_the_radii ... ok
+test acis::transform_tests::a_body_s_vertices_box_follows_its_placement ... ok
+test acis::transform_tests::autocad_s_solids_with_history_move_and_reopen_without_it ... ignored, needs tools/fetch_codec_samples.py
+test acis::tests::a_body_is_compared_by_its_vertices_when_boxes_differ ... ok
+test acis::transform_tests::a_moved_solid_s_history_is_set_to_none_and_undone_with_it ... ok
+test acis::transform_tests::a_turned_cylinder_keeps_its_isolines_where_it_turned_them ... ok
+test acis::transform_tests::a_turned_solid_is_drawn_by_as_many_points ... ok
+test acis::transform_tests::a_copied_solid_leaves_its_history_behind ... ok
+test acis::transform_tests::turned_round_solids_keep_their_references_and_isolines ... ok
+test acis_write::tests::a_box_reads_back_the_same ... ok
+test acis_write::tests::a_box_is_one_change_on_the_current_layer ... ok
+test acis_write::tests::a_mirrored_box_reads_back_inside_out_no_more ... ok
+test acis_write::tests::an_edge_against_its_circle_is_written_the_way_it_runs ... ok
+test acis_write::tests::circles_span_a_turn_and_an_apex_nothing ... ok
+test acis::transform_tests::a_box_moves_turns_scales_and_mirrors_as_a_whole ... ok
+test acis_write::tests::cylinders_and_cones_read_back_the_same ... ok
+test acis_write::tests::each_coedge_has_its_edge_partner ... ok
+test acis_write::tests::no_cone_is_written_with_a_circle_of_no_size ... ok
+test acis_write::tests::cut_cones_read_back_the_same ... ok
+test acis_write::tests::the_records_hold_what_acis_reads_and_ours_does_not ... ok
+test acis_write::tests::what_cannot_be_written_yet_says_why ... ok
+test acis_write::tests::a_void_and_a_second_lump_survive_dwg_2000 ... ok
+test block_copy::tests::a_block_comes_with_the_blocks_layers_linetypes_and_styles_it_uses ... ok
+test block_copy::tests::a_block_with_the_same_contents_is_used_without_asking ... ok
+test block_copy::tests::a_clash_is_never_resolved_silently ... ok
+test block_copy::tests::a_dynamic_block_keeps_its_parameters ... ignored, needs tools/fetch_codec_samples.py
+test block_copy::tests::a_layer_takes_this_drawings_material_of_the_same_name ... ok
+test block_copy::tests::a_layer_the_drawing_has_is_used_as_it_is ... ok
+test block_copy::tests::a_missing_block_is_an_error ... ok
+test block_copy::tests::a_nested_references_attributes_follow_their_copied_definitions ... ok
+test block_copy::tests::a_new_name_must_be_free_and_valid ... ok
+test block_copy::tests::attributes_and_their_definitions_come_along ... ok
+test block_copy::tests::contents_a_copy_cannot_carry_are_refused_whole ... ok
+test block_copy::tests::copy_with_another_name_renames_the_references_to_it ... ok
+test block_copy::tests::every_block_of_the_sample_template_copies_and_saves ... ok
+test acis::transform_tests::a_binary_body_stays_binary_and_is_saved_where_it_went ... ok
+test block_copy::tests::redefine_changes_the_definition_and_every_reference ... ok
+test block_copy::tests::undo_takes_the_copy_and_what_came_with_it_away ... ok
+test block_copy::tests::two_blocks_cannot_take_the_same_new_name ... ok
+test acis_write::tests::spheres_and_tori_read_back_and_are_saved ... ok
+test acis_write::tests::a_wedge_is_saved_and_reads_back ... ok
+test block_copy::tests::use_the_drawings_keeps_its_definition ... ok
+test block_data::tests::a_cost_in_a_currency_the_register_never_held_does_not_hold_it_back ... ok
+test block_data::tests::a_cost_without_its_currency_or_with_too_many_decimals_does_not_read ... ok
+test block_data::tests::a_currency_a_cost_uses_stays_active_with_its_decimals ... ok
+test block_copy::tests::a_copied_block_is_saved_and_read_back ... ok
+test block_data::tests::a_drawing_without_a_register_has_us_dollars_and_writes_nothing ... ok
+test block_data::tests::an_amount_is_exact_with_its_currencys_decimals ... ok
+test block_data::tests::a_copied_cost_keeps_the_drawings_currency_or_adds_it_active ... ok
+test block_data::tests::a_save_that_loses_block_data_or_the_register_is_caught ... ok
+test block_data::tests::block_data_that_cannot_be_written_is_refused_and_nothing_changes ... ok
+test block_data::tests::data_that_does_not_read_can_be_cleared_or_replaced ... ok
+test block_data::tests::block_data_is_set_read_and_removed ... ok
+test block_data::tests::a_copied_block_brings_its_data_and_its_currency ... ok
+test block_data::tests::data_with_only_fields_this_version_does_not_know_is_none ... ok
+test block_data::tests::pairs_a_version_does_not_know_are_kept ... ok
+test block_data::tests::setting_block_data_is_one_change_undone_and_redone ... ok
+test block_data::tests::data_that_does_not_read_is_reported_and_left_alone ... ok
+test block_data::tests::the_register_is_set_checked_and_undone ... ok
+test block_data::tests::the_data_follows_the_block ... ok
+test block_editor::tests::a_block_cannot_hold_itself ... ok
+test block_editor::tests::a_block_made_in_the_editor_comes_along ... ok
+test block_editor::tests::only_blocks_insert_can_place_are_edited ... ok
+test block_editor::tests::saving_replaces_the_contents_every_reference_draws ... ok
+test block_editor::tests::the_editor_holds_the_block_alone_in_its_own_coordinates ... ok
+test blocks::tests::a_block_made_from_entities_draws_them_where_they_were ... ok
+test blocks::tests::a_block_that_does_not_allow_exploding_is_not_exploded ... ok
+test blocks::tests::a_copy_names_its_block_by_its_true_name ... ok
+test blocks::tests::a_copy_that_differs_or_matches_twice_stays_apart ... ok
+test blocks::tests::a_dynamic_block_is_not_renamed ... ignored, needs tools/fetch_codec_samples.py
+test blocks::tests::a_dynamic_blocks_references_are_found_through_their_anonymous_copies ... ignored, needs tools/fetch_codec_samples.py
+test blocks::tests::a_copy_with_the_same_edit_tag_and_contents_counts_for_its_block ... ok
+test blocks::tests::a_named_block_is_never_another_blocks_copy ... ok
+test blocks::tests::a_static_block_has_no_parameters ... ok
+test blocks::tests::an_inserted_block_gets_its_attributes_with_their_defaults ... ok
+test blocks::tests::block_drawing_is_the_block_seen_from_its_base_point ... ok
+test blocks::tests::block_info_tells_what_the_palette_shows ... ok
+test blocks::tests::block_names_and_contents_are_checked ... ok
+test blocks::tests::block_names_leave_out_spaces_layouts_and_anonymous_blocks ... ok
+test blocks::tests::block_references_count_everywhere_in_the_drawing ... ok
+test blocks::tests::convert_places_a_reference_where_the_objects_were ... ok
+test blocks::tests::delete_removes_the_objects_and_places_no_reference ... ok
+test blocks::tests::insert_places_a_block_scaled_and_turned ... ok
+test blocks::tests::redefine_replaces_the_contents_and_base_and_redraws_references ... ok
+test blocks::tests::renaming_a_block_renames_every_reference_to_it ... ok
+test blocks::tests::retain_keeps_the_objects_and_places_no_reference ... ok
+test block_data::tests::a_currency_may_write_amounts_its_own_way ... ok
+test blocks::tests::the_record_takes_the_description_units_and_flags ... ok
+test block_data::tests::block_data_and_the_register_are_saved_and_read_back ... ok
+test blocks::tests::undo_gives_a_renamed_block_its_name_back ... ok
+test blocks::tests::the_references_found_are_those_that_can_be_selected ... ok
+test blocks::tests::what_cannot_be_defined_is_refused_and_nothing_changes ... ok
+test change::tests::block_definitions_are_reported_by_name ... ok
+test blocks::tests::what_cannot_be_renamed_is_refused_and_nothing_changes ... ok
+test change::tests::create_and_delete_undo_redo ... ok
+test change::tests::current_layer_is_a_document_change ... ok
+test change::tests::ids_are_never_reused_after_undo ... ok
+test change::tests::layers_undo_redo ... ok
+test change::tests::merging_block_changes ... ok
+test change::tests::merging_change_sets ... ok
+test change::tests::misuse_is_an_error ... ok
+test change::tests::modify_undo_redo ... ok
+test change::tests::renaming_a_layer_is_undone_with_its_entities ... ok
+test change::tests::rollback_restores_everything ... ok
+test combining::tests::a_solid_in_both_sets_counts_once_to_subtract_from ... ok
+test combining::tests::a_union_is_one_change ... ok
+test combining::tests::an_unreadable_solid_changes_nothing ... ok
+test combining::tests::curved_solids_change_nothing ... ok
+test combining::tests::intersect_keeps_what_all_share ... ok
+test blocks::tests::the_record_is_saved_and_read_back ... ok
+test acis_write::tests::cylinders_and_cones_are_saved_and_read_back ... ok
+test blocks::tests::a_renamed_block_is_saved_and_read_back ... ok
+test combining::tests::solids_apart_unite_as_pieces_of_one ... ok
+test combining::tests::the_kept_solid_drops_its_old_wires_and_history ... ok
+test combining::tests::nothing_left_changes_nothing ... ok
+test combining::tests::subtract_takes_every_second_solid_from_the_first_ones ... ok
+test combining::tests::too_few_solids_and_other_entities ... ok
+test document::tests::a_snapshot_taken_mid_change_has_its_own_history ... ok
+test document::tests::a_snapshot_is_independent_of_the_live_document ... ok
+test acis_write::tests::cut_cones_are_saved_and_read_back ... ok
+test combining::tests::union_keeps_the_first_solid_and_erases_the_others ... ok
+test document::tests::model_entity_count_counts_model_space_only ... ok
+test document::tests::new_document_is_empty ... ok
+test document::tests::dxf_round_trip_in_memory ... ok
+test change::tests::files_stay_valid_after_undo_and_redo ... ok
+test acis_write::tests::a_box_is_saved_in_every_version_and_reads_back ... ok
+test document::tests::layers_without_handles_get_stable_ids ... ok
+test drawing::tests::a_block_inside_itself_stops ... ok
+test drawing::tests::a_circle_on_a_tilted_plane_is_drawn_where_it_lies ... ok
+test drawing::tests::a_block_reference_places_its_contents_in_space ... ok
+test document::tests::unsupported_missing_and_corrupt_files_are_errors ... ok
+test drawing::tests::a_hatch_is_drawn_by_its_boundary ... ok
+test drawing::tests::a_mirrored_hatch_is_drawn_where_it_is ... ok
+test document::tests::an_r12_drawing_is_saved_as_dwg_2018 ... ok
+test drawing::tests::a_hatch_with_rational_and_mirrored_curved_edges ... ok
+test drawing::tests::a_polyline_is_raised_to_its_elevation ... ok
+test drawing::tests::a_mirrored_polyline_is_drawn_where_it_is ... ok
+test drawing::tests::a_sloped_line_keeps_its_ends_in_space ... ok
+test drawing::tests::a_hatch_with_ellipse_and_spline_edges ... ok
+test drawing::tests::a_text_is_raised_with_its_letters_and_its_box ... ok
+test drawing::tests::a_text_seen_from_below_lies_below ... ok
+test document::tests::save_overwrites_an_existing_file ... ok
+test drawing::tests::a_solid_in_a_block_is_placed_where_its_reference_puts_it ... ok
+test drawing::tests::a_solid_is_drawn_by_its_outline ... ok
+test drawing::tests::a_solid_is_drawn_in_space_by_its_edges ... ok
+test drawing::tests::an_arc_across_zero_degrees_keeps_its_side ... ok
+test drawing::tests::an_ellipse_is_drawn_at_its_height ... ok
+test drawing::tests::hidden_layers_are_not_drawn ... ok
+test drawing::tests::an_insert_is_its_block_moved_rotated_and_scaled ... ok
+test drawing::tests::hidden_layers_draw_nothing_in_space_either ... ok
+test drawing::tests::layer_zero_and_by_layer_follow_the_insert ... ok
+test drawing::tests::polylines_become_lines_and_arcs ... ok
+test drawing::tests::nested_and_arrayed_inserts ... ok
+test drawing::tests::an_insert_with_a_mirrored_normal ... ok
+test drawing::tests::unloaded_and_pathless_xrefs_still_have_a_marker ... ok
+test drawing::tests::ellipses_and_3d_faces_are_drawn ... ok
+test drawing::tests::external_references_draw_filename_strokes_without_loading_or_mutating ... ok
+test drawing::tests::xref_marker_transforms_strokes_instead_of_replacing_them_with_a_box ... ok
+test drawing::tests::texts_points_and_unknown_ids ... ok
+test entities::tests::added_entities_read_back_exactly ... ok
+test drawing::tests::xref_arrays_place_one_filename_at_each_instance ... ok
+test entities::tests::edits_keep_color_thickness_and_layer ... ok
+test drawing::tests::xref_filename_uses_both_path_separators_and_respects_layer_visibility ... ok
+test entities::tests::editing_a_mirrored_arc_keeps_its_ocs ... ok
+test entities::tests::kind_mismatch_and_missing_entity ... ok
+test entities::tests::mirrored_ocs_arc_is_read_in_world_coordinates ... ok
+test entities::tests::unknown_layer_is_rejected ... ok
+test entities::tests::tilted_sloped_and_unsupported_entities_are_read_only ... ok
+test entities::text_tests::a_text_in_a_mirrored_ocs_turns_the_right_way ... ok
+test entities::text_tests::a_text_shows_one_grip_at_its_anchor_and_copies ... ok
+test entities::text_tests::an_mtext_wraps_to_its_width ... ok
+test entities::text_tests::a_texts_box_is_the_box_of_its_letters ... ok
+test entities::text_tests::multiline_texts_are_written_and_edited_as_plain_paragraphs ... ok
+test entities::text_tests::texts_drawn_in_plan_move_and_rotate_as_a_whole ... ok
+test entities::text_tests::mirrored_texts_stay_readable ... ok
+test entities::text_tests::texts_are_written_and_edited_with_checked_values ... ok
+test entities::text_tests::what_a_text_tells_and_what_can_be_edited ... ok
+test entities::whole_tests::a_copy_shares_no_links_with_the_original ... ok
+test block_data::tests::the_register_keeps_how_amounts_are_written ... ok
+test entities::whole_tests::a_copy_is_a_new_entity_drawn_where_the_original_is ... ok
+test entities::whole_tests::attributes_follow_their_block ... ok
+test entities::whole_tests::explode_drops_invisible_attributes ... ok
+test entities::whole_tests::explode_keeps_attribute_values_as_texts ... ok
+test entities::whole_tests::other_entities_are_refused ... ok
+test entities::whole_tests::polylines_keep_their_elevation ... ok
+test document::tests::save_and_open_both_formats ... ok
+test entities::whole_tests::rotating_a_door_by_hand ... ok
+test entities::whole_tests::which_entities_transform_as_a_whole ... ok
+test entities::whole_tests::blocks_and_polylines_are_drawn_where_the_transformation_puts_them ... ok
+test extruding::tests::a_circle_becomes_a_cylinder ... ok
+test extruding::tests::a_bulge_below_a_half_circle_has_its_center_off_the_chord ... ok
+test extruding::tests::what_is_not_a_closed_profile_is_left_with_why ... ok
+test format::tests::from_extension_ignoring_case ... ok
+test extruding::tests::a_closed_polyline_becomes_a_solid_on_its_layer ... ok
+test grips::tests::every_kind_shows_its_grips ... ok
+test inventory::compatibility_tests::existing_legacy_multileader_styles_survive_verified_saving ... ignored, needs tools/fetch_codec_samples.py
+test inventory::compatibility_tests::native_progecad_unloaded_dxf_imports_the_explicit_marker ... ignored, needs a native ProgeCAD unloaded DXF in ARQ_NATIVE_XREF_DXF
+test grips::tests::grips_follow_the_order_given_without_repeats ... ok
+test extruding::tests::a_polyline_seen_from_below_extrudes_where_it_lies ... ok
+test extruding::tests::bulges_make_round_sides ... ok
+test inventory::tests::a_polyline_written_as_lightweight_is_not_lost ... ok
+test inventory::tests::fewer_of_a_kind_is_a_loss_more_is_not ... ok
+test entities::tests::dwg_and_dxf_round_trip_keep_ids_and_geometry ... ok
+test inventory::tests::the_same_drawing_loses_nothing ... ok
+test inventory::tests::aec_records_are_a_loss_asked_about_in_dxf ... ok
+test kept_view::tests::a_new_drawing_keeps_the_plan ... ok
+test kept_view::tests::an_impossible_view_is_refused_and_nothing_changes ... ok
+test kept_view::tests::keeping_a_view_records_no_change ... ok
+test layers::tests::create_with_defaults_and_unique_names_ignoring_case ... ok
+test entities::whole_tests::a_copied_block_has_attributes_of_its_own_and_survives_saving ... ok
+test layers::tests::current_layer_rules ... ok
+test layers::tests::delete_only_empty_unprotected_layers ... ok
+test layers::tests::invalid_names_are_rejected ... ok
+test layers::tests::new_drawing_has_layer_zero_with_a_real_id ... ok
+test layers::tests::properties ... ok
+test layers::tests::rename_moves_entities_and_allows_case_only_changes ... ok
+test inventory::tests::a_save_that_would_lose_data_replaces_nothing ... ok
+test measuring::tests::a_block_inside_a_block ... ok
+test measuring::tests::a_curved_solid_scales_with_its_reference ... ok
+test measuring::tests::a_block_reference_measures_what_it_holds_where_it_puts_it ... ok
+test measuring::tests::a_skewed_nesting_is_refused ... ok
+test measuring::tests::a_mirrored_reference_measures_its_mirror_image ... ok
+test inventory::tests::intact_xdata_is_no_loss ... ok
+test measuring::tests::an_array_counts_every_copy ... ok
+test measuring::tests::one_solid ... ok
+test measuring::tests::several_solids_together ... ok
+test measuring::tests::an_unevenly_scaled_reference_is_refused ... ok
+test measuring::tests::what_is_not_a_solid_is_refused ... ok
+test model::tests::every_dimension_style_of_example_2000_names_a_text_style ... ignored, needs tools/fetch_codec_samples.py
+test model::tests::copies_join_the_model ... ok
+test model::tests::layer_reads_come_from_the_model ... ok
+test model::tests::reads_come_from_the_model ... ok
+test model::tests::renaming_a_layer_renames_it_for_its_entities ... ok
+test model::tests::the_model_owns_layers_and_editable_entities ... ok
+test model::tests::undo_and_redo_keep_the_model_in_step ... ok
+test model::tests::what_the_model_does_not_own_stays_in_the_engine ... ok
+test ocs::tests::classifies_normals ... ok
+test ocs::tests::down_negates_x_and_z ... ok
+test ocs::tests::down_reverses_arcs ... ok
+test pick::tests::a_block_is_picked_as_a_whole_by_what_it_draws ... ok
+test pick::tests::a_crossing_takes_whatever_it_touches_exactly ... ok
+test kept_view::tests::a_kept_view_is_saved_and_read_back ... ok
+test pick::tests::a_pick_finds_the_closest_drawn_entity_within_the_aperture ... ok
+test pick::tests::a_window_takes_what_lies_wholly_inside ... ok
+test pick::tests::a_text_is_picked_anywhere_inside_its_box ... ok
+test layers::tests::layers_survive_dwg_and_dxf_with_the_same_ids ... ok
+test pick::tests::center_perpendicular_and_tangent_come_from_the_curve_under_the_cursor ... ok
+test pick::tests::hidden_layers_are_never_picked_and_bad_apertures_find_nothing ... ok
+test pick::tests::on_a_tie_the_entity_drawn_last_is_picked ... ok
+test pick::tests::point_snaps_take_the_closest_point_within_the_aperture ... ok
+test pick::tests::snaps_ignore_hidden_layers_inactive_modes_and_bad_apertures ... ok
+test pick::tests::nearest_is_the_last_resort_and_point_snaps_come_first ... ok
+test purge::tests::a_dynamic_block_is_not_purged ... ignored, needs tools/fetch_codec_samples.py
+test purge::tests::nested_purging_keeps_what_something_else_uses ... ok
+test purge::tests::the_objects_a_block_owns_go_with_it ... ok
+test purge::tests::purging_removes_the_block_and_nested_ones_on_request ... ok
+test purge::tests::the_objects_a_nested_references_attributes_own_go_too ... ok
+test purge::tests::undo_brings_purged_blocks_back ... ok
+test purge::tests::what_cannot_be_purged_is_refused_and_nothing_changes ... ok
+test purge::tests::unused_blocks_are_those_nothing_references ... ok
+test quantities::tests::a_dynamic_blocks_quantity_counts_its_anonymous_copies ... ignored, needs tools/fetch_codec_samples.py
+test quantities::tests::a_block_holding_itself_through_another_does_not_loop ... ok
+test quantities::tests::a_minsert_counts_each_copy_and_multiplies_what_it_holds ... ok
+test quantities::tests::an_anonymous_copy_counts_for_its_block_and_what_it_holds_counts_too ... ok
+test quantities::tests::nested_references_count_once_for_each_placement_of_their_holder ... ok
+test model::tests::a_new_drawing_saved_before_r2010_says_its_multileader_style_version ... ok
+test quantities::tests::selection_only_counts_the_chosen_references_and_what_they_hold ... ok
+test model::tests::the_working_document_is_saved_and_recovered_from_the_own_model ... ok
+test reading::tests::an_engine_failure_is_a_damaged_file ... ok
+test reading::tests::long_problem_lists_are_capped ... ok
+test reading::tests::an_empty_dxf_is_a_valid_drawing ... ok
+test purge::tests::a_purged_drawing_is_saved_sound_and_read_back ... ok
+test reading::tests::partly_readable_files_open_recovered ... ok
+test entities::tests::properties::write_then_read_returns_the_geometry ... ok
+test revolving::tests::a_part_turn_goes_one_way_or_the_other ... ok
+test revolving::tests::a_square_beside_the_axis_turns_into_a_tube ... ok
+test revolving::tests::a_profile_on_either_side_and_a_circle ... ok
+test revolving::tests::arcs_on_the_axis_s_left_turn_the_right_way ... ok
+test revolving::tests::what_cannot_be_turned_is_left_with_why ... ok
+test solid::tests::a_box_reads_as_six_planar_faces ... ok
+test solid::tests::a_changed_solid_is_drawn_from_its_new_data ... ok
+test inventory::compatibility_tests::xref_fixture_metadata_roundtrips ... ok
+test solid::tests::a_solid_in_a_block_is_drawn_where_the_block_places_it ... ok
+test combining::tests::the_result_is_saved_in_every_version_and_reads_back ... ok
+test solid::tests::a_solid_is_drawn_by_its_wireframe ... ok
+test solid::tests::a_transform_moves_the_body_as_acis_applies_it ... ok
+test solid::tests::homogeneous_control_points_divide_by_their_weight ... ok
+test solid::tests::curved_primitives_read_with_their_surfaces ... ok
+test solid::tests::what_is_not_translated_says_why ... ok
+test reading::tests::a_drawing_without_layer_zero_opens_recovered_with_it_added ... ok
+test revolving::tests::revolved_solids_are_written_and_read_back_the_same ... ok
+test table_style_verify::tests::existing_r2000_style_graph_survives_verified_saving ... ignored, needs tools/fetch_codec_samples.py
+test table_style_verify::tests::broken_ownership_is_not_a_conversion_allowance ... ok
+test reading::tests::truncated_old_dwg_is_damaged_not_empty ... ok
+test text_layout::tests::a_bulge_of_one_is_a_half_circle_turning_counterclockwise ... ok
+test text_layout::tests::a_smaller_bulge_bends_round_a_center_off_the_chord ... ok
+test text_layout::tests::aligned_and_fit_fill_the_span_between_their_points ... ok
+test text_layout::tests::arcs_are_flattened_on_their_circle ... ok
+test text_layout::tests::justification_places_the_text_around_its_anchor ... ok
+test text_layout::tests::mirrored_ocs_and_generation_flags_mirror_the_letters ... ok
+test text_layout::tests::mtext_codes_leave_plain_lines ... ok
+test text_layout::tests::multiline_text_stacks_its_lines ... ok
+test text_layout::tests::paragraphs_wrap_at_spaces_to_the_width ... ok
+test text_layout::tests::rotation_scale_width_and_oblique ... ok
+test text_layout::tests::texts_that_cannot_be_placed_are_refused ... ok
+test text_layout::tests::the_font_reads_letters_accents_and_spacing ... ok
+test text_layout::tests::the_wrapping_width_is_in_drawing_units_whatever_the_height ... ok
+test translate::details_tests::block_reference_details_are_read_only_values ... ok
+test translate::details_tests::lightweight_polyline_details_include_shape_data ... ok
+test translate::details_tests::lineweight_values_are_displayed_in_millimeters ... ok
+test table_style_verify::tests::changed_cells_and_styles_are_not_a_conversion_allowance ... ok
+test table_style_verify::tests::accepting_count_losses_cannot_save_corrupted_cell_styles ... ok
+test table_style_verify::tests::a_complete_map_conversion_passes_strict_saving_in_both_formats ... ok
+test verify::tests::a_file_that_does_not_read_back_is_not_saved_and_is_kept_aside ... ok
+test verify::tests::a_lost_xref_unload_marker_is_still_refused_without_replacing_the_target ... ok
+test verify::tests::a_silently_changed_value_is_caught_by_the_comparison ... ok
+test verify::tests::linetype_names_ignore_case ... ok
+test verify::tests::differences_are_named ... ok
+test verify::tests::old_versions_may_lose_what_they_cannot_hold ... ok
+test verify::tests::unverified_files_keep_their_extension ... ok
+test verify::tests::a_file_that_reads_back_as_damaged_is_not_saved ... ok
+test verify::tests::xref_metadata_changes_are_caught_even_when_counts_match ... ok
+test table_style_verify::tests::legacy_style_loss_is_refused_even_when_count_losses_are_accepted ... ok
+test table_style_verify::tests::unrelated_data_objects_still_count_as_losses ... ok
+test verify::tests::xref_out_of_plane_placement_changes_are_caught ... ok
+test verify::tests::a_drawing_read_back_unchanged_has_no_differences ... ok
+test reading::tests::intact_files_read_clean ... ok
+test verify::tests::unloaded_xref_survives_safe_save_in_both_formats ... ok
+test reading::tests::no_damage_goes_unnoticed ... ok
+
+test result: ok. 323 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 2.07s
+
+     Running unittests src/lib.rs (target/debug/deps/arq_geometry-66be86024d3be123)
+
+running 135 tests
+test angle::tests::difference_takes_the_short_way ... ok
+test angle::tests::ccw_sweep_follows_dwg_arcs ... ok
+test angle::tests::normalize_wraps_into_range ... ok
+test arc::tests::closest_point_inside_and_outside_the_sweep ... ok
+test arc::tests::crossing_east_wraps_around ... ok
+test arc::tests::rejects_invalid_arcs ... ok
+test arc::tests::points_along ... ok
+test arc::tests::bounds_include_crossed_quadrants_only ... ok
+test arc::tests::sweep_and_points_follow_dwg ... ok
+test arc::tests::tangent_arcs_as_polyline_bulges ... ok
+test arc::tests::three_points_at_survey_coordinates ... ok
+test arc::tests::three_points_ccw_and_cw ... ok
+test arc::tests::angles_are_normalized ... ok
+test arc::tests::from_start_center_end_runs_counterclockwise_to_the_end_direction ... ok
+test arc::tests::three_points_rejects_collinear ... ok
+test bounds3::tests::containment_and_intersection ... ok
+test bounds3::tests::corners_measures_and_center ... ok
+test bounds3::tests::expansion_and_invalid_margin ... ok
+test bounds3::tests::from_points_union_and_include ... ok
+test bounds::tests::containment_includes_border_and_tolerance ... ok
+test bounds::tests::corners_in_any_order ... ok
+test bounds::tests::expanded ... ok
+test bounds::tests::from_points_and_empty ... ok
+test bounds::tests::intersection_of_boxes ... ok
+test bounds::tests::measures ... ok
+test bounds::tests::union_and_including ... ok
+test circle::tests::closest_point_and_distance ... ok
+test circle::tests::from_diameter_and_three_points ... ok
+test circle::tests::measures ... ok
+test circle::tests::parameterization_starts_east_and_runs_ccw ... ok
+test circle::tests::rejects_bad_radius ... ok
+test curved_region::tests::a_conic_through_a_point_with_its_end_tangents ... ok
+test curved_region::tests::a_circle_and_its_reverse_cancel ... ok
+test curved_region::tests::a_disc_and_a_square_measure_exactly ... ok
+test curved_region::tests::a_conic_split_and_joined_again ... ok
+test curved_region::tests::a_rational_graph_as_a_plane_leaves_it_on_a_cone ... ok
+test curved_region::tests::a_sliver_thinner_than_the_tolerance_is_nothing ... ok
+test curved_region::tests::a_bar_across_a_disc_cuts_it_in_two ... ok
+test curved_region::tests::arcs_are_joined_across_a_hair_s_breadth_either_way ... ok
+test curved_region::tests::a_disc_inside_a_square_makes_a_round_hole ... ok
+test curved_region::tests::a_neighbour_s_shared_side_is_kept_by_a_difference ... ok
+test curved_region::tests::an_overlap_hidden_between_samples_is_found ... ok
+test curved_region::tests::a_sine_band_as_a_plane_leaves_it_on_a_cylinder ... ok
+test curved_region::tests::conic_arcs_are_exact ... ok
+test curved_region::tests::contours_must_close ... ok
+test curved_region::tests::polygons_carry_over ... ok
+test curved_region::tests::tangent_curves_leaving_a_corner_are_told_apart_by_curvature ... ok
+test curved_region::tests::two_overlapping_discs ... ok
+test geometry::tests::delegates_to_the_curve ... ok
+test geometry::tests::end_points_only_for_open_curves ... ok
+test geometry::tests::kinds_and_names ... ok
+test intersect::tests::arcs_of_the_same_circle ... ok
+test intersect::tests::circle_with_an_arc_on_it_overlaps_the_arc ... ok
+test intersect::tests::arcs_on_different_circles ... ok
+test intersect::tests::circles_cross_touch_nest_and_coincide ... ok
+test intersect::tests::collinear_lines_overlap_touch_or_miss ... ok
+test intersect::tests::line_and_arc_keep_points_within_the_sweep ... ok
+test intersect::tests::line_and_circle ... ok
+test curved_region::tests::pieces_touching_at_points_stay_apart ... ok
+test intersect::tests::lines_crossing_parallel_and_apart ... ok
+test intersect::tests::precise_at_survey_coordinates ... ok
+test line::tests::closest_point_clamps_to_the_segment ... ok
+test line::tests::points_along ... ok
+test line::tests::measures ... ok
+test line::tests::precise_at_survey_coordinates ... ok
+test line::tests::rejects_zero_length ... ok
+test point3::tests::midpoint_lerp_and_approximate_equality ... ok
+test point3::tests::point_vector_algebra_and_distance ... ok
+test point3::tests::rejects_non_finite_coordinates ... ok
+test curved_region::tests::booleans_with_a_parabolic_segment ... ok
+test point::tests::approx_eq_uses_linear_tolerance ... ok
+test point::tests::midpoint_and_lerp ... ok
+test point::tests::point_vector_algebra ... ok
+test point::tests::rejects_non_finite ... ok
+test point::tests::to_vector ... ok
+test rectangle::tests::a_corner_on_a_side_line_or_the_first_leaves_no_rectangle ... ok
+test rectangle::tests::area_refuses_what_leaves_no_rectangle ... ok
+test rectangle::tests::area_with_the_length_or_the_width_given ... ok
+test rectangle::tests::dimensions_go_toward_the_quarter_the_point_lies_in ... ok
+test rectangle::tests::dimensions_refuse_bad_sizes ... ok
+test curved_region::tests::arcs_running_along_each_other_are_not_crossings ... ok
+test rectangle::tests::rotation_sees_the_other_corner_in_the_turned_frame ... ok
+test rectangle::tests::non_finite_input_is_refused ... ok
+test rectangle::tests::survey_coordinates_keep_their_size ... ok
+test rectangle::tests::two_corners_in_every_quarter_run_counterclockwise_from_the_first ... ok
+test region::tests::a_bar_across_a_square_cuts_it_in_two ... ok
+test region::tests::a_contour_needs_three_corners ... ok
+test region::tests::edges_in_any_order_make_a_region ... ok
+test region::tests::a_square_inside_another_makes_a_hole ... ok
+test region::tests::equal_regions ... ok
+test region::tests::an_island_in_a_hole_is_its_own_piece ... ok
+test region::tests::squares_apart_stay_apart ... ok
+test region::tests::far_coordinates_keep_their_precision ... ok
+test region::tests::squares_sharing_an_edge_unite_without_a_seam ... ok
+test region::tests::squares_touching_at_a_corner_stay_two_contours ... ok
+test region::tests::the_area_counts_holes_against_the_outside ... ok
+test snap::tests::intersections_include_overlap_ends ... ok
+test snap::tests::key_points_of_each_curve ... ok
+test region::tests::two_overlapping_squares ... ok
+test snap::tests::nearest_and_names ... ok
+test snap::tests::perpendicular_on_lines_and_circles ... ok
+test snap::tests::tangents_from_outside_on_and_inside ... ok
+test tolerance::tests::default_values ... ok
+test tolerance::tests::rejects_zero_negative_and_non_finite ... ok
+test transform3::tests::axis_angle_rotation_uses_right_hand_rule ... ok
+test transform3::tests::composition_and_inverse ... ok
+test transform3::tests::inverse_reports_singular_and_non_finite_matrices ... ok
+test transform3::tests::non_uniform_scaling ... ok
+test transform3::tests::rotation_about_center_keeps_center_fixed ... ok
+test transform3::tests::translation_moves_points_but_not_vectors ... ok
+test transform::tests::affine_form_maps_points_as_the_transform_does ... ok
+test transform::tests::circles_scale_their_radius ... ok
+test transform::tests::mirror_across_axes ... ok
+test transform::tests::composition_and_inverse ... ok
+test transform::tests::mirroring_an_arc_swaps_its_ends ... ok
+test transform::tests::mirroring_twice_is_identity ... ok
+test transform::tests::precise_at_survey_coordinates ... ok
+test transform::tests::rotating_an_arc_turns_its_angles ... ok
+test transform::tests::rotation_around_a_point ... ok
+test transform::tests::scaling_around_a_point ... ok
+test transform::tests::translation_moves_points_not_vectors ... ok
+test vector3::tests::arithmetic ... ok
+test vector3::tests::length_dot_cross_and_right_handed_axes ... ok
+test vector3::tests::normalized_and_zero ... ok
+test vector3::tests::rejects_non_finite_components ... ok
+test vector::tests::angles_follow_east_counterclockwise ... ok
+test vector::tests::length_dot_cross ... ok
+test vector::tests::normalized_and_zero ... ok
+test vector::tests::operators ... ok
+test vector::tests::rejects_non_finite ... ok
+test vector::tests::rotation_and_perp ... ok
+test curved_region::tests::equal_discs_and_halves ... ok
+test curved_region::tests::trims_running_along_each_other_up_to_near_their_end ... ok
+test region::tests::the_areas_add_up ... ok
+test curved_region::tests::the_areas_add_up ... ok
+
+test result: ok. 135 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running tests/properties.rs (target/debug/deps/properties-4bbd6ae69afdefcf)
+
+running 37 tests
+test ccw_sweep_reaches_the_end ... ok
+test circle_closest_point_and_distance ... ok
+test arc_from_three_points_passes_through_them ... ok
+test bounds_corner_order_does_not_matter ... ok
+test arc_points_lie_on_it_and_in_its_bounds ... ok
+test arc_closest_point_is_on_it_and_no_farther_than_the_ends ... ok
+test box_intersection_is_symmetric_and_implied_by_containment ... ok
+test circle_points_are_at_radius_and_in_bounds ... ok
+test difference_is_short_and_exact ... ok
+test cross_is_antisymmetric ... ok
+test distance_is_a_metric ... ok
+test crossing_lines_meet_where_they_were_built ... ok
+test curves_through_a_point_meet_there ... ok
+test expanding_keeps_the_original ... ok
+test geometry2_delegates_exactly ... ok
+test composition_equals_applying_each_step ... ok
+test bounds_contain_every_point ... ok
+test distances_scale_by_the_factor ... ok
+test intersection_is_symmetric ... ok
+test lerp_hits_endpoints_exactly ... ok
+test line_points_lie_on_the_line_and_in_its_bounds ... ok
+test mirror_is_an_involution ... ok
+test line_closest_point_is_on_it_and_no_farther_than_the_ends ... ok
+test normalize_lands_in_range ... ok
+test intersection_points_lie_on_both_curves ... ok
+test key_points_lie_on_the_curve ... ok
+test perp_is_orthogonal_and_ccw ... ok
+test normalized_has_unit_length ... ok
+test inverse_undoes ... ok
+test point_difference_is_antisymmetric ... ok
+test polar_roundtrips ... ok
+test point_plus_displacement_roundtrips ... ok
+test rotation_undoes_and_keeps_length ... ok
+test tangent_points_touch_without_crossing ... ok
+test perpendicular_points_make_a_right_angle ... ok
+test union_is_commutative_idempotent_and_covering ... ok
+test transformed_curves_contain_the_images_of_their_points ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+
+     Running tests/properties3.rs (target/debug/deps/properties3-6b6e2a57324f0962)
+
+running 3 tests
+test point_plus_vector_roundtrips ... ok
+test cross_product_is_orthogonal ... ok
+test affine_transform_roundtrips_at_large_coordinates ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/survey_precision.rs (target/debug/deps/survey_precision-fe2aeaee69a4cd7d)
+
+running 1 test
+test every_operation_agrees_at_survey_coordinates ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/arq_kernel-f355d6a09d1287d1)
+
+running 132 tests
+test boolean::tests::a_pocket_in_the_top ... ok
+test boolean::tests::bodies_enclosing_no_volume_are_refused ... ok
+test boolean::tests::a_slab_with_a_flush_opening ... ok
+test boolean::tests::a_box_inside_another_leaves_a_void ... ok
+test boolean::tests::a_corner_on_a_straight_run_of_an_edge ... ok
+test boolean::tests::boxes_apart ... ok
+test boolean::tests::a_void_goes_to_the_smallest_piece_around_it ... ok
+test boolean::tests::a_bar_through_a_slab_bores_a_hole ... ok
+test boolean::tests::a_box_inside_another_touching_it ... ok
+test boolean::tests::boxes_sharing_a_face ... ok
+test boolean::tests::millimetre_walls_crossing_in_general_position ... ok
+test boolean::tests::equal_boxes ... ok
+test boolean::tests::boxes_on_the_same_floor_unite_as_one_floor ... ok
+test boolean::tests::edges_lying_on_a_face_plane ... ok
+test boolean::tests::boxes_touching_along_an_edge_or_at_a_corner ... ok
+test boolean::tests::far_from_the_origin ... ok
+test boolean::tests::an_l_shaped_wall_against_a_turned_post ... ok
+test boolean::tests::walls_meeting_at_the_same_level ... ok
+test boolean::tests::two_boxes_overlapping_at_a_corner ... ok
+test boolean::tests::turned_boxes_in_general_position ... ok
+test boolean_curved::cone_tests::a_box_round_the_apex_keeps_it ... ok
+test boolean_curved::cone_tests::a_box_inside_a_cone_leaves_a_square_void ... ok
+test boolean::tests::curved_solids_are_refused ... ok
+test boolean_curved::cone_tests::a_plane_through_the_axis_halves_a_cone_along_its_side ... ok
+test boolean_curved::cone_tests::a_plane_along_the_axis_cuts_a_cone_in_a_hyperbola ... ok
+test boolean_curved::cone_tests::a_plane_along_a_generator_cuts_a_parabola ... ok
+test boolean_curved::cone_tests::a_cone_inside_a_box_leaves_a_conical_void ... ok
+test boolean_curved::cone_tests::heights_off_a_cone_along_its_normal ... ok
+test boolean_curved::cone_tests::rays_meet_a_cone_on_its_side ... ok
+test boolean_curved::cone_tests::a_slab_cuts_a_cone_in_circles ... ok
+test boolean_curved::cone_tests::a_tilted_plane_cuts_a_cone_all_round_in_an_ellipse ... ok
+test boolean_curved::cone_tests::a_slab_on_a_frustum_s_small_end ... ok
+test boolean_curved::cone_tests::a_cone_standing_on_a_slab_and_through_it_flush ... ok
+test boolean_curved::cone_tests::a_cut_cone_cut_again ... ok
+test boolean_curved::tests::a_column_inside_a_box_leaves_a_round_void ... ok
+test boolean_curved::tests::a_blind_hole_flush_with_the_top ... ok
+test boolean_curved::tests::a_column_standing_on_a_slab_unites_with_it ... ok
+test boolean_curved::tests::a_millimetre_column_through_a_slab ... ok
+test boolean_curved::tests::a_column_on_a_slab_s_edge_and_flush_faces_merge ... ok
+test boolean_curved::tests::a_mirrored_column_bores_the_same_hole ... ok
+test boolean_curved::tests::a_mirrored_column_s_own_ends_meet_its_side ... ok
+test boolean_curved::tests::a_plane_through_the_axis_where_the_angle_starts ... ok
+test boolean_curved::tests::a_flush_column_bores_a_hole_through_a_slab ... ok
+test boolean_curved::tests::a_cut_s_floor_merges_with_the_step_beside_it ... ok
+test boolean_curved::tests::a_column_through_a_slab_bores_a_round_hole ... ok
+test boolean_curved::tests::planes_along_the_axis_cut_a_column_lengthwise ... ok
+test brep::tests::a_body_moves_whole ... ok
+test brep::tests::a_square_sheet_is_a_body ... ok
+test brep::tests::broken_parts_are_refused ... ok
+test chart::tests::a_nurbs_surface_closed_one_way_puts_that_way_first ... ok
+test chart::tests::a_points_parameters_lead_back_to_it ... ok
+test chart::tests::angles_around_are_counted_from_the_reference ... ok
+test chart::tests::periods_and_poles ... ok
+test chart::tests::the_derivatives_are_the_maps ... ok
+test curve::tests::curves_move_with_a_transform ... ok
+test curve::tests::distance_to_a_circle_and_an_ellipse ... ok
+test curve::tests::distance_to_a_line ... ok
+test curve::tests::ellipses_are_checked ... ok
+test measure::tests::a_ball_cut_off_its_axis_holds_both_poles ... ok
+test measure::tests::a_box ... ok
+test measure::tests::a_cone_to_its_apex ... ok
+test measure::tests::a_cylinder ... ok
+test measure::tests::a_frustum ... ok
+test boolean_curved::tests::two_columns_meeting_wait_for_delivery_4 ... ok
+test measure::tests::a_hemisphere_holds_one_pole ... ok
+test measure::tests::a_lemon_on_the_far_side_of_its_torus ... ok
+test measure::tests::a_nurbs_face_trimmed_by_its_loop ... ok
+test measure::tests::a_rim_drawn_as_a_spline ... ok
+test measure::tests::a_void_is_taken_out ... ok
+test measure::tests::a_whole_sphere ... ok
+test measure::tests::a_whole_torus ... ok
+test measure::tests::an_arc_running_against_its_curve ... ok
+test boolean_curved::tests::a_turned_box_cuts_a_column_in_ellipses ... ok
+test measure::tests::an_open_body_is_not_measured ... ok
+test measure::tests::an_elliptic_cylinder ... ok
+test measure::tests::half_a_cylinder ... ok
+test measure::tests::half_a_torus_either_way_up ... ok
+test measure::tests::millimetre_solids_measure_as_well_as_metre_ones ... ok
+test measure::tests::moved_and_turned_it_measures_the_same ... ok
+test measure::tests::pieces_of_a_torus_small_and_large ... ok
+test measure::tests::flat_faces_of_lines_and_arcs_are_integrated_once ... ok
+test measure::tests::what_measuring_a_face_costs ... ok
+test measure::tests::the_bounds_follow_what_a_cut_leaves ... ok
+test nurbs::tests::a_curve_of_several_spans_finds_the_right_one ... ok
+test nurbs::tests::a_curves_derivative_is_exact ... ok
+test nurbs::tests::a_degree_one_curve_is_a_segment ... ok
+test nurbs::tests::a_rational_quarter_is_exactly_circular ... ok
+test nurbs::tests::a_surfaces_derivatives_are_exact ... ok
+test nurbs::tests::bad_curves_are_refused ... ok
+test nurbs::tests::nurbs_move_with_their_control_points ... ok
+test nurbs::tests::surfaces_evaluate_their_grid_with_u_the_slower_index ... ok
+test primitives::tests::a_box_between_two_corners ... ok
+test primitives::tests::a_box_far_from_the_origin ... ok
+test primitives::tests::a_concave_arc_cuts_into_the_profile ... ok
+test primitives::tests::a_cone_down_or_upside_down ... ok
+test primitives::tests::a_cone_to_a_point_and_a_frustum ... ok
+test primitives::tests::a_cylinder_on_its_base ... ok
+test primitives::tests::a_flat_box_is_refused ... ok
+test primitives::tests::a_flat_wedge_is_refused ... ok
+test measure::tests::what_measuring_a_sphere_or_a_torus_costs ... ok
+test primitives::tests::a_rectangle_extruded_is_a_box ... ok
+test primitives::tests::a_frame_places_the_axis_anywhere ... ok
+test primitives::tests::a_sphere_and_a_torus ... ok
+test measure::tests::a_mirrored_solid_measures_the_same_mirrored ... ok
+test primitives::tests::a_slot_has_round_ends ... ok
+test primitives::tests::a_wedge_stands_at_its_first_corner ... ok
+test primitives::tests::a_wedge_runs_any_way_round ... ok
+test primitives::tests::an_arc_centered_beyond_the_axis_sweeps_a_lemon ... ok
+test primitives::tests::impossible_cones_are_refused ... ok
+test primitives::tests::impossible_spheres_and_tori_are_refused ... ok
+test boolean::tests::the_volumes_add_up_for_aligned_and_touching_boxes ... ok
+test primitives::tests::profiles_that_make_no_solid_are_refused ... ok
+test primitives::tests::part_turns_are_capped_by_the_profile ... ok
+test primitives::tests::what_cannot_be_turned_is_refused ... ok
+test primitives::tests::two_half_circles_make_a_round_profile_either_way ... ok
+test surface::tests::a_reference_is_made_square_to_the_axis_and_never_along_it ... ok
+test surface::tests::distance_to_each_surface ... ok
+test surface::tests::surfaces_are_checked ... ok
+test surface::tests::surfaces_move_with_a_transform ... ok
+test tessellate::tests::a_ball_turned_about_x_draws_its_meridians_to_its_poles_there ... ok
+test primitives::tests::a_turned_torus_is_bounded_where_it_went ... ok
+test tessellate::tests::a_cone_draws_its_isolines_up_to_its_apex ... ok
+test tessellate::tests::edges_are_sampled_within_the_chord ... ok
+test tessellate::tests::far_from_the_boundary_the_state_is_carried_not_guessed ... ok
+test tessellate::tests::the_nearest_guide_is_the_one_a_full_search_finds ... ok
+test tessellate::tests::isolines_stay_inside_their_face ... ok
+test primitives::tests::whole_turns_make_cylinders_tubes_cones_spheres_and_tori ... ok
+test primitives::tests::every_axis_measures_alike_through_the_poles ... ok
+test boolean::tests::the_volumes_add_up_for_random_turned_boxes_and_wedges ... ok
+test boolean_curved::tests::the_volumes_add_up_for_flush_columns_and_slabs ... ok
+test boolean_curved::cone_tests::the_volumes_add_up_for_cones_and_turned_boxes ... ok
+test boolean_curved::tests::the_volumes_add_up_for_boxes_and_turned_columns ... ok
+
+test result: ok. 132 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.36s
+
+     Running unittests src/lib.rs (target/debug/deps/arq_render-5a06e8b117d3b5ed)
+
+running 50 tests
+test aci::tests::fixed_colors ... ok
+test aci::tests::the_hue_layout ... ok
+test aci::tests::white_follows_the_background ... ok
+test camera::tests::fitting_flat_and_single_point_extents ... ok
+test camera::tests::panning_follows_the_pointer ... ok
+test camera::tests::screen_and_world_are_inverse_and_y_points_up ... ok
+test camera::tests::zooming_keeps_the_point_under_the_cursor ... ok
+test gpu_probe::tests::parses_stable_backend_names ... ok
+test overlay::tests::a_crisp_stroke_covers_whole_pixels ... ok
+test overlay::tests::a_closed_stroke_comes_back_to_its_start ... ok
+test outline::tests::a_line_is_its_two_ends_on_screen ... ok
+test outline::tests::unknown_entities_give_nothing ... ok
+test outline::tests::a_circle_is_a_closed_polyline_on_its_curve ... ok
+test overlay::tests::a_fill_is_two_triangles_never_faded ... ok
+test overlay::tests::dashes_run_on_across_corners ... ok
+test overlay::tests::nothing_degenerate_is_drawn ... ok
+test overlay::tests::a_smooth_stroke_reaches_half_a_pixel_beyond_its_width ... ok
+test overlay::tests::the_device_pixel_ratio_scales_places_and_widths ... ok
+test raster::tests::a_preview_is_inked_on_transparency_and_fitted ... ok
+test raster::tests::a_preview_keeps_each_shape_color_on_its_background ... ok
+test raster::tests::a_diagonal_stays_exact_when_zoomed_in_a_million_times ... ok
+test raster::tests::a_line_lands_on_its_pixels ... ok
+test raster::tests::clipping ... ok
+test raster::tests::a_line_entering_at_the_top_edge_is_drawn_where_it_is ... ok
+test raster::tests::colors_and_a_light_background ... ok
+test raster::tests::survey_coordinates_keep_their_precision ... ok
+test raster::tests::far_and_huge_geometry ... ok
+test raster::tests::circles_and_arcs ... ok
+test raster::tests::the_scene_follows_changes ... ok
+test retained::tests::a_line_is_two_vertices_in_its_color ... ok
+test retained::tests::far_geometry_is_clipped_to_the_region ... ok
+test retained::tests::arcs_are_fine_enough_for_the_whole_band ... ok
+test retained::tests::it_serves_until_the_scene_the_zoom_or_the_view_moves_on ... ok
+test raster::tests::texts_are_drawn_as_their_letters ... ok
+test scene::tests::a_text_box_picks_but_is_not_drawn ... ok
+test retained::tests::only_the_real_ends_are_kept ... ok
+test retained::tests::points_dots_and_dashes ... ok
+test retained::tests::survey_coordinates_stay_small_and_exact ... ok
+test view::tests::a_picked_point_falls_on_the_xy_plane ... ok
+test view::tests::isometric_views_show_the_three_axes_alike ... ok
+test view::tests::orthographic_views_keep_their_axes_square ... ok
+test scene::tests::a_scene_keeps_its_view_through_changes ... ok
+test scene::tests::from_the_front_a_line_in_plan_lies_on_the_ground ... ok
+test view::tests::the_plan_projects_onto_x_and_y ... ok
+test view::tests::views_by_name ... ok
+test view::tests::a_kept_direction_names_its_view ... ok
+test scene::tests::picking_and_windows_work_in_a_view ... ok
+test gpu::tests::every_card_of_a_backend_is_listed_and_one_checked_by_its_index ... ok
+test gpu::tests::the_overlay_is_drawn_over_the_drawing ... ok
+test gpu::tests::the_gpu_draws_what_the_cpu_draws ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.96s
+
+   Doc-tests arq_core
+
+running 1 test
+test crates/arq-core/src/lib.rs - (line 35) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.55s; merged doctests compilation took 0.53s
+   Doc-tests arq_document
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests arq_geometry
+
+running 1 test
+test crates/arq-geometry/src/lib.rs - (line 35) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+all doctests ran in 0.22s; merged doctests compilation took 0.21s
+   Doc-tests arq_kernel
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests arq_render
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+==================== Python tests ====================
+........................................................................ [  7%]
+........................................................................ [ 14%]
+........................................................................ [ 22%]
+........................................................................ [ 29%]
+........................................................................ [ 37%]
+........................................................................ [ 44%]
+........................................................................ [ 52%]
+........................................................................ [ 59%]
+........................................................................ [ 67%]
+.....s.s................................................................ [ 74%]
+........................................................................ [ 82%]
+.............................s.......................................... [ 89%]
+........................................................................ [ 97%]
+............................                                             [100%]
+=============================== warnings summary ===============================
+tests/python/test_blocks_palette.py::test_dropping_a_block_inserts_it_where_it_lands
+tests/python/test_blocks_palette.py::test_a_block_dragged_away_inserts_nothing
+tests/python/test_blocks_palette.py::test_another_drawings_block_is_not_dropped_here
+tests/python/test_blocks_palette.py::test_a_dropped_block_with_explode_leaves_its_contents_there
+tests/python/test_blocks_palette.py::test_a_template_block_dropped_on_the_drawing_lands_there
+tests/python/test_blocks_palette.py::test_a_template_file_dropped_on_the_palette_is_loaded
+tests/python/test_blocks_palette.py::test_a_template_file_dropped_on_the_palette_is_loaded
+tests/python/test_blocks_palette.py::test_a_clashing_block_dropped_is_asked_about_then_placed_there
+tests/python/test_crosshair.py::test_a_dragged_block_carries_the_crosshair
+  ~/PROGRAMACION/ARQSTUDIOCAD/arqstudiocad/tests/python/test_blocks_palette.py:618: DeprecationWarning: Function: 'QDragEnterEvent.QDragEnterEvent(const QPoint &pos, QFlags<Qt.DropAction> actions, const QMimeData *data, QFlags<Qt.MouseButton> buttons, QFlags<Qt.KeyboardModifier> modifiers)' is marked as deprecated, please check the documentation for more information.
+    return QDragEnterEvent(at.toPoint(), actions, mime, buttons, modifiers)
+
+tests/python/test_blocks_palette.py::test_dropping_a_block_inserts_it_where_it_lands
+tests/python/test_crosshair.py::test_a_dragged_block_carries_the_crosshair
+  ~/PROGRAMACION/ARQSTUDIOCAD/arqstudiocad/tests/python/test_blocks_palette.py:620: DeprecationWarning: Function: 'QDragMoveEvent.QDragMoveEvent(const QPoint &pos, QFlags<Qt.DropAction> actions, const QMimeData *data, QFlags<Qt.MouseButton> buttons, QFlags<Qt.KeyboardModifier> modifiers, QEvent.Type type)' is marked as deprecated, please check the documentation for more information.
+    return QDragMoveEvent(at.toPoint(), actions, mime, buttons, modifiers)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+961 passed, 3 skipped, 11 warnings in 78.71s (0:01:18)
+
+==================== Installation self-check ====================
+[  OK] native core: version 0.1.0
+[  OK] language packs: en, es
+[  OK] credits (AUTHORS): 1 maintainer(s), 0 contributor(s)
+[  OK] Qt: Qt 6.12.0, platform plugin 'xcb'
+[  OK] settings: system location
+
+==================== Timings ====================
+10000 lines:
+  open DXF                                33.5 ms
+  get_entities                             7.4 ms
+  get_bounds                               1.0 ms
+  query_entities (small window)            0.1 ms
+  move 1000 entities                       2.9 ms
+  undo                                     1.9 ms
+  save DWG                                57.3 ms
+  save DXF                                74.0 ms
+100000 lines:
+  open DXF                               353.3 ms
+  get_entities                            81.9 ms
+  get_bounds                              11.6 ms
+  query_entities (small window)            0.6 ms
+  move 1000 entities                       4.1 ms
+  undo                                     1.6 ms
+  save DWG                               463.0 ms
+  save DXF                               766.2 ms
+cpu count seen by Python: 8
+
+==================== Summary ====================
+build (uv sync): PASS (0 s)
+rust tests: PASS (23 s)
+python tests: PASS (79 s)
+self-check: PASS (1 s)
+timings: PASS (2 s)
+
+Report saved to target/reference-report-20261111-1607.txt — send that file back.

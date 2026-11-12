@@ -1,0 +1,79 @@
+Startup and card-survey timing, reference machine, 2026-11-11
+
+Machine: GeForce GT 730 (GK208B, NV106) on nouveau, Mesa 25.0.7-2+deb13u1
+(OpenGL 4.3, OpenGL ES 3.2), i7-2600 without AVX2, 16 GB, LMDE 7, X11
+(Cinnamon), kernel 6.12.116. Vulkan here is only llvmpipe (software).
+Measured: main at 06132ad, and 8525652 (the merge before #161, which does
+not survey the cards at startup). Release-like environment: `uv sync`,
+the extension built by maturin as `uv sync` builds it.
+Each run of the application had a fresh XDG_CONFIG_HOME and XDG_DATA_HOME
+(no saved setting, no crash sentinel) and LANG=C.UTF-8.
+
+== Step 5: the cost of surveying the cards (5 runs each, median)
+
+Each listing and probe is a child process. "CPU" is user+sys time of the
+child process tree (getrusage RUSAGE_CHILDREN), as a share of one core.
+
+  command                                          wall median (min-max)   CPU median
+  uv run arqstudiocad --gpu-adapters vulkan        117 ms (107-127)        81 ms (69%)
+  uv run arqstudiocad --gpu-adapters opengl        109 ms (102-138)        83 ms (72%)
+  uv run arqstudiocad --gpu-probe opengl --adapter 0
+                                                   131 ms (116-146)        94 ms (72%)
+  python -m arqstudiocad --gpu-adapters vulkan     115 ms (93-126)         69 ms (59%)
+  python -m arqstudiocad --gpu-adapters opengl     108 ms (86-124)         68 ms (70%)
+  python -m arqstudiocad --gpu-probe opengl --adapter 0
+                                                   120 ms (119-140)        88 ms (70%)
+
+  (python -m is what the application spawns; uv run adds about 5-10 ms.)
+
+  Adapters listed: vulkan -> llvmpipe (LLVM 19.1.7, 256 bits) (Cpu), skipped
+  as software; opengl -> NV106 (Other), adapter 0, the only hardware one.
+
+  renderer.survey(('vulkan', 'opengl')), called from Python:
+    wall median 331 ms (321-364); children's CPU median 227 ms (69% of one core)
+    returns: [CardState(backend='opengl', name='NV106', device_type='Other', reason='')]
+
+  The survey is three child processes in sequence (list vulkan, list opengl,
+  probe opengl adapter 0); each keeps about 0.7 of one of the 8 logical
+  cores busy, so the machine stays responsive while it runs.
+
+== Step 6: startup, with and without the survey (5 runs each, median)
+
+Script: a copy of application.run (settings, QApplication, language, theme,
+MainWindow, show), with marks in ms from the process's start (the parent's
+time.time() when it spawned the process):
+  a  the window shown: the first event-loop turn after show();
+  b  choose_renderer's Choice used (MainWindow._use_renderer);
+  c  survey_cards finished (a callback joined to the survey MainWindow
+     starts; none before #161);
+  d  a drawing asked for at (a) and opened, through
+     runner.start(open_command(path)), the background path of OPEN and
+     File > Open Recent; the mark is the DocumentOpened event.
+
+Drawing: generated, not from any user: 100,000 LINE entities on layer 0,
+line i from (i mod 500, i div 500) to (+0.5, +0.5), the same drawing
+tools/reference_machine_report.sh times (5.9 MB DXF, ASCII):
+
+    codes = ["0", "SECTION", "2", "ENTITIES"]
+    for i in range(100_000):
+        x, y = float(i % 500), float(i // 500)
+        codes += ["0", "LINE", "8", "0", "10", str(x), "20", str(y), "30", "0.0"]
+        codes += ["11", str(x + 0.5), "21", str(y + 0.5), "31", "0.0"]
+    codes += ["0", "ENDSEC", "0", "EOF", ""]
+
+  mark                               main 06132ad        before #161 (8525652)
+                                     median (min-max)    median (min-max)
+  a  window shown                    589 (582-616)       593 (573-931)
+  b  renderer chosen (OpenGL NV106)  913 (885-927)       916 (881-1621)
+  c  card survey done                905 (899-958)       n/a
+  d  drawing opened                  1423 (1405-1452)    1129 (1121-1475)
+     asked at (a) -> opened          835 (823-848)       545 (536-569)
+
+  Regression: a drawing opened right at startup takes +290 ms (+53%) on
+  main. Opening the same DXF alone takes about 350 ms (report, "open DXF").
+  Cause, from the marks: the background pool (ui/background.py, WORKERS = 2)
+  runs the renderer's probe and the card survey at startup, both about
+  320 ms here; the open waits for one of them to end (the open starts at
+  about 905 ms instead of 590 ms). Before #161 only the probe ran, and the
+  open took the second thread at once. Showing the window, choosing the
+  renderer and anything after the first second are unchanged.
