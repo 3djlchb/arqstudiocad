@@ -514,6 +514,20 @@ class CadDocument:
         radius: float,
         trim: bool = True,
     ) -> tuple[int | None, CadChangeSet]: ...
+    def fillet_polyline(
+        self,
+        entity_id: int,
+        radius: float,
+        picks: tuple[_PointLike, _PointLike] | None = None,
+    ) -> tuple[int, int, CadChangeSet]: ...
+    def chamfer_polyline(
+        self,
+        entity_id: int,
+        first: float,
+        second: float,
+        picks: tuple[_PointLike, _PointLike] | None = None,
+        by_angle: bool = False,
+    ) -> tuple[int, int, CadChangeSet]: ...
     def chamfer_entities(
         self,
         first: int,

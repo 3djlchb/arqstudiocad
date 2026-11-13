@@ -17,9 +17,11 @@ from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 
-FIRST = "Select first object [Undo(U)/Radius(R)/Trim(T)/Multiple(M)]:"
+FIRST = "Select first object [Undo(U)/Polyline(P)/Radius(R)/Trim(T)/Multiple(M)]:"
 SECOND = "Select second object or shift-select to apply corner [Radius(R)]:"
-FIRST_LINE = "Select first line [Undo(U)/Distance(D)/Angle(A)/Trim(T)/Method(E)/Multiple(M)]:"
+FIRST_LINE = (
+    "Select first line [Undo(U)/Polyline(P)/Distance(D)/Angle(A)/Trim(T)/Method(E)/Multiple(M)]:"
+)
 SECOND_LINE = "Select second line or shift-select to apply corner [Distance(D)/Angle(A)/Method(E)]:"
 
 type Ends = tuple[tuple[float, float], tuple[float, float]]
@@ -208,3 +210,65 @@ def test_fillet_and_chamfer_are_in_the_modify_group_menu_and_toolbar(qtbot: QtBo
         assert action in [b.defaultAction() for b in groups["modify"].buttons]
         assert action in menus["&Modify"].actions()
         assert any(action in bar.actions() for bar in window.findChildren(QToolBar))
+
+
+# Polylines.
+
+SQUARE = [((0.0, 0.0), 0.0), ((10.0, 0.0), 0.0), ((10.0, 10.0), 0.0), ((0.0, 10.0), 0.0)]
+
+
+def vertex_count(h: Harness, entity_id: int) -> int:
+    return int(dict(h.document.get_entity(entity_id).details)["Vertices"])
+
+
+def test_the_polyline_option_rounds_every_corner() -> None:
+    h = Harness()
+    square, _ = h.document.add_polyline(SQUARE, True)
+    h.run("FILLET", "R", "2", "P")
+    assert h.prompt().text == "Select 2D polyline:"
+    h.runner.answer_entity(square, (5.0, 0.0))
+    assert h.messages()[-1] == "4 lines were filleted"
+    assert vertex_count(h, square) == 8
+    assert h.document.undo_history[-1] == "FILLET"
+    assert h.runner.active is None
+
+
+def test_corners_too_short_are_said() -> None:
+    h = Harness()
+    square, _ = h.document.add_polyline(SQUARE, True)
+    h.run("FILLET", "R", "6", "P")
+    h.runner.answer_entity(square, (5.0, 0.0))
+    assert h.messages()[-2:] == ["2 lines were filleted", "2 were too short"]
+
+
+def test_two_segments_of_a_polyline_cut_their_corner() -> None:
+    h = Harness()
+    square, _ = h.document.add_polyline(SQUARE, True)
+    h.run("CHAMFER", "D", "1", "2")
+    h.runner.answer_entity(square, (5.0, 0.0))
+    h.runner.answer_entity(square, (10.0, 5.0))
+    assert vertex_count(h, square) == 5
+    assert h.document.undo_history[-1] == "CHAMFER"
+    # Two segments not next to each other: no corner.
+    h.run("CHAMFER")
+    h.runner.answer_entity(square, (5.0, 0.0))
+    h.runner.answer_entity(square, (5.0, 10.0))
+    assert h.messages()[-1] == "Those segments share no corner."
+
+
+def test_a_polyline_with_another_object_is_refused() -> None:
+    h = Harness()
+    square, _ = h.document.add_polyline(SQUARE, True)
+    h.run("FILLET")
+    h.runner.answer_entity(square, (5.0, 0.0))
+    h.runner.answer_entity(h.a, (-5.0, 0.0))
+    assert h.messages()[-1] == "Cannot fillet those objects."
+
+
+def test_the_chamfer_polyline_option_by_angle() -> None:
+    h = Harness()
+    square, _ = h.document.add_polyline(SQUARE, True)
+    h.run("CHAMFER", "A", "1", "45", "P")
+    h.runner.answer_entity(square, (5.0, 0.0))
+    assert h.messages()[-1] == "4 lines were chamfered"
+    assert vertex_count(h, square) == 8

@@ -8,12 +8,15 @@ corner. Radius, distances, length, angle, method and the Trim mode are
 remembered (AutoCAD's FILLETRAD, CHAMFERA…D, CHAMMODE, TRIMMODE, the last
 shared by both). Multiple goes on to the next pair; Undo takes back the
 last corner of the run. The core does every change, each one undo step.
-Lines, and for FILLET a line and an arc, for now; polylines come later
-(maintainer, 2026-11-13).
+Lines, for FILLET a line and an arc, and lightweight polylines: the
+Polyline option cuts every corner between straight segments at once (and
+says how many were too short), and two segments of one polyline picked
+cut the corner they share.
 """
 
 import math
 from collections.abc import Generator
+from functools import partial
 from typing import Any
 
 from arqstudiocad.commands import (
@@ -78,6 +81,7 @@ def fillet(ctx: CommandContext) -> CommandScript:
             tr("Select first object"),
             [
                 Option("U", tr("Undo")),
+                Option("P", tr("Polyline")),
                 Option("R", tr("Radius")),
                 Option("T", tr("Trim")),
                 Option("M", tr("Multiple")),
@@ -92,6 +96,14 @@ def fillet(ctx: CommandContext) -> CommandScript:
         if first == "R":
             yield from _radius(ctx, memory)
             continue
+        if first == "P":
+            radius = memory[FILLET_RADIUS]
+            steps += yield from _whole_polyline(
+                ctx, document, partial(document.fillet_polyline, radius=radius), fillet=True
+            )
+            if not multiple:
+                return
+            continue
         if first == "T":
             yield from _trim_mode(ctx, memory)
             continue
@@ -99,7 +111,8 @@ def fillet(ctx: CommandContext) -> CommandScript:
             multiple = True
             continue
         assert isinstance(first, Picked)
-        if not _fits(document, first, CadLine | CadArc):
+        polyline = _is_polyline(document, first)
+        if not (polyline or _fits(document, first, CadLine | CadArc)):
             ctx.message(tr("Cannot fillet that object."))
             continue
         second = yield from _second(
@@ -109,13 +122,25 @@ def fillet(ctx: CommandContext) -> CommandScript:
             tr("Select second object or shift-select to apply corner"),
             [Option("R", tr("Radius"))],
             lambda answer: _radius(ctx, memory),
+            same=polyline,
         )
         if second is None:
+            continue
+        radius = 0.0 if second.shift else memory[FILLET_RADIUS]
+        if polyline or _is_polyline(document, second):
+            if second.entity_id != first.entity_id:
+                ctx.message(tr("Cannot fillet those objects."))
+                continue
+            picks = (first.point, second.point)
+            steps += _corner_of_polyline(
+                ctx, document, partial(document.fillet_polyline, first.entity_id, radius, picks)
+            )
+            if not multiple:
+                return
             continue
         if not _fits(document, second, CadLine | CadArc):
             ctx.message(tr("Cannot fillet that object."))
             continue
-        radius = 0.0 if second.shift else memory[FILLET_RADIUS]
         done = _apply(
             ctx,
             document,
@@ -148,6 +173,7 @@ def chamfer(ctx: CommandContext) -> CommandScript:
             tr("Select first line"),
             [
                 Option("U", tr("Undo")),
+                Option("P", tr("Polyline")),
                 Option("D", tr("Distance")),
                 Option("A", tr("Angle")),
                 Option("T", tr("Trim")),
@@ -164,6 +190,17 @@ def chamfer(ctx: CommandContext) -> CommandScript:
         if first in ("D", "A", "E"):
             yield from _chamfer_setting(ctx, memory, first)
             continue
+        if first == "P":
+            cut = _chamfer_cut(memory)
+            steps += yield from _whole_polyline(
+                ctx,
+                document,
+                partial(document.chamfer_polyline, first=cut[0], second=cut[1], by_angle=cut[2]),
+                fillet=False,
+            )
+            if not multiple:
+                return
+            continue
         if first == "T":
             yield from _trim_mode(ctx, memory)
             continue
@@ -171,7 +208,8 @@ def chamfer(ctx: CommandContext) -> CommandScript:
             multiple = True
             continue
         assert isinstance(first, Picked)
-        if not _fits(document, first, CadLine):
+        polyline = _is_polyline(document, first)
+        if not (polyline or _fits(document, first, CadLine)):
             ctx.message(tr("Cannot chamfer that object."))
             continue
         second = yield from _second(
@@ -181,8 +219,23 @@ def chamfer(ctx: CommandContext) -> CommandScript:
             tr("Select second line or shift-select to apply corner"),
             [Option("D", tr("Distance")), Option("A", tr("Angle")), Option("E", tr("Method"))],
             lambda answer: _chamfer_setting(ctx, memory, answer),
+            same=polyline,
         )
         if second is None:
+            continue
+        if polyline or _is_polyline(document, second):
+            if second.entity_id != first.entity_id:
+                ctx.message(tr("Cannot chamfer those objects."))
+                continue
+            cut = (0.0, 0.0, False) if second.shift else _chamfer_cut(memory)
+            picks = (first.point, second.point)
+            steps += _corner_of_polyline(
+                ctx,
+                document,
+                partial(document.chamfer_polyline, first.entity_id, cut[0], cut[1], picks, cut[2]),
+            )
+            if not multiple:
+                return
             continue
         if not _fits(document, second, CadLine):
             ctx.message(tr("Cannot chamfer that object."))
@@ -244,9 +297,11 @@ def _second(
     message: str,
     options: list[Option],
     setting: Any,
+    same: bool = False,
 ) -> Asking[Picked | None]:
     """The second object, the first highlighted meanwhile; an option sets
-    what it names and asks again; Enter gives up this pair."""
+    what it names and asks again; Enter gives up this pair. The first again
+    only when ``same`` (another segment of a polyline)."""
     ctx.session.select(document, (first.entity_id,))
     try:
         while True:
@@ -254,13 +309,69 @@ def _second(
             if second is None:
                 return None
             if isinstance(second, Picked):
-                if second.entity_id == first.entity_id:
+                if second.entity_id == first.entity_id and not same:
                     ctx.message(tr("Select another object."))
                     continue
                 return second
             yield from setting(second)
     finally:
         ctx.session.clear_selection(document)
+
+
+def _is_polyline(document: CadDocument, picked: Picked) -> bool:
+    return document.get_entity(picked.entity_id).kind == "LWPOLYLINE"
+
+
+def _chamfer_cut(memory: dict[str, Any]) -> tuple[float, float, bool]:
+    """The chamfer in force as the core's polyline cut takes it."""
+    if memory[CHAMFER_METHOD] == "D":
+        return memory[CHAMFER_FIRST], memory[CHAMFER_SECOND], False
+    return memory[CHAMFER_LENGTH], memory[CHAMFER_ANGLE], True
+
+
+def _whole_polyline(
+    ctx: CommandContext, document: CadDocument, cut: Any, *, fillet: bool
+) -> Asking[int]:
+    """The Polyline option: a polyline picked, every corner cut; 1 when
+    one was."""
+    picked = yield ctx.entity(tr("Select 2D polyline"), optional=True)
+    if not isinstance(picked, Picked):
+        return 0
+    if not _is_polyline(document, picked):
+        ctx.message(
+            tr("Cannot fillet that object.") if fillet else tr("Cannot chamfer that object.")
+        )
+        return 0
+    try:
+        done, short, changes = cut(picked.entity_id)
+    except CadError as error:
+        ctx.message(tr("Error: {message}", message=str(error)))
+        return 0
+    ctx.session.report(document, changes)
+    if fillet:
+        ctx.message(tr("{count} lines were filleted", count=done))
+    else:
+        ctx.message(tr("{count} lines were chamfered", count=done))
+    if short:
+        ctx.message(tr("{count} were too short", count=short))
+    return 1 if done else 0
+
+
+def _corner_of_polyline(ctx: CommandContext, document: CadDocument, cut: Any) -> int:
+    """Two segments of one polyline picked: the corner they share; 1 when
+    it was cut."""
+    try:
+        done, short, changes = cut()
+    except InvalidGeometryError:
+        ctx.message(tr("Those segments share no corner."))
+        return 0
+    except CadError as error:
+        ctx.message(tr("Error: {message}", message=str(error)))
+        return 0
+    ctx.session.report(document, changes)
+    if short:
+        ctx.message(tr("The segments are too short for it."))
+    return 1 if done else 0
 
 
 def _radius(ctx: CommandContext, memory: dict[str, Any]) -> Asking[None]:

@@ -4,8 +4,9 @@ use acadrust::entities::LwPolyline;
 use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{
-    Bounds2, Geometry2, GeometryError, Point2, Tolerance, Transform2, extend_polyline,
-    offset_polyline, offset_polyline_through, trim_polyline,
+    Bounds2, CornerCut, Geometry2, GeometryError, Point2, Tolerance, Transform2,
+    cut_polyline_corners, extend_polyline, offset_polyline, offset_polyline_through, shared_vertex,
+    trim_polyline,
 };
 
 use crate::document::Document;
@@ -248,6 +249,64 @@ impl Document {
         }
         self.set_polyline_path(id, first, false, normal, elevation);
         Ok(left)
+    }
+
+    /// Cuts lightweight polyline `id`'s corners by `cut` (FILLET and
+    /// CHAMFER's Polyline option): every corner between two straight
+    /// segments, or, with `at`, only the one the two segments picked there
+    /// share. Returns how many corners were cut and how many were too short;
+    /// nothing changes when none was cut. Refused when the two segments
+    /// picked are not next to each other.
+    pub fn cut_polyline_corners(
+        &mut self,
+        id: EntityId,
+        cut: CornerCut,
+        at: Option<(Point2, Point2)>,
+    ) -> DocumentResult<(usize, usize)> {
+        let WorldPolyline {
+            vertices,
+            closed,
+            normal,
+            elevation,
+        } = self.polyline_in_world(id)?;
+        let tol = Tolerance::DEFAULT;
+        let segments = if closed {
+            vertices.len()
+        } else {
+            vertices.len().saturating_sub(1)
+        };
+        let only = match at {
+            None => None,
+            Some((a, b)) => {
+                let nearest = |p: Point2| -> DocumentResult<usize> {
+                    let mut best: Option<(f64, usize)> = None;
+                    for s in 0..segments {
+                        let (from, bulge) = vertices[s];
+                        let to = vertices[(s + 1) % vertices.len()].0;
+                        let curve = if bulge == 0.0 {
+                            Geometry2::Line(arq_geometry::Line::new(from, to)?)
+                        } else {
+                            Geometry2::Arc(arq_geometry::Arc::from_bulge(from, to, bulge)?.0)
+                        };
+                        let d = curve.distance_to(p);
+                        if best.is_none_or(|(bd, _)| d < bd) {
+                            best = Some((d, s));
+                        }
+                    }
+                    best.map(|(_, s)| s)
+                        .ok_or(DocumentError::Geometry(GeometryError::ShortContour))
+                };
+                let vertex = shared_vertex(nearest(a)?, nearest(b)?, segments, closed).ok_or(
+                    DocumentError::Geometry(GeometryError::OutOfRange { what: "segments" }),
+                )?;
+                Some(vertex)
+            }
+        };
+        let done = cut_polyline_corners(&vertices, closed, cut, only, tol)?;
+        if done.done > 0 {
+            self.set_polyline_path(id, &done.vertices, closed, normal, elevation);
+        }
+        Ok((done.done, done.too_short))
     }
 
     /// Extends open lightweight polyline `id` at the end nearer `at` to the

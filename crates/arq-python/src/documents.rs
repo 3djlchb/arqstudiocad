@@ -1105,6 +1105,48 @@ impl CadDocument {
             .map(|(id, changes)| (id, CadChangeSet(changes)))
     }
 
+    /// FILLET's Polyline option: every corner of lightweight polyline
+    /// `entity_id` between two straight segments rounded by `radius`, or,
+    /// with `picks` (two points on two segments next to each other), the
+    /// corner they share. Returns the corners filleted, those too short, and
+    /// what changed.
+    #[pyo3(signature = (entity_id, radius, picks = None))]
+    fn fillet_polyline(
+        &self,
+        entity_id: EntityId,
+        radius: f64,
+        picks: Option<(PyPoint, PyPoint)>,
+    ) -> PyResult<(usize, usize, CadChangeSet)> {
+        let at = picks.map(|(a, b)| (a.0, b.0));
+        self.edit(|cad| {
+            cad.cut_polyline_corners(entity_id, arq_geometry::CornerCut::Fillet(radius), at)
+        })
+        .map(|((done, short), changes)| (done, short, CadChangeSet(changes)))
+    }
+
+    /// CHAMFER's Polyline option: the corners cut `first` back along the
+    /// segment coming in and `second` along the one going out, or, with
+    /// `by_angle`, `first` back and leaving at `second` radians; `picks` as
+    /// in `fillet_polyline`.
+    #[pyo3(signature = (entity_id, first, second, picks = None, by_angle = false))]
+    fn chamfer_polyline(
+        &self,
+        entity_id: EntityId,
+        first: f64,
+        second: f64,
+        picks: Option<(PyPoint, PyPoint)>,
+        by_angle: bool,
+    ) -> PyResult<(usize, usize, CadChangeSet)> {
+        let at = picks.map(|(a, b)| (a.0, b.0));
+        let cut = if by_angle {
+            arq_geometry::CornerCut::ChamferAngle(first, second)
+        } else {
+            arq_geometry::CornerCut::Chamfer(first, second)
+        };
+        self.edit(|cad| cad.cut_polyline_corners(entity_id, cut, at))
+            .map(|((done, short), changes)| (done, short, CadChangeSet(changes)))
+    }
+
     /// CHAMFER: two lines cut across `first_distance` along the first and
     /// `second_distance` along the second from where they meet, kept and
     /// trimmed as in `fillet_entities`; distances 0 make a sharp corner.

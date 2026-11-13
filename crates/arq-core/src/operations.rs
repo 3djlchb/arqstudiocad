@@ -275,6 +275,28 @@ impl CadDocument {
         })
     }
 
+    /// FILLET and CHAMFER's Polyline option: polyline `id`'s corners cut by
+    /// `cut`, every one between straight segments, or with `at` the one the
+    /// two segments picked there share. One step named FILLET or CHAMFER;
+    /// refused on a locked layer. Returns the corners cut and those too
+    /// short.
+    pub fn cut_polyline_corners(
+        &mut self,
+        id: EntityId,
+        cut: arq_geometry::CornerCut,
+        at: Option<(Point2, Point2)>,
+    ) -> CadResult<((usize, usize), ChangeSet)> {
+        let name = match cut {
+            arq_geometry::CornerCut::Fillet(_) => "FILLET",
+            _ => "CHAMFER",
+        };
+        self.transact(name, |doc| {
+            let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &e)?;
+            Ok(doc.cut_polyline_corners(id, cut, at)?)
+        })
+    }
+
     /// FILLET and CHAMFER's step: `make` turns the two objects' geometry
     /// into their new geometry and the joint, written in one step.
     fn corner(
