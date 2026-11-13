@@ -226,6 +226,22 @@ impl CadDocument {
         })
     }
 
+    /// Adds a copy of polyline `id` offset `distance` toward `toward`, or
+    /// through `toward` when `distance` is None (OFFSET), every property
+    /// kept; refused on a locked layer and where the path cannot be offset.
+    pub fn offset_polyline(
+        &mut self,
+        id: EntityId,
+        distance: Option<f64>,
+        toward: Point2,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("OFFSET", |doc| {
+            let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &e)?;
+            Ok(doc.offset_polyline(id, distance, toward)?)
+        })
+    }
+
     /// Applies `t` to entities that transform: lines, circles and arcs
     /// through their geometry, blocks and polylines as a whole (ADR 0016,
     /// D1). Any other entity fails the whole operation.

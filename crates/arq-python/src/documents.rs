@@ -1086,6 +1086,19 @@ impl CadDocument {
         self.change(|cad| cad.delete_entities(&entity_ids))
     }
 
+    /// Adds a copy of lightweight polyline `entity_id` offset `distance`
+    /// toward `toward`, or through `toward` when `distance` is None
+    /// (OFFSET): its corners joined as AutoCAD's, every property kept.
+    /// Returns the copy's id and what changed.
+    fn offset_polyline(
+        &self,
+        entity_id: EntityId,
+        distance: Option<f64>,
+        toward: PyPoint,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.offset_polyline(entity_id, distance, toward.0))
+    }
+
     /// Copies entities, the copies moved by `offset` (COPY); returns the
     /// copies' ids, in order without repeats, and what changed. Lines,
     /// circles, arcs, blocks and polylines can be copied.
