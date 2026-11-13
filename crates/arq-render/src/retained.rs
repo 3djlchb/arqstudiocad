@@ -18,7 +18,7 @@ use arq_core::Shape;
 use arq_geometry::{Bounds2, Point2, Tolerance};
 
 use crate::camera::Camera;
-use crate::raster::{ARC_TOLERANCE_PX, POINT_PX, Style, clip, ink};
+use crate::raster::{ARC_TOLERANCE_PX, POINT_PX, Style, clip, clip_polygon, ink};
 use crate::scene::{Scene, shape_bounds};
 
 /// How many views the region reaches beyond the view on each side.
@@ -61,6 +61,9 @@ pub(crate) struct Retained {
     key: Key,
     /// The region's center, in world coordinates.
     pub(crate) origin: (f64, f64),
+    /// Triangle-list vertices: three per filled triangle, clipped to the
+    /// region, drawn under the lines (ADR 0038).
+    pub(crate) triangles: Vec<Vertex>,
     /// Line-list vertices: two per segment.
     pub(crate) vertices: Vec<Vertex>,
     /// Point-list vertices: one pixel for each line that can be shorter than
@@ -94,6 +97,7 @@ impl Retained {
             fine_scale: camera.scale() * BAND,
             coarse_scale: camera.scale() / BAND,
             rgba: [0, 0, 0, 255],
+            triangles: Vec::new(),
             vertices: Vec::new(),
             dots: Vec::new(),
             ends: Vec::new(),
@@ -115,6 +119,7 @@ impl Retained {
         Some(Self {
             key,
             origin: builder.origin,
+            triangles: builder.triangles,
             vertices: builder.vertices,
             dots: builder.dots,
             ends: builder.ends,
@@ -162,6 +167,7 @@ struct Builder {
     /// The band's smallest scale, where segments are shortest on screen.
     coarse_scale: f64,
     rgba: [u8; 4],
+    triangles: Vec<Vertex>,
     vertices: Vec<Vertex>,
     dots: Vec<Vertex>,
     ends: Vec<Vertex>,
@@ -191,6 +197,21 @@ impl Builder {
                 self.segment(p1, p2, true);
                 self.segment(p2, p3, true);
                 self.segment(p3, p0, true);
+            }
+            Shape::Triangle(t) => self.triangle(t),
+        }
+    }
+
+    /// A filled triangle, clipped to the region in `f64` as the lines are,
+    /// so no corner lies far from the region's center in `f32`.
+    fn triangle(&mut self, t: [Point2; 3]) {
+        let (min, max) = (self.region.min(), self.region.max());
+        let corners = t.map(|p| (p.x(), p.y()));
+        let kept = clip_polygon(&corners, min.x(), min.y(), max.x(), max.y());
+        for i in 1..kept.len().saturating_sub(1) {
+            for at in [kept[0], kept[i], kept[i + 1]] {
+                let vertex = self.vertex(at, [0.0, 0.0], SOLID);
+                self.triangles.push(vertex);
             }
         }
     }

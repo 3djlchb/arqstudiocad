@@ -51,6 +51,8 @@ pub fn outline(scene: &Scene, camera: &Camera, ids: &[EntityId]) -> Vec<Polyline
                 let [p0, p1, p2, p3] = b.corners().map(screen);
                 out.push(vec![p0, p1, p2, p3, p0]);
             }
+            // A band is highlighted by its curves, which come as shapes too.
+            Shape::Triangle(_) => {}
         }
     }
     out

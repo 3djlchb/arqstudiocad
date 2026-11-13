@@ -254,6 +254,7 @@ pub(crate) fn shape_bounds(shape: Shape) -> Bounds2 {
         Shape::Arc(a) => a.bounds(),
         Shape::Point(p) => Bounds2::from_point(p),
         Shape::Text(b) | Shape::Placeholder(b) => b,
+        Shape::Triangle(_) => shape.bounds(),
     }
 }
 

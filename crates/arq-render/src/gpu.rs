@@ -132,6 +132,7 @@ pub struct GpuRenderer {
     max_buffer: u64,
     retained: Option<Retained>,
     vertices: Option<wgpu::Buffer>,
+    triangle_count: u32,
     line_count: u32,
     dot_count: u32,
     end_count: u32,
@@ -144,8 +145,10 @@ pub struct GpuRenderer {
     _instance: Option<wgpu::Instance>,
 }
 
-/// The segments as lines, and what can be shorter than a pixel as pixels.
+/// The fills as triangles (ADR 0038), the segments as lines, and what can
+/// be shorter than a pixel as pixels.
 struct Pipelines {
+    triangles: wgpu::RenderPipeline,
     lines: wgpu::RenderPipeline,
     dots: wgpu::RenderPipeline,
 }
@@ -357,6 +360,7 @@ impl GpuRenderer {
             max_buffer,
             retained: None,
             vertices: None,
+            triangle_count: 0,
             line_count: 0,
             dot_count: 0,
             end_count: 0,
@@ -556,7 +560,12 @@ impl GpuRenderer {
         {
             let retained =
                 Retained::build(scene, camera, style).ok_or("the camera shows nothing finite")?;
-            self.upload(&retained.vertices, &retained.dots, &retained.ends)?;
+            self.upload(
+                &retained.triangles,
+                &retained.vertices,
+                &retained.dots,
+                &retained.ends,
+            )?;
             self.retained = Some(retained);
             self.builds += 1;
         }
@@ -581,9 +590,15 @@ impl GpuRenderer {
         Ok(())
     }
 
-    /// Uploads the lines, then the dots, then the ends.
-    fn upload(&mut self, lines: &[Vertex], dots: &[Vertex], ends: &[Vertex]) -> Result<(), String> {
-        let count = lines.len() + dots.len() + ends.len();
+    /// Uploads the triangles, then the lines, the dots and the ends.
+    fn upload(
+        &mut self,
+        triangles: &[Vertex],
+        lines: &[Vertex],
+        dots: &[Vertex],
+        ends: &[Vertex],
+    ) -> Result<(), String> {
+        let count = triangles.len() + lines.len() + dots.len() + ends.len();
         let bytes = count as u64 * VERTEX_BYTES;
         if bytes > self.max_buffer {
             return Err(format!(
@@ -603,7 +618,7 @@ impl GpuRenderer {
             }));
         }
         let mut data = Vec::with_capacity(bytes as usize);
-        for v in lines.iter().chain(dots).chain(ends) {
+        for v in triangles.iter().chain(lines).chain(dots).chain(ends) {
             for f in [v.at[0], v.at[1], v.offset[0], v.offset[1], v.along] {
                 data.extend_from_slice(&f.to_ne_bytes());
             }
@@ -612,6 +627,7 @@ impl GpuRenderer {
         if let (Some(buffer), false) = (&self.vertices, data.is_empty()) {
             self.queue.write_buffer(buffer, 0, &data);
         }
+        self.triangle_count = triangles.len() as u32;
         self.line_count = lines.len() as u32;
         self.dot_count = dots.len() as u32;
         self.end_count = ends.len() as u32;
@@ -661,12 +677,16 @@ impl GpuRenderer {
             multiview_mask: None,
         });
         pass.set_bind_group(0, &self.bind_group, &[]);
-        // In the buffer: the lines, the dots, then the ends.
-        let total = self.line_count + self.dot_count + self.end_count;
+        // In the buffer: the triangles, the lines, the dots, then the ends.
+        let fills = self.triangle_count;
+        let total = fills + self.line_count + self.dot_count + self.end_count;
         if let (Some(buffer), true) = (&self.vertices, total > 0) {
             pass.set_vertex_buffer(0, buffer.slice(..u64::from(total) * VERTEX_BYTES));
+            // The fills first, under every line, as the CPU paints them.
+            pass.set_pipeline(&pipelines.triangles);
+            pass.draw(0..fills, 0..1);
             pass.set_pipeline(&pipelines.lines);
-            pass.draw(0..self.line_count, 0..1);
+            pass.draw(fills..fills + self.line_count, 0..1);
             // What can be shorter than a pixel, as pixels: a line that short
             // makes no fragment, and the CPU still shows it as a dot.
             // Without multisampling a line also leaves out its last pixel
@@ -675,10 +695,10 @@ impl GpuRenderer {
             let last = if self.samples == 1 {
                 total
             } else {
-                self.line_count + self.dot_count
+                fills + self.line_count + self.dot_count
             };
             pass.set_pipeline(&pipelines.dots);
-            pass.draw(self.line_count..last, 0..1);
+            pass.draw(fills + self.line_count..last, 0..1);
         }
         self.overlay.draw(&mut pass, format);
     }
@@ -686,6 +706,7 @@ impl GpuRenderer {
     /// The pipelines for a target format.
     fn pipelines_for(&mut self, format: wgpu::TextureFormat) -> Pipelines {
         Pipelines {
+            triangles: self.pipeline(format, wgpu::PrimitiveTopology::TriangleList),
             lines: self.pipeline(format, wgpu::PrimitiveTopology::LineList),
             dots: self.pipeline(format, wgpu::PrimitiveTopology::PointList),
         }

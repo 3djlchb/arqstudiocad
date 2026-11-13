@@ -204,3 +204,37 @@ fn only_the_real_ends_are_kept() {
     );
     assert!(r.vertices.len() > 20, "the chords themselves");
 }
+
+#[test]
+fn a_band_is_kept_as_triangles_clipped_to_the_region() {
+    let mut cad = CadDocument::new();
+    let style = arq_core::PolylineStyle {
+        width: 4.0,
+        ..Default::default()
+    };
+    let (id, _) = cad
+        .add_polyline_with(
+            &[(p(-1000.0, 0.0), 0.0), (p(1000.0, 0.0), 0.0)],
+            false,
+            style,
+        )
+        .unwrap();
+    cad.set_entity_color(&[id], Color::Index(1)).unwrap();
+    let scene = Scene::build(cad.document());
+    let r = Retained::build(&scene, &camera(), DARK).unwrap();
+    assert!(!r.triangles.is_empty() && r.triangles.len().is_multiple_of(3));
+    assert!(
+        r.triangles
+            .iter()
+            .all(|v| v.rgba == [255, 0, 0, 255] && v.along == SOLID)
+    );
+    // The region is nine views of 100: nothing beyond ±450.
+    for v in &r.triangles {
+        let (x, y) = world(&r, v);
+        assert!(
+            x.abs() <= 450.0 + 1e-3 && y.abs() <= 2.0 + 1e-3,
+            "({x}, {y})"
+        );
+    }
+    assert_eq!(r.vertices.len(), 2, "its centerline is a line too");
+}
