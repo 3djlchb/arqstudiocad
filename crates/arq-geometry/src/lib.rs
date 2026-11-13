@@ -26,6 +26,7 @@
 //! | OFFSET's curves, to a side or through a point | [`Geometry2::offset`], [`Geometry2::offset_through`] |
 //! | OFFSET's polylines, their corners joined | [`offset_polyline`], [`offset_polyline_through`] |
 //! | TRIM and EXTEND's curves | [`cutting_points`], [`trim`], [`extend`] |
+//! | TRIM and EXTEND's polylines | [`trim_polyline`], [`extend_polyline`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
 //! | The rectangles RECTANG draws | [`Rectangle`] |
 //! | The area a wide polyline covers, as triangles | [`band`] of [`BandVertex`]es |
@@ -81,6 +82,7 @@ mod offset;
 mod point;
 mod point3;
 mod polyline_offset;
+mod polyline_trim;
 mod rectangle;
 mod region;
 pub mod snap;
@@ -104,6 +106,7 @@ pub use line::Line;
 pub use point::Point2;
 pub use point3::Point3;
 pub use polyline_offset::{offset_polyline, offset_polyline_through};
+pub use polyline_trim::{PolylinePath, extend_polyline, trim_polyline};
 pub use rectangle::{Corners, Rectangle};
 pub use region::{Containment, Region};
 pub use tolerance::Tolerance;

@@ -193,17 +193,71 @@ def test_a_circle_cut_twice_becomes_an_arc() -> None:
 def test_what_cannot_be_trimmed_or_extended_is_said() -> None:
     h = Harness()
     square = [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0), ((4.0, 4.0), 0.0)]
-    polyline, _ = h.document.add_polyline(square, True)
+    closed, _ = h.document.add_polyline(square, True)
     circle, _ = h.document.add_circle((20.0, 0.0), 1.0)
     alone = h.line((30.0, 0.0), (35.0, 0.0))
+    text, _ = h.document.add_text("A", (50.0, 0.0), 2.5, 0.0)
     h.run("TRIM")
-    h.runner.answer_entity(polyline, (2.0, 0.0))
+    h.runner.answer_entity(text, (50.5, 0.5))
     assert h.messages()[-1] == "Cannot trim that object."
     h.run("", "EXTEND")
     h.runner.answer_entity(circle, (21.0, 0.0))
     assert h.messages()[-1] == "Cannot extend that object."
+    h.runner.answer_entity(closed, (2.0, 0.0))
+    assert h.messages()[-1] == "Cannot extend that object.", "a closed polyline has no end"
     h.runner.answer_entity(alone, (34.0, 0.0))
     assert h.messages()[-1] == "Object does not intersect an edge."
+
+
+def polyline_points(h: Harness, entity_id: int) -> list[tuple[float, float]]:
+    grips = [g for g in h.document.grips([entity_id]) if g.vertex_index is not None]
+    ordered = sorted(grips, key=lambda g: g.vertex_index or 0)
+    return [(round(g.point[0], 9) + 0.0, round(g.point[1], 9) + 0.0) for g in ordered]
+
+
+ELL = [((0.0, 0.0), 0.0), ((10.0, 0.0), 0.0), ((10.0, 10.0), 0.0)]
+
+
+def test_a_polyline_trimmed_in_the_middle_becomes_two() -> None:
+    h = Harness()
+    ell, _ = h.document.add_polyline(ELL)
+    h.line((3.0, -1.0), (3.0, 1.0))
+    h.line((9.0, 5.0), (11.0, 5.0))
+    h.run("TRIM")
+    h.runner.answer_entity(ell, (5.0, 0.0))
+    pieces = sorted(
+        polyline_points(h, e.id) for e in h.document.get_entities() if e.kind == "LWPOLYLINE"
+    )
+    assert pieces == [[(0.0, 0.0), (3.0, 0.0)], [(10.0, 5.0), (10.0, 10.0)]]
+    assert h.document.undo_history[-1] == "TRIM"
+
+
+def test_a_closed_polyline_trimmed_opens_and_then_extends() -> None:
+    h = Harness()
+    box, _ = h.document.add_polyline(
+        [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0), ((4.0, 2.0), 0.0), ((0.0, 2.0), 0.0)], True
+    )
+    h.line((2.0, -1.0), (2.0, 3.0))
+    h.line((5.0, -5.0), (5.0, 5.0))
+    h.run("TRIM")
+    h.runner.answer_entity(box, (4.0, 1.0))
+    assert polyline_points(h, box) == [(2.0, 2.0), (0.0, 2.0), (0.0, 0.0), (2.0, 0.0)]
+    assert dict(h.document.get_entity(box).details)["Closed"] == "false"
+    # Open now: Shift-select extends its last segment, along y = 0, to x = 5.
+    h.runner.answer_entity(box, (1.5, 0.0), shift=True)
+    assert polyline_points(h, box) == [(2.0, 2.0), (0.0, 2.0), (0.0, 0.0), (5.0, 0.0)]
+    assert h.document.undo_history[-2:] == ["TRIM", "EXTEND"]
+    h.run("")
+
+
+def test_an_open_polyline_extends_at_the_end_picked() -> None:
+    h = Harness()
+    ell, _ = h.document.add_polyline(ELL)
+    h.line((5.0, 15.0), (15.0, 15.0))
+    h.run("EXTEND")
+    h.runner.answer_entity(ell, (10.0, 9.0))
+    assert polyline_points(h, ell) == [(0.0, 0.0), (10.0, 0.0), (10.0, 15.0)]
+    assert h.document.undo_history[-1] == "EXTEND"
 
 
 def test_trim_and_extend_in_spanish() -> None:
