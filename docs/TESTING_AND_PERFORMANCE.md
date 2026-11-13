@@ -20,6 +20,19 @@ Every change is sabotage-checked: the behavior is broken on purpose and a
 test must fail; a behavior no test catches either gets a test or is
 removed.
 
+## Qt settings isolation
+
+The Python test harness redirects implicit `QSettings()` instances to a fresh
+INI directory for each test, for both user and system scopes. This also avoids
+the native Windows registry and prevents system-preference fallback. The paths
+remain temporary through widget destruction and process shutdown. Tests using
+explicit settings files (including portable mode) must supply a temporary path;
+do not use explicit native/organization-based constructors, which bypass Qt's
+default format. Child processes do not inherit Qt's in-process redirection and
+must receive their own temporary settings file (as the GPU application probe does).
+`test_settings_isolation.py` verifies the application factory, system fallback,
+and separation between tests, checking containment before writing.
+
 ## Measured so far
 
 | Measure | Result | Source |

@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -7,6 +8,25 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from arqstudiocad.i18n import SOURCE_LANGUAGE, set_language
+
+
+@pytest.fixture(autouse=True)
+def _isolated_settings(tmp_path: Path) -> None:
+    """Implicit settings use fresh INI files, including on Windows.
+
+    Redirect both scopes so user settings cannot fall back to installed system
+    preferences. Keep the temporary paths active through widget destruction and
+    interpreter shutdown; restoring native defaults could expose the real profile.
+    Explicit file-based settings (including portable mode) remain unchanged.
+    """
+    from PySide6.QtCore import QSettings
+
+    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
+    for scope, name in (
+        (QSettings.Scope.UserScope, "user"),
+        (QSettings.Scope.SystemScope, "system"),
+    ):
+        QSettings.setPath(QSettings.Format.IniFormat, scope, str(tmp_path / name))
 
 
 @pytest.fixture(autouse=True)
@@ -43,7 +63,7 @@ def _no_modal_dialogs(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _no_windows_left() -> Iterator[None]:
+def _no_windows_left(_isolated_settings: None) -> Iterator[None]:
     """Destroys the windows a test leaves: pytest-qt only closes them, and
     every live widget is restyled again by each later theme change."""
     yield
