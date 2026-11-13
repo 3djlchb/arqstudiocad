@@ -21,6 +21,7 @@ from arqstudiocad.currencies import CurrencyRegister
 class Zooms:
     """A stand-in view that counts zooms."""
 
+    in_plan: bool = True
     extents: int = 0
     factors: list[float] = field(default_factory=list)
     views: list[str] = field(default_factory=list)
@@ -34,6 +35,7 @@ class Zooms:
 
     def set_view(self, name: str) -> None:
         self.views.append(name)
+        self.in_plan = name == "top"
 
 
 @dataclass

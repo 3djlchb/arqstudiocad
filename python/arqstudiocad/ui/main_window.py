@@ -603,6 +603,9 @@ class MainWindow(QMainWindow):
         viewport.grip_clicked.connect(self._edit_grip)
         # The viewport asks; the session decides and publishes the selection.
         viewport.select_requested.connect(lambda ids: self.session.select(document, ids))
+        viewport.crossing_requested.connect(
+            lambda ids, area: self.session.select(document, ids, crossing=area)
+        )
         viewport.deselect_requested.connect(lambda ids: self.session.deselect(document, ids))
         viewport.escape_pressed.connect(self.command_window.escape)
         viewport.context_requested.connect(

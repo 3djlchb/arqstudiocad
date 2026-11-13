@@ -31,6 +31,122 @@ struct WorldPolyline {
 }
 
 impl Document {
+    /// STRETCH in plan: moves whole selections, or just line endpoints and
+    /// polyline vertices inside crossing windows. Solids remain unchanged.
+    /// Partial arcs are refused until their command semantics are supported.
+    pub fn stretch_entity(
+        &mut self,
+        id: EntityId,
+        areas: &[Bounds2],
+        offset: arq_geometry::Vector2,
+    ) -> DocumentResult<()> {
+        let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        if e.kind() == "3DSOLID" {
+            return Ok(());
+        }
+        if let Some(bounds) = e.bounds() {
+            for point in [bounds.min(), bounds.max()] {
+                Point2::new(point.x() + offset.x(), point.y() + offset.y())?;
+            }
+        }
+        let tol = Tolerance::default();
+        let inside = |point| areas.iter().any(|area| area.contains_point(point, tol));
+        let translation = Transform2::translation(offset);
+        if areas.is_empty() {
+            return self.transform_entity(id, translation);
+        }
+        if let Some(plan) = e.plan() {
+            match plan.geometry() {
+                Geometry2::Line(line) => {
+                    let a = inside(line.start());
+                    let b = inside(line.end());
+                    if a || b {
+                        let start = if a {
+                            Point2::new(
+                                line.start().x() + offset.x(),
+                                line.start().y() + offset.y(),
+                            )?
+                        } else {
+                            line.start()
+                        };
+                        let end = if b {
+                            Point2::new(line.end().x() + offset.x(), line.end().y() + offset.y())?
+                        } else {
+                            line.end()
+                        };
+                        let line = arq_geometry::Line::new(start, end)?;
+                        self.set_plan_geometry(id, plan.with_geometry(line.into()))?;
+                    }
+                    return Ok(());
+                }
+                Geometry2::Circle(circle) => {
+                    return if inside(circle.center()) {
+                        self.transform_entity(id, translation)
+                    } else {
+                        Ok(())
+                    };
+                }
+                Geometry2::Arc(arc) => {
+                    let a = inside(arc.start_point());
+                    let b = inside(arc.end_point());
+                    if a && b {
+                        return self.transform_entity(id, translation);
+                    }
+                    if !a && !b {
+                        return Ok(());
+                    }
+                    return Err(DocumentError::NotEditable { id, kind: "ARC" });
+                }
+            }
+        }
+        if e.kind() == "LWPOLYLINE" {
+            let grips = self.grips(&[id]);
+            if grips.is_empty() {
+                return Err(DocumentError::NotEditable {
+                    id,
+                    kind: "LWPOLYLINE",
+                });
+            }
+            // Compute every target before writing any vertex. The core's
+            // transaction restores all entities if a later write fails.
+            let targets = grips
+                .iter()
+                .filter(|g| inside(g.point))
+                .map(|g| {
+                    Ok((
+                        g.vertex_index.expect("polyline vertex"),
+                        Point2::new(g.point.x() + offset.x(), g.point.y() + offset.y())?,
+                    ))
+                })
+                .collect::<Result<Vec<_>, GeometryError>>()?;
+            if targets.is_empty() {
+                return Ok(());
+            }
+            let path = self.polyline_in_world(id)?;
+            let mut vertices = path.vertices;
+            for &(index, point) in &targets {
+                vertices[index].0 = point;
+            }
+            for pair in vertices.windows(2) {
+                arq_geometry::Line::new(pair[0].0, pair[1].0)?;
+            }
+            if path.closed && vertices.len() > 1 {
+                arq_geometry::Line::new(vertices[vertices.len() - 1].0, vertices[0].0)?;
+            }
+            for (index, point) in targets {
+                self.set_polyline_vertex(id, index, point)?;
+            }
+            return Ok(());
+        }
+        if !matches!(e.kind(), "INSERT" | "TEXT" | "MTEXT") {
+            return Err(DocumentError::NotEditable { id, kind: e.kind() });
+        }
+        if self.grips(&[id]).iter().any(|g| inside(g.point)) {
+            self.transform_entity(id, translation)?;
+        }
+        Ok(())
+    }
+
     /// Replaces one block reference with its transformed contents. Its
     /// visible attributes, and the definition's constant ones, become
     /// single-line texts showing their values, as AutoCAD Express's BURST
@@ -1360,3 +1476,7 @@ mod tests {
 #[cfg(test)]
 #[path = "text_tests.rs"]
 mod text_tests;
+
+#[cfg(test)]
+#[path = "stretch_tests.rs"]
+mod stretch_tests;

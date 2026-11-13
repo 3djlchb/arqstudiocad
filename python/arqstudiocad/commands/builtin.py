@@ -29,6 +29,7 @@ from arqstudiocad.commands.corners import CORNER_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.commands.solids import SOLID_COMMANDS
+from arqstudiocad.commands.stretch import STRETCH_COMMAND
 from arqstudiocad.commands.trimming import TRIM_COMMANDS
 from arqstudiocad.commands.views import VIEW_COMMANDS
 from arqstudiocad.core import (
@@ -393,6 +394,7 @@ def builtin_registry() -> CommandRegistry:
             *BUILTIN_COMMANDS,
             *DRAW_COMMANDS,
             *MODIFY_COMMANDS,
+            STRETCH_COMMAND,
             *TRIM_COMMANDS,
             *CORNER_COMMANDS,
             *BLOCK_COMMANDS,

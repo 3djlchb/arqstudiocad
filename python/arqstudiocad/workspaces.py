@@ -127,6 +127,7 @@ CAD = Discipline(
                     lambda: tr("Modify"),
                     (
                         "MOVE",
+                        "STRETCH",
                         "COPY",
                         "ROTATE",
                         "SCALE",
@@ -240,6 +241,7 @@ CAD = Discipline(
                 "CHAMFER",
                 None,
                 "MOVE",
+                "STRETCH",
                 "ROTATE",
                 "SCALE",
                 None,

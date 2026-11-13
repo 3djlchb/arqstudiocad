@@ -1322,3 +1322,61 @@ fn two_segments_picked_cut_the_corner_they_share() {
             .is_err()
     );
 }
+
+#[test]
+fn stretch_crossing_endpoints_and_whole_objects_is_one_step() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 5.0), p(10.0, 5.0)).unwrap();
+    let area = arq_geometry::Bounds2::new(p(9.0, -1.0), p(11.0, 1.0));
+    let changes = cad
+        .stretch_entities(&[a, a, b], v(2.0, 3.0), &[(a, area)])
+        .unwrap();
+    assert_eq!(changes.modified(), [a, b]);
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(12.0, 3.0)));
+    assert_eq!(line_ends(&cad, b), (p(2.0, 8.0), p(12.0, 8.0)));
+    assert_eq!(cad.undo_name(), Some("STRETCH"));
+    cad.undo().unwrap();
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(10.0, 0.0)));
+    assert_eq!(line_ends(&cad, b), (p(0.0, 5.0), p(10.0, 5.0)));
+    cad.redo().unwrap();
+    assert_eq!(line_ends(&cad, a).1, p(12.0, 3.0));
+}
+
+#[test]
+fn stretch_windows_combine_and_a_crossing_without_endpoints_does_nothing() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let middle = arq_geometry::Bounds2::new(p(4.0, -1.0), p(6.0, 1.0));
+    let before = cad.undo_name().map(str::to_owned);
+    let changes = cad
+        .stretch_entities(&[a], v(2.0, 3.0), &[(a, middle)])
+        .unwrap();
+    assert!(changes.is_empty());
+    assert_eq!(cad.undo_name(), before.as_deref());
+    let start = arq_geometry::Bounds2::from_point(p(0.0, 0.0));
+    let end = arq_geometry::Bounds2::from_point(p(10.0, 0.0));
+    cad.stretch_entities(&[a], v(2.0, 3.0), &[(a, start), (a, end)])
+        .unwrap();
+    assert_eq!(line_ends(&cad, a), (p(2.0, 3.0), p(12.0, 3.0)));
+}
+
+#[test]
+fn stretch_failure_restores_earlier_entities_and_history() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 5.0), p(10.0, 5.0)).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let area = arq_geometry::Bounds2::from_point(p(10.0, 0.0));
+    assert!(
+        cad.stretch_entities(&[a, b], v(-10.0, 0.0), &[(b, area)])
+            .is_err()
+    );
+    assert_eq!(line_ends(&cad, a), (p(0.0, 5.0), p(10.0, 5.0)));
+    assert_eq!(line_ends(&cad, b), (p(0.0, 0.0), p(10.0, 0.0)));
+    assert_eq!(cad.undo_name(), Some("LINE"));
+    assert!(
+        cad.stretch_entities(&[a, u64::MAX], v(1.0, 0.0), &[])
+            .is_err()
+    );
+    assert_eq!(line_ends(&cad, a).0, p(0.0, 5.0));
+}

@@ -500,6 +500,9 @@ class CadDocument:
     def set_entity_geometry(
         self, entity_id: int, geometry: CadLine | CadCircle | CadArc
     ) -> CadChangeSet: ...
+    def stretch_entities(
+        self, entity_ids: _Ids, offset: _PointLike, crossing: Sequence[tuple[int, CadBounds2]]
+    ) -> CadChangeSet: ...
     def set_polyline_vertex(
         self, entity_id: int, vertex_index: int, point: _PointLike
     ) -> CadChangeSet: ...

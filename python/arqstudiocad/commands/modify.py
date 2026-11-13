@@ -26,6 +26,7 @@ from arqstudiocad.commands import (
 )
 from arqstudiocad.core import (
     CadArc,
+    CadBounds2,
     CadChangeSet,
     CadCircle,
     CadDocument,
@@ -51,13 +52,25 @@ type Ids = tuple[int, ...]
 type Selecting = Generator[Prompt | Background, Any, Ids]
 
 
-def select_objects(ctx: CommandContext, document: CadDocument, *, edits: bool = True) -> Selecting:
+def select_objects(
+    ctx: CommandContext, document: CadDocument, *, edits: bool = True, windows: bool = False
+) -> Selecting:
     """The entities to edit: the selection, or what the user selects now.
     Those on locked layers are left out when the command ``edits`` them;
     an inquiry keeps them, as AutoCAD's. Empty if nothing is left."""
     if not ctx.session.selection(document):
         options = [Option("ALL", tr("All")), Option("L", tr("Last")), Option("P", tr("Previous"))]
+        if windows:
+            options += [Option("C", tr("Crossing")), Option("W", tr("Window"))]
         while (answer := (yield ctx.select(tr("Select objects"), options))) is not None:
+            if answer in ("C", "W"):
+                first = yield ctx.point(tr("Specify first corner"))
+                second = yield ctx.point(tr("Specify opposite corner"), base=first)
+                area = CadBounds2(first, second)
+                found = tuple(document.select_window(area, crossing=answer == "C"))
+                ctx.session.select(document, found, crossing=area if answer == "C" else None)
+                ctx.message(tr("{count} found", count=len(found)))
+                continue
             if answer == "ALL":
                 found = _all(document)
             elif answer == "L":
