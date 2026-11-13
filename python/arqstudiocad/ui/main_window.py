@@ -386,7 +386,18 @@ class MainWindow(QMainWindow):
         ):
             self._modeling_menu.addAction(self.command_actions[name])
         self._modify_menu = menu_bar.addMenu("")
-        for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "OFFSET", "EXPLODE"):
+        for name in (
+            "ERASE",
+            "MOVE",
+            "COPY",
+            "ROTATE",
+            "SCALE",
+            "MIRROR",
+            "OFFSET",
+            "TRIM",
+            "EXTEND",
+            "EXPLODE",
+        ):
             self._modify_menu.addAction(self.command_actions[name])
         # Combining solids, as AutoCAD's Modify > Solid Editing (ADR 0032 D5).
         self._solid_editing_menu = self._modify_menu.addMenu("")

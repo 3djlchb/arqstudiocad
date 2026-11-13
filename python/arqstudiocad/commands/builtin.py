@@ -28,6 +28,7 @@ from arqstudiocad.commands.budget import BUDGET_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.commands.solids import SOLID_COMMANDS
+from arqstudiocad.commands.trimming import TRIM_COMMANDS
 from arqstudiocad.commands.views import VIEW_COMMANDS
 from arqstudiocad.core import (
     CadDocument,
@@ -391,6 +392,7 @@ def builtin_registry() -> CommandRegistry:
             *BUILTIN_COMMANDS,
             *DRAW_COMMANDS,
             *MODIFY_COMMANDS,
+            *TRIM_COMMANDS,
             *BLOCK_COMMANDS,
             *BUDGET_COMMANDS,
             *SOLID_COMMANDS,

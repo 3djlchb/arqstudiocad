@@ -276,7 +276,7 @@ def offset(ctx: CommandContext) -> CommandScript:
         if picked == "U":
             steps = _undo_offset(ctx, document, steps)
             continue
-        source, _ = picked
+        source = picked.entity_id
         entity = document.get_entity(source)
         geometry = entity.geometry
         # A polyline is offset by the core as a whole (None here).

@@ -74,6 +74,16 @@ class ClashChoice:
 
 
 @dataclass(frozen=True, slots=True)
+class Picked:
+    """One object picked at an entity prompt: which, where it was picked,
+    and whether Shift was held (TRIM's shift-select extends instead)."""
+
+    entity_id: int
+    point: tuple[float, float]
+    shift: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Option:
     """A prompt option: typed by its English ``key``, shown translated with
     the key visible, as ``Extents(E)``."""
@@ -102,8 +112,7 @@ class Prompt:
     the prompt says so; the command receives a float), ``"select"``
     (the viewport selects; Enter sends ``None``, an option its key) or
     ``"entity"`` (one object, picked in the viewport or under a typed
-    point; the command receives ``(entity_id, (x, y))``, the point where it
-    was picked).
+    point; the command receives a :class:`Picked`).
     ``base`` is the last point, for relative input, ORTHO and the rubber
     band; ``drag`` what follows the cursor. An empty answer takes
     ``default`` when there is one; else an ``optional`` point prompt
@@ -435,8 +444,8 @@ class CommandContext:
         optional: bool = False,
     ) -> Prompt:
         """A prompt for one object, as AutoCAD's "Select object to offset":
-        yield it to get ``(entity_id, (x, y))``, the key of one of
-        ``options``, or ``None`` for Enter if it is ``optional``."""
+        yield it to get a :class:`Picked`, the key of one of ``options``, or
+        ``None`` for Enter if it is ``optional``."""
         return Prompt(message, "entity", tuple(options), default, optional=optional)
 
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
@@ -607,13 +616,16 @@ class CommandRunner:
         self.context.session.drafting.override = None
         self._send_point(prompt, point)
 
-    def answer_entity(self, entity_id: int, point: tuple[float, float]) -> None:
-        """An object picked in the viewport, and where: the answer to an
-        entity prompt; ignored at any other."""
+    def answer_entity(
+        self, entity_id: int, point: tuple[float, float], shift: bool = False
+    ) -> None:
+        """An object picked in the viewport, where, and whether with Shift:
+        the answer to an entity prompt; ignored at any other."""
         prompt = self._prompt
         if prompt is None or prompt.kind != "entity" or self._refuse_while_busy():
             return
-        self._advance(lambda script: script.send((entity_id, point)))
+        picked = Picked(entity_id, point, shift)
+        self._advance(lambda script: script.send(picked))
 
     def _answer_entity(self, prompt: Prompt, text: str) -> None:
         """A typed answer to an entity prompt: an option, Enter (the default,
@@ -642,7 +654,8 @@ class CommandRunner:
             self.context.message(tr("No object there."))
             self._show(prompt)
             return
-        self._advance(lambda script: script.send((found, point)))
+        picked = Picked(found, point)
+        self._advance(lambda script: script.send(picked))
 
     def _answer(self, text: str) -> None:
         prompt = self._prompt
@@ -896,6 +909,7 @@ __all__ = [
     "CommandScript",
     "Option",
     "Outcome",
+    "Picked",
     "Prompt",
     "UiServices",
     "ViewControl",
