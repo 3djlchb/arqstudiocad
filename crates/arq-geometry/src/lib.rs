@@ -27,6 +27,7 @@
 //! | OFFSET's polylines, their corners joined | [`offset_polyline`], [`offset_polyline_through`] |
 //! | TRIM and EXTEND's curves | [`cutting_points`], [`trim`], [`extend`] |
 //! | TRIM and EXTEND's polylines | [`trim_polyline`], [`extend_polyline`] |
+//! | FILLET and CHAMFER's corners | [`fillet`], [`chamfer`] → [`Corner`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
 //! | The rectangles RECTANG draws | [`Rectangle`] |
 //! | The area a wide polyline covers, as triangles | [`band`] of [`BandVertex`]es |
@@ -75,6 +76,7 @@ mod circle;
 mod crossings;
 mod curved_region;
 mod error;
+mod fillet;
 mod geometry;
 mod intersect;
 mod line;
@@ -100,6 +102,7 @@ pub use bounds3::Bounds3;
 pub use circle::Circle;
 pub use curved_region::{CurvedRegion, Trim};
 pub use error::{GeometryError, GeometryResult};
+pub use fillet::{Corner, chamfer, chamfer_second_distance, fillet};
 pub use geometry::{Geometry2, GeometryKind};
 pub use intersect::{Intersections, intersect};
 pub use line::Line;
