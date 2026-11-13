@@ -184,6 +184,15 @@ class CadLine:
     def direction(self) -> float: ...
     def offset(self, distance: float, toward: _PointLike) -> CadLine: ...
     def offset_through(self, through: _PointLike) -> CadLine: ...
+    @staticmethod
+    def chamfer_distance(
+        first: CadLine,
+        first_at: _PointLike,
+        second: CadLine,
+        second_at: _PointLike,
+        length: float,
+        angle: float,
+    ) -> float: ...
     def __eq__(self, value: object, /) -> bool: ...
     def __hash__(self) -> int: ...
 
@@ -496,6 +505,25 @@ class CadDocument:
     ) -> CadChangeSet: ...
     def explode_entities(self, entity_ids: _Ids) -> tuple[list[int], CadChangeSet]: ...
     def delete_entities(self, entity_ids: _Ids) -> CadChangeSet: ...
+    def fillet_entities(
+        self,
+        first: int,
+        first_at: _PointLike,
+        second: int,
+        second_at: _PointLike,
+        radius: float,
+        trim: bool = True,
+    ) -> tuple[int | None, CadChangeSet]: ...
+    def chamfer_entities(
+        self,
+        first: int,
+        first_at: _PointLike,
+        second: int,
+        second_at: _PointLike,
+        first_distance: float,
+        second_distance: float,
+        trim: bool = True,
+    ) -> tuple[int | None, CadChangeSet]: ...
     def trim_entity(
         self,
         entity_id: int,

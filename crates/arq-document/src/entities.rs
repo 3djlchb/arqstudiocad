@@ -274,6 +274,25 @@ impl Document {
         Ok(())
     }
 
+    /// Adds an entity drawing `plan` with every common property of `like`
+    /// (layer, color, linetype, lineweight, XDATA…): FILLET's arc and
+    /// CHAMFER's segment take the first object's. Returns its id.
+    pub fn add_geometry_like(
+        &mut self,
+        like: EntityId,
+        plan: PlanGeometry,
+    ) -> DocumentResult<EntityId> {
+        let common = self
+            .cad()
+            .get_entity(handle(like))
+            .ok_or(DocumentError::EntityNotFound(like))?
+            .common()
+            .clone();
+        let mut made = new_entity(plan, &common.layer);
+        *made.common_mut() = common;
+        self.add_copy(made, Handle::NULL)
+    }
+
     /// Replaces circle `id` with `arc`, which lies on its circle (world plan
     /// angles), every common property kept (layer, color, linetype,
     /// lineweight, XDATA…) and its thickness and plane (TRIM, which leaves an

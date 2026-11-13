@@ -303,6 +303,30 @@ impl CadLine {
         }
     }
 
+    /// CHAMFER's Angle method: how far along `second` the chamfer ends when
+    /// it starts `length` along `first` from where they meet and leaves it
+    /// at `angle` (radians); each line taken on the side picked (`first_at`,
+    /// `second_at`).
+    #[staticmethod]
+    fn chamfer_distance(
+        first: CadLine,
+        first_at: PyPoint,
+        second: CadLine,
+        second_at: PyPoint,
+        length: f64,
+        angle: f64,
+    ) -> PyResult<f64> {
+        arq_geometry::chamfer_second_distance(
+            first.0,
+            first_at.0,
+            second.0,
+            second_at.0,
+            length,
+            angle,
+        )
+        .py()
+    }
+
     fn __hash__(&self) -> u64 {
         let (a, b) = (self.0.start(), self.0.end());
         hash_floats(&[a.x(), a.y(), b.x(), b.y()])

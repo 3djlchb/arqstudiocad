@@ -1086,6 +1086,56 @@ impl CadDocument {
         self.change(|cad| cad.delete_entities(&entity_ids))
     }
 
+    /// FILLET: two lines, or a line and an arc, met by an arc of `radius`
+    /// tangent to both, each kept on the side it was picked (`first_at`,
+    /// `second_at`) and, when `trim`, trimmed or extended to it; radius 0
+    /// makes a sharp corner. Returns the arc's id (None for a sharp corner)
+    /// and what changed.
+    #[pyo3(signature = (first, first_at, second, second_at, radius, trim = true))]
+    fn fillet_entities(
+        &self,
+        first: EntityId,
+        first_at: PyPoint,
+        second: EntityId,
+        second_at: PyPoint,
+        radius: f64,
+        trim: bool,
+    ) -> PyResult<(Option<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.fillet_entities(first, first_at.0, second, second_at.0, radius, trim))
+            .map(|(id, changes)| (id, CadChangeSet(changes)))
+    }
+
+    /// CHAMFER: two lines cut across `first_distance` along the first and
+    /// `second_distance` along the second from where they meet, kept and
+    /// trimmed as in `fillet_entities`; distances 0 make a sharp corner.
+    #[pyo3(signature = (
+        first, first_at, second, second_at, first_distance, second_distance, trim = true
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn chamfer_entities(
+        &self,
+        first: EntityId,
+        first_at: PyPoint,
+        second: EntityId,
+        second_at: PyPoint,
+        first_distance: f64,
+        second_distance: f64,
+        trim: bool,
+    ) -> PyResult<(Option<EntityId>, CadChangeSet)> {
+        self.edit(|cad| {
+            cad.chamfer_entities(
+                first,
+                first_at.0,
+                second,
+                second_at.0,
+                first_distance,
+                second_distance,
+                trim,
+            )
+        })
+        .map(|(id, changes)| (id, CadChangeSet(changes)))
+    }
+
     /// Trims line, arc or circle `entity_id` at the edges nearest `at`
     /// (TRIM): `edges` the cutting edges (Standard), or None for every other
     /// entity drawn (Quick). With no edge round that part, `erase_uncut`

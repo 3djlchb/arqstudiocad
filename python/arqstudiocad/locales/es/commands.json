@@ -44,6 +44,9 @@
   "BUDGETEXPORT": [
     "EXPORTARPRESUPUESTO"
   ],
+  "CHAMFER": [
+    "CHAFLAN"
+  ],
   "CIRCLE": [
     "CIRCULO"
   ],
@@ -79,6 +82,9 @@
   ],
   "EXTRUDE": [
     "EXTRUSION"
+  ],
+  "FILLET": [
+    "EMPALME"
   ],
   "IDPOINT": [
     "IDPUNTO"
