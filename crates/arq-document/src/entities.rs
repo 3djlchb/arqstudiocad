@@ -3,7 +3,9 @@
 use acadrust::entities::LwPolyline;
 use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
-use arq_geometry::{Bounds2, GeometryError, Point2, Transform2};
+use arq_geometry::{
+    Bounds2, GeometryError, Point2, Tolerance, Transform2, offset_polyline, offset_polyline_through,
+};
 
 use crate::document::Document;
 use crate::entity::Color;
@@ -128,6 +130,70 @@ impl Document {
         let (x, y, _) = normal.map_point(point.x(), point.y(), polyline.elevation);
         vertex.location = acadrust::types::Vector2::new(x, y);
         Ok(())
+    }
+
+    /// Adds a copy of lightweight polyline `id` offset `distance` toward
+    /// `toward`, or through `toward` when `distance` is None (OFFSET):
+    /// every property kept, its vertices those of the offset path in its
+    /// own plane, their widths kept when no segment was dropped. Refused on
+    /// a tilted plane and when the path cannot be offset there.
+    pub fn offset_polyline(
+        &mut self,
+        id: EntityId,
+        distance: Option<f64>,
+        toward: Point2,
+    ) -> DocumentResult<EntityId> {
+        let raw = self
+            .cad()
+            .get_entity(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        let EntityType::LwPolyline(polyline) = raw else {
+            return Err(DocumentError::NotEditable {
+                id,
+                kind: raw.as_entity().entity_type(),
+            });
+        };
+        let normal = plan_normal(polyline.normal.x, polyline.normal.y, polyline.normal.z).ok_or(
+            DocumentError::NotEditable {
+                id,
+                kind: "LWPOLYLINE",
+            },
+        )?;
+        // Its vertices are in its own coordinates (OCS) already; the point
+        // comes in the world's, mapped by its plane (its own inverse).
+        let path = polyline
+            .vertices
+            .iter()
+            .map(|v| Ok((Point2::new(v.location.x, v.location.y)?, v.bulge)))
+            .collect::<Result<Vec<_>, GeometryError>>()?;
+        let (x, y, _) = normal.map_point(toward.x(), toward.y(), polyline.elevation);
+        let toward = Point2::new(x, y)?;
+        let tol = Tolerance::DEFAULT;
+        let offset = match distance {
+            Some(d) => offset_polyline(&path, polyline.is_closed, d, toward, tol)?,
+            None => offset_polyline_through(&path, polyline.is_closed, toward, tol)?,
+        };
+        let widths: Vec<(f64, f64)> = polyline
+            .vertices
+            .iter()
+            .map(|v| (v.start_width, v.end_width))
+            .collect();
+        let copy = self.copy_entity(id)?;
+        if let Some(EntityType::LwPolyline(made)) = self.cad_mut().get_entity_mut(handle(copy)) {
+            made.vertices.clear();
+            for (i, (p, bulge)) in offset.iter().enumerate() {
+                made.add_point_with_bulge(Vector2::new(p.x(), p.y()), *bulge);
+                if widths.len() == offset.len()
+                    && let (Some(v), Some(&(start, end))) =
+                        (made.vertices.last_mut(), widths.get(i))
+                {
+                    v.start_width = start;
+                    v.end_width = end;
+                }
+            }
+        }
+        self.sync_entity(copy);
+        Ok(copy)
     }
 
     /// A snapshot of the entity with this id, in any space: from the own
@@ -657,6 +723,98 @@ mod tests {
         a.end_angle = e;
         a.normal = Vector3::new(0.0, 0.0, normal_z);
         EntityType::Arc(a)
+    }
+
+    /// A 4 × 2 rectangle (OCS), 0.25 wide, at elevation 3, 1.5 thick, on
+    /// a plane whose normal is `normal_z` up.
+    fn wide_box(doc: &mut Document, normal_z: f64) -> EntityId {
+        let mut pl = LwPolyline::new();
+        for (x, y) in [(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)] {
+            pl.add_point_with_bulge(acadrust::types::Vector2::new(x, y), 0.0);
+        }
+        pl.is_closed = true;
+        pl.constant_width = 0.25;
+        pl.elevation = 3.0;
+        pl.thickness = 1.5;
+        pl.normal = Vector3::new(0.0, 0.0, normal_z);
+        add_raw(doc, EntityType::LwPolyline(pl))
+    }
+
+    fn ocs_points(doc: &Document, id: EntityId) -> (Vec<(f64, f64)>, LwPolyline) {
+        let Some(EntityType::LwPolyline(pl)) = doc.cad().get_entity(handle(id)) else {
+            panic!("a polyline")
+        };
+        let r = |v: f64| (v * 1e9).round() / 1e9 + 0.0;
+        let points = pl
+            .vertices
+            .iter()
+            .map(|v| (r(v.location.x), r(v.location.y)))
+            .collect();
+        (points, pl.clone())
+    }
+
+    #[test]
+    fn a_polyline_offset_keeps_its_properties_in_its_plane() {
+        let mut doc = Document::new();
+        let id = wide_box(&mut doc, 1.0);
+        let inner = doc.offset_polyline(id, Some(0.5), p(2.0, 1.0)).unwrap();
+        let (points, pl) = ocs_points(&doc, inner);
+        assert_eq!(points, [(0.5, 0.5), (3.5, 0.5), (3.5, 1.5), (0.5, 1.5)]);
+        assert!(pl.is_closed);
+        assert_eq!(
+            (pl.constant_width, pl.elevation, pl.thickness),
+            (0.25, 3.0, 1.5),
+            "every property kept"
+        );
+        assert_ne!(inner, id, "a copy");
+        // Through a point 1 outside.
+        let through = doc.offset_polyline(id, None, p(2.0, -1.0)).unwrap();
+        let (points, _) = ocs_points(&doc, through);
+        assert_eq!(points, [(-1.0, -1.0), (5.0, -1.0), (5.0, 3.0), (-1.0, 3.0)]);
+    }
+
+    #[test]
+    fn a_mirrored_polyline_is_offset_toward_the_world_point() {
+        // Seen from below, OCS x runs west: the box spans world x -4 to 0.
+        let mut doc = Document::new();
+        let id = wide_box(&mut doc, -1.0);
+        let inner = doc.offset_polyline(id, Some(0.5), p(-2.0, 1.0)).unwrap();
+        assert_eq!(
+            ocs_points(&doc, inner).0,
+            [(0.5, 0.5), (3.5, 0.5), (3.5, 1.5), (0.5, 1.5)],
+            "inside: the world point is inside the box"
+        );
+        let outer = doc.offset_polyline(id, Some(0.5), p(1.0, 1.0)).unwrap();
+        assert_eq!(
+            ocs_points(&doc, outer).0,
+            [(-0.5, -0.5), (4.5, -0.5), (4.5, 2.5), (-0.5, 2.5)]
+        );
+    }
+
+    #[test]
+    fn what_is_not_a_plan_polyline_is_not_offset_here() {
+        let mut doc = Document::new();
+        let line = add_raw(&mut doc, {
+            let mut l = acadrust::Line::new();
+            l.end = Vector3::new(1.0, 0.0, 0.0);
+            EntityType::Line(l)
+        });
+        assert!(matches!(
+            doc.offset_polyline(line, Some(1.0), p(0.0, 1.0)),
+            Err(DocumentError::NotEditable { .. })
+        ));
+        let tilted = wide_box(&mut doc, 0.0);
+        if let Some(EntityType::LwPolyline(pl)) = doc.cad_mut().get_entity_mut(handle(tilted)) {
+            pl.normal = Vector3::new(1.0, 0.0, 0.0);
+        }
+        assert!(doc.offset_polyline(tilted, Some(1.0), p(0.0, 1.0)).is_err());
+        let before = doc.entities().len();
+        let id = wide_box(&mut doc, 1.0);
+        assert!(
+            doc.offset_polyline(id, Some(1.0), p(2.0, 1.0)).is_err(),
+            "inward to its middle: nothing left"
+        );
+        assert_eq!(doc.entities().len(), before + 1, "nothing added");
     }
 
     #[test]
