@@ -194,14 +194,89 @@ def test_layer_current_puts_the_copy_on_the_current_layer() -> None:
     assert sorted(e.layer for e in h.document.get_entities()) == ["0", "0", "WALLS"]
 
 
-def test_what_is_not_a_line_circle_or_arc_cannot_be_offset_yet() -> None:
+def test_what_cannot_be_offset_is_said() -> None:
     h = Harness()
-    square = [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0), ((4.0, 4.0), 0.0)]
-    polyline, _ = h.document.add_polyline(square, True)
+    text, _ = h.document.add_text("A", (0.0, 0.0), 2.5, 0.0)
     h.run("OFFSET", "1")
-    h.runner.answer_entity(polyline, (2.0, 0.0))
+    h.runner.answer_entity(text, (0.5, 0.5))
     assert h.messages()[-1] == "Cannot offset that object."
     assert h.prompt().text == SELECT
+
+
+# Polylines: segments moved, their corners joined as AutoCAD's.
+
+BOX = [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0), ((4.0, 2.0), 0.0), ((0.0, 2.0), 0.0)]
+
+
+def vertices(h: Harness, entity_id: int) -> list[tuple[float, float]]:
+    grips = [g for g in h.document.grips([entity_id]) if g.vertex_index is not None]
+    ordered = sorted(grips, key=lambda g: g.vertex_index or 0)
+    return [(round(g.point[0], 9) + 0.0, round(g.point[1], 9) + 0.0) for g in ordered]
+
+
+def newest(h: Harness) -> int:
+    return max(e.id for e in h.document.get_entities())
+
+
+def test_a_closed_polyline_grows_outside_and_shrinks_inside() -> None:
+    h = Harness()
+    box, _ = h.document.add_polyline(BOX, True)
+    h.run("OFFSET", "0.5")
+    h.runner.answer_entity(box, (2.0, 0.0))
+    h.run("2,-3")
+    assert vertices(h, newest(h)) == [(-0.5, -0.5), (4.5, -0.5), (4.5, 2.5), (-0.5, 2.5)]
+    assert dict(h.document.get_entity(newest(h)).details)["Closed"] == "true"
+    h.runner.answer_entity(box, (2.0, 0.0))
+    h.run("2,1")
+    assert vertices(h, newest(h)) == [(0.5, 0.5), (3.5, 0.5), (3.5, 1.5), (0.5, 1.5)]
+    assert h.document.undo_history[-2:] == ["OFFSET", "OFFSET"]
+
+
+def test_a_polyline_offset_inward_too_far_leaves_nothing() -> None:
+    h = Harness()
+    box, _ = h.document.add_polyline(BOX, True)
+    count = len(h.document.get_entities())
+    h.run("OFFSET", "1.5")
+    h.runner.answer_entity(box, (2.0, 0.0))
+    h.run("2,1")
+    assert h.messages()[-1] == "Cannot offset that object to that side."
+    assert len(h.document.get_entities()) == count
+    assert h.prompt().text == SIDE
+
+
+def test_an_open_polyline_is_extended_outside_its_corner() -> None:
+    h = Harness()
+    ell, _ = h.document.add_polyline([((0.0, 0.0), 0.0), ((10.0, 0.0), 0.0), ((10.0, 10.0), 0.0)])
+    h.run("OFFSET", "T")
+    h.runner.answer_entity(ell, (5.0, 0.0))
+    h.run("5,-1")
+    assert vertices(h, newest(h)) == [(0.0, -1.0), (11.0, -1.0), (11.0, 10.0)]
+
+
+def test_a_rectangle_keeps_its_fillets_width_and_layer() -> None:
+    h = Harness()
+    h.run("RECTANG", "F", "1", "W", "0.2", "0,0", "10,6")
+    rect = newest(h)
+    h.run("OFFSET", "0.5")
+    h.runner.answer_entity(rect, (5.0, 0.0))
+    h.run("5,-2", "")
+    copy = h.document.get_entity(newest(h))
+    shown = dict(copy.details)
+    assert (shown["Vertices"], shown["Constant width"]) == ("8", "0.200000")
+    assert copy.layer == h.document.get_entity(rect).layer
+    b = copy.bounds
+    assert b is not None
+    corners = (b.min[0], b.min[1], b.max[0], b.max[1])
+    assert corners == pytest.approx((-0.6, -0.6, 10.6, 6.6)), "0.5 out, and half its width"
+
+
+def test_multiple_offsets_a_polyline_again_from_each_copy() -> None:
+    h = Harness()
+    box, _ = h.document.add_polyline(BOX, True)
+    h.run("OFFSET", "1")
+    h.runner.answer_entity(box, (2.0, 0.0))
+    h.run("M", "2,-5", "2,-5", "")
+    assert vertices(h, newest(h)) == [(-2.0, -2.0), (6.0, -2.0), (6.0, 4.0), (-2.0, 4.0)]
 
 
 def test_an_entity_answer_is_ignored_at_other_prompts() -> None:
@@ -286,8 +361,13 @@ def test_an_offset_the_core_refuses_leaves_nothing_behind() -> None:
     history = list(h.document.undo_history)
     h.run("OFFSET", "1")
     h.runner.answer_entity(line, (5.0, 0.0))
+    count = len(h.events)
     h.run("5,5")
-    assert h.messages()[-1].startswith("Error: "), h.messages()[-1]
+    said = h.messages()[-1]
+    assert said.startswith("Error: ") and "group" not in said, said
     assert h.lines() == [((0.0, 0.0), (10.0, 0.0))], "no copy left half made"
     assert h.document.undo_history == history
-    assert h.prompt().text == SIDE, "the side is asked again"
+    assert not h.document.in_group
+    asked = [e for e in h.events[count:] if isinstance(e, CommandPrompt)]
+    assert asked and asked[-1].text == SIDE, "the side is asked again"
+    assert h.runner.active == "OFFSET", "the command goes on"

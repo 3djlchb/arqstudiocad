@@ -243,13 +243,14 @@ type Curve = CadLine | CadCircle | CadArc
 
 
 def offset(ctx: CommandContext) -> CommandScript:
-    """OFFSET, AutoCAD's (Spanish EQDIST): a copy of a line, circle or
-    arc a distance away, to the side a point shows, or through a point
-    (Through); one object picked at a time until Exit or Enter. Multiple
+    """OFFSET, AutoCAD's (Spanish EQDIST): a copy of a line, circle, arc
+    or lightweight polyline a distance away, to the side a point shows, or
+    through a point (Through); one object picked at a time until Exit or
+    Enter. A polyline's segments meet again at its corners, extended
+    outside and trimmed inside, as AutoCAD's OFFSETGAPTYPE 0. Multiple
     offsets the last copy again; Undo takes back the last offset. The
     source may be erased (Erase) and the copy go on the current layer
-    (Layer). Each offset is one undo step; the settings are remembered.
-    Polylines come later (maintainer, 2026-11-12)."""
+    (Layer). Each offset is one undo step; the settings are remembered."""
     document = ctx.document()
     memory = ctx.remembered
     memory.setdefault(OFFSET_DISTANCE, None)
@@ -276,8 +277,10 @@ def offset(ctx: CommandContext) -> CommandScript:
             steps = _undo_offset(ctx, document, steps)
             continue
         source, _ = picked
-        geometry = document.get_entity(source).geometry
-        if geometry is None:
+        entity = document.get_entity(source)
+        geometry = entity.geometry
+        # A polyline is offset by the core as a whole (None here).
+        if geometry is None and entity.kind != "LWPOLYLINE":
             ctx.message(tr("Cannot offset that object."))
             continue
         ctx.session.select(document, (source,))
@@ -330,7 +333,7 @@ def _offset_one(
     document: CadDocument,
     memory: dict[str, Any],
     source: int,
-    geometry: Curve,
+    geometry: Curve | None,
     steps: int,
 ) -> Generator[Prompt | Background, Any, tuple[bool, int]]:
     """The side (or the point to pass through) for one object, once, or
@@ -359,17 +362,20 @@ def _offset_one(
         if answer == "U":
             steps = _undo_offset(ctx, document, steps)
             continue
-        try:
-            made = (
-                geometry.offset_through(answer)
-                if distance is None
-                else geometry.offset(distance, answer)
-            )
-        except InvalidGeometryError:
-            ctx.message(tr("Cannot offset that object to that side."))
-            continue
+        made: Curve | None = None
+        if geometry is not None:
+            try:
+                made = (
+                    geometry.offset_through(answer)
+                    if distance is None
+                    else geometry.offset(distance, answer)
+                )
+            except InvalidGeometryError:
+                ctx.message(tr("Cannot offset that object to that side."))
+                continue
         erase = original if memory[OFFSET_ERASE] and source == original else None
-        new = _make_offset(ctx, document, source, made, memory[OFFSET_LAYER] == "C", erase)
+        layer = memory[OFFSET_LAYER] == "C"
+        new = _make_offset(ctx, document, source, made, (distance, answer), layer, erase)
         if new is None:
             continue
         steps += 1
@@ -383,35 +389,45 @@ def _make_offset(
     ctx: CommandContext,
     document: CadDocument,
     source: int,
-    geometry: Curve,
+    geometry: Curve | None,
+    side: tuple[float | None, Point],
     current_layer: bool,
     erase: int | None,
 ) -> int | None:
-    """A copy of ``source`` with ``geometry``, on the current layer if asked,
-    ``erase`` erased, all as one undo step named OFFSET; None, with the core's
-    message, when the core refuses (a locked layer)."""
-    before = len(document.undo_history)
+    """A copy of ``source`` with ``geometry``, or, for a polyline (None),
+    offset by the core by ``side``'s distance (None: through) toward its
+    point; on the current layer if asked, ``erase`` erased, all as one undo
+    step named OFFSET. None, with a message, when the core refuses: no
+    room on that side, or a locked layer."""
     changes: list[CadChangeSet] = []
     new: int | None = None
     document.begin_group("OFFSET")
     try:
-        ids, made = document.copy_entities([source], (0.0, 0.0))
-        changes.append(made)
-        new = ids[0]
-        changes.append(document.set_entity_geometry(new, geometry))
+        if geometry is None:
+            distance, toward = side
+            new, made = document.offset_polyline(source, distance, toward)
+            changes.append(made)
+        else:
+            ids, made = document.copy_entities([source], (0.0, 0.0))
+            changes.append(made)
+            new = ids[0]
+            changes.append(document.set_entity_geometry(new, geometry))
         if current_layer:
             changes.append(document.set_entity_layer([new], document.current_layer.id))
         if erase is not None:
             changes.append(document.delete_entities([erase]))
+    except InvalidGeometryError:
+        new = None
+        ctx.message(tr("Cannot offset that object to that side."))
     except CadError as error:
         new = None
         ctx.message(tr("Error: {message}", message=str(error)))
     finally:
-        document.end_group()
+        # An operation failing inside the group rolls the whole group back
+        # and closes it (the core's rule): nothing half done stays.
+        if document.in_group:
+            document.end_group()
     if new is None:
-        # Nothing half done stays: what the group did is taken back.
-        if len(document.undo_history) > before:
-            document.undo()
         return None
     # Reported once the step is closed, so the History panel lists it.
     for change in changes:
