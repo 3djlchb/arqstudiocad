@@ -132,6 +132,40 @@ impl Document {
         Ok(())
     }
 
+    /// Replaces circle `id` with `arc`, which lies on its circle (world plan
+    /// angles), every common property kept (layer, color, linetype,
+    /// lineweight, XDATA…) and its thickness and plane (TRIM, which leaves an
+    /// arc of a circle cut twice). Returns the arc's id.
+    pub fn circle_to_arc(
+        &mut self,
+        id: EntityId,
+        arc: arq_geometry::Arc,
+    ) -> DocumentResult<EntityId> {
+        let Some(EntityType::Circle(circle)) = self.cad().get_entity(handle(id)) else {
+            let kind = self
+                .cad()
+                .get_entity(handle(id))
+                .map(|e| e.as_entity().entity_type())
+                .ok_or(DocumentError::EntityNotFound(id))?;
+            return Err(DocumentError::NotEditable { id, kind });
+        };
+        let normal = plan_normal(circle.normal.x, circle.normal.y, circle.normal.z)
+            .ok_or(DocumentError::NotEditable { id, kind: "CIRCLE" })?;
+        // Its angles in the circle's own plane, still counterclockwise.
+        let (start, end) = normal.map_arc(arc.start_angle(), arc.end_angle());
+        let mut made = acadrust::Arc::new();
+        made.common = circle.common.clone();
+        made.center = circle.center;
+        made.radius = circle.radius;
+        made.thickness = circle.thickness;
+        made.normal = circle.normal;
+        made.start_angle = start;
+        made.end_angle = end;
+        let new = self.add_copy(EntityType::Arc(made), Handle::NULL)?;
+        self.delete_entity(id)?;
+        Ok(new)
+    }
+
     /// Adds a copy of lightweight polyline `id` offset `distance` toward
     /// `toward`, or through `toward` when `distance` is None (OFFSET):
     /// every property kept, its vertices those of the offset path in its

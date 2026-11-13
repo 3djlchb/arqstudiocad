@@ -12,7 +12,10 @@ use arq_document::{
     Document, DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, PolylineStyle,
     Revolved,
 };
-use arq_geometry::{Arc, Circle, Geometry2, Line, Point2, Point3, Transform2, Vector2};
+use arq_geometry::{
+    Arc, Circle, Geometry2, GeometryError, Line, Point2, Point3, Tolerance, Transform2, Vector2,
+    cutting_points, extend, trim,
+};
 
 use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
@@ -224,6 +227,89 @@ impl CadDocument {
             }
             Ok(copies)
         })
+    }
+
+    /// Trims line, arc or circle `id` at the edges nearest `at` (TRIM): the
+    /// part between them is taken away, a line or arc cut in the middle
+    /// becomes two (the second a copy, every property kept), a circle the
+    /// arc left. The edges are `edges` (Standard mode), or every other
+    /// entity drawn (Quick); a text is never one. With no edge round the
+    /// part, Quick (`erase_uncut`) erases the whole object, Standard
+    /// refuses. Returns the entities left of it: none when erased.
+    pub fn trim_entity(
+        &mut self,
+        id: EntityId,
+        at: Point2,
+        edges: Option<&[EntityId]>,
+        erase_uncut: bool,
+    ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let tol = Tolerance::DEFAULT;
+        self.transact("TRIM", |doc| {
+            let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &e)?;
+            let plan = e
+                .plan()
+                .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
+            let curve = plan.geometry();
+            let cutters = edge_curves(doc, id, edges);
+            let cuts = cutting_points(curve, &cutters, tol);
+            let pieces = match trim(curve, &cuts, at, tol).map_err(DocumentError::from)? {
+                Some(pieces) => pieces,
+                None if erase_uncut => Vec::new(),
+                None => {
+                    return Err(DocumentError::from(GeometryError::OutOfRange {
+                        what: "cutting edge",
+                    })
+                    .into());
+                }
+            };
+            let mut left = Vec::new();
+            match (curve, pieces.as_slice()) {
+                (_, []) => doc.delete_entity(id)?,
+                (Geometry2::Circle(_), [Geometry2::Arc(arc)]) => {
+                    left.push(doc.circle_to_arc(id, *arc)?);
+                }
+                (_, [first, rest @ ..]) => {
+                    doc.set_plan_geometry(id, plan.with_geometry(*first))?;
+                    left.push(id);
+                    for piece in rest {
+                        let copy = doc.copy_entity(id)?;
+                        doc.set_plan_geometry(copy, plan.with_geometry(*piece))?;
+                        left.push(copy);
+                    }
+                }
+            }
+            Ok(left)
+        })
+    }
+
+    /// Extends line or arc `id` at the end nearer `at` to the nearest of
+    /// `edges` (Standard mode), or of every other entity drawn (Quick), its
+    /// line or circle reaches beyond that end (EXTEND). Refused when none
+    /// does, and for anything else (a circle).
+    pub fn extend_entity(
+        &mut self,
+        id: EntityId,
+        at: Point2,
+        edges: Option<&[EntityId]>,
+    ) -> CadResult<ChangeSet> {
+        let tol = Tolerance::DEFAULT;
+        let (_, changes) = self.transact("EXTEND", |doc| {
+            let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &e)?;
+            let plan = e
+                .plan()
+                .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
+            let boundaries = edge_curves(doc, id, edges);
+            let grown = extend(plan.geometry(), &boundaries, at, tol)
+                .map_err(DocumentError::from)?
+                .ok_or(DocumentError::from(GeometryError::OutOfRange {
+                    what: "boundary edge",
+                }))?;
+            doc.set_plan_geometry(id, plan.with_geometry(grown))?;
+            Ok(())
+        })?;
+        Ok(changes)
     }
 
     /// Adds a copy of polyline `id` offset `distance` toward `toward`, or
@@ -607,6 +693,30 @@ fn check_unlocked(doc: &Document, e: &Entity) -> CadResult<()> {
         )));
     }
     Ok(())
+}
+
+/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs and circles
+/// `edges` draw (every entity drawn but `target` when None), those inside
+/// blocks and polylines included; texts never.
+fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> Vec<Geometry2> {
+    let ids: Vec<EntityId> = match edges {
+        Some(edges) => edges.to_vec(),
+        None => doc.drawing_all().into_iter().map(|(id, _)| id).collect(),
+    };
+    ids.into_iter()
+        .filter(|&id| id != target)
+        .filter(|&id| {
+            doc.entity(id)
+                .is_some_and(|e| !matches!(e.kind(), "TEXT" | "MTEXT" | "ATTRIB" | "ATTDEF"))
+        })
+        .flat_map(|id| doc.drawing(id).unwrap_or_default())
+        .filter_map(|item| match item.shape {
+            arq_document::Shape::Line(l) => Some(Geometry2::Line(l)),
+            arq_document::Shape::Arc(a) => Some(Geometry2::Arc(a)),
+            arq_document::Shape::Circle(c) => Some(Geometry2::Circle(c)),
+            _ => None,
+        })
+        .collect()
 }
 
 #[cfg(test)]

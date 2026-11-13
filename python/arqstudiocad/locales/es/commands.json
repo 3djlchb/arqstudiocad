@@ -74,6 +74,9 @@
   "EXPLODE": [
     "DESCOMPONER"
   ],
+  "EXTEND": [
+    "ALARGA"
+  ],
   "EXTRUDE": [
     "EXTRUSION"
   ],
@@ -168,6 +171,9 @@
   ],
   "TORUS": [
     "TOROIDE"
+  ],
+  "TRIM": [
+    "RECORTA"
   ],
   "UNDO": [
     "DESHACER"

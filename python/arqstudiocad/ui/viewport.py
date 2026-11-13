@@ -195,8 +195,8 @@ class Viewport(QWidget):
     escape_pressed = Signal()
     #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
     point_picked = Signal(object)
-    #: An object picked at an entity prompt: ``(entity_id, (x, y))``, the
-    #: world point clicked.
+    #: An object picked at an entity prompt: ``(entity_id, (x, y), shift)``,
+    #: the world point clicked and whether Shift was held.
     entity_picked = Signal(object)
     #: A key typed in the viewport, for the command line (a ``QKeyEvent``).
     key_typed = Signal(object)
@@ -517,7 +517,8 @@ class Viewport(QWidget):
                 picked = self.pick_at(event.position())
                 at = self.view.plane_point(*self._physical(event.position()))
                 if picked is not None and at is not None:
-                    self.entity_picked.emit((picked, at))
+                    shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                    self.entity_picked.emit((picked, at, shift))
                 event.accept()
                 return
             grip = self.grip_at(event.position())
