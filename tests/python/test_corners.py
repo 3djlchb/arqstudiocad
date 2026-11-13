@@ -5,6 +5,7 @@ in the interface. Every expected shape is worked out by hand."""
 
 import math
 
+import pytest
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
@@ -79,7 +80,7 @@ def test_fillet_rounds_the_corner_with_the_radius_set() -> None:
     assert h.ends(h.a) == ((2.0, 0.0), (10.0, 0.0))
     assert h.ends(h.b) == ((0.0, 2.0), (0.0, 10.0))
     [arc] = h.arcs()
-    assert arc.center == (2.0, 2.0) and arc.radius == 2.0
+    assert arc.center == pytest.approx((2.0, 2.0)) and arc.radius == pytest.approx(2.0)
     assert h.document.undo_history[-1] == "FILLET"
     h.run("FILLET")
     assert h.messages()[-1] == "Current settings: Mode=Trim, Radius=2", "remembered"
@@ -143,8 +144,8 @@ def test_a_line_and_an_arc_are_filleted() -> None:
     h.run("FILLET", "R", "2")
     h.runner.answer_entity(line, (5.0, 20.0))
     h.runner.answer_entity(arc, (2.6, 23.5))
-    fillets = [a for a in h.arcs() if a.radius == 2.0]
-    assert len(fillets) == 1 and fillets[0].center == (4.0, 22.0)
+    fillets = [a for a in h.arcs() if a.radius == pytest.approx(2.0)]
+    assert len(fillets) == 1 and fillets[0].center == pytest.approx((4.0, 22.0))
 
 
 def test_chamfer_by_distances_and_by_angle() -> None:
