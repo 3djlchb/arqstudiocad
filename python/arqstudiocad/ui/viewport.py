@@ -199,6 +199,7 @@ class Viewport(QWidget):
     #: An object picked at an entity prompt: ``(entity_id, (x, y), shift)``,
     #: the world point clicked and whether Shift was held.
     entity_picked = Signal(object)
+    entity_path_picked = Signal(object, bool)
     #: A key typed in the viewport, for the command line (a ``QKeyEvent``).
     key_typed = Signal(object)
     #: A grip was clicked (a ``CadGrip``): it should be edited.
@@ -256,6 +257,10 @@ class Viewport(QWidget):
         # click would put the point now (snapped or ORTHO) with its snap.
         self._asking = False
         self._picking_entity = False  # an entity prompt: a click picks one object
+        self._multiple_entities = False
+        self._entity_path: list[Point] = []
+        self._fence_anchor: Point | None = None
+        self._path_shift = False
         #: When Shift+F10 last asked for the context menu (``time.monotonic``).
         self._menu_key_at = -MENU_KEY_ECHO
         self._base: Point | None = None
@@ -383,6 +388,7 @@ class Viewport(QWidget):
     def ask_point(self, base: Point | None, drag: Drag | None = None) -> None:
         """A command asks for a point, from ``base`` if it has one; ``drag``
         follows the cursor from it."""
+        self.end_point()
         self._asking, self._base, self._dragged = True, base, drag
         self._target = self._snap = None
         self._set_hover(None)
@@ -390,16 +396,24 @@ class Viewport(QWidget):
 
     def end_point(self) -> None:
         """No point, nor object, is asked for any more."""
+        had_fence = bool(self._entity_path) or self._fence_anchor is not None
         self._picking_entity = False
+        self._multiple_entities = False
+        self._entity_path = []
+        self._fence_anchor = None
+        self._press = self._band = None
         if self._asking:
             self._asking, self._base, self._target, self._snap = False, None, None, None
             self.update()
+        elif had_fence:
+            self.update()
 
-    def ask_entity(self) -> None:
+    def ask_entity(self, *, multiple: bool = False) -> None:
         """A command asks for one object: a click picks the one under the
-        cursor, as hovering shows it, and no window is drawn."""
+        cursor. Multiple prompts also accept fences starting in empty space."""
         self.end_point()
         self._picking_entity = True
+        self._multiple_entities = multiple
 
     @property
     def grips(self) -> tuple[CadGrip, ...]:
@@ -517,8 +531,19 @@ class Viewport(QWidget):
             if self._picking_entity:
                 picked = self.pick_at(event.position())
                 at = self.view.plane_point(*self._physical(event.position()))
-                if picked is not None and at is not None:
-                    shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+                if self._multiple_entities and self.in_plan and at is not None:
+                    if self._fence_anchor is not None:
+                        anchor = self._fence_anchor
+                        self._fence_anchor = None
+                        self.entity_path_picked.emit((anchor, at), self._path_shift or shift)
+                    elif picked is None:
+                        self._press = event.position()
+                        self._entity_path = [at]
+                        self._path_shift = shift
+                    else:
+                        self.entity_picked.emit((picked, at, shift))
+                elif picked is not None and at is not None:
                     self.entity_picked.emit((picked, at, shift))
                 event.accept()
                 return
@@ -545,7 +570,13 @@ class Viewport(QWidget):
             self.view.pan(delta.x() * ratio, delta.y() * ratio)
             self._redraw()
         elif self._press is not None and event.buttons() & Qt.MouseButton.LeftButton:
-            if self._band is not None or _distance(position, self._press) > DRAG_PIXELS:
+            if self._multiple_entities:
+                at = self.view.plane_point(*self._physical(position))
+                if at is not None and _distance(position, self._press) > DRAG_PIXELS:
+                    if not self._entity_path or at != self._entity_path[-1]:
+                        self._entity_path.append(at)
+                    self.update()
+            elif self._band is not None or _distance(position, self._press) > DRAG_PIXELS:
                 self._band = position
                 self.update()
         elif self._asking:
@@ -553,12 +584,36 @@ class Viewport(QWidget):
         else:
             self._set_hover(self.pick_at(position))
         self._follow_cursor(position)
+        if self._fence_anchor is not None:
+            # The old rubber band spans more than the crosshair's dirty region.
+            self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
         if event.button() == Qt.MouseButton.MiddleButton:
             self._drag = None
             self.setCursor(self._rest_cursor())
             self._move_crosshair(event.position())
+            event.accept()
+            return
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._press is not None
+            and self._multiple_entities
+        ):
+            path = tuple(self._entity_path)
+            self._press = None
+            self._entity_path = []
+            if len(path) > 1:
+                at = self.view.plane_point(*self._physical(event.position()))
+                if at is not None and at != path[-1]:
+                    path += (at,)
+                shift = self._path_shift or bool(
+                    event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+                )
+                self.entity_path_picked.emit(path, shift)
+            elif path:
+                self._fence_anchor = path[0]
+            self.update()
             event.accept()
             return
         if event.button() == Qt.MouseButton.LeftButton and self._press is not None:
@@ -860,6 +915,19 @@ class Viewport(QWidget):
             out.items.append(
                 Stroke(rectangle(a, b), rgba(color), 1.0, dashed=crossing, closed=True)
             )
+        fence = list(self._entity_path)
+        if self._fence_anchor is not None:
+            fence = [self._fence_anchor]
+            if self._cursor_at is not None:
+                at = self.view.plane_point(*self._physical(self._cursor_at))
+                if at is not None:
+                    fence.append(at)
+        if len(fence) > 1:
+            ratio = self.devicePixelRatioF()
+            pixels = tuple(
+                (x / ratio, y / ratio) for x, y in (self.view.to_screen(*point) for point in fence)
+            )
+            out.items.append(Stroke(pixels, text, 1.0, dashed=True))
         if self._cursor_at is not None:
             out.items.extend(
                 crosshair_strokes(

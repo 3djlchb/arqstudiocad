@@ -313,3 +313,63 @@ fn a_large_opened_drawing_takes_new_entities() {
         1_000
     );
 }
+
+#[test]
+fn fence_picks_are_exact_ordered_unique_and_follow_undo() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 5.0), p(10.0, 5.0)).unwrap();
+    let hits = cad
+        .fence_picks(&[p(8.0, -1.0), p(8.0, 6.0), p(8.0, -1.0)], false)
+        .unwrap();
+    assert_eq!(
+        hits.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        vec![a, b]
+    );
+    assert!(
+        hits[0]
+            .1
+            .approx_eq(p(8.0, 0.0), arq_geometry::Tolerance::default())
+    );
+    assert!(
+        hits[1]
+            .1
+            .approx_eq(p(8.0, 5.0), arq_geometry::Tolerance::default())
+    );
+    cad.move_entities(&[a], arq_geometry::Vector2::new(30.0, 0.0).unwrap())
+        .unwrap();
+    let moved = cad
+        .fence_picks(&[p(8.0, -1.0), p(8.0, 6.0)], false)
+        .unwrap();
+    assert_eq!(moved.len(), 1);
+    assert_eq!(moved[0].0, b);
+    assert!(
+        moved[0]
+            .1
+            .approx_eq(p(8.0, 5.0), arq_geometry::Tolerance::default())
+    );
+    cad.undo().unwrap();
+    assert_eq!(
+        cad.fence_picks(&[p(8.0, -1.0), p(8.0, 6.0)], false)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(cad.fence_picks(&[p(0.0, 0.0)], false).is_err());
+}
+
+#[test]
+fn crossing_picks_include_contained_curves_without_picking_the_box_center() {
+    let mut cad = CadDocument::new();
+    let (id, _) = cad.add_circle(p(0.0, 0.0), 1.0).unwrap();
+    let hits = cad
+        .fence_picks(&[p(-2.0, -2.0), p(2.0, 2.0)], true)
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].0, id);
+    assert!((hits[0].1.distance_to(p(0.0, 0.0)) - 1.0).abs() < 1e-9);
+    assert!(
+        cad.fence_picks(&[p(-2.0, -2.0), p(2.0, 2.0), p(3.0, 3.0)], true)
+            .is_err()
+    );
+}

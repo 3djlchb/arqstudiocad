@@ -84,6 +84,15 @@ class Picked:
 
 
 @dataclass(frozen=True, slots=True)
+class PickedPath:
+    """A fence or crossing rectangle used by a multiple-entity prompt."""
+
+    points: tuple[tuple[float, float], ...]
+    shift: bool = False
+    crossing: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Option:
     """A prompt option: typed by its English ``key``, shown translated with
     the key visible, as ``Extents(E)``."""
@@ -133,6 +142,7 @@ class Prompt:
     #: sign (an elevation).
     zero: bool = False
     signed: bool = False
+    multiple: bool = False
 
     @property
     def picks(self) -> bool:
@@ -447,11 +457,14 @@ class CommandContext:
         options: Sequence[Option] = (),
         default: str | None = None,
         optional: bool = False,
+        multiple: bool = False,
     ) -> Prompt:
         """A prompt for one object, as AutoCAD's "Select object to offset":
         yield it to get a :class:`Picked`, the key of one of ``options``, or
         ``None`` for Enter if it is ``optional``."""
-        return Prompt(message, "entity", tuple(options), default, optional=optional)
+        return Prompt(
+            message, "entity", tuple(options), default, optional=optional, multiple=multiple
+        )
 
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
         """A prompt while the user selects in the viewport (ADR 0016 D3);
@@ -631,6 +644,18 @@ class CommandRunner:
             return
         picked = Picked(entity_id, point, shift)
         self._advance(lambda script: script.send(picked))
+
+    def answer_path(self, points: tuple[tuple[float, float], ...], shift: bool = False) -> None:
+        """A fence picked by the viewport; other entity prompts ignore it."""
+        prompt = self._prompt
+        if (
+            prompt is None
+            or prompt.kind != "entity"
+            or not prompt.multiple
+            or self._refuse_while_busy()
+        ):
+            return
+        self._advance(lambda script: script.send(PickedPath(points, shift)))
 
     def _answer_entity(self, prompt: Prompt, text: str) -> None:
         """A typed answer to an entity prompt: an option, Enter (the default,
@@ -859,6 +884,7 @@ class CommandRunner:
                 prompt.base,
                 prompt.drag,
                 entity=prompt.kind == "entity",
+                multiple=prompt.multiple,
             )
         )
 
@@ -915,6 +941,7 @@ __all__ = [
     "Option",
     "Outcome",
     "Picked",
+    "PickedPath",
     "Prompt",
     "UiServices",
     "ViewControl",

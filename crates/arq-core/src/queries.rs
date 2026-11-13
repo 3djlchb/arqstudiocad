@@ -51,6 +51,79 @@ impl CadDocument {
             .select_window_candidates(area, crossing, &candidates)
     }
 
+    /// Ordered TRIM/EXTEND picks along a fence, or a clockwise crossing
+    /// rectangle given by two opposite corners. Each entity occurs once.
+    /// This read-only query never changes geometry or history.
+    pub fn fence_picks(
+        &self,
+        points: &[Point2],
+        crossing: bool,
+    ) -> CadResult<Vec<(EntityId, Point2)>> {
+        if points.len() < 2 || (crossing && points.len() != 2) {
+            return Err(CadError::InvalidGeometry(
+                "a fence needs two or more points; a crossing needs two corners".into(),
+            ));
+        }
+        let mut path = points.to_vec();
+        let mut area = None;
+        if crossing {
+            let (a, b) = (points[0], points[1]);
+            let horizontal = Point2::new(b.x(), a.y())?;
+            let vertical = Point2::new(a.x(), b.y())?;
+            path = if (b.x() > a.x()) == (b.y() > a.y()) {
+                vec![a, vertical, b, horizontal, a]
+            } else {
+                vec![a, horizontal, b, vertical, a]
+            };
+            area = Some(Bounds2::new(a, b));
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        let mut picks = Vec::new();
+        for segment in path.windows(2) {
+            if segment[0] == segment[1] {
+                continue;
+            }
+            let area = Bounds2::new(segment[0], segment[1])
+                .expanded(arq_geometry::Tolerance::default().linear())?;
+            let candidates: Vec<_> = self
+                .query_entities(area)
+                .into_iter()
+                .filter(|id| !seen.contains(id))
+                .collect();
+            for (id, point) in self
+                .document()
+                .fence_candidates(segment[0], segment[1], &candidates)
+            {
+                if seen.insert(id) {
+                    picks.push((id, point));
+                }
+            }
+        }
+        if let Some(area) = area {
+            for id in self.select_window(area, false) {
+                if seen.contains(&id) {
+                    continue;
+                }
+                let entity = self
+                    .document()
+                    .entity(id)
+                    .ok_or(CadError::EntityNotFound(id))?;
+                let point = if let Some(plan) = entity.plan() {
+                    Some(plan.geometry().point_at(0.5))
+                } else if entity.kind() == "LWPOLYLINE" {
+                    self.grips(&[id]).first().map(|g| g.point)
+                } else {
+                    None
+                };
+                if let Some(point) = point {
+                    seen.insert(id);
+                    picks.push((id, point));
+                }
+            }
+        }
+        Ok(picks)
+    }
+
     /// The grips of `ids` (ADR 0016 D7), entity by entity in the order
     /// given; kinds without grips yet have none.
     pub fn grips(&self, ids: &[EntityId]) -> Vec<Grip> {

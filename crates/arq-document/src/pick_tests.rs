@@ -382,3 +382,33 @@ fn windows_and_crossings_see_the_band_exactly() {
         vec![id]
     );
 }
+
+#[test]
+fn fence_candidates_find_exact_curves_and_skip_blocks_and_texts() {
+    let s = sample();
+    let ids: Vec<_> = s.doc.entities().iter().map(|e| e.id()).collect();
+    let hits = s.doc.fence_candidates(p(2.0, -1.0), p(2.0, 1.0), &ids);
+    assert_eq!(
+        hits.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        vec![s.line, s.line_again]
+    );
+    assert!(
+        hits.iter()
+            .all(|(_, at)| at.approx_eq(p(2.0, 0.0), arq_geometry::Tolerance::default()))
+    );
+    assert!(
+        s.doc
+            .fence_candidates(p(21.8, 1.8), p(22.2, 2.2), &[s.circle])
+            .is_empty()
+    );
+    assert!(
+        s.doc
+            .fence_candidates(p(10.5, 4.0), p(10.5, 7.0), &[s.door])
+            .is_empty()
+    );
+    assert!(
+        s.doc
+            .fence_candidates(p(40.0, -2.0), p(40.0, 2.0), &[s.text])
+            .is_empty()
+    );
+}

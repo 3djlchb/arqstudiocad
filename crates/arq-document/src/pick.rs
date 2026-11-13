@@ -87,6 +87,44 @@ impl Document {
         )
     }
 
+    /// Exact first curve/fence intersections among visible candidate entities,
+    /// ordered from the fence start. Filled bands do not replace exact curves.
+    pub fn fence_candidates(
+        &self,
+        start: Point2,
+        end: Point2,
+        candidates: &[EntityId],
+    ) -> Vec<(EntityId, Point2)> {
+        let Ok(fence) = Line::new(start, end) else {
+            return Vec::new();
+        };
+        let mut hits = Vec::new();
+        for (id, items) in self.drawing_entities(candidates) {
+            let Some(entity) = self.entity(id) else {
+                continue;
+            };
+            if entity.plan().is_none() && entity.kind() != "LWPOLYLINE" {
+                continue;
+            }
+            let point = items
+                .into_iter()
+                .filter_map(|item| curve(item.shape))
+                .flat_map(|g| intersection_points(fence.into(), g, TOL))
+                .map(|snap| snap.point)
+                .min_by(|a, b| start.distance_to(*a).total_cmp(&start.distance_to(*b)));
+            if let Some(point) = point {
+                hits.push((id, point));
+            }
+        }
+        hits.sort_by(|(a_id, a), (b_id, b)| {
+            start
+                .distance_to(*a)
+                .total_cmp(&start.distance_to(*b))
+                .then(a_id.cmp(b_id))
+        });
+        hits
+    }
+
     /// The object snap for the cursor at `cursor`, among the active
     /// `modes`, within `aperture`; `from` is the last point, which
     /// Perpendicular and Tangent need.

@@ -599,6 +599,9 @@ class MainWindow(QMainWindow):
         )
         viewport.point_picked.connect(self.runner.answer_point)
         viewport.entity_picked.connect(lambda found: self.runner.answer_entity(*found))
+        viewport.entity_path_picked.connect(
+            lambda points, shift: self.runner.answer_path(points, shift)
+        )
         viewport.key_typed.connect(self.command_window.type_key)
         viewport.grip_clicked.connect(self._edit_grip)
         # The viewport asks; the session decides and publishes the selection.
@@ -997,7 +1000,7 @@ class MainWindow(QMainWindow):
             if event.point and here:
                 viewport.ask_point(event.base, event.drag)
             elif event.entity and here:
-                viewport.ask_entity()
+                viewport.ask_entity(multiple=event.multiple)
             else:
                 viewport.end_point()
 

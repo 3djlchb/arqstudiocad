@@ -202,6 +202,7 @@ class CommandPrompt(Event):
     base: tuple[float, float] | None = None
     drag: Drag | None = None
     entity: bool = False
+    multiple: bool = False
 
 
 @dataclass(frozen=True, slots=True)
