@@ -1,5 +1,6 @@
 """The editing commands of milestone 02.5 and 02.8 (ADR 0016 D3, D8):
-ERASE, MOVE, COPY, ROTATE, SCALE, MIRROR and EXPLODE.
+ERASE, MOVE, COPY, ROTATE, SCALE, MIRROR and EXPLODE; OFFSET, in
+milestone 02.14 (ADR 0035 D4), which picks one object at a time.
 
 Each works on what is selected when it starts (noun-verb) or asks "Select
 objects" (verb-noun), where the viewport selects as usual and ``ALL``,
@@ -23,13 +24,28 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.core import CadDocument, InvalidGeometryError, InvalidOperationError
+from arqstudiocad.core import (
+    CadArc,
+    CadChangeSet,
+    CadCircle,
+    CadDocument,
+    CadError,
+    CadLine,
+    InvalidGeometryError,
+    InvalidOperationError,
+)
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 from arqstudiocad.points import Point
 
 #: The last rotation angle (radians), remembered as AutoCAD remembers it.
 ROTATION = "ROTATE_ANGLE"
+#: OFFSET's distance (None for Through), whether it erases the source, and
+#: the layer of what it makes ("S" the source's, "C" the current one),
+#: kept for the session as AutoCAD keeps them (OFFSETDIST, OFFSETERASE).
+OFFSET_DISTANCE = "OFFSETDIST"
+OFFSET_ERASE = "OFFSETERASE"
+OFFSET_LAYER = "OFFSET_LAYER"
 
 type Ids = tuple[int, ...]
 type Selecting = Generator[Prompt | Background, Any, Ids]
@@ -223,6 +239,195 @@ def mirror(ctx: CommandContext) -> CommandScript:
     done_selecting(ctx, document, ids)
 
 
+type Curve = CadLine | CadCircle | CadArc
+
+
+def offset(ctx: CommandContext) -> CommandScript:
+    """OFFSET, AutoCAD's (Spanish EQDIST): a copy of a line, circle or
+    arc a distance away, to the side a point shows, or through a point
+    (Through); one object picked at a time until Exit or Enter. Multiple
+    offsets the last copy again; Undo takes back the last offset. The
+    source may be erased (Erase) and the copy go on the current layer
+    (Layer). Each offset is one undo step; the settings are remembered.
+    Polylines come later (maintainer, 2026-11-12)."""
+    document = ctx.document()
+    memory = ctx.remembered
+    memory.setdefault(OFFSET_DISTANCE, None)
+    memory.setdefault(OFFSET_ERASE, False)
+    memory.setdefault(OFFSET_LAYER, "S")
+    ctx.message(
+        tr(
+            "Current settings: Erase source={erase}  Layer={layer}",
+            erase=tr("Yes") if memory[OFFSET_ERASE] else tr("No"),
+            layer=tr("Source") if memory[OFFSET_LAYER] == "S" else tr("Current"),
+        )
+    )
+    yield from _offset_settings(ctx, memory)
+    steps = 0  # this command's offsets, for Undo
+    while True:
+        picked = yield ctx.entity(
+            tr("Select object to offset"),
+            [Option("E", tr("Exit")), Option("U", tr("Undo"))],
+            default="E",
+        )
+        if picked in (None, "E"):
+            return
+        if picked == "U":
+            steps = _undo_offset(ctx, document, steps)
+            continue
+        source, _ = picked
+        geometry = document.get_entity(source).geometry
+        if geometry is None:
+            ctx.message(tr("Cannot offset that object."))
+            continue
+        ctx.session.select(document, (source,))
+        try:
+            ended, steps = yield from _offset_one(ctx, document, memory, source, geometry, steps)
+        finally:
+            ctx.session.clear_selection(document)
+        if ended:
+            return
+
+
+def _offset_settings(ctx: CommandContext, memory: dict[str, Any]) -> CommandScript:
+    """OFFSET's first prompt: the distance or Through, and the Erase and
+    Layer settings, until a distance or Through is given."""
+    while True:
+        distance = memory[OFFSET_DISTANCE]
+        answer = yield ctx.number(
+            tr("Specify offset distance"),
+            default="T" if distance is None else distance,
+            options=[
+                Option("T", tr("Through")),
+                Option("E", tr("Erase")),
+                Option("L", tr("Layer")),
+            ],
+        )
+        if answer == "T":
+            memory[OFFSET_DISTANCE] = None
+            return
+        if answer == "E":
+            erase = yield ctx.choose(
+                tr("Erase source object after offsetting?"),
+                [Option("Y", tr("Yes")), Option("N", tr("No"))],
+                default="Y" if memory[OFFSET_ERASE] else "N",
+            )
+            memory[OFFSET_ERASE] = erase == "Y"
+            continue
+        if answer == "L":
+            memory[OFFSET_LAYER] = yield ctx.choose(
+                tr("Enter layer option for offset objects"),
+                [Option("C", tr("Current")), Option("S", tr("Source"))],
+                default=memory[OFFSET_LAYER],
+            )
+            continue
+        memory[OFFSET_DISTANCE] = float(answer)
+        return
+
+
+def _offset_one(
+    ctx: CommandContext,
+    document: CadDocument,
+    memory: dict[str, Any],
+    source: int,
+    geometry: Curve,
+    steps: int,
+) -> Generator[Prompt | Background, Any, tuple[bool, int]]:
+    """The side (or the point to pass through) for one object, once, or
+    again and again from each new copy after Multiple. Returns whether the
+    command ends (Exit, or Enter outside Multiple) and the offsets made."""
+    distance: float | None = memory[OFFSET_DISTANCE]
+    original, multiple = source, False
+    while True:
+        options = [Option("E", tr("Exit"))]
+        if not multiple:
+            options.append(Option("M", tr("Multiple")))
+        options.append(Option("U", tr("Undo")))
+        message = (
+            tr("Specify through point")
+            if distance is None
+            else tr("Specify point on side to offset")
+        )
+        answer = yield ctx.point(message, options=options, optional=True)
+        if answer == "E" or (answer is None and not multiple):
+            return True, steps
+        if answer is None:  # Enter in Multiple: the next object
+            return False, steps
+        if answer == "M":
+            multiple = True
+            continue
+        if answer == "U":
+            steps = _undo_offset(ctx, document, steps)
+            continue
+        try:
+            made = (
+                geometry.offset_through(answer)
+                if distance is None
+                else geometry.offset(distance, answer)
+            )
+        except InvalidGeometryError:
+            ctx.message(tr("Cannot offset that object to that side."))
+            continue
+        erase = original if memory[OFFSET_ERASE] and source == original else None
+        new = _make_offset(ctx, document, source, made, memory[OFFSET_LAYER] == "C", erase)
+        if new is None:
+            continue
+        steps += 1
+        if not multiple:
+            return False, steps
+        # Multiple goes on from the copy just made.
+        source, geometry = new, made
+
+
+def _make_offset(
+    ctx: CommandContext,
+    document: CadDocument,
+    source: int,
+    geometry: Curve,
+    current_layer: bool,
+    erase: int | None,
+) -> int | None:
+    """A copy of ``source`` with ``geometry``, on the current layer if asked,
+    ``erase`` erased, all as one undo step named OFFSET; None, with the core's
+    message, when the core refuses (a locked layer)."""
+    before = len(document.undo_history)
+    changes: list[CadChangeSet] = []
+    new: int | None = None
+    document.begin_group("OFFSET")
+    try:
+        ids, made = document.copy_entities([source], (0.0, 0.0))
+        changes.append(made)
+        new = ids[0]
+        changes.append(document.set_entity_geometry(new, geometry))
+        if current_layer:
+            changes.append(document.set_entity_layer([new], document.current_layer.id))
+        if erase is not None:
+            changes.append(document.delete_entities([erase]))
+    except CadError as error:
+        new = None
+        ctx.message(tr("Error: {message}", message=str(error)))
+    finally:
+        document.end_group()
+    if new is None:
+        # Nothing half done stays: what the group did is taken back.
+        if len(document.undo_history) > before:
+            document.undo()
+        return None
+    # Reported once the step is closed, so the History panel lists it.
+    for change in changes:
+        ctx.session.report(document, change)
+    return new
+
+
+def _undo_offset(ctx: CommandContext, document: CadDocument, steps: int) -> int:
+    """OFFSET's Undo: the last offset of this command taken back."""
+    if steps == 0:
+        ctx.message(tr("Nothing to undo."))
+        return 0
+    ctx.session.edit(document, lambda d: d.undo())
+    return steps - 1
+
+
 def _transformable(ctx: CommandContext, document: CadDocument) -> Selecting:
     """The entities to transform; stop with a message if some kind cannot
     be transformed yet (ADR 0016 D1)."""
@@ -266,6 +471,7 @@ MODIFY_COMMANDS = (
     Command("ROTATE", rotate, ("RO",)),
     Command("SCALE", scale, ("SC",)),
     Command("MIRROR", mirror, ("MI",)),
+    Command("OFFSET", offset, ("O",)),
 )
 
 __all__ = ["MODIFY_COMMANDS", "done_selecting", "select_objects"]

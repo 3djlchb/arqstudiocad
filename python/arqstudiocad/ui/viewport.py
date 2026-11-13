@@ -195,6 +195,9 @@ class Viewport(QWidget):
     escape_pressed = Signal()
     #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
     point_picked = Signal(object)
+    #: An object picked at an entity prompt: ``(entity_id, (x, y))``, the
+    #: world point clicked.
+    entity_picked = Signal(object)
     #: A key typed in the viewport, for the command line (a ``QKeyEvent``).
     key_typed = Signal(object)
     #: A grip was clicked (a ``CadGrip``): it should be edited.
@@ -251,6 +254,7 @@ class Viewport(QWidget):
         # A point prompt: whether one is open, its last point, and where a
         # click would put the point now (snapped or ORTHO) with its snap.
         self._asking = False
+        self._picking_entity = False  # an entity prompt: a click picks one object
         #: When Shift+F10 last asked for the context menu (``time.monotonic``).
         self._menu_key_at = -MENU_KEY_ECHO
         self._base: Point | None = None
@@ -384,10 +388,17 @@ class Viewport(QWidget):
         self.update()
 
     def end_point(self) -> None:
-        """No point is asked for any more."""
+        """No point, nor object, is asked for any more."""
+        self._picking_entity = False
         if self._asking:
             self._asking, self._base, self._target, self._snap = False, None, None, None
             self.update()
+
+    def ask_entity(self) -> None:
+        """A command asks for one object: a click picks the one under the
+        cursor, as hovering shows it, and no window is drawn."""
+        self.end_point()
+        self._picking_entity = True
 
     @property
     def grips(self) -> tuple[CadGrip, ...]:
@@ -500,6 +511,13 @@ class Viewport(QWidget):
                     self.point_picked.emit(self._target)
                 elif not self.in_plan:
                     self.point_refused.emit()
+                event.accept()
+                return
+            if self._picking_entity:
+                picked = self.pick_at(event.position())
+                at = self.view.plane_point(*self._physical(event.position()))
+                if picked is not None and at is not None:
+                    self.entity_picked.emit((picked, at))
                 event.accept()
                 return
             grip = self.grip_at(event.position())

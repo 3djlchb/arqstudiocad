@@ -23,6 +23,7 @@
 //! | 3D bounding boxes and affine transforms | [`Bounds3`], [`Transform3`] |
 //! | Curves | [`Line`], [`Circle`], [`Arc`], and [`Geometry2`] for any of them |
 //! | Move, rotate, scale, mirror | [`Transform2`] |
+//! | OFFSET's curves, to a side or through a point | [`Geometry2::offset`], [`Geometry2::offset_through`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
 //! | The rectangles RECTANG draws | [`Rectangle`] |
 //! | The area a wide polyline covers, as triangles | [`band`] of [`BandVertex`]es |
@@ -73,6 +74,7 @@ mod error;
 mod geometry;
 mod intersect;
 mod line;
+mod offset;
 mod point;
 mod point3;
 mod rectangle;

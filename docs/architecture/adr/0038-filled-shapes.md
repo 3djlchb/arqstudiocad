@@ -1,6 +1,6 @@
 # 0038. Filled shapes in the drawing: wide polylines first
 
-Date: 2026-11-12 · Status: Proposed
+Date: 2026-11-12 · Status: Accepted (2026-11-12, PR #173)
 
 ## Context
 

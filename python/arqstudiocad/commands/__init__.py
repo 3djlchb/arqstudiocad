@@ -99,8 +99,11 @@ class Prompt:
     a float), ``"angle"`` (degrees, typed, or the direction from ``base``
     to a point; the command receives radians, ADR 0010), ``"number"`` (a
     number greater than zero, only typed: an area; zero too or any sign when
-    the prompt says so; the command receives a float) or ``"select"``
-    (the viewport selects; Enter sends ``None``, an option its key).
+    the prompt says so; the command receives a float), ``"select"``
+    (the viewport selects; Enter sends ``None``, an option its key) or
+    ``"entity"`` (one object, picked in the viewport or under a typed
+    point; the command receives ``(entity_id, (x, y))``, the point where it
+    was picked).
     ``base`` is the last point, for relative input, ORTHO and the rubber
     band; ``drag`` what follows the cursor. An empty answer takes
     ``default`` when there is one; else an ``optional`` point prompt
@@ -109,7 +112,9 @@ class Prompt:
     """
 
     message: str
-    kind: Literal["option", "text", "point", "distance", "angle", "number", "select"] = "text"
+    kind: Literal["option", "text", "point", "distance", "angle", "number", "select", "entity"] = (
+        "text"
+    )
     options: tuple[Option, ...] = ()
     default: str | None = None
     base: tuple[float, float] | None = None
@@ -408,16 +413,31 @@ class CommandContext:
     def number(
         self,
         message: str,
-        default: float | None = None,
+        default: float | str | None = None,
         zero: bool = False,
         signed: bool = False,
+        options: Sequence[Option] = (),
     ) -> Prompt:
         """A prompt for a number greater than zero that is not a distance
         (an area), only typed; or zero too, when ``zero`` (a fillet radius,
         where zero means none); or any number, when ``signed`` (an
-        elevation). Yield it to get a float."""
-        shown = None if default is None else f"{default:.10g}"
-        return Prompt(message, "number", (), shown, zero=zero, signed=signed)
+        elevation). Yield it to get a float, or the key of one of
+        ``options``; ``default`` may be one of their keys (OFFSET's
+        ``<Through>``)."""
+        shown = default if isinstance(default, str) or default is None else f"{default:.10g}"
+        return Prompt(message, "number", tuple(options), shown, zero=zero, signed=signed)
+
+    def entity(
+        self,
+        message: str,
+        options: Sequence[Option] = (),
+        default: str | None = None,
+        optional: bool = False,
+    ) -> Prompt:
+        """A prompt for one object, as AutoCAD's "Select object to offset":
+        yield it to get ``(entity_id, (x, y))``, the key of one of
+        ``options``, or ``None`` for Enter if it is ``optional``."""
+        return Prompt(message, "entity", tuple(options), default, optional=optional)
 
     def select(self, message: str, options: Sequence[Option] = ()) -> Prompt:
         """A prompt while the user selects in the viewport (ADR 0016 D3);
@@ -587,9 +607,49 @@ class CommandRunner:
         self.context.session.drafting.override = None
         self._send_point(prompt, point)
 
+    def answer_entity(self, entity_id: int, point: tuple[float, float]) -> None:
+        """An object picked in the viewport, and where: the answer to an
+        entity prompt; ignored at any other."""
+        prompt = self._prompt
+        if prompt is None or prompt.kind != "entity" or self._refuse_while_busy():
+            return
+        self._advance(lambda script: script.send((entity_id, point)))
+
+    def _answer_entity(self, prompt: Prompt, text: str) -> None:
+        """A typed answer to an entity prompt: an option, Enter (the default,
+        or ``None`` if optional), or a point on the object."""
+        typed = text or prompt.default or ""
+        if not typed:
+            if prompt.optional:
+                self._advance(lambda script: script.send(None))
+            else:
+                self._show(prompt)
+            return
+        key = _option_key(prompt.options, typed)
+        if key is not None:
+            self._advance(lambda script: script.send(key))
+            return
+        try:
+            point = parse_point(typed)
+        except PointSyntaxError as error:
+            self.context.message(str(error))
+            self._show(prompt)
+            return
+        document = self.context.session.active
+        # On the object, rounding aside: a typed point has no pick box.
+        found = None if document is None else document.pick(point, 1e-9)
+        if found is None:
+            self.context.message(tr("No object there."))
+            self._show(prompt)
+            return
+        self._advance(lambda script: script.send((found, point)))
+
     def _answer(self, text: str) -> None:
         prompt = self._prompt
         assert prompt is not None
+        if prompt.kind == "entity":
+            self._answer_entity(prompt, text)
+            return
         if prompt.picks:
             self._answer_point(prompt, text)
             return
@@ -680,6 +740,10 @@ class CommandRunner:
         """A typed number greater than zero (or zero too, or any finite
         number, as the prompt takes), or the default for Enter."""
         typed = text or prompt.default or ""
+        key = _option_key(prompt.options, typed) if typed else None
+        if key is not None:
+            self._advance(lambda script: script.send(key))
+            return
         number = _number(typed) if typed else None
         if number is None or not math.isfinite(number):
             least_ok = False
@@ -770,7 +834,14 @@ class CommandRunner:
 
     def _show(self, prompt: Prompt) -> None:
         self.bus.publish(
-            CommandPrompt(self.active or "", prompt.shown(), prompt.picks, prompt.base, prompt.drag)
+            CommandPrompt(
+                self.active or "",
+                prompt.shown(),
+                prompt.picks,
+                prompt.base,
+                prompt.drag,
+                entity=prompt.kind == "entity",
+            )
         )
 
     def _fail(self, error: Exception) -> None:

@@ -8,7 +8,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use arq_core::{Color, Grip, SnapKind, SnapPoint};
-use arq_geometry::{Arc, Bounds2, Circle, Corners, Line, Point2, Rectangle, Tolerance, Vector2};
+use arq_geometry::{
+    Arc, Bounds2, Circle, Corners, Geometry2, Line, Point2, Rectangle, Tolerance, Vector2,
+};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -280,6 +282,27 @@ impl CadLine {
         arq_geometry::angle::normalize(self.0.direction().angle())
     }
 
+    /// The line `distance` away on the side `toward` lies
+    /// (OFFSET); refused with no side, a distance not greater than zero, or
+    /// nothing left.
+    fn offset(&self, distance: f64, toward: PyPoint) -> PyResult<Self> {
+        match Geometry2::Line(self.0).offset(distance, toward.0, Tolerance::DEFAULT) {
+            Ok(Geometry2::Line(g)) => Ok(Self(g)),
+            Ok(_) => unreachable!("an offset keeps its kind"),
+            Err(e) => Err(e).py(),
+        }
+    }
+
+    /// The line offset to pass through `through` (OFFSET's
+    /// Through), the distance taken square to its line or circle.
+    fn offset_through(&self, through: PyPoint) -> PyResult<Self> {
+        match Geometry2::Line(self.0).offset_through(through.0, Tolerance::DEFAULT) {
+            Ok(Geometry2::Line(g)) => Ok(Self(g)),
+            Ok(_) => unreachable!("an offset keeps its kind"),
+            Err(e) => Err(e).py(),
+        }
+    }
+
     fn __hash__(&self) -> u64 {
         let (a, b) = (self.0.start(), self.0.end());
         hash_floats(&[a.x(), a.y(), b.x(), b.y()])
@@ -342,6 +365,27 @@ impl CadCircle {
     #[getter]
     fn length(&self) -> f64 {
         self.0.length()
+    }
+
+    /// The circle `distance` away on the side `toward` lies
+    /// (OFFSET); refused with no side, a distance not greater than zero, or
+    /// nothing left.
+    fn offset(&self, distance: f64, toward: PyPoint) -> PyResult<Self> {
+        match Geometry2::Circle(self.0).offset(distance, toward.0, Tolerance::DEFAULT) {
+            Ok(Geometry2::Circle(g)) => Ok(Self(g)),
+            Ok(_) => unreachable!("an offset keeps its kind"),
+            Err(e) => Err(e).py(),
+        }
+    }
+
+    /// The circle offset to pass through `through` (OFFSET's
+    /// Through), the distance taken square to its line or circle.
+    fn offset_through(&self, through: PyPoint) -> PyResult<Self> {
+        match Geometry2::Circle(self.0).offset_through(through.0, Tolerance::DEFAULT) {
+            Ok(Geometry2::Circle(g)) => Ok(Self(g)),
+            Ok(_) => unreachable!("an offset keeps its kind"),
+            Err(e) => Err(e).py(),
+        }
     }
 
     fn __hash__(&self) -> u64 {
@@ -445,6 +489,27 @@ impl CadArc {
     #[getter]
     fn length(&self) -> f64 {
         self.0.length()
+    }
+
+    /// The arc `distance` away on the side `toward` lies
+    /// (OFFSET); refused with no side, a distance not greater than zero, or
+    /// nothing left.
+    fn offset(&self, distance: f64, toward: PyPoint) -> PyResult<Self> {
+        match Geometry2::Arc(self.0).offset(distance, toward.0, Tolerance::DEFAULT) {
+            Ok(Geometry2::Arc(g)) => Ok(Self(g)),
+            Ok(_) => unreachable!("an offset keeps its kind"),
+            Err(e) => Err(e).py(),
+        }
+    }
+
+    /// The arc offset to pass through `through` (OFFSET's
+    /// Through), the distance taken square to its line or circle.
+    fn offset_through(&self, through: PyPoint) -> PyResult<Self> {
+        match Geometry2::Arc(self.0).offset_through(through.0, Tolerance::DEFAULT) {
+            Ok(Geometry2::Arc(g)) => Ok(Self(g)),
+            Ok(_) => unreachable!("an offset keeps its kind"),
+            Err(e) => Err(e).py(),
+        }
     }
 
     fn __hash__(&self) -> u64 {

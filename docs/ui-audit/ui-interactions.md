@@ -87,6 +87,7 @@ names its implementation; the registry lives at the end of the linked module.
 | MOVE / COPY | Base and second point; MOVE Enter uses displacement; COPY repeats placements with Undo and grouped history | Same module, `move`:90, `copy`:109 |
 | ROTATE / SCALE | Selection, base, angle in degrees or direction point; scale factor or distance | Same module, `rotate`:144, `scale`:163; runner converts numeric degrees to radians |
 | MIRROR | Two axis points, optional source removal (default keeps sources) | Same module, `mirror`:176 |
+| OFFSET | Distance or Through/Erase/Layer (remembered), then one object picked at a time (a click, or a typed point on it), then the side or the through point, or Exit/Multiple/Undo; each offset one undo step; lines, circles and arcs (milestone 02.14) | Same module, `offset` |
 | BLOCK | Name, base, selection; creates definition and replaces objects with a reference | [blocks.py](../../python/arqstudiocad/commands/blocks.py), `block`:28 |
 | INSERT | Existing-name chooser, insertion point, Scale/Rotate options and moving outline; cancellation rolls back temporary insertion | Same module, `insert`:49; no Explode option yet |
 | BEDIT / BSAVE / BCLOSE | Choose static block, separate editor tab, save to parent or close with modification handling | Same module, `bedit`:102, `bsave`:127, `bclose`:133, `save_block`:138, `close_block_editor`:154 |
