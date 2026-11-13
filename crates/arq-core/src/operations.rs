@@ -229,6 +229,92 @@ impl CadDocument {
         })
     }
 
+    /// FILLET: `a` and `b` (two lines, or a line and an arc) met by an arc of
+    /// `radius` tangent to both, each kept on the side it was picked (`pa`,
+    /// `pb`) and, when `trim`, trimmed or extended to it; radius 0 makes a
+    /// sharp corner. The arc takes `a`'s properties. One undo step; refused
+    /// for the same object twice, a locked layer, parallel lines and a
+    /// radius too large. Returns the arc's id, if one was made.
+    #[allow(clippy::too_many_arguments)]
+    pub fn fillet_entities(
+        &mut self,
+        a: EntityId,
+        pa: Point2,
+        b: EntityId,
+        pb: Point2,
+        radius: f64,
+        trim: bool,
+    ) -> CadResult<(Option<EntityId>, ChangeSet)> {
+        let tol = Tolerance::DEFAULT;
+        self.corner("FILLET", a, b, |ga, gb| {
+            arq_geometry::fillet(ga, pa, gb, pb, radius, trim, tol)
+        })
+    }
+
+    /// CHAMFER: lines `a` and `b` cut across `first` along `a` and `second`
+    /// along `b` from where they meet, each kept on the side it was picked
+    /// and, when `trim`, cut back to the segment; distances 0 make a sharp
+    /// corner. As [`fillet_entities`](Self::fillet_entities) otherwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn chamfer_entities(
+        &mut self,
+        a: EntityId,
+        pa: Point2,
+        b: EntityId,
+        pb: Point2,
+        first: f64,
+        second: f64,
+        trim: bool,
+    ) -> CadResult<(Option<EntityId>, ChangeSet)> {
+        let tol = Tolerance::DEFAULT;
+        self.corner("CHAMFER", a, b, |ga, gb| match (ga, gb) {
+            (Geometry2::Line(la), Geometry2::Line(lb)) => {
+                arq_geometry::chamfer(la, pa, lb, pb, first, second, trim, tol)
+            }
+            _ => Err(GeometryError::OutOfRange { what: "curves" }),
+        })
+    }
+
+    /// FILLET and CHAMFER's step: `make` turns the two objects' geometry
+    /// into their new geometry and the joint, written in one step.
+    fn corner(
+        &mut self,
+        name: &str,
+        a: EntityId,
+        b: EntityId,
+        make: impl FnOnce(Geometry2, Geometry2) -> Result<arq_geometry::Corner, GeometryError>,
+    ) -> CadResult<(Option<EntityId>, ChangeSet)> {
+        self.transact(name, |doc| {
+            if a == b {
+                return Err(DocumentError::from(GeometryError::OutOfRange {
+                    what: "same object",
+                })
+                .into());
+            }
+            let mut plans = Vec::with_capacity(2);
+            for id in [a, b] {
+                let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &e)?;
+                plans.push(
+                    e.plan()
+                        .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?,
+                );
+            }
+            let (plan_a, plan_b) = (plans[0], plans[1]);
+            let corner = make(plan_a.geometry(), plan_b.geometry()).map_err(DocumentError::from)?;
+            if let Some(g) = corner.first {
+                doc.set_plan_geometry(a, plan_a.with_geometry(g))?;
+            }
+            if let Some(g) = corner.second {
+                doc.set_plan_geometry(b, plan_b.with_geometry(g))?;
+            }
+            match corner.joint {
+                Some(g) => Ok(Some(doc.add_geometry_like(a, plan_a.with_geometry(g))?)),
+                None => Ok(None),
+            }
+        })
+    }
+
     /// Trims line, arc, circle or lightweight polyline `id` at the edges
     /// nearest `at` (TRIM; a polyline as `Document::trim_polyline`): the
     /// part between them is taken away, a line or arc cut in the middle

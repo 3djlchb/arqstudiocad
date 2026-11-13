@@ -1177,3 +1177,93 @@ fn a_polyline_extends_at_its_end_and_a_closed_one_cannot() {
     let (closed, _) = cad.add_polyline(&ell, true).unwrap();
     assert!(cad.extend_entity(closed, p(10.0, 9.0), None).is_err());
 }
+
+// FILLET and CHAMFER (milestone 02.14).
+
+/// Two lines crossing at the origin.
+fn corner_lines() -> (CadDocument, EntityId, EntityId) {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(-10.0, 0.0), p(10.0, 0.0)).unwrap();
+    let (b, _) = cad.add_line(p(0.0, -10.0), p(0.0, 10.0)).unwrap();
+    (cad, a, b)
+}
+
+#[test]
+fn a_fillet_trims_both_and_adds_an_arc_like_the_first_in_one_step() {
+    let (mut cad, a, b) = corner_lines();
+    cad.set_entity_color(&[a], Color::Index(2)).unwrap();
+    let (arc, changes) = cad
+        .fillet_entities(a, p(5.0, 0.0), b, p(0.0, 5.0), 2.0, true)
+        .unwrap();
+    let arc = arc.expect("an arc");
+    assert_eq!(changes.created(), [arc]);
+    let e = cad.document().entity(arc).unwrap();
+    assert_eq!((e.kind(), e.color()), ("ARC", Color::Index(2)));
+    assert_eq!(curve_ends(curve_of(&cad, a)), ((2.0, 0.0), (10.0, 0.0)));
+    assert_eq!(curve_ends(curve_of(&cad, b)), ((0.0, 2.0), (0.0, 10.0)));
+    assert_eq!(cad.undo_name(), Some("FILLET"));
+    cad.undo().unwrap();
+    assert!(cad.document().entity(arc).is_none());
+    assert_eq!(curve_ends(curve_of(&cad, a)), ((-10.0, 0.0), (10.0, 0.0)));
+}
+
+#[test]
+fn a_chamfer_cuts_the_corner_and_a_zero_one_meets_the_lines() {
+    let (mut cad, a, b) = corner_lines();
+    let (cut, _) = cad
+        .chamfer_entities(a, p(5.0, 0.0), b, p(0.0, 5.0), 2.0, 3.0, true)
+        .unwrap();
+    assert_eq!(
+        curve_ends(curve_of(&cad, cut.unwrap())),
+        ((2.0, 0.0), (0.0, 3.0))
+    );
+    assert_eq!(cad.undo_name(), Some("CHAMFER"));
+    let (mut cad, a, b) = corner_lines();
+    let (none, _) = cad
+        .fillet_entities(a, p(5.0, 0.0), b, p(0.0, 5.0), 0.0, true)
+        .unwrap();
+    assert!(none.is_none());
+    assert_eq!(curve_ends(curve_of(&cad, a)), ((0.0, 0.0), (10.0, 0.0)));
+}
+
+#[test]
+fn no_trim_leaves_the_objects_as_they_were() {
+    let (mut cad, a, b) = corner_lines();
+    let (arc, _) = cad
+        .fillet_entities(a, p(5.0, 0.0), b, p(0.0, 5.0), 2.0, false)
+        .unwrap();
+    assert!(arc.is_some());
+    assert_eq!(curve_ends(curve_of(&cad, a)), ((-10.0, 0.0), (10.0, 0.0)));
+}
+
+#[test]
+fn a_corner_is_refused_for_one_object_twice_a_locked_layer_or_too_large() {
+    let (mut cad, a, b) = corner_lines();
+    let before = cad.undo_names().len();
+    assert!(
+        cad.fillet_entities(a, p(5.0, 0.0), a, p(6.0, 0.0), 1.0, true)
+            .is_err()
+    );
+    assert!(
+        cad.fillet_entities(a, p(5.0, 0.0), b, p(0.0, 5.0), 50.0, true)
+            .is_err()
+    );
+    let (c, _) = cad.add_circle(p(30.0, 0.0), 1.0).unwrap();
+    assert!(
+        cad.chamfer_entities(a, p(5.0, 0.0), c, p(31.0, 0.0), 1.0, 1.0, true)
+            .is_err()
+    );
+    let layer = cad.document().entity(a).unwrap().layer().to_owned();
+    let id = cad.document().layer_by_name(&layer).unwrap().id();
+    cad.set_layer_locked(id, true).unwrap();
+    let before_lock = cad.undo_names().len();
+    assert!(
+        cad.fillet_entities(a, p(5.0, 0.0), b, p(0.0, 5.0), 1.0, true)
+            .is_err()
+    );
+    assert_eq!(cad.undo_names().len(), before_lock);
+    assert!(
+        before < before_lock,
+        "the circle and the lock were steps of their own"
+    );
+}
