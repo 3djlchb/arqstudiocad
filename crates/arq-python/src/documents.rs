@@ -1086,6 +1086,37 @@ impl CadDocument {
         self.change(|cad| cad.delete_entities(&entity_ids))
     }
 
+    /// Trims line, arc or circle `entity_id` at the edges nearest `at`
+    /// (TRIM): `edges` the cutting edges (Standard), or None for every other
+    /// entity drawn (Quick). With no edge round that part, `erase_uncut`
+    /// erases the whole object (Quick), else it is an `InvalidGeometryError`.
+    /// Returns the entities left of it (none when erased; two when cut in
+    /// the middle; a circle's arc) and what changed.
+    #[pyo3(signature = (entity_id, at, edges = None, erase_uncut = false))]
+    fn trim_entity(
+        &self,
+        entity_id: EntityId,
+        at: PyPoint,
+        edges: Option<Vec<EntityId>>,
+        erase_uncut: bool,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.trim_entity(entity_id, at.0, edges.as_deref(), erase_uncut))
+            .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
+    /// Extends line or arc `entity_id` at the end nearer `at` to the nearest
+    /// of `edges` (Standard), or of every other entity drawn (None, Quick),
+    /// it reaches (EXTEND); an `InvalidGeometryError` when none.
+    #[pyo3(signature = (entity_id, at, edges = None))]
+    fn extend_entity(
+        &self,
+        entity_id: EntityId,
+        at: PyPoint,
+        edges: Option<Vec<EntityId>>,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.extend_entity(entity_id, at.0, edges.as_deref()))
+    }
+
     /// Adds a copy of lightweight polyline `entity_id` offset `distance`
     /// toward `toward`, or through `toward` when `distance` is None
     /// (OFFSET): its corners joined as AutoCAD's, every property kept.

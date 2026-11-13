@@ -937,3 +937,150 @@ fn copying_fails_whole_on_what_cannot_be_copied() {
         "{locked:?}"
     );
 }
+
+// TRIM and EXTEND (milestone 02.14).
+
+fn curve_of(cad: &CadDocument, id: EntityId) -> Geometry2 {
+    cad.document()
+        .entity(id)
+        .unwrap()
+        .plan()
+        .unwrap()
+        .geometry()
+}
+
+fn curve_ends(g: Geometry2) -> ((f64, f64), (f64, f64)) {
+    let r = |v: f64| (v * 1e9).round() / 1e9 + 0.0;
+    let (a, b) = (g.start_point().unwrap(), g.end_point().unwrap());
+    ((r(a.x()), r(a.y())), (r(b.x()), r(b.y())))
+}
+
+/// A line along x from 0 to 10, crossed by two uprights at x = 3 and 7.
+fn crossed() -> (CadDocument, EntityId, EntityId, EntityId) {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let (a, _) = cad.add_line(p(3.0, -1.0), p(3.0, 1.0)).unwrap();
+    let (b, _) = cad.add_line(p(7.0, -1.0), p(7.0, 1.0)).unwrap();
+    (cad, line, a, b)
+}
+
+#[test]
+fn trimming_the_middle_splits_a_line_in_one_step() {
+    let (mut cad, line, _, _) = crossed();
+    cad.set_entity_color(&[line], Color::Index(3)).unwrap();
+    let (left, changes) = cad.trim_entity(line, p(5.0, 0.0), None, true).unwrap();
+    assert_eq!(left.len(), 2);
+    assert_eq!(left[0], line, "the first piece keeps its id");
+    assert_eq!(
+        curve_ends(curve_of(&cad, left[0])),
+        ((0.0, 0.0), (3.0, 0.0))
+    );
+    assert_eq!(
+        curve_ends(curve_of(&cad, left[1])),
+        ((7.0, 0.0), (10.0, 0.0))
+    );
+    assert_eq!(
+        cad.document().entity(left[1]).unwrap().color(),
+        Color::Index(3)
+    );
+    assert_eq!(changes.created(), [left[1]]);
+    assert_eq!(cad.undo_name(), Some("TRIM"));
+    cad.undo().unwrap();
+    assert_eq!(curve_ends(curve_of(&cad, line)), ((0.0, 0.0), (10.0, 0.0)));
+    assert!(cad.document().entity(left[1]).is_none());
+}
+
+#[test]
+fn with_no_edge_quick_erases_and_standard_refuses() {
+    let mut cad = CadDocument::new();
+    let (alone, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let before = cad.undo_names().len();
+    assert!(
+        cad.trim_entity(alone, p(5.0, 0.0), Some(&[]), false)
+            .is_err()
+    );
+    assert_eq!(cad.undo_names().len(), before, "nothing changed");
+    let (left, _) = cad.trim_entity(alone, p(5.0, 0.0), None, true).unwrap();
+    assert!(left.is_empty() && cad.document().entity(alone).is_none());
+}
+
+#[test]
+fn standard_mode_cuts_at_the_edges_chosen_only() {
+    let (mut cad, line, a, _) = crossed();
+    // Only the upright at 3: picked at 5, the part from 3 to the end goes.
+    let (left, _) = cad
+        .trim_entity(line, p(5.0, 0.0), Some(&[a]), false)
+        .unwrap();
+    assert_eq!(left, [line]);
+    assert_eq!(curve_ends(curve_of(&cad, line)), ((0.0, 0.0), (3.0, 0.0)));
+}
+
+#[test]
+fn a_circle_cut_twice_becomes_an_arc_with_its_properties() {
+    let mut cad = CadDocument::new();
+    let (circle, _) = cad.add_circle(p(0.0, 0.0), 5.0).unwrap();
+    cad.set_entity_color(&[circle], Color::Index(5)).unwrap();
+    cad.add_line(p(-10.0, 0.0), p(10.0, 0.0)).unwrap();
+    let (left, _) = cad.trim_entity(circle, p(0.0, 5.0), None, true).unwrap();
+    let [arc] = left.as_slice() else {
+        panic!("{left:?}")
+    };
+    assert!(
+        cad.document().entity(circle).is_none(),
+        "the circle is replaced"
+    );
+    let e = cad.document().entity(*arc).unwrap();
+    assert_eq!((e.kind(), e.color()), ("ARC", Color::Index(5)));
+    let Geometry2::Arc(a) = e.plan().unwrap().geometry() else {
+        panic!()
+    };
+    assert!(
+        (a.sweep() - std::f64::consts::PI).abs() < 1e-12,
+        "the lower half"
+    );
+    assert_eq!(cad.undo_name(), Some("TRIM"));
+    cad.undo().unwrap();
+    assert!(cad.document().entity(circle).is_some());
+}
+
+#[test]
+fn texts_are_not_cutting_edges() {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    // A text whose letters cross the line.
+    cad.add_text("IIII", p(4.0, -1.0), 3.0, 0.0).unwrap();
+    let (left, _) = cad.trim_entity(line, p(5.0, 0.0), None, true).unwrap();
+    assert!(left.is_empty(), "no edge: Quick erases it");
+}
+
+#[test]
+fn extending_reaches_the_nearest_boundary_in_one_step() {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(5.0, 0.0)).unwrap();
+    let (near, _) = cad.add_line(p(8.0, -1.0), p(8.0, 1.0)).unwrap();
+    cad.add_line(p(12.0, -1.0), p(12.0, 1.0)).unwrap();
+    cad.extend_entity(line, p(4.0, 0.0), None).unwrap();
+    assert_eq!(curve_ends(curve_of(&cad, line)), ((0.0, 0.0), (8.0, 0.0)));
+    assert_eq!(cad.undo_name(), Some("EXTEND"));
+    // Again: on to the next.
+    cad.extend_entity(line, p(7.0, 0.0), None).unwrap();
+    assert_eq!(curve_ends(curve_of(&cad, line)), ((0.0, 0.0), (12.0, 0.0)));
+    // Standard, toward an edge it never reaches: refused, nothing changed.
+    let before = cad.undo_names().len();
+    assert!(
+        cad.extend_entity(line, p(11.0, 0.0), Some(&[near]))
+            .is_err()
+    );
+    assert_eq!(cad.undo_names().len(), before);
+}
+
+#[test]
+fn locked_layers_are_neither_trimmed_nor_extended() {
+    let (mut cad, line, _, _) = crossed();
+    let layer = cad.document().entity(line).unwrap().layer().to_owned();
+    let id = cad.document().layer_by_name(&layer).unwrap().id();
+    cad.set_layer_locked(id, true).unwrap();
+    assert!(cad.trim_entity(line, p(5.0, 0.0), None, true).is_err());
+    assert!(cad.extend_entity(line, p(9.0, 0.0), None).is_err());
+    assert_eq!(curve_ends(curve_of(&cad, line)), ((0.0, 0.0), (10.0, 0.0)));
+}
