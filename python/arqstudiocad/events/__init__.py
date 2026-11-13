@@ -194,13 +194,14 @@ class CommandPrompt(Event):
     translated, e.g. ``"Zoom [Extents(E)/In(I)/Out(O)] <E>:"``. With
     ``point``, it asks for a point the viewport may pick; ``base`` is the
     last point, for ORTHO and the rubber band, and ``drag`` what follows the
-    cursor."""
+    cursor. With ``entity``, it asks for one object the viewport may pick."""
 
     name: str
     text: str
     point: bool = False
     base: tuple[float, float] | None = None
     drag: Drag | None = None
+    entity: bool = False
 
 
 @dataclass(frozen=True, slots=True)

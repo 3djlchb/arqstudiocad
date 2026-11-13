@@ -386,7 +386,7 @@ class MainWindow(QMainWindow):
         ):
             self._modeling_menu.addAction(self.command_actions[name])
         self._modify_menu = menu_bar.addMenu("")
-        for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "EXPLODE"):
+        for name in ("ERASE", "MOVE", "COPY", "ROTATE", "SCALE", "MIRROR", "OFFSET", "EXPLODE"):
             self._modify_menu.addAction(self.command_actions[name])
         # Combining solids, as AutoCAD's Modify > Solid Editing (ADR 0032 D5).
         self._solid_editing_menu = self._modify_menu.addMenu("")
@@ -585,6 +585,7 @@ class MainWindow(QMainWindow):
             )
         )
         viewport.point_picked.connect(self.runner.answer_point)
+        viewport.entity_picked.connect(lambda found: self.runner.answer_entity(*found))
         viewport.key_typed.connect(self.command_window.type_key)
         viewport.grip_clicked.connect(self._edit_grip)
         # The viewport asks; the session decides and publishes the selection.
@@ -976,8 +977,11 @@ class MainWindow(QMainWindow):
         """A point prompt lets the active viewport pick the point."""
         active = self.session.active
         for document_id, viewport in self.viewports.items():
-            if event.point and active is not None and document_id == active.id:
+            here = active is not None and document_id == active.id
+            if event.point and here:
                 viewport.ask_point(event.base, event.drag)
+            elif event.entity and here:
+                viewport.ask_entity()
             else:
                 viewport.end_point()
 
