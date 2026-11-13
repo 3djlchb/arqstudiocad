@@ -1267,3 +1267,58 @@ fn a_corner_is_refused_for_one_object_twice_a_locked_layer_or_too_large() {
         "the circle and the lock were steps of their own"
     );
 }
+
+#[test]
+fn a_polyline_has_every_corner_filleted_in_one_step() {
+    let mut cad = CadDocument::new();
+    let square = [
+        (p(0.0, 0.0), 0.0),
+        (p(10.0, 0.0), 0.0),
+        (p(10.0, 10.0), 0.0),
+        (p(0.0, 10.0), 0.0),
+    ];
+    let (pl, _) = cad.add_polyline(&square, true).unwrap();
+    let ((done, short), _) = cad
+        .cut_polyline_corners(pl, arq_geometry::CornerCut::Fillet(2.0), None)
+        .unwrap();
+    assert_eq!((done, short), (4, 0));
+    assert_eq!(polyline_points(&cad, pl).len(), 8);
+    assert_eq!(detail(&cad, pl, "Closed"), "true");
+    assert_eq!(cad.undo_name(), Some("FILLET"));
+    cad.undo().unwrap();
+    assert_eq!(polyline_points(&cad, pl).len(), 4);
+}
+
+#[test]
+fn two_segments_picked_cut_the_corner_they_share() {
+    let mut cad = CadDocument::new();
+    let ell = [
+        (p(0.0, 0.0), 0.0),
+        (p(10.0, 0.0), 0.0),
+        (p(10.0, 10.0), 0.0),
+        (p(20.0, 10.0), 0.0),
+    ];
+    let (pl, _) = cad.add_polyline(&ell, false).unwrap();
+    let picks = Some((p(5.0, 0.0), p(10.0, 5.0)));
+    let ((done, _), _) = cad
+        .cut_polyline_corners(pl, arq_geometry::CornerCut::Chamfer(1.0, 2.0), picks)
+        .unwrap();
+    assert_eq!(done, 1);
+    assert_eq!(
+        polyline_points(&cad, pl),
+        [
+            (0.0, 0.0),
+            (9.0, 0.0),
+            (10.0, 2.0),
+            (10.0, 10.0),
+            (20.0, 10.0)
+        ]
+    );
+    assert_eq!(cad.undo_name(), Some("CHAMFER"));
+    // Segments not next to each other share no corner.
+    let far = Some((p(5.0, 0.0), p(15.0, 10.0)));
+    assert!(
+        cad.cut_polyline_corners(pl, arq_geometry::CornerCut::Fillet(1.0), far)
+            .is_err()
+    );
+}
