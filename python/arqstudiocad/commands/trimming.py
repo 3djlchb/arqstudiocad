@@ -8,8 +8,9 @@ Standard mode the edges are chosen first ("Select cutting edges" or
 remembered (AutoCAD's TRIMEXTENDMODE); Shift on a pick does the other
 command. Undo takes back the last trim or extension of the run, and TRIM's
 Erase erases objects without leaving it. The core does every change, each
-one undo step. Lines, arcs and circles for now; polylines come later
-(maintainer, 2026-11-12).
+one undo step. Lines, arcs, circles and lightweight polylines: a polyline
+trimmed in the middle becomes two, a closed one opens; an open one extends
+at its end segment.
 """
 
 from collections.abc import Generator
@@ -135,7 +136,8 @@ def _trim_one(
     ctx: CommandContext, document: CadDocument, picked: Picked, edges: Edges, *, quick: bool
 ) -> int:
     """Trims the object picked; 1 when it changed, else 0 with why."""
-    if document.get_entity(picked.entity_id).geometry is None:
+    entity = document.get_entity(picked.entity_id)
+    if entity.geometry is None and entity.kind != "LWPOLYLINE":
         ctx.message(tr("Cannot trim that object."))
         return 0
     try:
@@ -155,7 +157,9 @@ def _trim_one(
 def _extend_one(ctx: CommandContext, document: CadDocument, picked: Picked, edges: Edges) -> int:
     """Extends the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
-    if entity.geometry is None or entity.kind == "CIRCLE":
+    polyline = entity.kind == "LWPOLYLINE"
+    closed = polyline and dict(entity.details).get("Closed") == "true"
+    if (entity.geometry is None and not polyline) or entity.kind == "CIRCLE" or closed:
         ctx.message(tr("Cannot extend that object."))
         return 0
     try:
