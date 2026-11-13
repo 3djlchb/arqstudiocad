@@ -9,7 +9,7 @@ event. It has no Qt.
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from arqstudiocad.core import CadApplication, CadChangeSet, CadDocument
+from arqstudiocad.core import CadApplication, CadBounds2, CadChangeSet, CadDocument
 from arqstudiocad.drafting import Drafting
 from arqstudiocad.events import (
     ActiveDocumentChanged,
@@ -39,6 +39,8 @@ class Session:
         # The selected entities of each document, in the order selected
         # (ADR 0016 D3).
         self._selection: dict[int, tuple[int, ...]] = {}
+        # Crossing windows per selected entity; absent means selected whole.
+        self._crossing: dict[int, dict[int, list[CadBounds2]]] = {}
         #: How points are picked: running snaps, ORTHO, the cursor.
         self.drafting = Drafting(bus)
         # Block editors (ADR 0023 D3): each edits a block of a document.
@@ -147,6 +149,7 @@ class Session:
         document.close()
         self._documents.remove(document)
         self._selection.pop(document.id, None)
+        self._crossing.pop(document.id, None)
         self.bus.publish(DocumentClosed(document.id))
         if self._active == document:
             self._active = None
@@ -161,15 +164,44 @@ class Session:
         """The selected entities of ``document``, in the order selected."""
         return self._selection.get(document.id, ())
 
-    def select(self, document: CadDocument, entity_ids: Iterable[int]) -> None:
+    def crossing_selection(self, document: CadDocument) -> list[tuple[int, CadBounds2]]:
+        """The crossing windows that selected each still-selected entity."""
+        return [
+            (i, area) for i, areas in self._crossing.get(document.id, {}).items() for area in areas
+        ]
+
+    def select(
+        self, document: CadDocument, entity_ids: Iterable[int], crossing: CadBounds2 | None = None
+    ) -> None:
         """Adds entities to the selection of ``document`` (a click, a window)."""
         current = self.selection(document)
-        added = tuple(dict.fromkeys(i for i in entity_ids if i not in current))
+        if (
+            crossing is None
+            and isinstance(entity_ids, tuple)
+            and entity_ids == current
+            and not self._crossing.get(document.id)
+        ):
+            return
+        ids = tuple(entity_ids)
+        current_ids = set(current)
+        if crossing is None:
+            windows = self._crossing.get(document.id)
+            if windows:
+                for i in ids:
+                    windows.pop(i, None)
+        else:
+            windows = self._crossing.setdefault(document.id, {})
+            for i in ids:
+                if i not in current_ids or i in windows:
+                    windows.setdefault(i, []).append(crossing)
+        added = tuple(dict.fromkeys(i for i in ids if i not in current_ids))
         self._set_selection(document.id, current + added)
 
     def deselect(self, document: CadDocument, entity_ids: Iterable[int]) -> None:
         """Removes entities from the selection of ``document`` (Shift+click)."""
         removed = set(entity_ids)
+        for i in removed:
+            self._crossing.get(document.id, {}).pop(i, None)
         self._set_selection(
             document.id, tuple(i for i in self.selection(document) if i not in removed)
         )
@@ -177,9 +209,16 @@ class Session:
     def clear_selection(self, document: CadDocument) -> None:
         """Empties the selection of ``document`` (Esc, the end of an editing
         command)."""
+        self._crossing.pop(document.id, None)
         self._set_selection(document.id, ())
 
     def _set_selection(self, document_id: int, entity_ids: tuple[int, ...]) -> None:
+        windows = self._crossing.get(document_id)
+        if windows:
+            kept = set(entity_ids)
+            for i in tuple(windows):
+                if i not in kept:
+                    del windows[i]
         if entity_ids != self._selection.get(document_id, ()):
             self._selection[document_id] = entity_ids
             self.bus.publish(SelectionChanged(document_id, entity_ids))

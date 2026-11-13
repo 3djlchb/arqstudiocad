@@ -1062,6 +1062,21 @@ impl CadDocument {
         self.change(|cad| cad.set_entity_geometry(entity_id, g))
     }
 
+    /// Stretches line endpoints and polyline vertices in crossing windows;
+    /// entities without a crossing window move whole. One undo step.
+    fn stretch_entities(
+        &self,
+        entity_ids: Vec<EntityId>,
+        offset: PyVector,
+        crossing: Vec<(EntityId, CadBounds2)>,
+    ) -> PyResult<CadChangeSet> {
+        let areas: Vec<_> = crossing
+            .into_iter()
+            .map(|(id, area)| (id, area.0))
+            .collect();
+        self.change(|cad| cad.stretch_entities(&entity_ids, offset.0, &areas))
+    }
+
     /// Moves one lightweight-polyline vertex to a plan point.
     fn set_polyline_vertex(
         &self,

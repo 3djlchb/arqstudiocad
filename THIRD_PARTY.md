@@ -47,3 +47,12 @@ copied.
 | [Open Design Specification for .dwg files](https://www.opendesign.com/files/guestdownloads/OpenDesign_Specification_for_.dwg_files.pdf), ODA version 5.4.1 | Copyright Open Design Alliance; factual format reference only | Printed page 223: independent legacy table border visibility indicators and omission of payload for virtual shared edges. No ODA source code or document text copied; our codec correction is independently tested against native ProgeCAD input and reopening |
 | [opencadcodec](https://github.com/HakanSeven12/opencadcodec) | MPL-2.0 | Fork of AcadRust, our engine until ADR 0017; its improvements are brought in one by one with regression drawings, each recorded here; ongoing codec reference for Open CAD Studio comparisons (maintainer, 2026-11-01): verify the actual dependency/revision and per-file notices for each investigation, and record any concrete reuse before integration; no new source copied by this planning update |
 | [LibreDWG](https://github.com/LibreDWG/libredwg) test data | GPL-3.0-or-later | `Constraints.dwg` in seven DWG versions, downloaded and checksummed as **test input** for the round-trip corpus (`tools/fetch_codec_samples.py`, tag 0.13.3), never committed nor shipped |
+
+## Command behavior references
+
+`STRETCH` follows the publicly documented interaction of
+[AutoCAD 2021](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-F000A502-D39E-4D31-A8E2-4A626473FB72.htm)
+as a compatibility reference requested by the maintainer. All implementation
+and tests are original GPL-3.0-or-later code; no proprietary Autodesk source,
+artwork or documentation passages are incorporated. The supported subset
+and its limits are recorded in [the command brief](docs/design/stretch-command.md).

@@ -671,6 +671,24 @@ impl CadDocument {
         })
     }
 
+    /// STRETCH: each selected entity's crossing windows, or a whole move
+    /// when it has none. Every edit commits as one step or rolls back.
+    pub fn stretch_entities(
+        &mut self,
+        ids: &[EntityId],
+        offset: Vector2,
+        crossing: &[(EntityId, arq_geometry::Bounds2)],
+    ) -> CadResult<ChangeSet> {
+        let mut windows = BTreeMap::<EntityId, Vec<arq_geometry::Bounds2>>::new();
+        for &(id, area) in crossing {
+            windows.entry(id).or_default().push(area);
+        }
+        self.edit_entities("STRETCH", ids, |doc, e| {
+            let areas = windows.get(&e.id()).map_or(&[][..], Vec::as_slice);
+            Ok(doc.stretch_entity(e.id(), areas, offset)?)
+        })
+    }
+
     /// Moves one lightweight-polyline vertex to a plan point (grip stretch).
     pub fn set_polyline_vertex(
         &mut self,

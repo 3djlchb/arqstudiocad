@@ -188,6 +188,7 @@ class Viewport(QWidget):
     cursor_moved = Signal(float, float)
     #: Entities to add to the selection (a click, a window, a crossing).
     select_requested = Signal(object)
+    crossing_requested = Signal(object, object)
     #: Entities to remove from the selection (Shift+click or Shift+window).
     deselect_requested = Signal(object)
     #: Esc: the running command should be cancelled and the selection
@@ -567,10 +568,18 @@ class Viewport(QWidget):
             else:
                 picked = self.pick_at(event.position())
                 found = () if picked is None else (picked,)
+            area = None
+            if self._band is not None and self.in_plan and self._band.x() < self._press.x():
+                a = self.view.to_world(*self._physical(self._press))
+                b = self.view.to_world(*self._physical(self._band))
+                area = CadBounds2(a, b)
             self._press = self._band = None
             self.update()
             if found:
-                (self.deselect_requested if remove else self.select_requested).emit(found)
+                if area is not None and not remove:
+                    self.crossing_requested.emit(found, area)
+                else:
+                    (self.deselect_requested if remove else self.select_requested).emit(found)
             event.accept()
             return
         super().mouseReleaseEvent(event)

@@ -180,6 +180,11 @@ type CommandScript = Generator[Prompt | Background, Any, None]
 class ViewControl(Protocol):
     """What commands may do with the view of a document."""
 
+    @property
+    def in_plan(self) -> bool:
+        """Whether the viewport shows the model's XY plane from above."""
+        ...
+
     def zoom_extents(self) -> bool: ...
     def zoom(self, factor: float) -> None: ...
     def set_view(self, name: str) -> None:

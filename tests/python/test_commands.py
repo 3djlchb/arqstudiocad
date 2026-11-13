@@ -87,6 +87,7 @@ def harness(ui: UiServices | None = None, registry: CommandRegistry | None = Non
 
 @dataclass
 class FakeView:
+    in_plan: bool = True
     extents: int = 0
     zooms: list[float] = field(default_factory=list)
     views: list[str] = field(default_factory=list)
@@ -100,6 +101,7 @@ class FakeView:
 
     def set_view(self, name: str) -> None:
         self.views.append(name)
+        self.in_plan = name == "top"
 
 
 @dataclass
