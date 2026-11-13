@@ -1105,3 +1105,161 @@ fn a_solid_in_a_block_is_placed_where_its_reference_puts_it() {
         .collect();
     assert!(xs.iter().all(|&x| (99.0..=101.0).contains(&x)), "{xs:?}");
 }
+
+// Wide and thick polylines (ADR 0038, ADR 0030 D1).
+
+/// A lightweight polyline through `points`, straight, with `width`,
+/// `thickness` and `elevation`, its normal `normal`.
+fn wide_polyline(
+    points: &[(f64, f64)],
+    closed: bool,
+    width: f64,
+    thickness: f64,
+    elevation: f64,
+    normal: Vector3,
+) -> EntityType {
+    let mut pl = LwPolyline::new();
+    for &(x, y) in points {
+        pl.add_point_with_bulge(Vector2::new(x, y), 0.0);
+    }
+    pl.is_closed = closed;
+    pl.constant_width = width;
+    pl.thickness = thickness;
+    pl.elevation = elevation;
+    pl.normal = normal;
+    EntityType::LwPolyline(pl)
+}
+
+fn triangles(items: &[DrawItem]) -> Vec<[Point2; 3]> {
+    items
+        .iter()
+        .filter_map(|i| match i.shape {
+            Shape::Triangle(t) => Some(t),
+            _ => None,
+        })
+        .collect()
+}
+
+fn covered(triangles: &[[Point2; 3]], q: Point2) -> bool {
+    triangles.iter().any(|&[a, b, c]| {
+        let s = |u: Point2, w: Point2| (w - u).cross(q - u);
+        let (d1, d2, d3) = (s(a, b), s(b, c), s(c, a));
+        (d1 >= 0.0 && d2 >= 0.0 && d3 >= 0.0) || (d1 <= 0.0 && d2 <= 0.0 && d3 <= 0.0)
+    })
+}
+
+#[test]
+fn a_wide_polyline_draws_its_curves_and_the_band_they_cover() {
+    let square = [(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)];
+    let doc = engine(vec![wide_polyline(
+        &square,
+        true,
+        0.5,
+        0.0,
+        0.0,
+        v3(0.0, 0.0, 1.0),
+    )]);
+    let items = shapes(&doc);
+    assert_eq!(
+        lines(&items).len(),
+        4,
+        "its centerline, for snaps and highlight"
+    );
+    let t = triangles(&items);
+    assert!(!t.is_empty());
+    assert!(
+        covered(&t, p(2.0, 0.2)) && covered(&t, p(-0.2, -0.2)),
+        "the band, mitered"
+    );
+    assert!(!covered(&t, p(2.0, 1.0)) && !covered(&t, p(2.0, 0.3)));
+    // Without width, the curves alone.
+    let doc = engine(vec![wide_polyline(
+        &square,
+        true,
+        0.0,
+        0.0,
+        0.0,
+        v3(0.0, 0.0, 1.0),
+    )]);
+    assert!(triangles(&shapes(&doc)).is_empty());
+}
+
+#[test]
+fn a_band_on_a_mirrored_plane_lies_where_its_curves_do() {
+    // Seen from below, OCS x runs west: (4, 0) is world (-4, 0).
+    let doc = engine(vec![wide_polyline(
+        &[(0.0, 0.0), (4.0, 0.0)],
+        false,
+        1.0,
+        0.0,
+        0.0,
+        v3(0.0, 0.0, -1.0),
+    )]);
+    let items = shapes(&doc);
+    let t = triangles(&items);
+    assert!(
+        covered(&t, p(-2.0, 0.4)) && !covered(&t, p(2.0, 0.0)),
+        "{t:?}"
+    );
+    let ends = lines(&items);
+    assert_eq!(ends.len(), 1);
+    assert!(
+        ends[0].0.0.min(ends[0].1.0) < -3.9,
+        "the curve is there too: {ends:?}"
+    );
+}
+
+#[test]
+fn a_thick_polyline_rises_in_space_and_its_band_stays_in_plan() {
+    let square = [(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)];
+    let doc = engine(vec![wide_polyline(
+        &square,
+        true,
+        0.5,
+        3.0,
+        1.0,
+        v3(0.0, 0.0, 1.0),
+    )]);
+    let space = in_space(&doc);
+    let at = |z: f64| {
+        space
+            .iter()
+            .filter(|s| s.points.len() == 2 && s.points.iter().all(|q| (q.z() - z).abs() < 1e-9))
+            .count()
+    };
+    assert_eq!(at(1.0), 4, "its sides at its elevation");
+    assert_eq!(at(4.0), 4, "again, its thickness higher");
+    let walls: Vec<_> = space
+        .iter()
+        .filter(|s| s.points.len() == 2 && (s.points[0].z() - s.points[1].z()).abs() > 1e-9)
+        .map(|s| (xyz(s.points[0]), xyz(s.points[1])))
+        .collect();
+    assert_eq!(walls.len(), 4, "an edge up from each vertex");
+    assert!(walls.contains(&((4.0, 2.0, 1.0), (4.0, 2.0, 4.0))));
+    assert_eq!(space.len(), 12, "no fill in space: {}", space.len());
+    // A negative thickness goes down; a mirrored plane's goes down too.
+    for (thickness, normal) in [(-3.0, v3(0.0, 0.0, 1.0)), (3.0, v3(0.0, 0.0, -1.0))] {
+        let doc = engine(vec![wide_polyline(
+            &square, true, 0.0, thickness, 0.0, normal,
+        )]);
+        let lowest = in_space(&doc)
+            .iter()
+            .flat_map(|s| s.points.clone())
+            .map(|q| q.z())
+            .fold(f64::INFINITY, f64::min);
+        assert!(
+            (lowest + 3.0).abs() < 1e-9,
+            "{thickness} {normal:?}: {lowest}"
+        );
+    }
+    // No thickness, no walls.
+    let doc = engine(vec![wide_polyline(
+        &square,
+        true,
+        0.5,
+        0.0,
+        0.0,
+        v3(0.0, 0.0, 1.0),
+    )]);
+    assert_eq!(in_space(&doc).len(), 4);
+}

@@ -261,7 +261,7 @@ fn curve(shape: Shape) -> Option<Geometry2> {
         Shape::Line(l) => Some(l.into()),
         Shape::Circle(c) => Some(c.into()),
         Shape::Arc(a) => Some(a.into()),
-        Shape::Point(_) | Shape::Text(_) | Shape::Placeholder(_) => None,
+        Shape::Point(_) | Shape::Text(_) | Shape::Placeholder(_) | Shape::Triangle(_) => None,
     }
 }
 
@@ -280,6 +280,13 @@ fn distance(shape: Shape, at: Point2) -> f64 {
             let dy = (b.min().y() - at.y()).max(at.y() - b.max().y()).max(0.0);
             dx.hypot(dy)
         }
+        // A wide polyline is picked anywhere on its band.
+        Shape::Triangle(t) if in_triangle(t, at) => 0.0,
+        Shape::Triangle([a, b, c]) => [(a, b), (b, c), (c, a)]
+            .into_iter()
+            .filter_map(|(p, q)| Line::new(p, q).ok())
+            .map(|l| l.distance_to(at))
+            .fold(f64::INFINITY, f64::min),
         _ => curve(shape).map_or(f64::INFINITY, |g| g.distance_to(at)),
     }
 }
@@ -291,6 +298,19 @@ fn touches(shape: Shape, area: Bounds2) -> bool {
     if !area.intersects(bounds, TOL) {
         return false;
     }
+    if let Shape::Triangle(t) = shape {
+        // Inside one another, or an edge crossing.
+        return t.iter().any(|&p| area.contains_point(p, TOL))
+            || area.corners().iter().any(|&p| in_triangle(t, p))
+            || [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]
+                .into_iter()
+                .filter_map(|(p, q)| Line::new(p, q).ok().map(Geometry2::from))
+                .any(|side| {
+                    edges(area)
+                        .into_iter()
+                        .any(|edge| !arq_geometry::intersect(side, edge, TOL).is_empty())
+                });
+    }
     let Some(g) = curve(shape) else {
         return true; // a point or box whose box meets the area
     };
@@ -300,6 +320,13 @@ fn touches(shape: Shape, area: Bounds2) -> bool {
     edges(area)
         .into_iter()
         .any(|edge| !arq_geometry::intersect(g, edge, TOL).is_empty())
+}
+
+/// Whether `q` lies in the triangle, its edges included.
+fn in_triangle([a, b, c]: [Point2; 3], q: Point2) -> bool {
+    let side = |u: Point2, w: Point2| (w - u).cross(q - u);
+    let (d1, d2, d3) = (side(a, b), side(b, c), side(c, a));
+    (d1 >= 0.0 && d2 >= 0.0 && d3 >= 0.0) || (d1 <= 0.0 && d2 <= 0.0 && d3 <= 0.0)
 }
 
 /// The edges of a box; none of zero length (a flat box is one segment, a

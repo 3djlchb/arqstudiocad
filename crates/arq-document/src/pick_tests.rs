@@ -323,3 +323,62 @@ fn snaps_ignore_hidden_layers_inactive_modes_and_bad_apertures() {
             .is_none()
     );
 }
+
+/// A diagonal 2 wide from (0,0) to (10,10) (ADR 0038).
+fn wide_diagonal() -> (Document, EntityId) {
+    let mut doc = Document::new();
+    let style = crate::entity::PolylineStyle {
+        width: 2.0,
+        ..Default::default()
+    };
+    let id = doc
+        .add_polyline_with(&[(p(0.0, 0.0), 0.0), (p(10.0, 10.0), 0.0)], false, style)
+        .unwrap();
+    (doc, id)
+}
+
+#[test]
+fn a_wide_polyline_is_picked_anywhere_on_its_band() {
+    let (doc, id) = wide_diagonal();
+    // 0.7 off the centerline, inside the band (half of 2 is 1).
+    assert_eq!(doc.pick(p(5.5, 4.5), 0.1), Some(id));
+    assert_eq!(
+        doc.pick(p(6.0, 4.0), 0.1),
+        None,
+        "1.41 off: beyond the band"
+    );
+    assert_eq!(
+        doc.pick(p(6.0, 4.0), 0.5),
+        Some(id),
+        "within the aperture of its edge"
+    );
+}
+
+#[test]
+fn windows_and_crossings_see_the_band_exactly() {
+    let (doc, id) = wide_diagonal();
+    // Inside the band's box but away from the band: the box would touch.
+    assert!(
+        doc.select_window(area(7.0, 0.0, 10.0, 3.0), true)
+            .is_empty()
+    );
+    assert_eq!(
+        doc.select_window(area(4.8, 5.0, 5.2, 5.4), true),
+        vec![id],
+        "inside it"
+    );
+    assert_eq!(
+        doc.select_window(area(5.5, 3.0, 9.0, 4.4), true),
+        vec![id],
+        "on its edge"
+    );
+    // A window must hold the band, not the centerline only.
+    assert!(
+        doc.select_window(area(-0.1, -0.1, 10.1, 10.1), false)
+            .is_empty()
+    );
+    assert_eq!(
+        doc.select_window(area(-1.0, -1.0, 11.0, 11.0), false),
+        vec![id]
+    );
+}

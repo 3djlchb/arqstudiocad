@@ -370,6 +370,56 @@ fn cad_with_lines(count: usize) -> CadDocument {
 }
 
 #[test]
+fn the_gpu_fills_what_the_cpu_fills() {
+    for antialias in [false, true] {
+        let Some(mut gpu) = renderer(antialias) else {
+            return;
+        };
+        fills_what_the_cpu_fills(&mut gpu);
+    }
+}
+
+/// Wide polylines (ADR 0038): a mitered frame, an arc's ring, a taper, and
+/// a red line across a band, drawn over it by both.
+fn fills_what_the_cpu_fills(gpu: &mut GpuRenderer) {
+    let camera = Camera::new(100, 100);
+    let mut cad = CadDocument::new();
+    let wide = |width| arq_core::PolylineStyle {
+        width,
+        ..Default::default()
+    };
+    let ring = [(-40.0, -30.0), (10.0, -30.0), (10.0, 0.0), (-40.0, 0.0)];
+    let vertices: Vec<_> = ring.iter().map(|&(x, y)| (p(x, y), 0.0)).collect();
+    cad.add_polyline_with(&vertices, true, wide(5.0)).unwrap();
+    cad.add_polyline_with(
+        &[(p(15.0, 20.0), 1.0), (p(40.0, 20.0), 0.0)],
+        false,
+        wide(3.0),
+    )
+    .unwrap();
+    let (red, _) = cad.add_line(p(-45.0, -20.5), p(45.0, -20.5)).unwrap();
+    cad.set_entity_color(&[red], Color::Index(1)).unwrap();
+    let scene = Scene::build(cad.document());
+    for style in [DARK, LIGHT] {
+        let (cpu, img) = both(gpu, &scene, &camera, style);
+        let lit = assert_same(&cpu, &img, style, &[[255, 0, 0]], "wide polylines");
+        assert!(lit > 800, "the bands are filled: {lit} pixels");
+        // The red line crosses the frame's left side (x = -40, column 10)
+        // on row 70, over its band.
+        assert_eq!(
+            pixel(&cpu, 10, 70),
+            [255, 0, 0],
+            "CPU: the line over the band"
+        );
+        assert_eq!(
+            pixel(&img, 10, 70),
+            [255, 0, 0],
+            "GPU: the line over the band"
+        );
+    }
+}
+
+#[test]
 fn the_overlay_is_drawn_over_the_drawing() {
     for antialias in [false, true] {
         let Some(mut gpu) = renderer(antialias) else {

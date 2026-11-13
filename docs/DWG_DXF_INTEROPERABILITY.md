@@ -33,7 +33,7 @@ when its parameters change).
 | Content | Read | Keep (DWG / DXF) | Show | Edit | Recompute | Notes |
 |---|---|---|---|---|---|---|
 | Lines, circles, arcs | ✅ | 100 % / 100 % | ✅ | ✅ geometry, layer, color | — | |
-| Lightweight polylines | ✅ | 100 % / 100 % | ◐ | ✅ drawn (PLINE: segments and tangent arcs; RECTANG, with elevation, thickness and constant width), as a whole and by vertex | — | Width and thickness are kept but not drawn yet: the viewport draws the centerline |
+| Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ✅ drawn (PLINE: segments and tangent arcs; RECTANG, with elevation, thickness and constant width), as a whole and by vertex | — | Width drawn as a filled band in plan and thickness as walls in the 3D views ([ADR 0038](architecture/adr/0038-filled-shapes.md)); in a 3D view the width is seen by the centerline |
 | Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ created (BLOCK), placed (INSERT), transformed as a whole with their attributes, definitions edited in the block editor (BEDIT; not dynamic ones); EXPLODE keeps attribute values as texts (ADR 0023) | — | MINSERT arrays not transformed |
 | Dimensions | ✅ | 100 % / 100 % | ✅ as AutoCAD drew them (their block) | ○ | ○ | phase 04 |
 | Hatches | ✅ | 100 % / 100 % | ◐ boundaries, no fill pattern | ○ | ○ | phase 04 |

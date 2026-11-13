@@ -25,6 +25,7 @@
 //! | Move, rotate, scale, mirror | [`Transform2`] |
 //! | Where curves meet | [`intersect`] → [`Intersections`] |
 //! | The rectangles RECTANG draws | [`Rectangle`] |
+//! | The area a wide polyline covers, as triangles | [`band`] of [`BandVertex`]es |
 //! | Polygons with holes, their union, intersection and difference | [`Region`] |
 //! | The same with curved edges: arcs, and a plane seen on a cylinder or a cone | [`CurvedRegion`] of [`Trim`]s |
 //! | Object-snap points | [`snap`] |
@@ -63,6 +64,7 @@
 
 pub mod angle;
 mod arc;
+mod band;
 mod bounds;
 mod bounds3;
 mod circle;
@@ -83,6 +85,7 @@ mod vector;
 mod vector3;
 
 pub use arc::Arc;
+pub use band::{BandVertex, band};
 pub use bounds::Bounds2;
 pub use bounds3::Bounds3;
 pub use circle::Circle;

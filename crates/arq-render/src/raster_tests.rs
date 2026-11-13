@@ -345,3 +345,106 @@ fn a_line_entering_at_the_top_edge_is_drawn_where_it_is() {
     );
     assert_eq!(entering, inside);
 }
+
+/// A 60 × 20 rectangle about the origin, its sides 6 wide (ADR 0038).
+fn wide_frame(cad: &mut CadDocument, width: f64) -> arq_core::EntityId {
+    let ring = [(-30.0, -10.0), (30.0, -10.0), (30.0, 10.0), (-30.0, 10.0)];
+    let vertices: Vec<_> = ring.iter().map(|&(x, y)| (p(x, y), 0.0)).collect();
+    let style = arq_core::PolylineStyle {
+        width,
+        ..Default::default()
+    };
+    cad.add_polyline_with(&vertices, true, style).unwrap().0
+}
+
+#[test]
+fn a_wide_polyline_fills_its_band() {
+    let mut cad = CadDocument::new();
+    wide_frame(&mut cad, 6.0);
+    let img = render(&scene_of(&cad), &camera(), DARK);
+    // Its bottom side runs on y = -10 (row 60), 6 wide: rows 57 to 62.
+    for row in [58, 60, 62] {
+        assert_eq!(pixel(&img, 50, row), [255, 255, 255], "row {row} is filled");
+    }
+    assert!(is_background(&img, 50, 65, DARK) && is_background(&img, 50, 54, DARK));
+    assert!(
+        is_background(&img, 50, 50, DARK),
+        "the frame's middle stays empty"
+    );
+    // The mitered corner is filled out to (32, -12): column 82, row 62.
+    assert_eq!(pixel(&img, 81, 61), [255, 255, 255]);
+}
+
+/// Records what a trace sends, in order.
+#[derive(Default)]
+struct Recorder {
+    calls: Vec<char>,
+}
+
+impl Sink for Recorder {
+    fn style(&mut self, _: [u8; 3], _: bool) {}
+    fn segment(&mut self, _: (f32, f32), _: (f32, f32)) {
+        self.calls.push('s');
+    }
+    fn triangle(&mut self, _: (f32, f32), _: (f32, f32), _: (f32, f32)) {
+        self.calls.push('t');
+    }
+}
+
+#[test]
+fn fills_come_before_every_stroke() {
+    let mut cad = CadDocument::new();
+    // A line drawn before the wide polyline still ends on top of its band.
+    cad.add_line(p(0.0, -40.0), p(0.0, 40.0)).unwrap();
+    wide_frame(&mut cad, 6.0);
+    let mut sink = Recorder::default();
+    trace(&scene_of(&cad), &camera(), DARK, &mut sink);
+    let first_segment = sink.calls.iter().position(|&c| c == 's').unwrap();
+    let last_triangle = sink.calls.iter().rposition(|&c| c == 't').unwrap();
+    assert!(last_triangle < first_segment, "{:?}", sink.calls);
+    // Without width there is nothing to fill.
+    let mut cad = CadDocument::new();
+    wide_frame(&mut cad, 0.0);
+    let mut sink = Recorder::default();
+    trace(&scene_of(&cad), &camera(), DARK, &mut sink);
+    assert!(!sink.calls.contains(&'t') && sink.calls.contains(&'s'));
+}
+
+#[test]
+fn a_band_seen_a_million_times_closer_is_still_filled() {
+    let mut cad = CadDocument::new();
+    wide_frame(&mut cad, 6.0);
+    let mut cam = camera();
+    // Deep inside the bottom side: every pixel is in the band.
+    cam.zoom_at(50.0, 60.0, 1e6);
+    let img = render(&scene_of(&cad), &cam, DARK);
+    for (x, y) in [(0, 0), (50, 50), (99, 99)] {
+        assert_eq!(pixel(&img, x, y), [255, 255, 255], "({x}, {y})");
+    }
+}
+
+#[test]
+fn a_polygon_is_clipped_to_the_rectangle() {
+    // A triangle with a corner outside on the right: a quadrilateral left.
+    let kept = clip_polygon(
+        &[(0.0, 0.0), (20.0, 0.0), (0.0, 10.0)],
+        -1.0,
+        -1.0,
+        10.0,
+        11.0,
+    );
+    assert_eq!(kept.len(), 4, "{kept:?}");
+    assert!(
+        kept.iter()
+            .all(|&(x, y)| (-1.0..=10.0).contains(&x) && (-1.0..=11.0).contains(&y))
+    );
+    assert!(kept.contains(&(10.0, 0.0)) && kept.contains(&(10.0, 5.0)));
+    // Wholly inside: unchanged; wholly outside: nothing.
+    let inside = [(1.0, 1.0), (2.0, 1.0), (1.0, 2.0)];
+    assert_eq!(clip_polygon(&inside, 0.0, 0.0, 5.0, 5.0), inside.to_vec());
+    assert!(clip_polygon(&inside, 10.0, 10.0, 20.0, 20.0).is_empty());
+    // A huge one round the rectangle: the rectangle itself.
+    let huge = [(-1e9, -1e9), (1e9, -1e9), (0.0, 1e9)];
+    let kept = clip_polygon(&huge, 0.0, 0.0, 4.0, 3.0);
+    assert_eq!(kept.len(), 4, "{kept:?}");
+}

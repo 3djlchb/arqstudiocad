@@ -12,7 +12,7 @@
 
 use arq_core::{Color, DrawItem, Shape};
 use arq_geometry::Tolerance;
-use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
+use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transform};
 
 use crate::aci::aci_rgb_on;
 use crate::camera::Camera;
@@ -108,6 +108,7 @@ fn paint(scene: &Scene, camera: &Camera, style: Style, fill: tiny_skia::Color) -
     let mut sink = PixmapSink {
         pixmap,
         path: PathBuilder::new(),
+        fill: PathBuilder::new(),
         rgb: None,
         dashed: false,
     };
@@ -135,11 +136,16 @@ pub(crate) trait Sink {
     fn style(&mut self, rgb: [u8; 3], dashed: bool);
     /// A segment in screen pixels, already clipped to near the view.
     fn segment(&mut self, a: (f32, f32), b: (f32, f32));
+    /// A filled triangle in screen pixels, already clipped to near the view
+    /// (ADR 0038). Every fill comes before every segment.
+    fn triangle(&mut self, a: (f32, f32), b: (f32, f32), c: (f32, f32));
 }
 
 /// Walks what `scene` shows through `camera` into `sink`, as segments in
 /// screen pixels: shapes outside the view skipped by their boxes, arcs
-/// flattened for their size on screen, segments clipped in `f64`.
+/// flattened for their size on screen, segments clipped in `f64`. The
+/// fills come first, under every stroke (ADR 0038), so a wide polyline
+/// never hides the lines crossing it.
 pub(crate) fn trace(scene: &Scene, camera: &Camera, style: Style, sink: &mut impl Sink) {
     let Some(view) = camera.visible() else {
         return;
@@ -156,16 +162,19 @@ pub(crate) fn trace(scene: &Scene, camera: &Camera, style: Style, sink: &mut imp
         width: f64::from(width),
         height: f64::from(height),
     };
-    for entry in scene.entries() {
-        if !entry.bounds.is_some_and(|b| b.intersects(view, tol)) {
-            continue;
-        }
-        for item in &entry.items {
-            if !shape_bounds(item.shape).intersects(view, tol) {
+    for fills in [true, false] {
+        for entry in scene.entries() {
+            if !entry.bounds.is_some_and(|b| b.intersects(view, tol)) {
                 continue;
             }
-            tracer.set_color(item.color, matches!(item.shape, Shape::Placeholder(_)));
-            tracer.add(camera, item.shape);
+            for item in &entry.items {
+                let is_fill = matches!(item.shape, Shape::Triangle(_));
+                if is_fill != fills || !shape_bounds(item.shape).intersects(view, tol) {
+                    continue;
+                }
+                tracer.set_color(item.color, matches!(item.shape, Shape::Placeholder(_)));
+                tracer.add(camera, item.shape);
+            }
         }
     }
 }
@@ -210,6 +219,15 @@ impl<S: Sink> Tracer<'_, S> {
                 self.segment(p1, p2);
                 self.segment(p2, p3);
                 self.segment(p3, p0);
+            }
+            Shape::Triangle(t) => {
+                let pad = PAD_PX;
+                let corners = t.map(screen);
+                let kept = clip_polygon(&corners, -pad, -pad, self.width + pad, self.height + pad);
+                let f = |p: (f64, f64)| (p.0 as f32, p.1 as f32);
+                for i in 1..kept.len().saturating_sub(1) {
+                    self.sink.triangle(f(kept[0]), f(kept[i]), f(kept[i + 1]));
+                }
             }
         }
     }
@@ -264,10 +282,12 @@ pub(crate) fn ink(color: Color, style: Style) -> [u8; 3] {
     }
 }
 
-/// Segments of one color and style, collected into one tiny-skia path.
+/// Segments of one color and style, collected into one tiny-skia path;
+/// triangles of that color into another, filled.
 struct PixmapSink {
     pixmap: Pixmap,
     path: PathBuilder,
+    fill: PathBuilder,
     rgb: Option<[u8; 3]>,
     dashed: bool,
 }
@@ -283,10 +303,31 @@ impl Sink for PixmapSink {
         self.path.move_to(a.0, a.1);
         self.path.line_to(b.0, b.1);
     }
+
+    fn triangle(&mut self, a: (f32, f32), b: (f32, f32), c: (f32, f32)) {
+        self.fill.move_to(a.0, a.1);
+        self.fill.line_to(b.0, b.1);
+        self.fill.line_to(c.0, c.1);
+        self.fill.close();
+    }
 }
 
 impl PixmapSink {
     fn flush(&mut self) {
+        let fill = std::mem::replace(&mut self.fill, PathBuilder::new());
+        if let (Some(path), Some([r, g, b])) = (fill.finish(), self.rgb) {
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(r, g, b, 255);
+            // Pixel centers decide, as the GPU's triangles: both the same.
+            paint.anti_alias = false;
+            self.pixmap.fill_path(
+                &path,
+                &paint,
+                FillRule::Winding,
+                Transform::from_translate(MARGIN_PX, MARGIN_PX),
+                None,
+            );
+        }
         let builder = std::mem::replace(&mut self.path, PathBuilder::new());
         let (Some(path), Some([r, g, b])) = (builder.finish(), self.rgb) else {
             return;
@@ -311,6 +352,48 @@ impl PixmapSink {
             None,
         );
     }
+}
+
+/// Sutherland–Hodgman: the part of a convex polygon inside the rectangle,
+/// in `f64`, its corners in order; fewer than three when nothing is left.
+pub(crate) fn clip_polygon(
+    polygon: &[(f64, f64)],
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+) -> Vec<(f64, f64)> {
+    type Inside = fn((f64, f64), f64) -> bool;
+    type Cross = fn((f64, f64), (f64, f64), f64) -> (f64, f64);
+    let at_x: Cross = |a, b, x| (x, a.1 + (b.1 - a.1) * (x - a.0) / (b.0 - a.0));
+    let at_y: Cross = |a, b, y| (a.0 + (b.0 - a.0) * (y - a.1) / (b.1 - a.1), y);
+    let edges: [(Inside, Cross, f64); 4] = [
+        (|p, x| p.0 >= x, at_x, x0),
+        (|p, x| p.0 <= x, at_x, x1),
+        (|p, y| p.1 >= y, at_y, y0),
+        (|p, y| p.1 <= y, at_y, y1),
+    ];
+    let mut out = polygon.to_vec();
+    for (inside, cross, limit) in edges {
+        let input = std::mem::take(&mut out);
+        let Some(&last) = input.last() else {
+            break;
+        };
+        let mut previous = last;
+        for &p in &input {
+            match (inside(p, limit), inside(previous, limit)) {
+                (true, true) => out.push(p),
+                (true, false) => {
+                    out.push(cross(previous, p, limit));
+                    out.push(p);
+                }
+                (false, true) => out.push(cross(previous, p, limit)),
+                (false, false) => {}
+            }
+            previous = p;
+        }
+    }
+    out
 }
 
 /// Liang–Barsky: the part of segment `a`–`b` inside the rectangle, if any.

@@ -23,7 +23,7 @@ use std::f64::consts::TAU;
 use acadrust::EntityType;
 use acadrust::entities::{BoundaryEdge, Ellipse, Hatch, Insert, LwPolyline, Spline};
 use acadrust::types::{Matrix4, Transform, Vector2, Vector3};
-use arq_geometry::{Arc, Bounds2, Circle, Line, Point2, Point3};
+use arq_geometry::{Arc, BandVertex, Bounds2, Circle, Line, Point2, Point3, Tolerance, band};
 use arq_kernel::Wireframe;
 
 use crate::document::Document;
@@ -56,6 +56,10 @@ pub enum Shape {
     Text(Bounds2),
     /// An entity not drawn yet, as its bounding box.
     Placeholder(Bounds2),
+    /// A filled triangle, part of an area the entity covers: a wide
+    /// polyline's band (ADR 0038). Drawn under the strokes; the entity's
+    /// curves still come as their own shapes, which snap and highlight.
+    Triangle([Point2; 3]),
 }
 
 impl Shape {
@@ -67,6 +71,7 @@ impl Shape {
             Shape::Arc(a) => a.bounds(),
             Shape::Point(p) => Bounds2::from_point(p),
             Shape::Text(b) | Shape::Placeholder(b) => b,
+            Shape::Triangle([a, b, c]) => Bounds2::new(a, b).including(c),
         }
     }
 }
@@ -345,6 +350,7 @@ impl<'a> Painter<'a> {
         // In space, what this entity itself draws in plan is raised to its
         // plane; what it holds (a block, its parts) was placed already.
         let start = out.len();
+        let space_start = self.space.as_ref().map_or(0, |s| s.borrow().len());
         let mut push = |shape| out.push(DrawItem { shape, color });
 
         match e {
@@ -387,6 +393,15 @@ impl<'a> Painter<'a> {
                     }
                 }
             },
+            EntityType::LwPolyline(p) => {
+                // Its curves, as the codec breaks it down; then the band its
+                // width covers (ADR 0038).
+                self.emit_parts(e, ctx, out, color);
+                out.extend(polyline_band(p).into_iter().map(|t| DrawItem {
+                    shape: Shape::Triangle(t),
+                    color,
+                }));
+            }
             EntityType::Ellipse(el) => outline_ellipse(el, color, out),
             EntityType::Hatch(h) => self.outline_hatch(h, e, ctx, color, out),
             EntityType::Solid3D(_)
@@ -427,7 +442,13 @@ impl<'a> Painter<'a> {
         if let Some(space) = &self.space {
             let z = plane_z(e);
             let items = out.drain(start..).filter_map(|item| raised(item, z));
-            space.borrow_mut().extend(items);
+            let mut space = space.borrow_mut();
+            space.extend(items);
+            // Its parts reached space their own way; the walls follow all.
+            if let EntityType::LwPolyline(p) = e {
+                let walls = polyline_walls(p, &space[space_start..], color);
+                space.extend(walls);
+            }
         }
     }
 
@@ -856,11 +877,97 @@ fn plane_z(e: &EntityType) -> f64 {
     plan_normal(normal.x, normal.y, normal.z).map_or(0.0, |n| n.map_point(0.0, 0.0, z).2)
 }
 
+/// The triangles a lightweight polyline's width covers, in world plan
+/// coordinates (ADR 0038): its constant width when it has one, else each
+/// vertex's start and end widths. None on a tilted plane, which is drawn
+/// by its curves only.
+fn polyline_band(p: &LwPolyline) -> Vec<[Point2; 3]> {
+    let constant = p.constant_width;
+    let wide = constant > 0.0
+        || p.vertices
+            .iter()
+            .any(|v| v.start_width > 0.0 || v.end_width > 0.0);
+    let Some(normal) = plan_normal(p.normal.x, p.normal.y, p.normal.z) else {
+        return Vec::new();
+    };
+    if !wide {
+        return Vec::new();
+    }
+    let world = |x: f64, y: f64| {
+        let (x, y, _) = normal.map_point(x, y, p.elevation);
+        Point2::new(x, y).ok()
+    };
+    // A mirrored plane turns the arcs the other way.
+    let turn = if world(1.0, 0.0).zip(world(0.0, 1.0)).is_some_and(|(a, b)| {
+        let o = world(0.0, 0.0).unwrap_or(Point2::ORIGIN);
+        (a - o).cross(b - o) < 0.0
+    }) {
+        -1.0
+    } else {
+        1.0
+    };
+    let vertices: Option<Vec<BandVertex>> = p
+        .vertices
+        .iter()
+        .map(|v| {
+            let (start_width, end_width) = if constant > 0.0 {
+                (constant, constant)
+            } else {
+                (v.start_width, v.end_width)
+            };
+            Some(BandVertex {
+                point: world(v.location.x, v.location.y)?,
+                bulge: v.bulge * turn,
+                start_width,
+                end_width,
+            })
+        })
+        .collect();
+    vertices.map_or_else(Vec::new, |vs| band(&vs, p.is_closed, Tolerance::DEFAULT))
+}
+
+/// The walls a polyline's thickness raises in space, as AutoCAD draws them
+/// in wireframe (ADR 0030 D1): its curves again, `thickness` along its
+/// normal, and an edge up from each vertex. Nothing without thickness.
+fn polyline_walls(p: &LwPolyline, raised: &[SpaceItem], color: Color) -> Vec<SpaceItem> {
+    let Some(normal) = plan_normal(p.normal.x, p.normal.y, p.normal.z) else {
+        return Vec::new();
+    };
+    if p.thickness == 0.0 || !p.thickness.is_finite() {
+        return Vec::new();
+    }
+    // Along the normal, in world Z: down for a mirrored plane.
+    let rise = normal.map_point(0.0, 0.0, p.thickness).2;
+    let lift = |q: &Point3| Point3::new(q.x(), q.y(), q.z() + rise).ok();
+    let mut out: Vec<SpaceItem> = raised
+        .iter()
+        .filter(|item| !item.text_box)
+        .map(|item| SpaceItem {
+            points: item.points.iter().filter_map(lift).collect(),
+            color,
+            text_box: false,
+        })
+        .collect();
+    for v in &p.vertices {
+        let (x, y, z) = normal.map_point(v.location.x, v.location.y, p.elevation);
+        if let (Ok(low), Ok(high)) = (Point3::new(x, y, z), Point3::new(x, y, z + rise)) {
+            out.push(SpaceItem {
+                points: vec![low, high],
+                color,
+                text_box: false,
+            });
+        }
+    }
+    out
+}
+
 /// A plan shape raised to the height `z`.
 fn raised(item: DrawItem, z: f64) -> Option<SpaceItem> {
     let at = |x: f64, y: f64| Point3::new(x, y, z).ok();
     let up = Vector3::UNIT_Z;
     let points: Vec<Point3> = match item.shape {
+        // A fill is drawn in plan only; in space the curves stand for it.
+        Shape::Triangle(_) => return None,
         Shape::Line(l) => [l.start(), l.end()]
             .into_iter()
             .filter_map(|p| at(p.x(), p.y()))
