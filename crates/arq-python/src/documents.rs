@@ -343,6 +343,21 @@ impl CadDocument {
         self.read(|cad| cad.select_window(area.0, crossing))
     }
 
+    /// Exact ordered TRIM/EXTEND fence picks; crossing uses two corners.
+    #[pyo3(signature = (points, crossing = false))]
+    fn fence_picks(
+        &self,
+        points: Vec<PyPoint>,
+        crossing: bool,
+    ) -> PyResult<Vec<(EntityId, (f64, f64))>> {
+        let path: Vec<_> = points.into_iter().map(|p| p.0).collect();
+        let hits = self.read(|cad| cad.fence_picks(&path, crossing))?.py()?;
+        Ok(hits
+            .into_iter()
+            .map(|(id, p)| (id, (p.x(), p.y())))
+            .collect())
+    }
+
     /// The object snap under `cursor` within `aperture` (world units) among
     /// the active `modes` (AutoCAD keys: END, MID, CEN, QUA, INT, PER, TAN,
     /// NEA); `last_point` is needed for PER and TAN (ADR 0016 D5).

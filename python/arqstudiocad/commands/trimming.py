@@ -10,7 +10,9 @@ command. Undo takes back the last trim or extension of the run, and TRIM's
 Erase erases objects without leaving it. The core does every change, each
 one undo step. Lines, arcs, circles and lightweight polylines: a polyline
 trimmed in the middle becomes two, a closed one opens; an open one extends
-at its end segment.
+at its end segment. Fences and crossing rectangles select several objects;
+Top-view cursor gestures provide a freehand or two-click fence. Each target
+is edited once per gesture, with the existing per-object undo behavior.
 """
 
 from collections.abc import Generator
@@ -23,6 +25,7 @@ from arqstudiocad.commands import (
     CommandScript,
     Option,
     Picked,
+    PickedPath,
     Prompt,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
@@ -82,6 +85,39 @@ def _trim_or_extend(ctx: CommandContext, extending: bool) -> CommandScript:
             if (yield from _erase(ctx, document)):
                 steps += 1
             continue
+        if picked in ("F", "C"):
+            crossing = picked == "C"
+            first = yield ctx.point(
+                tr("Specify first corner") if crossing else tr("Specify first fence point")
+            )
+            points = [first]
+            while True:
+                next_point = yield ctx.point(
+                    tr("Specify opposite corner") if crossing else tr("Specify next fence point"),
+                    base=points[-1],
+                    optional=not crossing,
+                )
+                if next_point is None:
+                    break
+                points.append(next_point)
+                if crossing:
+                    break
+            picked = PickedPath(tuple(points), crossing=crossing)
+        if isinstance(picked, PickedPath):
+            if len(picked.points) >= 2:
+                picks = document.fence_picks(picked.points, crossing=picked.crossing)
+                locked = {layer.name for layer in document.get_layers() if layer.is_locked}
+                for entity_id, point in picks:
+                    entity = document.get_entity(entity_id)
+                    if entity.layer in locked:
+                        ctx.message(tr("{count} were on a locked layer.", count=1))
+                        continue
+                    target = Picked(entity_id, point, picked.shift)
+                    if extending != picked.shift:
+                        steps += _extend_one(ctx, document, target, edges)
+                    else:
+                        steps += _trim_one(ctx, document, target, edges, quick=memory[MODE] == "Q")
+            continue
         assert isinstance(picked, Picked)
         # Shift does the other command, as AutoCAD's shift-select.
         if extending != picked.shift:
@@ -102,20 +138,26 @@ def _ask_object(ctx: CommandContext, extending: bool) -> Prompt:
             tr("Select object to extend or shift-select to trim"),
             [
                 Option("B", tr("Boundary edges")),
+                Option("F", tr("Fence")),
+                Option("C", tr("Crossing")),
                 Option("O", tr("Mode")),
                 Option("U", tr("Undo")),
             ],
             optional=True,
+            multiple=True,
         )
     return ctx.entity(
         tr("Select object to trim or shift-select to extend"),
         [
             Option("T", tr("Cutting edges")),
+            Option("F", tr("Fence")),
+            Option("C", tr("Crossing")),
             Option("O", tr("Mode")),
             Option("R", tr("Erase")),
             Option("U", tr("Undo")),
         ],
         optional=True,
+        multiple=True,
     )
 
 

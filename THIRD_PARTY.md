@@ -56,3 +56,9 @@ as a compatibility reference requested by the maintainer. All implementation
 and tests are original GPL-3.0-or-later code; no proprietary Autodesk source,
 artwork or documentation passages are incorporated. The supported subset
 and its limits are recorded in [the command brief](docs/design/stretch-command.md).
+
+TRIM and EXTEND's multiple-object selection uses the publicly documented
+[AutoCAD 2021 TRIM behavior](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-B1A185EF-07C6-4C53-A76F-05ADE11F5C32.htm)
+as a behavioral compatibility reference only. The implementation and tests
+are original GPL-3.0-or-later code; no Autodesk implementation, artwork or
+documentation passages are copied. See [the command brief](docs/design/trim-multiple.md).

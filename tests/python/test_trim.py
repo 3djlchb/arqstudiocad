@@ -17,11 +17,14 @@ from arqstudiocad.session import Session
 from arqstudiocad.ui.main_window import MainWindow
 
 TRIM_PROMPT = (
-    "Select object to trim or shift-select to extend [Cutting edges(T)/Mode(O)/Erase(R)/Undo(U)]:"
+    "Select object to trim or shift-select to extend "
+    "[Cutting edges(T)/Fence(F)/Crossing(C)/Mode(O)/Erase(R)/Undo(U)]:"
 )
 EXTEND_PROMPT = (
-    "Select object to extend or shift-select to trim [Boundary edges(B)/Mode(O)/Undo(U)]:"
+    "Select object to extend or shift-select to trim "
+    "[Boundary edges(B)/Fence(F)/Crossing(C)/Mode(O)/Undo(U)]:"
 )
+
 
 type Ends = tuple[tuple[float, float], tuple[float, float]]
 
