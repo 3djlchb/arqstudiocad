@@ -396,6 +396,8 @@ class MainWindow(QMainWindow):
             "OFFSET",
             "TRIM",
             "EXTEND",
+            "FILLET",
+            "CHAMFER",
             "EXPLODE",
         ):
             self._modify_menu.addAction(self.command_actions[name])
