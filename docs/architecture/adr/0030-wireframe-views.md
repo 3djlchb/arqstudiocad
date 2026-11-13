@@ -114,7 +114,9 @@ Each choice marked *(maintainer)* was made by the maintainer on
   - **Outside the plan, for now:** picking, selecting, object snaps,
     ORTHO, grips and picked points wait; the status bar says so where
     the cursor's coordinates were, and -VIEW tells to type points.
-  - **Not yet:** thickness (D1), kept for a later step.
+  - **Not yet:** thickness (D1), kept for a later step. Lightweight
+    polylines' thickness is drawn since 2026-11-12 ([ADR 0038](0038-filled-shapes.md)
+    D4); other entities' still waits.
 - **Step 2, working in a view (2026-11-03):**
   - **Selection:** picking, windows and crossings run on the view's
     projected scene (`Scene::pick`, `Scene::select_window`), by the
