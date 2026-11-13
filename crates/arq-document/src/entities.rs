@@ -4,7 +4,8 @@ use acadrust::entities::LwPolyline;
 use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{
-    Bounds2, GeometryError, Point2, Tolerance, Transform2, offset_polyline, offset_polyline_through,
+    Bounds2, Geometry2, GeometryError, Point2, Tolerance, Transform2, extend_polyline,
+    offset_polyline, offset_polyline_through, trim_polyline,
 };
 
 use crate::document::Document;
@@ -12,12 +13,21 @@ use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry, PolylineStyle};
 use crate::error::{DocumentError, DocumentResult};
 use crate::layers::LayerId;
-use crate::ocs::plan_normal;
+use crate::ocs::{PlanNormal, plan_normal};
 use crate::translate::{
     attachment_named, attribute_as_text, bounds_of, color_to_codec, edit_text, handle,
     is_whole_transformable, new_entity, new_mtext, new_text, read_entity, transform_whole,
     write_plan,
 };
+
+/// A lightweight polyline seen in the world's plan: its vertices there,
+/// their bulges turned the world's way, and what writes them back.
+struct WorldPolyline {
+    vertices: Vec<(Point2, f64)>,
+    closed: bool,
+    normal: PlanNormal,
+    elevation: f64,
+}
 
 impl Document {
     /// Replaces one block reference with its transformed contents. Its
@@ -129,6 +139,138 @@ impl Document {
                 })?;
         let (x, y, _) = normal.map_point(point.x(), point.y(), polyline.elevation);
         vertex.location = acadrust::types::Vector2::new(x, y);
+        Ok(())
+    }
+
+    /// Lightweight polyline `id`'s vertices in world plan coordinates, its
+    /// bulges turned the world's way, whether it is closed, and its plane;
+    /// refused for anything else and on a tilted plane.
+    fn polyline_in_world(&self, id: EntityId) -> DocumentResult<WorldPolyline> {
+        let raw = self
+            .cad()
+            .get_entity(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        let EntityType::LwPolyline(polyline) = raw else {
+            return Err(DocumentError::NotEditable {
+                id,
+                kind: raw.as_entity().entity_type(),
+            });
+        };
+        let normal = plan_normal(polyline.normal.x, polyline.normal.y, polyline.normal.z).ok_or(
+            DocumentError::NotEditable {
+                id,
+                kind: "LWPOLYLINE",
+            },
+        )?;
+        let turn = if normal == PlanNormal::Down {
+            -1.0
+        } else {
+            1.0
+        };
+        let vertices = polyline
+            .vertices
+            .iter()
+            .map(|v| {
+                let (x, y, _) = normal.map_point(v.location.x, v.location.y, polyline.elevation);
+                Ok((Point2::new(x, y)?, v.bulge * turn))
+            })
+            .collect::<Result<Vec<_>, GeometryError>>()?;
+        Ok(WorldPolyline {
+            vertices,
+            closed: polyline.is_closed,
+            normal,
+            elevation: polyline.elevation,
+        })
+    }
+
+    /// Gives lightweight polyline `id` these world vertices, open, back in
+    /// its own plane; its per-vertex widths go, its constant width stays.
+    fn set_polyline_path(
+        &mut self,
+        id: EntityId,
+        vertices: &[(Point2, f64)],
+        closed: bool,
+        normal: PlanNormal,
+        elevation: f64,
+    ) {
+        let turn = if normal == PlanNormal::Down {
+            -1.0
+        } else {
+            1.0
+        };
+        if let Some(EntityType::LwPolyline(polyline)) = self.cad_mut().get_entity_mut(handle(id)) {
+            polyline.vertices.clear();
+            for &(p, bulge) in vertices {
+                let (x, y, _) = normal.map_point(p.x(), p.y(), elevation);
+                polyline.add_point_with_bulge(Vector2::new(x, y), bulge * turn);
+            }
+            polyline.is_closed = closed;
+        }
+        self.sync_entity(id);
+    }
+
+    /// Trims lightweight polyline `id` at its crossings with `edges` around
+    /// `at` (TRIM): the first piece left keeps its id, a second is a copy
+    /// with every property, a closed polyline opens. With no crossing
+    /// round that part, `erase_uncut` erases it (Quick), else it is refused.
+    /// Returns the entities left: none when erased.
+    pub fn trim_polyline(
+        &mut self,
+        id: EntityId,
+        at: Point2,
+        edges: &[Geometry2],
+        erase_uncut: bool,
+    ) -> DocumentResult<Vec<EntityId>> {
+        let WorldPolyline {
+            vertices,
+            closed,
+            normal,
+            elevation,
+        } = self.polyline_in_world(id)?;
+        let pieces = match trim_polyline(&vertices, closed, edges, at, Tolerance::DEFAULT)? {
+            Some(pieces) => pieces,
+            None if erase_uncut => Vec::new(),
+            None => {
+                return Err(DocumentError::Geometry(GeometryError::OutOfRange {
+                    what: "cutting edge",
+                }));
+            }
+        };
+        let Some((first, rest)) = pieces.split_first() else {
+            self.delete_entity(id)?;
+            return Ok(Vec::new());
+        };
+        let mut left = vec![id];
+        for piece in rest {
+            let copy = self.copy_entity(id)?;
+            self.set_polyline_path(copy, piece, false, normal, elevation);
+            left.push(copy);
+        }
+        self.set_polyline_path(id, first, false, normal, elevation);
+        Ok(left)
+    }
+
+    /// Extends open lightweight polyline `id` at the end nearer `at` to the
+    /// nearest of `edges` its end segment reaches (EXTEND); refused when
+    /// none does, and for a closed polyline.
+    pub fn extend_polyline(
+        &mut self,
+        id: EntityId,
+        at: Point2,
+        edges: &[Geometry2],
+    ) -> DocumentResult<()> {
+        let WorldPolyline {
+            vertices,
+            closed,
+            normal,
+            elevation,
+        } = self.polyline_in_world(id)?;
+        let grown = extend_polyline(&vertices, closed, edges, at, Tolerance::DEFAULT)?.ok_or(
+            DocumentError::Geometry(GeometryError::OutOfRange {
+                what: "boundary edge",
+            }),
+        )?;
+        self.set_polyline_path(id, &grown, false, normal, elevation);
         Ok(())
     }
 
@@ -849,6 +991,40 @@ mod tests {
             "inward to its middle: nothing left"
         );
         assert_eq!(doc.entities().len(), before + 1, "nothing added");
+    }
+
+    #[test]
+    fn a_mirrored_polyline_is_trimmed_and_extended_where_it_is_seen() {
+        // Seen from below, the box spans world x -4 to 0, y 0 to 2.
+        let mut doc = Document::new();
+        let id = wide_box(&mut doc, -1.0);
+        let cutter = Geometry2::Line(Line::new(p(-2.0, -1.0), p(-2.0, 3.0)).unwrap());
+        let left = doc
+            .trim_polyline(id, p(-4.0, 1.0), &[cutter], false)
+            .unwrap();
+        assert_eq!(left, [id]);
+        let WorldPolyline {
+            vertices: world,
+            closed,
+            ..
+        } = doc.polyline_in_world(id).unwrap();
+        assert!(!closed, "opened");
+        let xs: Vec<f64> = world.iter().map(|(q, _)| q.x()).collect();
+        assert!(
+            xs.iter().all(|&x| (-2.0 - 1e-9..=1e-9).contains(&x)),
+            "the half nearer 0: {xs:?}"
+        );
+        let pl = ocs_points(&doc, id).1;
+        assert_eq!((pl.constant_width, pl.elevation), (0.25, 3.0), "kept");
+        // Extended from its end at world (-2, y) back to a line at x = -5.
+        let wall = Geometry2::Line(Line::new(p(-5.0, -10.0), p(-5.0, 10.0)).unwrap());
+        let end = world.last().unwrap().0;
+        doc.extend_polyline(id, end, &[wall]).unwrap();
+        let world = doc.polyline_in_world(id).unwrap().vertices;
+        assert!(
+            (world.last().unwrap().0.x() + 5.0).abs() < 1e-9,
+            "{world:?}"
+        );
     }
 
     #[test]

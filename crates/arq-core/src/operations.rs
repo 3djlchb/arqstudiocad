@@ -229,7 +229,8 @@ impl CadDocument {
         })
     }
 
-    /// Trims line, arc or circle `id` at the edges nearest `at` (TRIM): the
+    /// Trims line, arc, circle or lightweight polyline `id` at the edges
+    /// nearest `at` (TRIM; a polyline as `Document::trim_polyline`): the
     /// part between them is taken away, a line or arc cut in the middle
     /// becomes two (the second a copy, every property kept), a circle the
     /// arc left. The edges are `edges` (Standard mode), or every other
@@ -247,6 +248,10 @@ impl CadDocument {
         self.transact("TRIM", |doc| {
             let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
             check_unlocked(doc, &e)?;
+            if e.kind() == "LWPOLYLINE" {
+                let cutters = edge_curves(doc, id, edges);
+                return Ok(doc.trim_polyline(id, at, &cutters, erase_uncut)?);
+            }
             let plan = e
                 .plan()
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
@@ -283,10 +288,11 @@ impl CadDocument {
         })
     }
 
-    /// Extends line or arc `id` at the end nearer `at` to the nearest of
-    /// `edges` (Standard mode), or of every other entity drawn (Quick), its
-    /// line or circle reaches beyond that end (EXTEND). Refused when none
-    /// does, and for anything else (a circle).
+    /// Extends line, arc or open lightweight polyline `id` at the end nearer
+    /// `at` to the nearest of `edges` (Standard mode), or of every other
+    /// entity drawn (Quick), its line or circle (a polyline's end segment's)
+    /// reaches beyond that end (EXTEND). Refused when none does, and for
+    /// anything else (a circle, a closed polyline).
     pub fn extend_entity(
         &mut self,
         id: EntityId,
@@ -297,6 +303,10 @@ impl CadDocument {
         let (_, changes) = self.transact("EXTEND", |doc| {
             let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
             check_unlocked(doc, &e)?;
+            if e.kind() == "LWPOLYLINE" {
+                let boundaries = edge_curves(doc, id, edges);
+                return Ok(doc.extend_polyline(id, at, &boundaries)?);
+            }
             let plan = e
                 .plan()
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;

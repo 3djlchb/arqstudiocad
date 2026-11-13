@@ -1084,3 +1084,96 @@ fn locked_layers_are_neither_trimmed_nor_extended() {
     assert!(cad.extend_entity(line, p(9.0, 0.0), None).is_err());
     assert_eq!(curve_ends(curve_of(&cad, line)), ((0.0, 0.0), (10.0, 0.0)));
 }
+
+/// A polyline's vertices as the entity's grips show them, in the world.
+fn polyline_points(cad: &CadDocument, id: EntityId) -> Vec<(f64, f64)> {
+    let r = |v: f64| (v * 1e9).round() / 1e9 + 0.0;
+    let mut grips: Vec<_> = cad
+        .document()
+        .grips(&[id])
+        .into_iter()
+        .filter(|g| g.vertex_index.is_some())
+        .collect();
+    grips.sort_by_key(|g| g.vertex_index);
+    grips
+        .iter()
+        .map(|g| (r(g.point.x()), r(g.point.y())))
+        .collect()
+}
+
+fn detail(cad: &CadDocument, id: EntityId, name: &str) -> String {
+    let e = cad.document().entity(id).unwrap();
+    e.details()
+        .iter()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.clone())
+        .unwrap()
+}
+
+#[test]
+fn a_wide_polyline_trimmed_in_the_middle_becomes_two_alike() {
+    let mut cad = CadDocument::new();
+    let ell = [
+        (p(0.0, 0.0), 0.0),
+        (p(10.0, 0.0), 0.0),
+        (p(10.0, 10.0), 0.0),
+    ];
+    let style = PolylineStyle {
+        width: 0.25,
+        ..PolylineStyle::default()
+    };
+    let (pl, _) = cad.add_polyline_with(&ell, false, style).unwrap();
+    cad.add_line(p(3.0, -1.0), p(3.0, 1.0)).unwrap();
+    cad.add_line(p(9.0, 5.0), p(11.0, 5.0)).unwrap();
+    let (left, _) = cad.trim_entity(pl, p(5.0, 0.0), None, true).unwrap();
+    assert_eq!(left.len(), 2);
+    assert_eq!(polyline_points(&cad, left[0]), [(0.0, 0.0), (3.0, 0.0)]);
+    assert_eq!(polyline_points(&cad, left[1]), [(10.0, 5.0), (10.0, 10.0)]);
+    assert_eq!(detail(&cad, left[1], "Constant width"), "0.250000");
+    assert_eq!(cad.undo_name(), Some("TRIM"));
+    cad.undo().unwrap();
+    assert_eq!(
+        polyline_points(&cad, pl),
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)]
+    );
+}
+
+#[test]
+fn a_closed_polyline_trimmed_opens() {
+    let mut cad = CadDocument::new();
+    let square = [
+        (p(0.0, 0.0), 0.0),
+        (p(4.0, 0.0), 0.0),
+        (p(4.0, 2.0), 0.0),
+        (p(0.0, 2.0), 0.0),
+    ];
+    let (pl, _) = cad.add_polyline(&square, true).unwrap();
+    cad.add_line(p(2.0, -1.0), p(2.0, 3.0)).unwrap();
+    let (left, _) = cad.trim_entity(pl, p(4.0, 1.0), None, true).unwrap();
+    assert_eq!(left, [pl]);
+    assert_eq!(
+        polyline_points(&cad, pl),
+        [(2.0, 2.0), (0.0, 2.0), (0.0, 0.0), (2.0, 0.0)]
+    );
+    assert_eq!(detail(&cad, pl, "Closed"), "false");
+}
+
+#[test]
+fn a_polyline_extends_at_its_end_and_a_closed_one_cannot() {
+    let mut cad = CadDocument::new();
+    let ell = [
+        (p(0.0, 0.0), 0.0),
+        (p(10.0, 0.0), 0.0),
+        (p(10.0, 10.0), 0.0),
+    ];
+    let (pl, _) = cad.add_polyline(&ell, false).unwrap();
+    cad.add_line(p(5.0, 15.0), p(15.0, 15.0)).unwrap();
+    cad.extend_entity(pl, p(10.0, 9.0), None).unwrap();
+    assert_eq!(
+        polyline_points(&cad, pl),
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 15.0)]
+    );
+    assert_eq!(cad.undo_name(), Some("EXTEND"));
+    let (closed, _) = cad.add_polyline(&ell, true).unwrap();
+    assert!(cad.extend_entity(closed, p(10.0, 9.0), None).is_err());
+}
