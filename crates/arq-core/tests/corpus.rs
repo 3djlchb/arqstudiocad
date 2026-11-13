@@ -371,7 +371,7 @@ const DRAWN_WHOLE: [&str; 13] = [
 ];
 
 fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
-    let mut shapes = [0usize; 6]; // line, circle, arc, point, text, placeholder
+    let mut shapes = [0usize; 7]; // line, circle, arc, point, text, placeholder, fill
     let mut placeholder_kinds: Vec<&str> = Vec::new();
     let mut problems = Vec::new();
     for (id, items) in doc.drawing_all() {
@@ -398,6 +398,8 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
                     }
                     5
                 }
+                // A wide polyline's band (ADR 0038).
+                Shape::Triangle(_) => 6,
             };
             shapes[slot] += 1;
             if matches!(item.color, Color::ByLayer | Color::ByBlock | Color::None) {
@@ -409,11 +411,14 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
             problems.push(format!("entity {id} ({}) draws nothing", entity.kind()));
         }
     }
-    let [l, c, a, pt, t, ph] = shapes;
+    let [l, c, a, pt, t, ph, fills] = shapes;
     let mut line = format!(
         "draws {} shapes: {l} lines, {c} circles, {a} arcs, {pt} points, {t} texts, {ph} placeholders",
         l + c + a + pt + t + ph
     );
+    if fills > 0 {
+        let _ = write!(line, ", and {fills} filled triangles");
+    }
     if !placeholder_kinds.is_empty() {
         let _ = write!(line, " ({})", placeholder_kinds.join(", "));
     }
