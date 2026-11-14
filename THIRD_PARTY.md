@@ -62,3 +62,18 @@ TRIM and EXTEND's multiple-object selection uses the publicly documented
 as a behavioral compatibility reference only. The implementation and tests
 are original GPL-3.0-or-later code; no Autodesk implementation, artwork or
 documentation passages are copied. See [the command brief](docs/design/trim-multiple.md).
+
+## Surface investigation reference (unpublished codec candidate)
+
+The local Surface reader investigation reviews Open CAD Studio
+`5da54173512735d7056afeebc6dd3bf45cde321d`, its opencaddocument dependency
+`49ec1ce3e9c6761b9380a32cd056f88903f9d4a0`, and their resolved upstream
+AcadRust revision `b583abed0e6873f097edb64ce701b60a5ebdfc62`. The exact codec
+files and LICENSE were inspected as MPL-2.0. Its terminal AC1024 arc guard
+in `src/io/dwg/dwg_stream_readers/object_reader/associative.rs` informs the
+candidate's complete-boundary/error/version guard for native AC1018 ellipses.
+The candidate adapts that idea independently to the measured R2004 layout;
+no wholesale source import or dependency update follows. The separate
+four-arc layout investigation uses independently observed ProgeCAD exports.
+See [the measured scope and pending validation](docs/testing/surface-dxf-preservation.md).
+The published dependency remains `f10cc74`; the local candidate is unadopted.

@@ -220,6 +220,13 @@ optional document tests. The same 34-input integrated matrix has 63 verified
 saves, five loss blocks and no semantic errors; only the two intended DXF rows
 change. All four strict product outputs match the independently observed
 artifacts byte for byte. Product adoption awaits PR review and merge.
+The subsequent [Surface investigation](testing/surface-dxf-preservation.md)
+repeats the matrix on main `30225fb`, including the merged DIMTXSTY correction:
+34 clean reads, 63 verified saves, five loss blocks and zero semantic errors,
+with no changed outcomes or input hashes. Two opaque AC1018 ellipse parameters
+fail while reading a fifth scalar beyond the record boundary; native ProgeCAD
+resolves both. Reproduction and precise version/native validation are in
+progress; no correction or loss-policy change is adopted.
 Milestones 03.4 and 03.5 remain in progress.
 
 ## Phase 04 — Associative technical documentation ○
