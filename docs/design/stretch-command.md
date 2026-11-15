@@ -36,7 +36,7 @@ newer behavior must be identified explicitly.
 ## Explicit limits
 
 Only the Top view is accepted; the command asks the user to use PLAN in
-other views. A live partial-geometry preview remains future work. A partially selected standalone arc with just one endpoint
+other views. A live partial-geometry preview is implemented on `feature/stretch-live-preview` for the currently supported shapes. A partially selected standalone arc with just one endpoint
 inside is refused atomically, rather than given an unverified reshape;
 whole-object arc moves use the existing transformation. Tilted polylines
 and other unsupported entities are not given invented stretch behavior.
@@ -218,3 +218,64 @@ reference-floor interactive performance, run `tools/reference_machine_report.sh`
 and `uv run python tools/gpu_viewport_check.py` on the actual GT 730/i7-2600
 machine and exercise both short and long CP contours. No timing measured on
 the development machine is substituted for that acceptance.
+
+## Live preview (2026-11-15)
+
+The displacement and second-point prompts carry the captured per-entity
+crossing rectangles/polygons in a STRETCH drag. Moving the cursor displays
+centerline contours of the exact supported result, including bulged
+polylines and whole block/text moves. It uses the common overlay description
+for CPU and GPU presentation; it does not rerender or mutate the document.
+
+The document computes one read-only stretch plan shared by preview and
+commit. The core applies the same ID/locked-layer checks and area union.
+CadView flattens only the requested transient shapes with the existing
+outline tolerance. No complete document clone, all-entity drawing query,
+new dependency or compile-time CPU requirement is introduced. Cancellation
+clears the preview; invalid geometry shows no candidate and leaves history
+unchanged. Polyline width fills are not previewed, as with ordinary outlines.
+
+Partial standalone arcs remain refused in both paths until the agreed
+[Windows comparison](../testing/stretch-arcs-windows.md) establishes the
+behavior. The maintainer chose this order over inventing an arc rule.
+
+Pointer overlay work increases with selected geometry and polygon corner
+count. Actual interaction/CPU-floor acceptance remains on the i7-2600/GT 730
+host using `tools/reference_machine_report.sh` and
+`uv run python tools/gpu_viewport_check.py`; development diagnostics are not
+a substitute. Startup, codec and GPU-probe implementations are unchanged.
+
+### Live-preview local verification
+
+All required local checks passed on LMDE 7: fmt, workspace/all-target
+Clippy with warnings denied, cargo test (881 passed, 20 ignored), pytest
+(1103 passed, 5 skipped), Ruff lint/format, mypy, stubtest and cargo-deny
+(existing informational warnings). All nine explicit public-codec corpus
+cases passed after fetching the samples in the new working copy.
+
+The two new document cases, new core case and three binding/Qt cases were
+observed failing under deliberately omitted plans, missing block translation,
+empty queries, omitted overlays and ignored displacement. Exact bytes were
+restored and touched; uv sync rebuilt the restored native extension.
+The focused restored suites passed (4 document, 6 core, 21 Python cases).
+Temporary scripts and logs remain outside the repository.
+
+The maintainer-approved development-host diagnostic is recorded in
+[testing and performance](../TESTING_AND_PERFORMANCE.md): 100 selected lines
+in 100000 lines, before/after edit cost and separate preview cost. The pooled
+edit ratio is 1.00521 with overlapping batch ranges. Reference-machine
+measurement and real cursor interaction remain pending. The maintainer
+merged implementation PR #192 on 2026-11-15; floor acceptance still requires
+the separate reference-machine follow-up.
+
+The public contour query also refuses non-Top views, rather than returning
+XY contours through a camera for another plane. Removing that guard caused
+the binding's Front-view assertion to fail; exact-byte restoration, touch,
+uv sync and all mandatory local checks passed again afterwards.
+
+After incorporating the maintainer's remote branch updates and main through
+ARRAY #191 (`66c0125`), all mandatory local checks passed again: 884 Rust
+cases (20 ignored), 1116 Python cases (5 skipped) and all nine explicit
+public-codec corpus cases, plus fmt, Clippy, Ruff, mypy, stubtest and deny.
+The earlier recorded diagnostics keep their original commit labels;
+reference-floor acceptance must check the updated candidate.

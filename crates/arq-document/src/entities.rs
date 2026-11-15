@@ -10,6 +10,7 @@ use arq_geometry::{
 };
 
 use crate::document::Document;
+use crate::drawing::Shape;
 use crate::entity::Color;
 use crate::entity::{Entity, EntityId, PlanGeometry, PolylineStyle};
 use crate::error::{DocumentError, DocumentResult};
@@ -28,6 +29,17 @@ struct WorldPolyline {
     closed: bool,
     normal: PlanNormal,
     elevation: f64,
+}
+
+/// Shared, read-only STRETCH decision, used by commit and preview.
+enum StretchPlan {
+    Unchanged,
+    Move,
+    Curve(PlanGeometry),
+    Polyline {
+        path: WorldPolyline,
+        targets: Vec<(usize, Point2)>,
+    },
 }
 
 impl Document {
@@ -51,9 +63,90 @@ impl Document {
         areas: &[CrossingArea],
         offset: arq_geometry::Vector2,
     ) -> DocumentResult<()> {
+        match self.stretch_plan(id, areas, offset)? {
+            StretchPlan::Unchanged => Ok(()),
+            StretchPlan::Move => self.transform_entity(id, Transform2::translation(offset)),
+            StretchPlan::Curve(plan) => self.set_plan_geometry(id, plan),
+            StretchPlan::Polyline { targets, .. } => {
+                for (index, point) in targets {
+                    self.set_polyline_vertex(id, index, point)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Read-only centerline shapes of the exact STRETCH result. No document
+    /// clone, history edit or codec mutation; only selected entities are read.
+    pub fn stretch_shapes(
+        &self,
+        id: EntityId,
+        areas: &[CrossingArea],
+        offset: arq_geometry::Vector2,
+    ) -> DocumentResult<Vec<Shape>> {
+        let curve = |g| match g {
+            Geometry2::Line(line) => Shape::Line(line),
+            Geometry2::Circle(circle) => Shape::Circle(circle),
+            Geometry2::Arc(arc) => Shape::Arc(arc),
+        };
+        match self.stretch_plan(id, areas, offset)? {
+            StretchPlan::Unchanged => Ok(Vec::new()),
+            StretchPlan::Curve(plan) => Ok(vec![curve(plan.geometry())]),
+            StretchPlan::Polyline { path, .. } => {
+                let count = if path.closed {
+                    path.vertices.len()
+                } else {
+                    path.vertices.len() - 1
+                };
+                (0..count)
+                    .map(|i| {
+                        let (a, bulge) = path.vertices[i];
+                        let b = path.vertices[(i + 1) % path.vertices.len()].0;
+                        Ok(match arq_geometry::Arc::from_bulge(a, b, bulge) {
+                            Ok((arc, _)) => Shape::Arc(arc),
+                            Err(_) => Shape::Line(arq_geometry::Line::new(a, b)?),
+                        })
+                    })
+                    .collect()
+            }
+            StretchPlan::Move => {
+                let t = Transform2::translation(offset);
+                self.drawing(id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|item| {
+                        Ok(match item.shape {
+                            Shape::Line(l) => Shape::Line(t.apply_line(l)?),
+                            Shape::Circle(c) => Shape::Circle(t.apply_circle(c)?),
+                            Shape::Arc(a) => Shape::Arc(t.apply_arc(a)?),
+                            Shape::Point(p) => Shape::Point(t.apply_point(p)),
+                            Shape::Text(b) => Shape::Text(Bounds2::new(
+                                t.apply_point(b.min()),
+                                t.apply_point(b.max()),
+                            )),
+                            Shape::Placeholder(b) => Shape::Placeholder(Bounds2::new(
+                                t.apply_point(b.min()),
+                                t.apply_point(b.max()),
+                            )),
+                            Shape::Triangle(points) => {
+                                Shape::Triangle(points.map(|p| t.apply_point(p)))
+                            }
+                        })
+                    })
+                    .collect()
+            }
+        }
+    }
+
+    fn stretch_plan(
+        &self,
+        id: EntityId,
+        areas: &[CrossingArea],
+        offset: arq_geometry::Vector2,
+    ) -> DocumentResult<StretchPlan> {
         let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         if e.kind() == "3DSOLID" {
-            return Ok(());
+            return Ok(StretchPlan::Unchanged);
         }
         if let Some(bounds) = e.bounds() {
             for point in [bounds.min(), bounds.max()] {
@@ -62,9 +155,8 @@ impl Document {
         }
         let tol = Tolerance::default();
         let inside = |point| areas.iter().any(|area| area.contains(point, tol));
-        let translation = Transform2::translation(offset);
         if areas.is_empty() {
-            return self.transform_entity(id, translation);
+            return Ok(StretchPlan::Move);
         }
         if let Some(plan) = e.plan() {
             match plan.geometry() {
@@ -86,25 +178,25 @@ impl Document {
                             line.end()
                         };
                         let line = arq_geometry::Line::new(start, end)?;
-                        self.set_plan_geometry(id, plan.with_geometry(line.into()))?;
+                        return Ok(StretchPlan::Curve(plan.with_geometry(line.into())));
                     }
-                    return Ok(());
+                    return Ok(StretchPlan::Unchanged);
                 }
                 Geometry2::Circle(circle) => {
                     return if inside(circle.center()) {
-                        self.transform_entity(id, translation)
+                        Ok(StretchPlan::Move)
                     } else {
-                        Ok(())
+                        Ok(StretchPlan::Unchanged)
                     };
                 }
                 Geometry2::Arc(arc) => {
                     let a = inside(arc.start_point());
                     let b = inside(arc.end_point());
                     if a && b {
-                        return self.transform_entity(id, translation);
+                        return Ok(StretchPlan::Move);
                     }
                     if !a && !b {
-                        return Ok(());
+                        return Ok(StretchPlan::Unchanged);
                     }
                     return Err(DocumentError::NotEditable { id, kind: "ARC" });
                 }
@@ -131,7 +223,7 @@ impl Document {
                 })
                 .collect::<Result<Vec<_>, GeometryError>>()?;
             if targets.is_empty() {
-                return Ok(());
+                return Ok(StretchPlan::Unchanged);
             }
             let path = self.polyline_in_world(id)?;
             let mut vertices = path.vertices;
@@ -144,18 +236,19 @@ impl Document {
             if path.closed && vertices.len() > 1 {
                 arq_geometry::Line::new(vertices[vertices.len() - 1].0, vertices[0].0)?;
             }
-            for (index, point) in targets {
-                self.set_polyline_vertex(id, index, point)?;
-            }
-            return Ok(());
+            return Ok(StretchPlan::Polyline {
+                path: WorldPolyline { vertices, ..path },
+                targets,
+            });
         }
         if !matches!(e.kind(), "INSERT" | "TEXT" | "MTEXT") {
             return Err(DocumentError::NotEditable { id, kind: e.kind() });
         }
-        if self.grips(&[id]).iter().any(|g| inside(g.point)) {
-            self.transform_entity(id, translation)?;
-        }
-        Ok(())
+        Ok(if self.grips(&[id]).iter().any(|g| inside(g.point)) {
+            StretchPlan::Move
+        } else {
+            StretchPlan::Unchanged
+        })
     }
 
     /// Replaces one block reference with its transformed contents. Its

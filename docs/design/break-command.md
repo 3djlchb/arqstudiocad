@@ -134,3 +134,15 @@ again: 885 Rust cases (20 ignored), 1116 Python cases (5 skipped), all nine
 explicit public-codec corpus cases, fmt, Clippy, Ruff, mypy, stubtest and
 deny. The approved scope is open paths; closed traversal remains the
 separate Windows follow-up above.
+
+### Integration after STRETCH #192 merged
+
+Updated with main `5ac83f4` on 2026-11-15. The only merge conflicts were
+appended core tests and the long milestone 02.14 row. All test functions
+from both sides were retained, and the roadmap keeps both command deliveries.
+No operation semantics or approved scope changed. Every required local gate
+passed on the combined tree: 888 Rust cases (20 ignored), 1119 Python cases
+(5 skipped), all nine explicit codec corpus cases, fmt, Clippy, Ruff, mypy,
+stubtest and deny. The actual reference-machine STRETCH check remains a
+separate follow-up; closing its implementation PR does not establish a
+performance result.

@@ -67,3 +67,92 @@ fn stretch_line_keeps_elevation_and_the_owned_model_in_sync() {
     assert_eq!(plan.geometry().end_point(), Some(p(1e6 + 10.25, 2e6 - 0.5)));
     assert!(doc.check_model().is_empty());
 }
+
+#[test]
+fn stretch_preview_is_read_only_and_matches_committed_line_and_bulged_path() {
+    let mut doc = Document::new();
+    let layer = doc.current_layer().id();
+    let line = arq_geometry::Line::new(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let id = doc
+        .add_entity(PlanGeometry::new(line.into()), layer)
+        .unwrap();
+    let area = CrossingArea::Rectangle(Bounds2::new(p(9.0, -1.0), p(11.0, 1.0)));
+    let offset = Offset::new(2.0, 3.0).unwrap();
+    let preview = doc
+        .stretch_shapes(id, std::slice::from_ref(&area), offset)
+        .unwrap();
+    let Shape::Line(shown) = preview[0] else {
+        panic!()
+    };
+    assert_eq!((shown.start(), shown.end()), (p(0.0, 0.0), p(12.0, 3.0)));
+    assert_eq!(
+        doc.entity(id).unwrap().plan().unwrap().geometry(),
+        line.into()
+    );
+    doc.stretch_entity_in_areas(id, &[area], offset).unwrap();
+    assert_eq!(
+        doc.drawing(id)
+            .iter()
+            .flatten()
+            .map(|i| i.shape)
+            .collect::<Vec<_>>(),
+        preview
+    );
+
+    let poly = doc
+        .add_polyline(
+            &[(p(0.0, 5.0), 1.0), (p(10.0, 5.0), 0.0), (p(10.0, 8.0), 0.0)],
+            false,
+        )
+        .unwrap();
+    let area = CrossingArea::Rectangle(Bounds2::new(p(9.0, 4.0), p(11.0, 9.0)));
+    let original = doc.drawing(poly);
+    let preview = doc
+        .stretch_shapes(poly, std::slice::from_ref(&area), offset)
+        .unwrap();
+    assert!(matches!(preview[0], Shape::Arc(_)));
+    assert_eq!(doc.drawing(poly), original);
+    doc.stretch_entity_in_areas(poly, &[area], offset).unwrap();
+    assert_eq!(
+        doc.drawing(poly)
+            .iter()
+            .flatten()
+            .map(|i| i.shape)
+            .collect::<Vec<_>>(),
+        preview
+    );
+}
+
+#[test]
+fn stretch_preview_preserves_whole_block_expansion_and_rejects_partial_arcs() {
+    let mut doc = Document::new();
+    let layer = doc.current_layer().id();
+    let line = arq_geometry::Line::new(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let id = doc
+        .add_entity(PlanGeometry::new(line.into()), layer)
+        .unwrap();
+    let block = doc.create_block("preview", p(0.0, 0.0), &[id]).unwrap();
+    let offset = Offset::new(3.0, 4.0).unwrap();
+    let preview = doc.stretch_shapes(block, &[], offset).unwrap();
+    let Shape::Line(shown) = preview[0] else {
+        panic!()
+    };
+    assert_eq!((shown.start(), shown.end()), (p(3.0, 4.0), p(5.0, 4.0)));
+    doc.stretch_entity_in_areas(block, &[], offset).unwrap();
+    assert_eq!(
+        doc.drawing(block)
+            .iter()
+            .flatten()
+            .map(|i| i.shape)
+            .collect::<Vec<_>>(),
+        preview
+    );
+    let arc = arq_geometry::Arc::new(p(0.0, 0.0), 5.0, 0.0, std::f64::consts::FRAC_PI_2).unwrap();
+    let id = doc
+        .add_entity(PlanGeometry::new(arc.into()), layer)
+        .unwrap();
+    let before = doc.drawing(id);
+    let area = CrossingArea::Rectangle(Bounds2::new(p(4.0, -1.0), p(6.0, 1.0)));
+    assert!(doc.stretch_shapes(id, &[area], offset).is_err());
+    assert_eq!(doc.drawing(id), before);
+}

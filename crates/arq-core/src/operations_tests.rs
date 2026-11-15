@@ -1637,45 +1637,41 @@ fn geometry_of(doc: &Document, id: EntityId) -> Geometry2 {
 }
 
 #[test]
-fn break_open_polyline_updates_index_preserves_style_and_undoes_atomically() {
+fn stretch_preview_and_commit_share_polygon_union_and_validation_without_history() {
     let mut cad = CadDocument::new();
-    let (id, _) = cad
-        .add_polyline(
-            &[
-                (p(0.0, 0.0), 0.0),
-                (p(10.0, 0.0), 0.0),
-                (p(10.0, 10.0), 0.0),
-            ],
-            false,
-        )
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let polygon = SelectionPolygon::new(
+        vec![p(9.0, -1.0), p(11.0, -1.0), p(11.0, 1.0), p(9.0, 1.0)],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    let crossing = [(a, arq_geometry::Bounds2::new(p(9.0, -1.0), p(11.0, 1.0)))];
+    let polygons = [(a, polygon)];
+    let offset = v(2.0, 3.0);
+    let shapes = cad
+        .stretch_preview(&[a, a], offset, &crossing, &polygons)
         .unwrap();
-    cad.set_entity_color(&[id], Color::Index(3)).unwrap();
-    let (ids, changes) = cad.break_entity(id, p(3.0, 0.0), p(10.0, 7.0)).unwrap();
-    assert_eq!(ids.len(), 2);
-    assert_eq!(ids[0], id);
-    assert_eq!(changes.created(), [ids[1]]);
-    assert_eq!(changes.modified(), [id]);
-    assert_eq!(
-        cad.document().entity(ids[1]).unwrap().color(),
-        Color::Index(3)
-    );
+    assert_eq!(shapes.len(), 1);
+    let arq_document::Shape::Line(line) = shapes[0] else {
+        panic!()
+    };
+    assert_eq!((line.start(), line.end()), (p(0.0, 0.0), p(12.0, 3.0)));
+    assert_eq!(cad.undo_name(), Some("LINE"));
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(10.0, 0.0)));
     assert!(
-        cad.query_entities(arq_geometry::Bounds2::from_point(p(5.0, 0.0)))
-            .is_empty()
+        cad.stretch_preview(&[a, u64::MAX], offset, &crossing, &polygons)
+            .is_err()
     );
-    assert_eq!(cad.undo_name(), Some("BREAK"));
-    cad.undo().unwrap();
-    assert_eq!(cad.document().entities().len(), 1);
-    assert_eq!(
-        cad.query_entities(arq_geometry::Bounds2::from_point(p(5.0, 0.0))),
-        [id]
-    );
-    cad.redo().unwrap();
-    assert!(cad.document().entity(ids[1]).is_some());
     let layer = cad.document().current_layer().id();
     cad.set_layer_locked(layer, true).unwrap();
-    assert!(cad.break_entity(id, p(1.0, 0.0), p(2.0, 0.0)).is_err());
-    assert_eq!(cad.document().entities().len(), 2);
+    assert!(
+        cad.stretch_preview(&[a], offset, &crossing, &polygons)
+            .is_err()
+    );
+    cad.set_layer_locked(layer, false).unwrap();
+    cad.stretch_entities_with_polygons(&[a], offset, &crossing, &polygons)
+        .unwrap();
+    assert_eq!(geometry(&cad, a), line.into());
 }
 
 #[test]
@@ -1775,4 +1771,46 @@ fn rectangular_array_errors_and_late_coordinate_overflow_are_atomic() {
     assert_eq!(cad.document().entities().len(), before);
     assert_eq!(cad.undo_name(), Some("LINE"));
     assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(1.0, 0.0)));
+}
+
+#[test]
+fn break_open_polyline_updates_index_preserves_style_and_undoes_atomically() {
+    let mut cad = CadDocument::new();
+    let (id, _) = cad
+        .add_polyline(
+            &[
+                (p(0.0, 0.0), 0.0),
+                (p(10.0, 0.0), 0.0),
+                (p(10.0, 10.0), 0.0),
+            ],
+            false,
+        )
+        .unwrap();
+    cad.set_entity_color(&[id], Color::Index(3)).unwrap();
+    let (ids, changes) = cad.break_entity(id, p(3.0, 0.0), p(10.0, 7.0)).unwrap();
+    assert_eq!(ids.len(), 2);
+    assert_eq!(ids[0], id);
+    assert_eq!(changes.created(), [ids[1]]);
+    assert_eq!(changes.modified(), [id]);
+    assert_eq!(
+        cad.document().entity(ids[1]).unwrap().color(),
+        Color::Index(3)
+    );
+    assert!(
+        cad.query_entities(arq_geometry::Bounds2::from_point(p(5.0, 0.0)))
+            .is_empty()
+    );
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), 1);
+    assert_eq!(
+        cad.query_entities(arq_geometry::Bounds2::from_point(p(5.0, 0.0))),
+        [id]
+    );
+    cad.redo().unwrap();
+    assert!(cad.document().entity(ids[1]).is_some());
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(cad.break_entity(id, p(1.0, 0.0), p(2.0, 0.0)).is_err());
+    assert_eq!(cad.document().entities().len(), 2);
 }
