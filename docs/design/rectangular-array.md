@@ -65,3 +65,19 @@ Linux validation does not constitute an independent AutoCAD/ProgeCAD
 comparison. A Windows comparison remains pending. Large generated drawings
 may incur redraw costs; reference-floor interactive acceptance belongs on
 the actual i7-2600/GT 730 machine, not this development host.
+
+## Local verification (2026-11-15)
+
+All mandatory local checks passed: cargo fmt, workspace/all-target Clippy
+with warnings denied, cargo test (881 passed, 20 ignored), full pytest
+(1112 passed, 5 skipped), Ruff lint/format, strict mypy, stubtest and
+cargo-deny (existing informational warnings). All nine explicitly requested
+public-codec corpus tests passed after fetching the samples.
+
+All three new Rust cases and all twelve new Python/Qt cases were observed
+failing under deliberate placement/count/error-handling, premature mutation,
+view-guard or translation mutations. Exact saved bytes were restored and
+touched, the extension rebuilt, and all fifteen passed again. Temporary
+sabotage/measurement scripts and logs stayed outside the repository.
+The approved diagnostic comparison is recorded in
+[testing and performance](../TESTING_AND_PERFORMANCE.md).
