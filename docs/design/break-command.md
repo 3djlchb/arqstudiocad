@@ -1,7 +1,7 @@
 # BREAK command — initial 2D delivery
 
 Milestone 02.14, group 3. Maintainer-approved scope: lines, arcs and circles,
-with AutoCAD 2021 as the baseline. Open lightweight polylines are implemented on `feature/break-polylines`; closed-path traversal awaits maintainer confirmation.
+with AutoCAD 2021 as the baseline. Open lightweight polylines are implemented on `feature/break-polylines`; closed paths await Windows comparison, as approved by the maintainer.
 
 ## Behavior
 
@@ -90,9 +90,9 @@ the complete source before any source path is rewritten.
 One BREAK transaction updates the index and undoes/redoes all pieces.
 The Python API signature is unchanged. Tilted and legacy heavyweight/3D
 polylines remain unsupported. Closed paths are currently refused explicitly;
-a proposed first delivery with Windows confirmation of their directed
-traversal is awaiting the maintainer's answer. No behavior is invented for
-that case. This is Linux internal validation, not independent ProgeCAD
+the maintainer approved the open-path delivery and chose Windows confirmation
+before implementing closed-path traversal (2026-11-15). No behavior is
+invented for that case. This is Linux internal validation, not independent ProgeCAD
 acceptance. The codec, rendering and CPU baseline are unchanged.
 
 ### Open-polyline local verification
@@ -116,3 +116,14 @@ The shared TRIM subpath wrapper does not collect width provenance; its
 existing geometry cases pass. No diagnostic timing, independent ProgeCAD
 comparison or reference-floor performance acceptance is claimed in this
 first open-path delivery.
+
+### Closed-path follow-up approved by the maintainer
+
+The current delivery is open paths only. On Windows, create a synthetic
+closed square in both vertex orders, then BREAK at two interior edge points.
+Record the exact picks and which directed span remains, resulting vertex
+order, closure flag, properties and undo/redo. Repeat across the closing
+segment, with a bulged segment and with coincident picks. Save/reopen DWG
+and DXF and record ProgeCAD's version. Use only synthetic/public data and
+report observations through GitHub before approving the Rust rule; do not
+infer it from the circle's counterclockwise convention.
