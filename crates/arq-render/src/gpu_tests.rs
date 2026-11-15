@@ -12,6 +12,10 @@
 //! by what they draw: where one draws a pixel with some contrast, the other
 //! must draw something, however faint, within one pixel of it; and full
 //! colors must be the same.
+//!
+//! One at a time ([`one_at_a_time`]): two threads making Vulkan instances at
+//! once crash NVIDIA's loader. The application never does, its checks each
+//! in a child process (ADR 0007); the test harness runs tests on threads.
 
 use arq_core::{CadDocument, Color, DrawItem, Shape};
 use arq_geometry::{Bounds2, Point2};
@@ -30,6 +34,14 @@ const WHITE: [u8; 3] = [255, 255, 255];
 /// Below this difference from the background in every channel, a pixel is
 /// an antialiasing ghost.
 const GHOST: u8 = 24;
+
+/// Held by each test that makes a GPU instance, for the whole test.
+fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // A failed test poisons the lock; the next one still runs alone.
+    GPU.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn p(x: f64, y: f64) -> Point2 {
     Point2::new(x, y).unwrap()
@@ -177,6 +189,7 @@ fn both(gpu: &mut GpuRenderer, scene: &Scene, camera: &Camera, style: Style) -> 
 
 #[test]
 fn the_gpu_draws_what_the_cpu_draws() {
+    let _gpu = one_at_a_time();
     for antialias in [false, true] {
         let Some(mut gpu) = renderer(antialias) else {
             return;
@@ -371,6 +384,7 @@ fn cad_with_lines(count: usize) -> CadDocument {
 
 #[test]
 fn the_gpu_fills_what_the_cpu_fills() {
+    let _gpu = one_at_a_time();
     for antialias in [false, true] {
         let Some(mut gpu) = renderer(antialias) else {
             return;
@@ -421,6 +435,7 @@ fn fills_what_the_cpu_fills(gpu: &mut GpuRenderer) {
 
 #[test]
 fn the_overlay_is_drawn_over_the_drawing() {
+    let _gpu = one_at_a_time();
     for antialias in [false, true] {
         let Some(mut gpu) = renderer(antialias) else {
             return;
@@ -542,6 +557,7 @@ fn overlay_draws(gpu: &mut GpuRenderer) {
 
 #[test]
 fn every_card_of_a_backend_is_listed_and_one_checked_by_its_index() {
+    let _gpu = one_at_a_time();
     // Listing creates no device: safe in this process for every backend. A
     // card is checked only on the software backend: a driver may crash on
     // a real one, which the application does in a child process (Vulkan
