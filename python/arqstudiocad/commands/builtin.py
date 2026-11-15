@@ -85,7 +85,9 @@ def open_file(ctx: CommandContext, path: Path) -> CommandScript:
         tr(
             "Opened {name}: {count} entities, {version}.",
             name=document.name,
-            count=len(document.get_entities()),
+            # Counted, not listed: listing builds every entity on the GUI
+            # thread (80 ms for 100,000 lines on the reference machine).
+            count=document.entity_count,
             version=document.version,
         )
     )

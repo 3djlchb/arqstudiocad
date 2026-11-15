@@ -1,0 +1,82 @@
+Startup, card survey and opening in the application, reference machine,
+2026-11-15
+
+Machine: GeForce GT 730 (GK208B, NV106) on nouveau, Mesa 25.0.7-2+deb13u1
+(OpenGL 4.3, OpenGL ES 3.2), i7-2600 without AVX2, 16 GB, LMDE 7, X11
+(Cinnamon), kernel 6.12.117. Vulkan here is only llvmpipe (software).
+Measured: main at 22fe1e4 ("base") and this branch's fix at 611fd1c
+("fix", OPEN counting its entities instead of listing them). Every run of
+the application had a fresh XDG_CONFIG_HOME and XDG_DATA_HOME and
+LANG=C.UTF-8. Release-like environment: `uv sync`, the extension built as
+`uv sync` builds it.
+
+Drawing: generated, from no user: 100,000 LINE entities on layer 0, line i
+from (i mod 500, i div 500) to (+0.5, +0.5), the drawing
+tools/reference_machine_report.sh times (5.9 MB DXF, ASCII):
+
+    codes = ["0", "SECTION", "2", "ENTITIES"]
+    for i in range(100_000):
+        x, y = float(i % 500), float(i // 500)
+        codes += ["0", "LINE", "8", "0", "10", str(x), "20", str(y), "30", "0.0"]
+        codes += ["11", str(x + 0.5), "21", str(y + 0.5), "31", "0.0"]
+    codes += ["0", "ENDSEC", "0", "EOF", ""]
+
+== The cards' survey (5 runs each, median; CPU is the child processes' user+sys)
+
+  child process (python -m arqstudiocad ...)       base                fix
+  --gpu-adapters vulkan                              95 ms (71% core)    87 ms (78% core)
+  --gpu-adapters opengl                             108 ms (57% core)    93 ms (67% core)
+  --gpu-probe opengl --adapter 0                    108 ms (72% core)   120 ms (68% core)
+  renderer.survey(('vulkan', 'opengl'))             304 ms              316 ms
+  returns: [CardState(backend='opengl', name='NV106', device_type='Other', reason='')]
+
+  The fix does not touch the survey: the differences are noise.
+
+== Startup (5 starts, median, ms from the process's start)
+
+Method as on 2026-11-11 (that folder's startup-timing.txt): a copy of
+application.run; marks at the window shown (a), the renderer's Choice used
+(b), survey_cards finished (c), and a drawing asked for at (a) and opened
+by OPEN's background path, the DocumentOpened event (d).
+
+  mark                               base 22fe1e4     fix 611fd1c
+  a  window shown                    581              599
+  b  renderer chosen (OpenGL NV106)  898              943
+  c  card survey done                1411             1385
+  d  drawing opened                  1136             1179
+     asked at (a) -> opened          543              565
+
+  Since #172 the survey runs on a thread of its own: opening at startup is
+  back to before #161 (2026-11-11: 835 ms with it, 545 ms before it). The
+  fix comes after DocumentOpened, so it does not show here; the
+  differences between the columns are run-to-run noise (each column's
+  min-max spans ~50-75 ms).
+
+== Opening in the idle application (5 runs, median, ms from the ask)
+
+Method: the application built as above, shown at 1200 x 800 and left
+idle 1.5 s after its renderer is chosen; then runner.start(open_command)
+on the drawing above, as File > Open Recent does, five times, closing it
+in between. Marks: DocumentOpened (the background read done and the
+document adopted), CommandFinished for OPEN (the GUI thread done with it),
+and the first frame (the events processed and the new viewport
+repainted). The first run of each set includes cold caches.
+
+  ask ->                     base 22fe1e4   fix 611fd1c   fix / base
+  DocumentOpened             431.9          415.4         0.96 (untouched)
+  OPEN finished              614.2          493.2         0.80
+  first frame                688.7          582.3         0.85
+
+The GUI thread's cProfile over the base runs (cumulative, per open):
+
+  get_entities() for the opened message's count    ~81 ms   <- fixed
+  Viewport.__init__ (the CadView's scene)          ~69 ms
+  CadView.attach_window (surface, GPU geometry)    ~68 ms
+  CadView.present, each frame                      ~14 ms
+  open_document (on the background thread)        ~394 ms
+
+The fix: the message "Opened {name}: {count} entities" counts with
+CadDocument.entity_count, as the Properties panel already did, instead of
+len(get_entities()), which built every entity (block references drawn to
+find their extents) on the GUI thread while the window was frozen. A test
+opens every public sample and checks the count is the list's length.
