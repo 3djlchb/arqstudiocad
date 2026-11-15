@@ -1,0 +1,57 @@
+Criterion benchmarks, reference machine, 2026-11-15
+
+Machine as in startup-timing.txt. Rust 1.99.0, the repository's optimized
+bench profile, no raised CPU baseline. Every fixture is generated in the
+benchmark itself; no drawing is read. Values are Criterion's estimates
+[low median high].
+
+== cargo bench --locked -p arq-core --bench query (at 22fe1e4)
+
+100k entities (a generated grid of lines)
+  bounds                      [18.744 ms 18.859 ms 19.033 ms]
+  query 1% window             [37.795 us 39.049 us 41.170 us]
+  query everything            [6.3469 ms 6.3961 ms 6.4792 ms]
+  pick                        [584.23 ns 590.38 ns 598.98 ns]
+  select 1% window            [404.47 us 414.73 us 431.73 us]
+  select 1% crossing          [449.50 us 459.48 us 471.15 us]
+  snap (default modes)        [896.93 ns 933.43 ns 983.99 ns]
+  snapshot                    [14.230 ms 14.358 ms 14.553 ms]
+  add line + undo             [4.8995 us 5.0565 us 5.2401 us]
+
+TRIM EXTEND Quick (N unrelated lines, a target and two cutters)
+  trim/10000                  [9.3063 us 9.4744 us 9.6889 us]
+  extend/10000                [6.9984 us 7.0261 us 7.0640 us]
+  trim/100000                 [10.232 us 10.276 us 10.337 us]
+  extend/100000               [7.3126 us 7.3764 us 7.4565 us]
+
+== Quick TRIM/EXTEND on the floor: #188's pending validation
+
+TESTING_AND_PERFORMANCE.md recorded #188's indexed edge lookup on a
+development host and left the reference machine's check pending. The same
+harness (crates/arq-core/benches/query.rs, SHA-256
+f1572ee4c33a7526ab3a94563b06fd453369531373cd6aa4c8d396c302705b45) was
+run here on #188's base, a2236f4 with that file copied in, and on main
+22fe1e4, which holds #188 (`-- "TRIM EXTEND Quick"`, 20 samples):
+
+  Unrelated lines  Operation  Base a2236f4   main 22fe1e4   main / base
+  10,000           TRIM       10.964 ms      9.474 us       0.000864
+  10,000           EXTEND     11.912 ms      7.026 us       0.000590
+  100,000          TRIM       124.25 ms      10.276 us      0.0000827
+  100,000          EXTEND     135.87 ms      7.376 us       0.0000543
+
+On the floor the base cost an eighth of a second for each pick in a
+100,000-line drawing; with the index the cost no longer grows with the
+drawing (10,000 and 100,000 lines within 10 %).
+
+== cargo bench --locked -p arq-render --bench raster (at 22fe1e4)
+
+100k entities at 1920x1080
+  build scene from the document   [65.750 ms 65.922 ms 66.179 ms]
+  render all (CPU)                [91.466 ms 91.562 ms 91.664 ms]
+  render 1% (zoomed in, CPU)      [13.410 ms 13.458 ms 13.498 ms]
+  GPU render all                  [18.040 ms 18.267 ms 18.603 ms]
+  GPU render 1% (zoomed in)       [22.811 ms 22.968 ms 23.130 ms]
+
+The GPU at 1080p draws the whole drawing in 18 ms, about 55 frames a
+second; the CPU in 92 ms, 11. The zoomed-in GPU case (23 ms) is slower
+than the whole one; why was not looked into in this session.
