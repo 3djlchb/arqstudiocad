@@ -88,6 +88,15 @@ latency are not measured here. Validate actual interaction on the i7-2600 /
 GT 730 reference machine before asserting minimum supported performance;
 never convert these numbers using a CPU multiplier. No ProgeCAD is required.
 
+On the reference machine (2026-11-15), the same harness on the same base
+and on `main` at `22fe1e4`: TRIM 124.25 ms → 10.276 µs and EXTEND
+135.87 ms → 7.376 µs with 100,000 unrelated lines (main / base 0.0000827
+and 0.0000543), and with 10,000 lines 10.964 ms → 9.474 µs and 11.912 ms
+→ 7.026 µs: the cost no longer grows with the drawing on the floor either
+([benchmarks](testing/reference-machine/2026-11-15/benchmarks.txt)).
+The core operation is validated there; Python dispatch, the viewport's
+redraw and full fence latency still are not measured.
+
 ## Metrics to keep
 
 Opening and saving time by file size and entity count; peak memory and its
