@@ -1486,3 +1486,152 @@ fn polygon_stretch_combines_areas_once_and_rolls_back_a_later_collapse() {
     assert_eq!(line_ends(&cad, b), (p(0., 5.), p(12., 5.)));
     assert_eq!(line_ends(&cad, a), (p(0., 0.), p(10., 0.)));
 }
+
+#[test]
+fn join_from_a_line_keeps_it_erases_the_rest_and_is_one_step() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(2.0, 0.0), p(4.0, 0.0)).unwrap();
+    let (ahead, _) = cad.add_line(p(6.0, 0.0), p(9.0, 0.0)).unwrap();
+    let (behind, _) = cad.add_line(p(-3.0, 0.0), p(0.0, 0.0)).unwrap();
+    let (across, _) = cad.add_line(p(3.0, -1.0), p(3.0, 1.0)).unwrap();
+    let (arc, _) = cad.add_arc(p(4.0, 0.0), 1.0, 0.0, FRAC_PI_2).unwrap();
+    cad.set_entity_color(&[source], Color::Index(3)).unwrap();
+    let steps = cad.undo_names().len();
+
+    let (joined, changes) = cad
+        .join_entities(Some(source), &[ahead, behind, across, arc, source])
+        .unwrap();
+    assert_eq!(joined.results, [source], "the source, its id kept");
+    assert_eq!((joined.joined, joined.discarded), (2, 2));
+    assert_eq!(line_ends(&cad, source), (p(-3.0, 0.0), p(9.0, 0.0)));
+    assert_eq!(
+        cad.document().entity(source).unwrap().color(),
+        Color::Index(3)
+    );
+    assert!(cad.document().entity(ahead).is_none());
+    assert!(cad.document().entity(behind).is_none());
+    assert!(cad.document().entity(across).is_some(), "not collinear");
+    assert!(
+        cad.document().entity(arc).is_some(),
+        "a line joins lines only"
+    );
+    let mut deleted = changes.deleted().to_vec();
+    deleted.sort();
+    assert_eq!(deleted, {
+        let mut d = vec![ahead, behind];
+        d.sort();
+        d
+    });
+    assert_eq!(changes.modified(), [source]);
+    assert_eq!(cad.undo_names().len(), steps + 1);
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    let gap = arq_geometry::Bounds2::new(p(5.2, -0.1), p(5.8, 0.1));
+    assert_eq!(
+        cad.query_entities(gap),
+        [source],
+        "the index has the gap filled"
+    );
+
+    cad.undo().unwrap();
+    assert_eq!(line_ends(&cad, source), (p(2.0, 0.0), p(4.0, 0.0)));
+    assert_eq!(line_ends(&cad, ahead), (p(6.0, 0.0), p(9.0, 0.0)));
+    cad.redo().unwrap();
+    assert!(cad.document().entity(ahead).is_none());
+}
+
+#[test]
+fn join_from_an_arc_going_all_the_way_round_makes_its_circle() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_arc(p(1.0, 1.0), 5.0, 0.0, FRAC_PI_2).unwrap();
+    let (rest, _) = cad.add_arc(p(1.0, 1.0), 5.0, FRAC_PI_2, 0.0).unwrap();
+    cad.set_entity_color(&[source], Color::Index(5)).unwrap();
+    let (joined, changes) = cad.join_entities(Some(source), &[rest]).unwrap();
+    let [circle] = joined.results[..] else {
+        panic!("{joined:?}")
+    };
+    assert_eq!(cad.document().entity(circle).unwrap().kind(), "CIRCLE");
+    assert_eq!(
+        cad.document().entity(circle).unwrap().color(),
+        Color::Index(5)
+    );
+    assert_eq!(changes.created(), [circle]);
+    assert!(cad.document().entity(source).is_none());
+    assert!(cad.document().entity(rest).is_none());
+    cad.undo().unwrap();
+    assert!(cad.document().entity(circle).is_none());
+    assert_eq!(cad.document().entity(source).unwrap().kind(), "ARC");
+}
+
+#[test]
+fn close_turns_an_arc_into_its_circle() {
+    let mut cad = CadDocument::new();
+    let (arc, _) = cad.add_arc(p(0.0, 0.0), 2.0, 0.5, 1.0).unwrap();
+    let (circle, _) = cad.close_arc(arc).unwrap();
+    let Geometry2::Circle(c) = geometry(&cad, circle) else {
+        panic!("not a circle")
+    };
+    assert_eq!((c.center(), c.radius()), (p(0.0, 0.0), 2.0));
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    assert!(cad.close_arc(line).is_err(), "only an arc closes");
+}
+
+#[test]
+fn join_many_at_once_groups_and_joins_each_from_its_first() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    let (b, _) = cad.add_arc(p(0.0, 5.0), 1.0, 0.0, 1.0).unwrap();
+    let (c, _) = cad.add_line(p(3.0, 0.0), p(4.0, 0.0)).unwrap();
+    let (d, _) = cad.add_arc(p(0.0, 5.0), 1.0, 2.0, 3.0).unwrap();
+    let (alone, _) = cad.add_line(p(0.0, 9.0), p(1.0, 9.0)).unwrap();
+    let (joined, _) = cad.join_entities(None, &[a, b, c, d, alone]).unwrap();
+    assert_eq!(joined.results, [a, b]);
+    assert_eq!((joined.joined, joined.discarded), (2, 1));
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(4.0, 0.0)));
+    let Geometry2::Arc(arc) = geometry(&cad, b) else {
+        panic!("not an arc")
+    };
+    assert_eq!((arc.start_angle(), arc.end_angle()), (0.0, 3.0));
+    assert_eq!(cad.undo_names().iter().filter(|n| **n == "JOIN").count(), 1);
+}
+
+#[test]
+fn join_leaves_what_cannot_join_and_nothing_joined_changes_nothing() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    let (high, _) = cad.add_line(p(2.0, 0.0), p(3.0, 0.0)).unwrap();
+    cad.transact("SETUP", |doc| {
+        let raised = PlanGeometry::at_elevation(geometry_of(doc, high), 5.0)?;
+        Ok(doc.set_plan_geometry(high, raised)?)
+    })
+    .unwrap();
+    let (locked, _) = cad.add_line(p(4.0, 0.0), p(5.0, 0.0)).unwrap();
+    let (layer, _) = cad.create_layer("LOCKED").unwrap();
+    cad.set_entity_layer(&[locked], layer).unwrap();
+    cad.set_layer_locked(layer, true).unwrap();
+    let (circle, _) = cad.add_circle(p(0.0, 0.0), 1.0).unwrap();
+    let steps = cad.undo_names().len();
+
+    let (joined, changes) = cad
+        .join_entities(Some(source), &[high, locked, circle])
+        .unwrap();
+    assert_eq!(joined.results, []);
+    assert_eq!((joined.joined, joined.discarded), (0, 3));
+    assert_eq!(changes, ChangeSet::default());
+    assert_eq!(cad.undo_names().len(), steps, "no undo step");
+    assert_eq!(line_ends(&cad, source), (p(0.0, 0.0), p(1.0, 0.0)));
+
+    assert!(
+        cad.join_entities(Some(circle), &[source]).is_err(),
+        "a circle is no source"
+    );
+    assert!(
+        cad.join_entities(Some(locked), &[source]).is_err(),
+        "locked"
+    );
+    assert_eq!(cad.undo_names().len(), steps);
+}
+
+fn geometry_of(doc: &Document, id: EntityId) -> Geometry2 {
+    doc.entity(id).and_then(|e| e.plan()).unwrap().geometry()
+}

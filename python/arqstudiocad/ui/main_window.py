@@ -397,6 +397,7 @@ class MainWindow(QMainWindow):
             "TRIM",
             "EXTEND",
             "BREAK",
+            "JOIN",
             "FILLET",
             "CHAMFER",
             "EXPLODE",
