@@ -544,6 +544,9 @@ class CadDocument:
         second_distance: float,
         trim: bool = True,
     ) -> tuple[int | None, CadChangeSet]: ...
+    def break_entity(
+        self, entity_id: int, first: _PointLike, second: _PointLike
+    ) -> tuple[list[int], CadChangeSet]: ...
     def trim_entity(
         self,
         entity_id: int,

@@ -131,6 +131,54 @@ pub fn trim(
     Ok(Some(left))
 }
 
+/// BREAK's explicit gap, with both points projected onto the bounded curve.
+/// Open curves keep the pieces before and after the gap, regardless of point
+/// order. Equal interior points split them without a gap. Circles lose the
+/// counterclockwise span from first to second; equal points are refused.
+pub fn break_curve(
+    curve: Geometry2,
+    first: Point2,
+    second: Point2,
+    tol: Tolerance,
+) -> GeometryResult<Vec<Geometry2>> {
+    let a = parameter(curve, curve.closest_point(first));
+    let b = parameter(curve, curve.closest_point(second));
+    if !a.is_finite() || !b.is_finite() {
+        return Err(GeometryError::NonFinite {
+            what: "break point",
+        });
+    }
+    let total = span(curve);
+    let slack = tol.linear() / curve.length().max(tol.linear()) * total;
+    if let Geometry2::Circle(_) = curve {
+        let removed = (b - a).rem_euclid(TAU);
+        if removed <= slack || TAU - removed <= slack {
+            return Err(GeometryError::OutOfRange {
+                what: "break points",
+            });
+        }
+        return piece(curve, b, b + TAU - removed, tol)
+            .map(|arc| vec![arc])
+            .ok_or(GeometryError::OutOfRange {
+                what: "break points",
+            });
+    }
+    let (from, to) = (a.min(b).clamp(0.0, total), a.max(b).clamp(0.0, total));
+    if to - from <= slack && (from <= slack || total - to <= slack) {
+        return Err(GeometryError::OutOfRange {
+            what: "break points",
+        });
+    }
+    let mut pieces = Vec::new();
+    if from > slack {
+        pieces.extend(piece(curve, 0.0, from, tol));
+    }
+    if total - to > slack {
+        pieces.extend(piece(curve, to, total, tol));
+    }
+    Ok(pieces)
+}
+
 /// `curve` grown at the end nearer `pick` to the nearest of `edges` its
 /// line or circle reaches beyond that end, as AutoCAD's EXTEND: a line
 /// longer along itself, an arc further round its circle (never round onto

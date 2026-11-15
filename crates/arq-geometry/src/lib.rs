@@ -118,6 +118,6 @@ pub use region::{Containment, Region};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
 pub use transform3::Transform3;
-pub use trim::{cutting_points, extend, trim};
+pub use trim::{break_curve, cutting_points, extend, trim};
 pub use vector::Vector2;
 pub use vector3::Vector3;

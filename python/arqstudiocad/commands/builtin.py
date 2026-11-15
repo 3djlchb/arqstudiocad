@@ -24,6 +24,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.blocks import BLOCK_COMMANDS, close_block_editor, save_block
+from arqstudiocad.commands.breaking import BREAK_COMMAND
 from arqstudiocad.commands.budget import BUDGET_COMMANDS
 from arqstudiocad.commands.corners import CORNER_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
@@ -395,6 +396,7 @@ def builtin_registry() -> CommandRegistry:
             *DRAW_COMMANDS,
             *MODIFY_COMMANDS,
             STRETCH_COMMAND,
+            BREAK_COMMAND,
             *TRIM_COMMANDS,
             *CORNER_COMMANDS,
             *BLOCK_COMMANDS,

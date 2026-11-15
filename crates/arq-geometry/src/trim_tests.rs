@@ -148,3 +148,55 @@ fn survey_coordinates_trim_and_extend_exactly() {
     let grown = extend(short, &edges, p(x + 1.9, y), TOL).unwrap().unwrap();
     assert!((grown.end_point().unwrap().x() - (x + 4.0)).abs() < 1e-8);
 }
+
+#[test]
+fn break_open_curves_project_order_split_and_clamp() {
+    let l = line((1e6, 0.0), (1e6 + 10.0, 0.0));
+    for (a, b) in [(3.0, 7.0), (7.0, 3.0)] {
+        let pieces = break_curve(l, p(1e6 + a, 2.0), p(1e6 + b, -2.0), TOL).unwrap();
+        assert_eq!(
+            pieces.iter().map(ends).collect::<Vec<_>>(),
+            [
+                ((1e6, 0.0), (1e6 + 3.0, 0.0)),
+                ((1e6 + 7.0, 0.0), (1e6 + 10.0, 0.0)),
+            ]
+        );
+    }
+    let split = break_curve(l, p(1e6 + 4.0, 0.0), p(1e6 + 4.0, 0.0), TOL).unwrap();
+    assert_eq!(split.len(), 2);
+    assert_eq!(ends(&split[0]).1, (1e6 + 4.0, 0.0));
+    assert_eq!(ends(&split[1]).0, (1e6 + 4.0, 0.0));
+    let clipped = break_curve(l, p(1e6 - 5.0, 0.0), p(1e6 + 7.0, 0.0), TOL).unwrap();
+    assert_eq!(
+        clipped.iter().map(ends).collect::<Vec<_>>(),
+        [((1e6 + 7.0, 0.0), (1e6 + 10.0, 0.0))]
+    );
+    assert!(break_curve(l, p(1e6, 0.0), p(1e6, 0.0), TOL).is_err());
+    assert!(
+        break_curve(l, p(1e6 - 1.0, 0.0), p(1e6 + 11.0, 0.0), TOL)
+            .unwrap()
+            .is_empty()
+    );
+    let a = Geometry2::Arc(Arc::new(p(0.0, 0.0), 5.0, 3.0 * FRAC_PI_2, PI).unwrap());
+    let pieces = break_curve(a, p(9.0, 0.0), p(0.0, 8.0), TOL).unwrap();
+    assert_eq!(
+        pieces.iter().map(ends).collect::<Vec<_>>(),
+        [((0.0, -5.0), (5.0, 0.0)), ((0.0, 5.0), (-5.0, 0.0))]
+    );
+}
+
+#[test]
+fn break_circle_removes_the_directed_counterclockwise_gap() {
+    let circle = Geometry2::Circle(Circle::new(p(0.0, 0.0), 5.0).unwrap());
+    for (first, second, expected) in [
+        (p(8.0, 0.0), p(0.0, 9.0), ((0.0, 5.0), (5.0, 0.0))),
+        (p(0.0, 9.0), p(8.0, 0.0), ((5.0, 0.0), (0.0, 5.0))),
+        (p(0.0, -9.0), p(8.0, 0.0), ((5.0, 0.0), (0.0, -5.0))),
+    ] {
+        let pieces = break_curve(circle, first, second, TOL).unwrap();
+        assert_eq!(pieces.len(), 1);
+        assert_eq!(ends(&pieces[0]), expected);
+    }
+    assert!(break_curve(circle, p(5.0, 0.0), p(5.0, 0.0), TOL).is_err());
+    assert!(break_curve(circle, p(5.0, 0.0), p(5.0, 1e-12), TOL).is_err());
+}

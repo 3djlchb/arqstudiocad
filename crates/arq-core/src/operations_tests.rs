@@ -1380,3 +1380,60 @@ fn stretch_failure_restores_earlier_entities_and_history() {
     );
     assert_eq!(line_ends(&cad, a).0, p(0.0, 5.0));
 }
+
+#[test]
+fn break_is_atomic_keeps_properties_and_updates_history_and_queries() {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    cad.set_entity_color(&[line], Color::Index(3)).unwrap();
+    let (left, changes) = cad.break_entity(line, p(3.0, 0.0), p(7.0, 0.0)).unwrap();
+    assert_eq!(left.len(), 2);
+    assert_eq!(left[0], line);
+    assert_eq!(line_ends(&cad, left[0]), (p(0.0, 0.0), p(3.0, 0.0)));
+    assert_eq!(line_ends(&cad, left[1]), (p(7.0, 0.0), p(10.0, 0.0)));
+    assert_eq!(
+        cad.document().entity(left[1]).unwrap().color(),
+        Color::Index(3)
+    );
+    assert_eq!(changes.created(), [left[1]]);
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+    let gap = arq_geometry::Bounds2::new(p(4.0, -1.0), p(6.0, 1.0));
+    assert!(cad.query_entities(gap).is_empty());
+    cad.undo().unwrap();
+    assert_eq!(line_ends(&cad, line), (p(0.0, 0.0), p(10.0, 0.0)));
+    assert!(cad.document().entity(left[1]).is_none());
+    cad.redo().unwrap();
+    assert_eq!(line_ends(&cad, left[1]), (p(7.0, 0.0), p(10.0, 0.0)));
+    let before = cad.undo_names().len();
+    assert!(cad.break_entity(line, p(0.0, 0.0), p(0.0, 0.0)).is_err());
+    assert_eq!(cad.undo_names().len(), before);
+    let layer = cad.document().entity(line).unwrap().layer().to_owned();
+    let layer = cad.document().layer_by_name(&layer).unwrap().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(cad.break_entity(line, p(1.0, 0.0), p(2.0, 0.0)).is_err());
+    assert_eq!(line_ends(&cad, line), (p(0.0, 0.0), p(3.0, 0.0)));
+}
+
+#[test]
+fn break_circle_changes_kind_and_undo_restores_the_original_id() {
+    let mut cad = CadDocument::new();
+    let (circle, _) = cad.add_circle(p(0.0, 0.0), 5.0).unwrap();
+    cad.set_entity_color(&[circle], Color::Index(4)).unwrap();
+    let (left, changes) = cad.break_entity(circle, p(5.0, 0.0), p(0.0, 5.0)).unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(changes.deleted(), [circle]);
+    assert_eq!(changes.created(), left);
+    assert_eq!(
+        cad.document().entity(left[0]).unwrap().color(),
+        Color::Index(4)
+    );
+    assert_eq!(
+        curve_ends(geometry(&cad, left[0])),
+        ((0.0, 5.0), (5.0, 0.0))
+    );
+    cad.undo().unwrap();
+    assert!(matches!(geometry(&cad, circle), Geometry2::Circle(_)));
+    cad.redo().unwrap();
+    assert!(cad.document().entity(circle).is_none());
+    assert!(matches!(geometry(&cad, left[0]), Geometry2::Arc(_)));
+}
