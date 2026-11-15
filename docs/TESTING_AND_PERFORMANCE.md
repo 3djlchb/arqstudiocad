@@ -45,6 +45,7 @@ and separation between tests, checking containment before writing.
 | Read a 100,000-entity DXF | 0.37 s, 84 MiB | `tools/dwg-bench` |
 | TRIM Quick, 100,000 unrelated lines + target + 2 cutters | Median 58.041 ms → 4.099 µs; after/before 0.0000706 | LMDE 7 development host, Ryzen 9 5900X; native Criterion benchmark, optimized Cargo bench profile, 20 samples (2026-11-15); method below |
 | EXTEND Quick, same fixture size | Median 60.694 ms → 2.735 µs; after/before 0.0000451 | Same host, profile and repetitions; method below |
+| Rectangular ARRAY, 100 lines × 10 rows × 10 columns | Grouped COPY median 27.539 ms → atomic ARRAY 19.784 ms; after/before 0.718 | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warm-ups + 10 samples (2026-11-15); diagnostic only; method below |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -88,14 +89,47 @@ latency are not measured here. Validate actual interaction on the i7-2600 /
 GT 730 reference machine before asserting minimum supported performance;
 never convert these numbers using a CPU multiplier. No ProgeCAD is required.
 
-On the reference machine (2026-11-15), the same harness on the same base
-and on `main` at `22fe1e4`: TRIM 124.25 ms → 10.276 µs and EXTEND
-135.87 ms → 7.376 µs with 100,000 unrelated lines (main / base 0.0000827
-and 0.0000543), and with 10,000 lines 10.964 ms → 9.474 µs and 11.912 ms
-→ 7.026 µs: the cost no longer grows with the drawing on the floor either
-([benchmarks](testing/reference-machine/2026-11-15/benchmarks.txt)).
-The core operation is validated there; Python dispatch, the viewport's
-redraw and full fence latency still are not measured.
+### Rectangular ARRAY diagnostic comparison (2026-11-15)
+
+Maintainer-approved scenario: 100 synthetic lines replicated in a 10 × 10
+grid. Base `755c67c9ec6ddf11bb421f9026119a0b1c7e2a94` uses 99 existing
+`copy_entities` calls inside one `doc.group("ARRAYRECT")`; candidate
+`7e76d2d90f9e685bc8edfa357904f2de103f0521` uses one
+`rectangular_array(ids, 10, 10, 20, 20, 0)` call. Both preserve originals,
+produce 10000 entities and undo in one step. This compares equivalent copy
+workflows, not an earlier ARRAY implementation, which did not exist.
+
+Host: LMDE 7, Linux 6.12.117+deb13-amd64, Ryzen 9 5900X; Python 3.13.5,
+Rust 1.99.0, the `uv sync` editable extension built in the repository-default
+Cargo release profile on each commit, no CPU baseline/feature changes.
+No viewport is constructed, so there is no viewport-size or GPU setting.
+No QSettings, system preference or private file is accessed. Both runs use
+the same script and synthetic coordinates. Heavy build/test processes were
+monitored every 250 ms throughout both runs; none were detected.
+
+Fixture: source line i (0–99) runs from `(i % 10, i // 10)` to
+`(i % 10 + 0.5, i // 10)`. Every cell uses offset `(column * 20, row * 20)`;
+cell (0,0) is skipped. Garbage collection is disabled during the 12 calls;
+the first two are warm-ups and ten elapsed values are sampled using
+`time.perf_counter_ns()`. Time includes Python API dispatch, mutation,
+transaction/history and index maintenance. Fixture creation, assertions
+and undo are outside timing. Every call checks entity count, the last
+copy's endpoints `(189,189)`–`(189.5,189)`, the ARRAYRECT history entry and
+restoration to 100 entities after undo. Normal ID allocation continues
+between iterations; source geometry and count are restored.
+
+| Workflow | Median, ms | Candidate / base |
+|---|---|---|
+| Base grouped COPY | 27.5389385 | 1.000 |
+| Candidate atomic ARRAY | 19.7838075 | 0.718 |
+
+These short same-machine diagnostics do not measure command prompts,
+redraw, interactive latency or minimum-machine acceptance. The extra
+geometry can cost redraw time: exercise representative arrays on the actual
+i7-2600/GT 730 host with `tools/reference_machine_report.sh` and
+`uv run python tools/gpu_viewport_check.py` before asserting floor performance.
+Do not convert these timings using a CPU multiplier. ProgeCAD is unnecessary
+for this diagnostic; external behavioral validation remains pending.
 
 ## Metrics to keep
 

@@ -230,6 +230,72 @@ impl CadDocument {
         })
     }
 
+    /// Makes independent copies on a rectangular grid (ARRAYRECT), leaving
+    /// the original cell in place. Spacing is signed; `angle` rotates the
+    /// grid axes, in radians, without rotating the objects. IDs are returned
+    /// row first, then column, then distinct source order, excluding originals.
+    /// Like legacy ARRAY, at least two and at most 100,000 cells are allowed.
+    /// A single transaction owns every copy and rolls back on any error.
+    #[allow(clippy::too_many_arguments)]
+    pub fn rectangular_array(
+        &mut self,
+        ids: &[EntityId],
+        rows: usize,
+        columns: usize,
+        row_spacing: f64,
+        column_spacing: f64,
+        angle: f64,
+    ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let cells = rows
+            .checked_mul(columns)
+            .filter(|n| (2..=100_000).contains(n));
+        if rows == 0 || columns == 0 || cells.is_none() {
+            return Err(CadError::InvalidOperation(
+                "a rectangular array needs 2 to 100000 cells and positive counts".into(),
+            ));
+        }
+        if !row_spacing.is_finite()
+            || !column_spacing.is_finite()
+            || !angle.is_finite()
+            || (rows > 1 && row_spacing == 0.0)
+            || (columns > 1 && column_spacing == 0.0)
+        {
+            return Err(CadError::InvalidGeometry(
+                "array spacing and angle must be finite; repeated axes need nonzero spacing".into(),
+            ));
+        }
+        let ids = distinct(ids);
+        let (sin, cos) = angle.sin_cos();
+        let mut offsets = Vec::with_capacity(cells.unwrap() - 1);
+        for row in 0..rows {
+            for column in 0..columns {
+                if row == 0 && column == 0 {
+                    continue;
+                }
+                let x = column as f64 * column_spacing;
+                let y = row as f64 * row_spacing;
+                offsets.push(Vector2::new(x * cos - y * sin, x * sin + y * cos)?);
+            }
+        }
+        self.transact("ARRAYRECT", |doc| {
+            for id in &ids {
+                let e = doc.entity(*id).ok_or(CadError::EntityNotFound(*id))?;
+                check_unlocked(doc, &e)?;
+                check_transformable(&e)?;
+            }
+            let mut copies = Vec::new();
+            for offset in offsets {
+                let transform = Transform2::translation(offset);
+                for id in &ids {
+                    let copy = doc.copy_entity(*id)?;
+                    doc.transform_entity(copy, transform)?;
+                    copies.push(copy);
+                }
+            }
+            Ok(copies)
+        })
+    }
+
     /// FILLET: `a` and `b` (two lines, or a line and an arc) met by an arc of
     /// `radius` tangent to both, each kept on the side it was picked (`pa`,
     /// `pb`) and, when `trim`, trimmed or extended to it; radius 0 makes a
