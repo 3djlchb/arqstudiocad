@@ -5,8 +5,8 @@ use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{
     Bounds2, CornerCut, CrossingArea, Geometry2, GeometryError, Point2, Tolerance, Transform2,
-    cut_polyline_corners, extend_polyline, offset_polyline, offset_polyline_through, shared_vertex,
-    trim_polyline,
+    break_polyline, cut_polyline_corners, extend_polyline, offset_polyline,
+    offset_polyline_through, shared_vertex, trim_polyline,
 };
 
 use crate::document::Document;
@@ -376,6 +376,62 @@ impl Document {
         }
         self.set_polyline_path(id, first, false, normal, elevation);
         Ok(left)
+    }
+
+    /// BREAK an open lightweight polyline at projected points, preserving
+    /// its properties and interpolating each original segment's widths.
+    /// Closed paths await independently confirmed traversal semantics.
+    pub fn break_polyline(
+        &mut self,
+        id: EntityId,
+        first: Point2,
+        second: Point2,
+    ) -> DocumentResult<Vec<EntityId>> {
+        let WorldPolyline {
+            vertices,
+            closed,
+            normal,
+            elevation,
+        } = self.polyline_in_world(id)?;
+        if closed {
+            return Err(DocumentError::NotEditable {
+                id,
+                kind: "closed LWPOLYLINE",
+            });
+        }
+        let pieces = break_polyline(&vertices, first, second, Tolerance::DEFAULT)?;
+        let EntityType::LwPolyline(source) = self.cad().get_entity(handle(id)).unwrap() else {
+            unreachable!()
+        };
+        let widths: Vec<_> = source
+            .vertices
+            .iter()
+            .map(|v| (v.start_width, v.end_width))
+            .collect();
+        if pieces.is_empty() {
+            self.delete_entity(id)?;
+            return Ok(Vec::new());
+        }
+        let mut ids = vec![id];
+        // Copy the complete source before rewriting any of its pieces.
+        for _ in 1..pieces.len() {
+            ids.push(self.copy_entity(id)?);
+        }
+        for (&target, piece) in ids.iter().zip(pieces) {
+            self.set_polyline_path(target, &piece.vertices, false, normal, elevation);
+            let EntityType::LwPolyline(poly) =
+                self.cad_mut().get_entity_mut(handle(target)).unwrap()
+            else {
+                unreachable!()
+            };
+            for (vertex, span) in poly.vertices.iter_mut().zip(piece.spans) {
+                let (a, b) = widths[span.segment];
+                vertex.start_width = a + (b - a) * span.from;
+                vertex.end_width = a + (b - a) * span.to;
+            }
+            self.sync_entity(target);
+        }
+        Ok(ids)
     }
 
     /// Cuts lightweight polyline `id`'s corners by `cut` (FILLET and
@@ -1553,3 +1609,7 @@ mod text_tests;
 #[cfg(test)]
 #[path = "stretch_tests.rs"]
 mod stretch_tests;
+
+#[cfg(test)]
+#[path = "break_polyline_tests.rs"]
+mod break_polyline_tests;

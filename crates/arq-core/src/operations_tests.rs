@@ -1635,3 +1635,45 @@ fn join_leaves_what_cannot_join_and_nothing_joined_changes_nothing() {
 fn geometry_of(doc: &Document, id: EntityId) -> Geometry2 {
     doc.entity(id).and_then(|e| e.plan()).unwrap().geometry()
 }
+
+#[test]
+fn break_open_polyline_updates_index_preserves_style_and_undoes_atomically() {
+    let mut cad = CadDocument::new();
+    let (id, _) = cad
+        .add_polyline(
+            &[
+                (p(0.0, 0.0), 0.0),
+                (p(10.0, 0.0), 0.0),
+                (p(10.0, 10.0), 0.0),
+            ],
+            false,
+        )
+        .unwrap();
+    cad.set_entity_color(&[id], Color::Index(3)).unwrap();
+    let (ids, changes) = cad.break_entity(id, p(3.0, 0.0), p(10.0, 7.0)).unwrap();
+    assert_eq!(ids.len(), 2);
+    assert_eq!(ids[0], id);
+    assert_eq!(changes.created(), [ids[1]]);
+    assert_eq!(changes.modified(), [id]);
+    assert_eq!(
+        cad.document().entity(ids[1]).unwrap().color(),
+        Color::Index(3)
+    );
+    assert!(
+        cad.query_entities(arq_geometry::Bounds2::from_point(p(5.0, 0.0)))
+            .is_empty()
+    );
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), 1);
+    assert_eq!(
+        cad.query_entities(arq_geometry::Bounds2::from_point(p(5.0, 0.0))),
+        [id]
+    );
+    cad.redo().unwrap();
+    assert!(cad.document().entity(ids[1]).is_some());
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(cad.break_entity(id, p(1.0, 0.0), p(2.0, 0.0)).is_err());
+    assert_eq!(cad.document().entities().len(), 2);
+}

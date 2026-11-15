@@ -132,7 +132,37 @@ fn nearest(path: &[Segment], p: Point2) -> GeometryResult<f64> {
 /// The path from parameter `from` to `to` (going on round a closed path
 /// past its end), as an open polyline's vertices; None when it has no
 /// length.
+/// Source segment and fractional interval, for interpolating per-vertex widths.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PolylineSpan {
+    /// Zero-based source segment index.
+    pub segment: usize,
+    /// Start fraction in the source segment, in [0, 1].
+    pub from: f64,
+    /// End fraction in the source segment, in [0, 1].
+    pub to: f64,
+}
+
+/// One open BREAK result with the provenance of every output segment.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BrokenPolyline {
+    /// Open output path, with the last bulge zero.
+    pub vertices: PolylinePath,
+    /// One source interval per output segment.
+    pub spans: Vec<PolylineSpan>,
+}
+
 fn sub_path(path: &[Segment], from: f64, to: f64, tol: Tolerance) -> Option<Vec<(Point2, f64)>> {
+    slice_path(path, from, to, tol, None)
+}
+
+fn slice_path(
+    path: &[Segment],
+    from: f64,
+    to: f64,
+    tol: Tolerance,
+    mut spans: Option<&mut Vec<PolylineSpan>>,
+) -> Option<PolylinePath> {
     const EPS: f64 = 1e-12;
     let mut out: Vec<(Point2, f64)> = Vec::new();
     let mut t = from;
@@ -148,14 +178,67 @@ fn sub_path(path: &[Segment], from: f64, to: f64, tol: Tolerance) -> Option<Vec<
             match out.last_mut() {
                 // Where the last piece ended: the bulge is this piece's.
                 Some(last) if last.0.approx_eq(start, tol) => last.1 = bulge,
-                _ => out.push((start, bulge)),
+                _ => {
+                    if !out.is_empty()
+                        && let Some(spans) = spans.as_deref_mut()
+                    {
+                        spans.push(PolylineSpan {
+                            segment: i,
+                            from: f0,
+                            to: f0,
+                        });
+                    }
+                    out.push((start, bulge));
+                }
             }
             out.push((s.at(f1), 0.0));
+            if let Some(spans) = spans.as_deref_mut() {
+                spans.push(PolylineSpan {
+                    segment: i,
+                    from: f0,
+                    to: f1,
+                });
+            }
         }
         t = stop.max(t + EPS);
     }
     let length: f64 = out.windows(2).map(|w| w[0].0.distance_to(w[1].0)).sum();
     (out.len() >= 2 && length > tol.linear()).then_some(out)
+}
+
+/// BREAK an open path at its nearest projected points. Reversing the
+/// picks removes the same gap; an equal interior point splits without a gap.
+/// Equal endpoints are refused as a no-op. Source segment fractions preserve
+/// width metadata without geometric reprojection (including self-crossings).
+pub fn break_polyline(
+    vertices: &[(Point2, f64)],
+    first: Point2,
+    second: Point2,
+    tol: Tolerance,
+) -> GeometryResult<Vec<BrokenPolyline>> {
+    let path = segments(vertices, false)?;
+    let n = path.len() as f64;
+    let a = nearest(&path, first)?;
+    let b = nearest(&path, second)?;
+    if !a.is_finite() || !b.is_finite() {
+        return Err(GeometryError::NonFinite {
+            what: "break parameter",
+        });
+    }
+    let (from, to) = (a.min(b), a.max(b));
+    if from == to && (from == 0.0 || from == n) {
+        return Err(GeometryError::OutOfRange {
+            what: "break points",
+        });
+    }
+    let mut pieces = Vec::new();
+    for (start, end) in [(0.0, from), (to, n)] {
+        let mut spans = Vec::new();
+        if let Some(vertices) = slice_path(&path, start, end, tol, Some(&mut spans)) {
+            pieces.push(BrokenPolyline { vertices, spans });
+        }
+    }
+    Ok(pieces)
 }
 
 /// The polyline trimmed at its crossings with `edges` around `pick`, as

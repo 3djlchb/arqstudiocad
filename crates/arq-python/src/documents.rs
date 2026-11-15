@@ -1253,7 +1253,7 @@ impl CadDocument {
             .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
-    /// BREAK: remove the gap between projected points on a line, arc or circle.
+    /// BREAK: projected gap on a line, arc, circle or open lightweight polyline.
     fn break_entity(
         &self,
         entity_id: EntityId,

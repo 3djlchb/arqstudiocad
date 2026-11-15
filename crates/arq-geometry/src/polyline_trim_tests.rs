@@ -169,3 +169,70 @@ fn quick_search_reuses_polyline_terminal_choice_and_conservative_bounds() {
     assert!(bounds.contains_point(p(5., 5.), TOL));
     assert!(bounds.contains_point(p(10., 10.), TOL));
 }
+
+#[test]
+fn break_open_polyline_projects_orders_and_splits_with_source_fractions() {
+    let vertices = [
+        (p(0.0, 0.0), 0.0),
+        (p(10.0, 0.0), 0.0),
+        (p(10.0, 10.0), 0.0),
+    ];
+    let pieces = break_polyline(&vertices, p(3.0, -2.0), p(12.0, 7.0), Tolerance::DEFAULT).unwrap();
+    assert_eq!(pieces.len(), 2);
+    assert_eq!(pieces[0].vertices, [(p(0.0, 0.0), 0.0), (p(3.0, 0.0), 0.0)]);
+    assert_eq!(
+        pieces[1].vertices,
+        [(p(10.0, 7.0), 0.0), (p(10.0, 10.0), 0.0)]
+    );
+    assert_eq!(
+        pieces[0].spans,
+        [PolylineSpan {
+            segment: 0,
+            from: 0.0,
+            to: 0.3
+        }]
+    );
+    assert_eq!(
+        pieces[1].spans,
+        [PolylineSpan {
+            segment: 1,
+            from: 0.7,
+            to: 1.0
+        }]
+    );
+    assert_eq!(
+        pieces,
+        break_polyline(&vertices, p(12.0, 7.0), p(3.0, -2.0), Tolerance::DEFAULT).unwrap()
+    );
+    assert_eq!(
+        break_polyline(&vertices, p(5.0, 0.0), p(5.0, 0.0), Tolerance::DEFAULT)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(break_polyline(&vertices, p(0.0, 0.0), p(0.0, 0.0), Tolerance::DEFAULT).is_err());
+    assert!(
+        break_polyline(&vertices, p(-5.0, 0.0), p(10.0, 20.0), Tolerance::DEFAULT)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn break_polyline_keeps_positive_and_negative_arc_bulges_and_radius() {
+    for sign in [-1.0, 1.0] {
+        let vertices = [(p(0.0, 0.0), sign), (p(2.0, 0.0), 0.0), (p(2.0, 3.0), 0.0)];
+        let at = p(1.0, -sign);
+        let pieces = break_polyline(&vertices, at, at, Tolerance::DEFAULT).unwrap();
+        assert_eq!(pieces.len(), 2);
+        let expected = sign * (std::f64::consts::FRAC_PI_8).tan();
+        for piece in &pieces {
+            let ((a, bulge), b) = (piece.vertices[0], piece.vertices[1].0);
+            assert!((bulge - expected).abs() < 1e-12);
+            let (arc, _) = Arc::from_bulge(a, b, bulge).unwrap();
+            assert!((arc.radius() - 1.0).abs() < 1e-12);
+            assert!(arc.center().approx_eq(p(1.0, 0.0), Tolerance::DEFAULT));
+            assert_eq!(piece.spans.len(), piece.vertices.len() - 1);
+        }
+    }
+}

@@ -1,7 +1,7 @@
 # BREAK command — initial 2D delivery
 
 Milestone 02.14, group 3. Maintainer-approved scope: lines, arcs and circles,
-with AutoCAD 2021 as the baseline. Polylines are a separate future delivery.
+with AutoCAD 2021 as the baseline. Open lightweight polylines are implemented on `feature/break-polylines`; closed-path traversal awaits maintainer confirmation.
 
 ## Behavior
 
@@ -67,3 +67,52 @@ integration test and all nine command/UI cases to fail. After exact-byte
 restoration and extension rebuild, all four focused Rust tests and all ten
 focused Python cases passed. The sabotage exposed and corrected two false
 positives in cancellation tests before the final verification.
+
+## Open lightweight polylines (2026-11-15)
+
+BREAK now accepts open LWPOLYLINE objects as well as the initial curves.
+The original pick, First point override and second point follow the same
+command flow. Both points are projected onto the bounded path; the interval
+between them is removed regardless of pick order. A repeated interior point
+splits without a gap; equal projected endpoints are refused as a no-op.
+Picks beyond both ends can remove the entire path. Straight and positive or
+negative bulge segments are handled in the geometry layer.
+
+The existing segment-parameter and subpath helpers are reused. BREAK also
+records each output segment's original segment index and fractional range.
+The document interpolates start/end widths from this provenance, rather than
+reprojecting geometry at self-crossings or discarding variable widths.
+Constant width, elevation, thickness, normal, layer, color and other source
+properties stay with every piece. Both upward and downward plan normals
+are supported. The first surviving piece keeps its ID; other pieces copy
+the complete source before any source path is rewritten.
+
+One BREAK transaction updates the index and undoes/redoes all pieces.
+The Python API signature is unchanged. Tilted and legacy heavyweight/3D
+polylines remain unsupported. Closed paths are currently refused explicitly;
+a proposed first delivery with Windows confirmation of their directed
+traversal is awaiting the maintainer's answer. No behavior is invented for
+that case. This is Linux internal validation, not independent ProgeCAD
+acceptance. The codec, rendering and CPU baseline are unchanged.
+
+### Open-polyline local verification
+
+All mandatory local checks passed on LMDE 7: fmt, workspace/all-target
+Clippy with warnings denied, cargo test (882 passed, 20 ignored), pytest
+(1103 passed, 5 skipped), Ruff lint/format, mypy, stubtest and cargo-deny
+(existing informational warnings). All nine explicit public-codec corpus
+cases passed after the new worktree fetched the public samples.
+
+Every new case (2 geometry, 1 document, 1 core, 3 binding/command cases)
+and the modified unsupported-object case was observed failing under
+intentional empty results, width loss, omitted dispatch or incorrect command
+acceptance. Exact bytes were restored/touched, the native extension rebuilt,
+and all focused checks passed again (4 new Rust cases; 12 Python cases
+including existing BREAK regressions). Temporary scripts/logs remained
+outside the repository. No private drawing, real app setting or system
+configuration was changed.
+
+The shared TRIM subpath wrapper does not collect width provenance; its
+existing geometry cases pass. No diagnostic timing, independent ProgeCAD
+comparison or reference-floor performance acceptance is claimed in this
+first open-path delivery.
