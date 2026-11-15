@@ -264,6 +264,7 @@ class Viewport(QWidget):
         self._multiple_entities = False
         self._entity_path: list[Point] = []
         self._fence_anchor: Point | None = None
+        self._polygon_points: tuple[Point, ...] = ()
         self._path_shift = False
         #: When Shift+F10 last asked for the context menu (``time.monotonic``).
         self._menu_key_at = -MENU_KEY_ECHO
@@ -390,18 +391,24 @@ class Viewport(QWidget):
         to_plane, invertible = plane.inverted()
         return to_plane * world * plane if invertible else None
 
-    def ask_point(self, base: Point | None, drag: Drag | None = None) -> None:
+    def ask_point(
+        self, base: Point | None, drag: Drag | None = None, *, polygon: tuple[Point, ...] = ()
+    ) -> None:
         """A command asks for a point, from ``base`` if it has one; ``drag``
         follows the cursor from it."""
         self.end_point()
         self._asking, self._base, self._dragged = True, base, drag
+        self._polygon_points = polygon
         self._target = self._snap = None
         self._set_hover(None)
         self.update()
 
     def end_point(self) -> None:
         """No point, nor object, is asked for any more."""
-        had_fence = bool(self._entity_path) or self._fence_anchor is not None
+        had_fence = (
+            bool(self._entity_path) or self._fence_anchor is not None or bool(self._polygon_points)
+        )
+        self._polygon_points = ()
         self._picking_entity = False
         self._multiple_entities = False
         self._entity_path = []
@@ -925,6 +932,15 @@ class Viewport(QWidget):
             out.items.append(
                 Stroke(rectangle(a, b), rgba(color), 1.0, dashed=crossing, closed=True)
             )
+        if self._polygon_points:
+            polygon_corners = list(self._polygon_points)
+            if self._target is not None:
+                polygon_corners.append(self._target)
+            if len(polygon_corners) > 1:
+                pixels = tuple((at.x(), at.y()) for at in map(self.screen_point, polygon_corners))
+                out.items.append(
+                    Stroke(pixels, rgba(QColor(CROSSING)), 1.0, dashed=True, closed=True)
+                )
         fence = list(self._entity_path)
         if self._fence_anchor is not None:
             fence = [self._fence_anchor]

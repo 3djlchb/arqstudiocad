@@ -4,7 +4,7 @@ use acadrust::entities::LwPolyline;
 use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{
-    Bounds2, CornerCut, Geometry2, GeometryError, Point2, Tolerance, Transform2,
+    Bounds2, CornerCut, CrossingArea, Geometry2, GeometryError, Point2, Tolerance, Transform2,
     cut_polyline_corners, extend_polyline, offset_polyline, offset_polyline_through, shared_vertex,
     trim_polyline,
 };
@@ -40,6 +40,17 @@ impl Document {
         areas: &[Bounds2],
         offset: arq_geometry::Vector2,
     ) -> DocumentResult<()> {
+        let regions: Vec<_> = areas.iter().copied().map(CrossingArea::Rectangle).collect();
+        self.stretch_entity_in_areas(id, &regions, offset)
+    }
+
+    /// The same STRETCH writer for rectangles and validated crossing polygons.
+    pub fn stretch_entity_in_areas(
+        &mut self,
+        id: EntityId,
+        areas: &[CrossingArea],
+        offset: arq_geometry::Vector2,
+    ) -> DocumentResult<()> {
         let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         if e.kind() == "3DSOLID" {
             return Ok(());
@@ -50,7 +61,7 @@ impl Document {
             }
         }
         let tol = Tolerance::default();
-        let inside = |point| areas.iter().any(|area| area.contains_point(point, tol));
+        let inside = |point| areas.iter().any(|area| area.contains(point, tol));
         let translation = Transform2::translation(offset);
         if areas.is_empty() {
             return self.transform_entity(id, translation);

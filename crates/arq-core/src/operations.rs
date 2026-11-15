@@ -13,8 +13,8 @@ use arq_document::{
     Revolved,
 };
 use arq_geometry::{
-    Arc, Circle, Geometry2, GeometryError, Line, Point2, Point3, Tolerance, Transform2, Vector2,
-    break_curve, cutting_points, extend, trim,
+    Arc, Circle, CrossingArea, Geometry2, GeometryError, Line, Point2, Point3, SelectionPolygon,
+    Tolerance, Transform2, Vector2, break_curve, cutting_points, extend, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -684,13 +684,34 @@ impl CadDocument {
         offset: Vector2,
         crossing: &[(EntityId, arq_geometry::Bounds2)],
     ) -> CadResult<ChangeSet> {
-        let mut windows = BTreeMap::<EntityId, Vec<arq_geometry::Bounds2>>::new();
+        self.stretch_entities_with_polygons(ids, offset, crossing, &[])
+    }
+
+    /// STRETCH with rectangle and polygon provenance combined per entity.
+    /// Validation precedes the atomic edit; points in overlapping areas move once.
+    pub fn stretch_entities_with_polygons(
+        &mut self,
+        ids: &[EntityId],
+        offset: Vector2,
+        crossing: &[(EntityId, arq_geometry::Bounds2)],
+        polygons: &[(EntityId, SelectionPolygon)],
+    ) -> CadResult<ChangeSet> {
+        let mut regions = BTreeMap::<EntityId, Vec<CrossingArea>>::new();
         for &(id, area) in crossing {
-            windows.entry(id).or_default().push(area);
+            regions
+                .entry(id)
+                .or_default()
+                .push(CrossingArea::Rectangle(area));
+        }
+        for (id, polygon) in polygons {
+            regions
+                .entry(*id)
+                .or_default()
+                .push(CrossingArea::Polygon(polygon.clone()));
         }
         self.edit_entities("STRETCH", ids, |doc, e| {
-            let areas = windows.get(&e.id()).map_or(&[][..], Vec::as_slice);
-            Ok(doc.stretch_entity(e.id(), areas, offset)?)
+            let areas = regions.get(&e.id()).map_or(&[][..], Vec::as_slice);
+            Ok(doc.stretch_entity_in_areas(e.id(), areas, offset)?)
         })
     }
 

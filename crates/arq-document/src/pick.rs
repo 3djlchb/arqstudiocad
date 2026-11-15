@@ -10,7 +10,7 @@ use arq_geometry::snap::{
     SnapKind, SnapPoint, intersection_points, key_points, nearest_point, perpendicular_points,
     tangent_points,
 };
-use arq_geometry::{Bounds2, Geometry2, Line, Point2, Tolerance};
+use arq_geometry::{Bounds2, Geometry2, Line, Point2, SelectionPolygon, Tolerance};
 
 use crate::document::Document;
 use crate::drawing::{DrawItem, Shape};
@@ -72,6 +72,23 @@ impl Document {
         candidates: &[EntityId],
     ) -> Vec<EntityId> {
         self.select_drawings(self.drawing_entities(candidates), area, crossing)
+    }
+
+    /// Crossing-polygon selection over visible drawings of spatial candidates.
+    pub fn select_polygon_candidates(
+        &self,
+        polygon: &SelectionPolygon,
+        candidates: &[EntityId],
+    ) -> Vec<EntityId> {
+        self.drawing_entities(candidates)
+            .into_iter()
+            .filter(|(_, items)| {
+                items
+                    .iter()
+                    .any(|item| touches_polygon(item.shape, polygon))
+            })
+            .map(|(id, _)| id)
+            .collect()
     }
 
     fn select_drawings(
@@ -358,6 +375,48 @@ fn touches(shape: Shape, area: Bounds2) -> bool {
     edges(area)
         .into_iter()
         .any(|edge| !arq_geometry::intersect(g, edge, TOL).is_empty())
+}
+
+/// Polygon counterpart of `touches`, using exact curves and the same text boxes.
+fn touches_polygon(shape: Shape, polygon: &SelectionPolygon) -> bool {
+    if !polygon.bounds().intersects(shape.bounds(), TOL) {
+        return false;
+    }
+    if let Some(curve) = curve(shape) {
+        return polygon.touches_curve(curve, TOL);
+    }
+    match shape {
+        Shape::Point(point) => polygon.contains(point, TOL),
+        Shape::Text(bounds) | Shape::Placeholder(bounds) => {
+            bounds
+                .corners()
+                .iter()
+                .any(|&point| polygon.contains(point, TOL))
+                || polygon
+                    .vertices()
+                    .iter()
+                    .any(|&point| bounds.contains_point(point, TOL))
+                || edges(bounds)
+                    .into_iter()
+                    .any(|edge| polygon.touches_curve(edge, TOL))
+        }
+        Shape::Triangle(triangle) => {
+            triangle.iter().any(|&point| polygon.contains(point, TOL))
+                || polygon
+                    .vertices()
+                    .iter()
+                    .any(|&point| in_triangle(triangle, point))
+                || [
+                    (triangle[0], triangle[1]),
+                    (triangle[1], triangle[2]),
+                    (triangle[2], triangle[0]),
+                ]
+                .into_iter()
+                .filter_map(|(a, b)| Line::new(a, b).ok())
+                .any(|edge| polygon.touches_curve(edge.into(), TOL))
+        }
+        _ => unreachable!("curves handled above"),
+    }
 }
 
 /// Whether `q` lies in the triangle, its edges included.
