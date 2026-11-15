@@ -271,3 +271,10 @@ The public contour query also refuses non-Top views, rather than returning
 XY contours through a camera for another plane. Removing that guard caused
 the binding's Front-view assertion to fail; exact-byte restoration, touch,
 uv sync and all mandatory local checks passed again afterwards.
+
+After incorporating the maintainer's remote branch updates and main through
+ARRAY #191 (`66c0125`), all mandatory local checks passed again: 884 Rust
+cases (20 ignored), 1116 Python cases (5 skipped) and all nine explicit
+public-codec corpus cases, plus fmt, Clippy, Ruff, mypy, stubtest and deny.
+The earlier recorded diagnostics keep their original commit labels;
+reference-floor acceptance must check the updated candidate.
