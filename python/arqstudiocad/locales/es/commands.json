@@ -17,6 +17,11 @@
   "ARC": [
     "ARCO"
   ],
+  "ARRAYRECT": [
+    "MATRIZRECTANG",
+    "MATRIZ",
+    "-MATRIZ"
+  ],
   "BCLOSE": [
     "CERRARBLOQUE"
   ],

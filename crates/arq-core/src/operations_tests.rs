@@ -1677,3 +1677,102 @@ fn break_open_polyline_updates_index_preserves_style_and_undoes_atomically() {
     assert!(cad.break_entity(id, p(1.0, 0.0), p(2.0, 0.0)).is_err());
     assert_eq!(cad.document().entities().len(), 2);
 }
+
+#[test]
+fn rectangular_array_keeps_sources_styles_and_one_history_step() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
+    let (b, _) = cad.add_circle(p(1.0, 1.0), 0.5).unwrap();
+    cad.set_entity_color(&[a], Color::Index(3)).unwrap();
+    let before = cad.document().entities().len();
+    let (copies, changes) = cad
+        .rectangular_array(&[a, b, a], 2, 3, -5.0, 10.0, FRAC_PI_2)
+        .unwrap();
+    assert_eq!(copies.len(), 10);
+    assert_eq!(changes.created(), copies);
+    assert!(changes.modified().is_empty() && changes.deleted().is_empty());
+    // Column movement is +Y, negative row movement +X. Source direction stays +X.
+    for (cell, (x, y)) in [
+        (0.0, 10.0),
+        (0.0, 20.0),
+        (5.0, 0.0),
+        (5.0, 10.0),
+        (5.0, 20.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = copies[cell * 2];
+        let (start, end) = line_ends(&cad, id);
+        assert!(near(start, p(x, y)) && near(end, p(x + 2.0, y)));
+        assert_eq!(cad.document().entity(id).unwrap().color(), Color::Index(3));
+        let Geometry2::Circle(c) = geometry(&cad, copies[cell * 2 + 1]) else {
+            panic!("circle lost")
+        };
+        assert!(near(c.center(), p(x + 1.0, y + 1.0)));
+        assert_eq!(c.radius(), 0.5);
+    }
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(2.0, 0.0)));
+    assert_eq!(cad.undo_name(), Some("ARRAYRECT"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), before);
+    cad.redo().unwrap();
+    assert_eq!(cad.document().entities().len(), before + 10);
+    assert!(cad.document().entity(copies[9]).is_some());
+}
+
+#[test]
+fn rectangular_array_rejects_invalid_parameters_without_a_history_step() {
+    let mut cad = CadDocument::new();
+    let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    for (rows, cols, rs, cs, angle) in [
+        (0, 2, 1.0, 1.0, 0.0),
+        (1, 1, 1.0, 1.0, 0.0),
+        (usize::MAX, 2, 1.0, 1.0, 0.0),
+        (100_001, 1, 1.0, 1.0, 0.0),
+        (2, 2, 0.0, 1.0, 0.0),
+        (2, 2, 1.0, 0.0, 0.0),
+        (2, 2, f64::NAN, 1.0, 0.0),
+        (2, 2, 1.0, f64::INFINITY, 0.0),
+        (2, 2, 1.0, 1.0, f64::NAN),
+        (3, 1, f64::MAX, 1.0, 0.0),
+    ] {
+        assert!(
+            cad.rectangular_array(&[id], rows, cols, rs, cs, angle)
+                .is_err()
+        );
+        assert_eq!(cad.document().entities().len(), 1);
+        assert_eq!(cad.undo_name(), Some("LINE"));
+    }
+    // A non-repeated axis may have zero spacing.
+    assert_eq!(
+        cad.rectangular_array(&[id], 1, 2, 0.0, -2.0, 0.0)
+            .unwrap()
+            .0
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn rectangular_array_errors_and_late_coordinate_overflow_are_atomic() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    assert!(
+        cad.rectangular_array(&[a, u64::MAX], 2, 2, 1.0, 1.0, 0.0)
+            .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(cad.rectangular_array(&[a], 2, 2, 1.0, 1.0, 0.0).is_err());
+    cad.set_layer_locked(layer, false).unwrap();
+    let (b, _) = cad.add_line(p(1.0e308, 0.0), p(1.1e308, 0.0)).unwrap();
+    let before = cad.document().entities().len();
+    assert!(
+        cad.rectangular_array(&[a, b], 1, 3, 0.0, 5.0e307, 0.0)
+            .is_err()
+    );
+    assert_eq!(cad.document().entities().len(), before);
+    assert_eq!(cad.undo_name(), Some("LINE"));
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(1.0, 0.0)));
+}
