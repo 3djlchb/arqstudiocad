@@ -914,7 +914,14 @@ fn extension_query_area(
     match curve {
         Geometry2::Circle(_) => None,
         Geometry2::Arc(arc) => {
-            let bounds = arc.circle().bounds();
+            // A partial arc may have finite bounds even if its supporting
+            // circle overflows. Refuse the broad phase, never panic here.
+            let center = arc.center();
+            let radius = arc.radius();
+            let bounds = arq_geometry::Bounds2::new(
+                Point2::new(center.x() - radius, center.y() - radius).ok()?,
+                Point2::new(center.x() + radius, center.y() + radius).ok()?,
+            );
             let scale = [
                 bounds.min().x(),
                 bounds.min().y(),

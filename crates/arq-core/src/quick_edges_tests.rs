@@ -213,4 +213,16 @@ fn quick_index_preserves_relative_slack_and_updated_index_after_undo() {
     let (target, _) = cad.add_circle(p(0., 0.), 5.).unwrap();
     cad.add_circle(p(10. + 0.5e-9, 0.), 5.).unwrap(); // tolerance-level tangency
     equivalent(cad, target, p(5., 0.), false);
+    let arc = Arc::new(
+        p(1e308, 0.),
+        1e308,
+        std::f64::consts::PI,
+        3. * std::f64::consts::FRAC_PI_2,
+    )
+    .unwrap();
+    let extent = arq_geometry::Bounds2::new(p(0., -1e308), p(1e308, 0.));
+    assert!(
+        extension_query_area(arc.into(), p(0., 0.), extent, 1e299).is_none(),
+        "overflow must use exhaustive fallback"
+    );
 }
