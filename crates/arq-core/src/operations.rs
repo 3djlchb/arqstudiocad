@@ -14,7 +14,8 @@ use arq_document::{
 };
 use arq_geometry::{
     Arc, Circle, CrossingArea, Geometry2, GeometryError, Line, Point2, Point3, SelectionPolygon,
-    Tolerance, Transform2, Vector2, break_curve, cutting_points, extend, trim,
+    Tolerance, Transform2, Vector2, break_curve, cutting_points, extend, join_arcs, join_groups,
+    join_lines, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -418,6 +419,114 @@ impl CadDocument {
                 .ok()?
         };
         Some(self.query_entities(area))
+    }
+
+    /// Joins lines or arcs as AutoCAD 2021's JOIN does. With `source`, a
+    /// line or an arc, the lines of `ids` collinear with a source line, or
+    /// the arcs on a source arc's circle, gaps filled, arcs
+    /// counterclockwise from the source, the circle when they go all the
+    /// way round. Without, `ids` are grouped (collinear lines, arcs of one
+    /// circle) and each group is joined from its first. A result keeps its
+    /// source's id and every property (an arc become a circle, the circle's
+    /// id); the curves joined to it are erased. Curves that join nothing,
+    /// of another kind, at another elevation or on a locked layer, are left
+    /// as they are and counted as discarded. When nothing joins, nothing
+    /// changes and no undo step is made. A source that is not a line or an
+    /// arc drawn in plan, or is on a locked layer, is refused.
+    pub fn join_entities(
+        &mut self,
+        source: Option<EntityId>,
+        ids: &[EntityId],
+    ) -> CadResult<(Joined, ChangeSet)> {
+        let tol = Tolerance::DEFAULT;
+        let doc = self.document();
+        let mut seen = std::collections::HashSet::new();
+        let ids: Vec<EntityId> = ids
+            .iter()
+            .copied()
+            .filter(|&id| Some(id) != source && seen.insert(id))
+            .collect();
+        let usable: Vec<(EntityId, PlanGeometry)> = ids
+            .iter()
+            .filter_map(|&id| joinable(doc, id).map(|plan| (id, plan)))
+            .collect();
+        let mut joins = Vec::new();
+        match source {
+            Some(source) => {
+                let e = doc.entity(source).ok_or(CadError::EntityNotFound(source))?;
+                check_unlocked(doc, &e)?;
+                let plan = joinable(doc, source).ok_or(DocumentError::NotEditable {
+                    id: source,
+                    kind: e.kind(),
+                })?;
+                let others: Vec<(EntityId, PlanGeometry)> = usable
+                    .into_iter()
+                    .filter(|(_, p)| same_elevation(*p, plan, tol))
+                    .collect();
+                joins.extend(join_one(source, plan, &others, tol));
+            }
+            None => {
+                for level in by_elevation(&usable, tol) {
+                    let curves: Vec<Geometry2> = level.iter().map(|(_, p)| p.geometry()).collect();
+                    for group in join_groups(&curves, tol) {
+                        let (first, rest) = group.split_first().expect("a group has two");
+                        let (id, plan) = level[*first];
+                        let others: Vec<_> = rest.iter().map(|&i| level[i]).collect();
+                        joins.extend(join_one(id, plan, &others, tol));
+                    }
+                }
+            }
+        }
+        let joined: usize = joins.iter().map(|j| j.erased.len()).sum();
+        // Many at once, each group's first is among `ids`, and a result.
+        let firsts = if source.is_none() { joins.len() } else { 0 };
+        let discarded = ids.len() - joined - firsts;
+        if joined == 0 {
+            let outcome = Joined {
+                results: Vec::new(),
+                joined,
+                discarded,
+            };
+            return Ok((outcome, ChangeSet::default()));
+        }
+        let (results, changes) = self.transact("JOIN", |doc| {
+            let mut results = Vec::new();
+            for join in &joins {
+                for &id in &join.erased {
+                    doc.delete_entity(id)?;
+                }
+                let made = match (join.plan.geometry(), join.result) {
+                    (Geometry2::Arc(_), Geometry2::Circle(_)) => doc.arc_to_circle(join.source)?,
+                    _ => {
+                        doc.set_plan_geometry(join.source, join.plan.with_geometry(join.result))?;
+                        join.source
+                    }
+                };
+                results.push(made);
+            }
+            Ok(results)
+        })?;
+        let outcome = Joined {
+            results,
+            joined,
+            discarded,
+        };
+        Ok((outcome, changes))
+    }
+
+    /// Turns arc `id` into its full circle (JOIN's Close), every property
+    /// kept; returns the circle's id. Refused for anything but an arc drawn
+    /// in plan, and on a locked layer.
+    pub fn close_arc(&mut self, id: EntityId) -> CadResult<(EntityId, ChangeSet)> {
+        let e = self
+            .document()
+            .entity(id)
+            .ok_or(CadError::EntityNotFound(id))?;
+        check_unlocked(self.document(), &e)?;
+        if e.kind() != "ARC" || e.plan().is_none() {
+            return Err(DocumentError::NotEditable { id, kind: e.kind() }.into());
+        }
+        self.transact("JOIN", |doc| Ok(doc.arc_to_circle(id)?))
     }
 
     /// Removes the gap between projected points on a line, arc or circle.
@@ -890,6 +999,100 @@ fn check_transformable(e: &Entity) -> CadResult<()> {
         e.id(),
         e.kind()
     )))
+}
+
+/// What JOIN did ([`CadDocument::join_entities`]).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Joined {
+    /// The curves joined into, in order: each source, or the circle an arc
+    /// became.
+    pub results: Vec<EntityId>,
+    /// How many curves were joined to them, and erased.
+    pub joined: usize,
+    /// How many could not join and were left as they were.
+    pub discarded: usize,
+}
+
+/// One source and what JOIN makes of it, worked out before any change.
+struct Join {
+    source: EntityId,
+    plan: PlanGeometry,
+    result: Geometry2,
+    erased: Vec<EntityId>,
+}
+
+/// A line or an arc drawn in plan, not on a locked layer: what can join.
+fn joinable(doc: &Document, id: EntityId) -> Option<PlanGeometry> {
+    let e = doc.entity(id)?;
+    if !matches!(e.kind(), "LINE" | "ARC") || check_unlocked(doc, &e).is_err() {
+        return None;
+    }
+    e.plan()
+}
+
+/// `source` joined with whichever of `others` it takes; None when it takes
+/// none.
+fn join_one(
+    source: EntityId,
+    plan: PlanGeometry,
+    others: &[(EntityId, PlanGeometry)],
+    tol: Tolerance,
+) -> Option<Join> {
+    let (result, taken) = match plan.geometry() {
+        Geometry2::Line(line) => {
+            let (ids, lines): (Vec<EntityId>, Vec<Line>) = others
+                .iter()
+                .filter_map(|(id, p)| match p.geometry() {
+                    Geometry2::Line(l) => Some((*id, l)),
+                    _ => None,
+                })
+                .unzip();
+            let (joined, taken) = join_lines(line, &lines, tol);
+            let taken: Vec<EntityId> = taken.into_iter().map(|i| ids[i]).collect();
+            (Geometry2::Line(joined), taken)
+        }
+        Geometry2::Arc(arc) => {
+            let (ids, arcs): (Vec<EntityId>, Vec<Arc>) = others
+                .iter()
+                .filter_map(|(id, p)| match p.geometry() {
+                    Geometry2::Arc(a) => Some((*id, a)),
+                    _ => None,
+                })
+                .unzip();
+            let (joined, taken) = join_arcs(arc, &arcs, tol);
+            (joined, taken.into_iter().map(|i| ids[i]).collect())
+        }
+        Geometry2::Circle(_) => return None,
+    };
+    (!taken.is_empty()).then_some(Join {
+        source,
+        plan,
+        result,
+        erased: taken,
+    })
+}
+
+/// Whether two curves lie at one elevation: only those join.
+fn same_elevation(a: PlanGeometry, b: PlanGeometry, tol: Tolerance) -> bool {
+    (a.elevation() - b.elevation()).abs() <= tol.linear()
+}
+
+/// `curves` split by elevation, each level in selection order.
+fn by_elevation(
+    curves: &[(EntityId, PlanGeometry)],
+    tol: Tolerance,
+) -> Vec<Vec<(EntityId, PlanGeometry)>> {
+    let mut levels: Vec<Vec<(EntityId, PlanGeometry)>> = Vec::new();
+    for &curve in curves {
+        match levels
+            .iter_mut()
+            .find(|level| same_elevation(level[0].1, curve.1, tol))
+        {
+            Some(level) => level.push(curve),
+            None => levels.push(vec![curve]),
+        }
+    }
+    levels
 }
 
 fn check_unlocked(doc: &Document, e: &Entity) -> CadResult<()> {

@@ -88,6 +88,7 @@ pub use arq_document::{
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};
 pub use history::{CadDocument, Snapshot};
+pub use operations::Joined;
 
 /// Version of the CAD core, taken from the workspace version.
 pub fn version() -> &'static str {

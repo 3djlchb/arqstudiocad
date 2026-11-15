@@ -551,6 +551,30 @@ impl Document {
         Ok(new)
     }
 
+    /// Replaces arc `id` with its full circle, every common property kept
+    /// (layer, color, linetype, lineweight, XDATA…) and its thickness and
+    /// plane (JOIN, when arcs go all the way round or Close is chosen).
+    /// Returns the circle's id.
+    pub fn arc_to_circle(&mut self, id: EntityId) -> DocumentResult<EntityId> {
+        let Some(EntityType::Arc(arc)) = self.cad().get_entity(handle(id)) else {
+            let kind = self
+                .cad()
+                .get_entity(handle(id))
+                .map(|e| e.as_entity().entity_type())
+                .ok_or(DocumentError::EntityNotFound(id))?;
+            return Err(DocumentError::NotEditable { id, kind });
+        };
+        let mut made = acadrust::Circle::new();
+        made.common = arc.common.clone();
+        made.center = arc.center;
+        made.radius = arc.radius;
+        made.thickness = arc.thickness;
+        made.normal = arc.normal;
+        let new = self.add_copy(EntityType::Circle(made), Handle::NULL)?;
+        self.delete_entity(id)?;
+        Ok(new)
+    }
+
     /// Adds a copy of lightweight polyline `id` offset `distance` toward
     /// `toward`, or through `toward` when `distance` is None (OFFSET):
     /// every property kept, its vertices those of the offset path in its

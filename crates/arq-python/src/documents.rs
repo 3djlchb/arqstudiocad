@@ -1264,6 +1264,37 @@ impl CadDocument {
             .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
+    /// JOIN: with `source`, a line or an arc, joins to it the lines of
+    /// `entity_ids` collinear with it, or the arcs on its circle, gaps
+    /// filled, arcs counterclockwise from it (a full turn, its circle);
+    /// without, groups `entity_ids` and joins each group from its first.
+    /// Returns the curves joined into, how many were joined to them and
+    /// erased, how many could not join and were left, and what changed.
+    /// Nothing joined changes nothing. A source that cannot join raises.
+    #[pyo3(signature = (source, entity_ids))]
+    fn join_entities(
+        &self,
+        source: Option<EntityId>,
+        entity_ids: Vec<EntityId>,
+    ) -> PyResult<(Vec<EntityId>, usize, usize, CadChangeSet)> {
+        self.edit(|cad| cad.join_entities(source, &entity_ids))
+            .map(|(joined, changes)| {
+                (
+                    joined.results,
+                    joined.joined,
+                    joined.discarded,
+                    CadChangeSet(changes),
+                )
+            })
+    }
+
+    /// JOIN's Close: arc `entity_id` becomes its full circle, every
+    /// property kept. Returns the circle's id and what changed.
+    fn close_arc(&self, entity_id: EntityId) -> PyResult<(EntityId, CadChangeSet)> {
+        self.edit(|cad| cad.close_arc(entity_id))
+            .map(|(id, changes)| (id, CadChangeSet(changes)))
+    }
+
     /// Extends line or arc `entity_id` at the end nearer `at` to the nearest
     /// of `edges` (Standard), or of every other entity drawn (None, Quick),
     /// it reaches (EXTEND); an `InvalidGeometryError` when none.
