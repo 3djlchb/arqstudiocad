@@ -398,6 +398,7 @@ class MainWindow(QMainWindow):
             "EXTEND",
             "BREAK",
             "JOIN",
+            "ARRAYRECT",
             "FILLET",
             "CHAMFER",
             "EXPLODE",
