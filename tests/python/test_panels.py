@@ -329,6 +329,31 @@ def test_selected_line_properties_edit_geometry_as_one_undo_step(window: MainWin
     assert isinstance(geometry, CadLine) and geometry.start == (1.0, 2.0)
 
 
+def test_the_panel_writes_and_reads_numbers_as_cad_does_in_any_language(
+    decimal_comma_locale: None, window: MainWindow
+) -> None:
+    """A point for decimals and no thousands separator, as AutoCAD writes
+    them, though the system's language uses a decimal comma (ADR 0039): a
+    comma is refused, as it separates coordinates on the command line."""
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    line_id, changes = document.add_line((0.5, 2), (12345.25, 2))
+    window.session.report(document, changes)
+    window.session.select(document, [line_id])
+    rows = dict(window.properties_panel.rows())
+    assert rows["Start X"] == "0.5"
+    assert rows["End X"] == "12345.25"
+
+    property_item(window, "Start X").setText(1, "2,5")
+    geometry = document.get_entity(line_id).geometry
+    assert isinstance(geometry, CadLine) and geometry.start == (0.5, 2.0), "refused"
+
+    property_item(window, "Start X").setText(1, "2.5")
+    geometry = document.get_entity(line_id).geometry
+    assert isinstance(geometry, CadLine) and geometry.start == (2.5, 2.0)
+
+
 def test_selection_properties_edit_layer_and_color_for_mixed_entities(
     window: MainWindow,
 ) -> None:

@@ -32,6 +32,7 @@ from arqstudiocad.core import CadBlockData, CadDocument
 from arqstudiocad.i18n import tr
 from arqstudiocad.ui.block_data_dialog import BlockDataFields
 from arqstudiocad.ui.blocks_panel import units_name
+from arqstudiocad.ui.number_format import with_cad_numbers
 
 #: Characters a block name cannot hold, as the core refuses them.
 FORBIDDEN = set('<>/\\":;?*|,=`')
@@ -194,7 +195,7 @@ class BlockDefinitionDialog(QDialog):
         self._check()
 
     def _coordinate(self, value: float) -> QDoubleSpinBox:
-        box = QDoubleSpinBox()
+        box = with_cad_numbers(QDoubleSpinBox())
         box.setDecimals(4)
         box.setRange(-COORDINATE_LIMIT, COORDINATE_LIMIT)
         box.setValue(value)

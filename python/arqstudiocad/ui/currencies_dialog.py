@@ -46,6 +46,7 @@ from arqstudiocad.currencies import (
     shown_name,
 )
 from arqstudiocad.i18n import tr
+from arqstudiocad.ui.number_format import with_cad_numbers
 
 #: The table's columns.
 ACTIVE, PRINCIPAL, CODE, NAME, SYMBOL, DECIMALS, FORMAT, USES = range(8)
@@ -478,7 +479,7 @@ class OwnCurrencyDialog(QDialog):
         self.code.setPlaceholderText(tr("3 to 10 capital letters or digits"))
         self.name = QLineEdit()
         self.symbol = QLineEdit()
-        self.decimals = QSpinBox()
+        self.decimals = with_cad_numbers(QSpinBox())
         self.decimals.setRange(0, 4)
         self.decimals.setValue(2)
         self.problem = QLabel()

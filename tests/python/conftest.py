@@ -75,3 +75,17 @@ def _no_windows_left(_isolated_settings: None) -> Iterator[None]:
     for widget in QApplication.topLevelWidgets():
         widget.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+@pytest.fixture
+def decimal_comma_locale() -> Iterator[None]:
+    """The system's language writes decimals with a comma, as Spanish
+    (Ecuador) does in Qt, whatever the machine running the tests is set to;
+    restored after the test."""
+    from PySide6.QtCore import QLocale
+
+    before = QLocale()
+    QLocale.setDefault(QLocale(QLocale.Language.Spanish, QLocale.Country.Ecuador))
+    assert QLocale().decimalPoint() == ","
+    yield
+    QLocale.setDefault(before)

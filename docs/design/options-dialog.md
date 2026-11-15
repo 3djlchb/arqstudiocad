@@ -332,7 +332,7 @@ in both languages. Paths and hardware values are not catalog strings.
 | Drawing rotation | Rotación de dibujo | |
 | degrees | grados | Unit |
 | Turns the crosshair and the snap grid in the active UCS (SNAPANG). | Gira la mira y la rejilla de forzado en el SCP activo (SNAPANG). | Help |
-| Polar tracking increment | Incremento de rastreo polar | Items "1°"… use the locale's decimal separator (22.5° / 22,5°) |
+| Polar tracking increment | Incremento de rastreo polar | Items "1°"… with a decimal point in every language (22.5°, [ADR 0039](../architecture/adr/0039-number-format.md)) |
 | Object-snap marker size | Tamaño del marcador de referencia | |
 | {count} px | {count} px | Slider value |
 | Snap and grid | Forzado y rejilla | Group |
