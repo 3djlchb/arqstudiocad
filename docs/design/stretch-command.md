@@ -36,8 +36,7 @@ newer behavior must be identified explicitly.
 ## Explicit limits
 
 Only the Top view is accepted; the command asks the user to use PLAN in
-other views. Crossing polygons and a live partial-geometry preview remain
-future work. A partially selected standalone arc with just one endpoint
+other views. A live partial-geometry preview remains future work. A partially selected standalone arc with just one endpoint
 inside is refused atomically, rather than given an unverified reshape;
 whole-object arc moves use the existing transformation. Tilted polylines
 and other unsupported entities are not given invented stretch behavior.
@@ -146,3 +145,76 @@ for count in (1, 100, 1000):
     old.close(old_doc);new.close(new_doc)
 PYBENCH
 ```
+
+
+## Crossing polygons (2026-11-15)
+
+The `feature/stretch-crossing-polygon` delivery adds `CP` (Crossing polygon)
+at STRETCH's object-selection prompt. Pick corners through the existing point
+input (cursor/snaps or coordinates), use `U` to remove the last added corner,
+and Enter to close the polygon. Enter again ends object selection. The
+initial corner is retained when there is nothing left to undo. During input,
+the contour and its closing side follow the current point as a dashed crossing
+overlay. It uses the existing shared Stroke description for CPU and GPU, and
+is cleared when input ends or is cancelled. A partial-geometry displacement
+preview remains future work.
+
+A valid polygon has at least three corners, no degenerate edges and no
+self-crossings or self-touching. Concave contours and either winding work;
+the final repeated first corner is optional. Invalid contours leave selection
+and geometry unchanged. Rust validates the contour before any edit and reuses
+`Region` for boundary-inclusive containment in a local coordinate frame.
+
+The spatial index supplies broad-phase candidates. Exact drawn curves,
+points, existing text/placeholder boxes and filled triangles determine which
+visible entities meet the polygon. Its enclosing box alone never determines
+selection. The same polygon determines which line endpoints and polyline
+vertices move. Rectangles and polygons combine without moving any point twice;
+whole-object selection takes precedence. Deselecting/clearing/closing removes
+polygon provenance. The existing three-argument `stretch_entities` API stays
+valid; the optional fourth argument carries `(entity_id, polygon_points)`
+pairs. `select_crossing_polygon(points)` is a read-only query.
+
+The existing document writer, properties, normal/elevation handling, locked
+layer filtering, atomic history and partial-arc limitations are unchanged.
+Existing commands that do not enable crossing-window prompts gain no CP option.
+No codec, dependency, startup, GPU backend or new rendering path is introduced.
+While CP is active, the shared overlay describes its polygon edges; idle views
+have no polygon work.
+Polygon validation checks edge pairs; very large contours cost more than a
+rectangle. Reference-floor performance acceptance remains a separate check on
+the actual reference machine; no development timing is claimed as acceptance.
+
+Behavioral reference: [AutoCAD 2021 SELECT, CPolygon](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-0DD5DA73-9DC5-4424-8FED-7BBE3BE52A4D.htm).
+This is an original implementation and internally tested subset, not an
+independent AutoCAD/ProgeCAD validation or a claim of full STRETCH parity.
+
+Example: draw lines `(0,0)`–`(10,0)` and `(0,5)`–`(10,5)`. Run `STRETCH`,
+then `CP`, and enter `(9,-1)`, `(11,-1)`, `(11,6)`, `(10.5,6)`, `(10.5,1)`,
+`(9,1)`. Press Enter twice, use base `(0,0)` and displacement `(2,3)`.
+Only the lower line's end becomes `(12,3)`; the upper line stays unchanged
+even though its end lies in the polygon's enclosing rectangle. One UNDO
+restores the drawing.
+
+### Crossing-polygon verification
+
+LMDE 7 development host (2026-11-15): 860 Rust tests passed in serial mode,
+including the GPU tests, and nine explicit public-codec corpus tests passed.
+Python with `LC_ALL=C.UTF-8`, offscreen Qt and required public samples:
+1082 passed, five platform/adapter skips and the documented GPU application
+shutdown failure. That known failure was not reopened or counted as passing.
+Cargo fmt, workspace/all-target Clippy, Ruff lint/format, strict mypy,
+stubtest and cargo-deny passed.
+
+New coverage: two geometry tests, one document-selection test, one core
+transaction test and nine Python cases. Sabotage of polygon construction
+failed all four Rust tests and seven Python cases; removing CP failed the
+four cancellation stages; hiding the contour failed the cursor/overlay case.
+After exact-byte restoration and extension rebuild, all four focused Rust
+tests and 27 Python cases (new plus existing STRETCH) passed.
+
+While CP is active, overlay work grows with its corner count. Before claiming
+reference-floor interactive performance, run `tools/reference_machine_report.sh`
+and `uv run python tools/gpu_viewport_check.py` on the actual GT 730/i7-2600
+machine and exercise both short and long CP contours. No timing measured on
+the development machine is substituted for that acceptance.

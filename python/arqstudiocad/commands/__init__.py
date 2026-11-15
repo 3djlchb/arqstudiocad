@@ -143,6 +143,7 @@ class Prompt:
     zero: bool = False
     signed: bool = False
     multiple: bool = False
+    polygon: tuple[tuple[float, float], ...] = ()
 
     @property
     def picks(self) -> bool:
@@ -396,12 +397,15 @@ class CommandContext:
         default: str | None = None,
         optional: bool = False,
         drag: Drag | None = None,
+        polygon: tuple[tuple[float, float], ...] = (),
     ) -> Prompt:
         """A prompt for a point (ADR 0016 D6); yield it to get ``(x, y)``,
         or the key of one of ``options``, or ``None`` for Enter if it is
         ``optional``. ``base`` is the last point; ``drag`` follows the
         cursor from it."""
-        return Prompt(message, "point", tuple(options), default, base, optional, drag)
+        return Prompt(
+            message, "point", tuple(options), default, base, optional, drag, polygon=polygon
+        )
 
     def distance(
         self,
@@ -885,6 +889,7 @@ class CommandRunner:
                 prompt.drag,
                 entity=prompt.kind == "entity",
                 multiple=prompt.multiple,
+                polygon=prompt.polygon,
             )
         )
 

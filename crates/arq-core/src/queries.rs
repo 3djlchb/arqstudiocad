@@ -6,7 +6,7 @@
 //! bounding-box candidates in drawing order.
 
 use arq_geometry::snap::{SnapKind, SnapPoint};
-use arq_geometry::{Bounds2, Point2};
+use arq_geometry::{Bounds2, Point2, SelectionPolygon};
 
 use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
@@ -49,6 +49,17 @@ impl CadDocument {
         let candidates = self.query_entities(area);
         self.document()
             .select_window_candidates(area, crossing, &candidates)
+    }
+
+    /// Selects visible entities meeting a validated polygon, in drawing order.
+    pub fn select_crossing_polygon(&self, polygon: &SelectionPolygon) -> Vec<EntityId> {
+        let bounds = polygon.bounds();
+        let broad = bounds
+            .expanded(arq_geometry::Tolerance::DEFAULT.linear())
+            .unwrap_or(bounds);
+        let candidates = self.query_entities(broad);
+        self.document()
+            .select_polygon_candidates(polygon, &candidates)
     }
 
     /// Ordered TRIM/EXTEND picks along a fence, or a clockwise crossing

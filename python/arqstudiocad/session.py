@@ -25,6 +25,7 @@ from arqstudiocad.events import (
     SelectionChanged,
 )
 from arqstudiocad.i18n import tr
+from arqstudiocad.points import Point
 
 
 class Session:
@@ -41,6 +42,7 @@ class Session:
         self._selection: dict[int, tuple[int, ...]] = {}
         # Crossing windows per selected entity; absent means selected whole.
         self._crossing: dict[int, dict[int, list[CadBounds2]]] = {}
+        self._polygons: dict[int, dict[int, list[tuple[Point, ...]]]] = {}
         #: How points are picked: running snaps, ORTHO, the cursor.
         self.drafting = Drafting(bus)
         # Block editors (ADR 0023 D3): each edits a block of a document.
@@ -150,6 +152,7 @@ class Session:
         self._documents.remove(document)
         self._selection.pop(document.id, None)
         self._crossing.pop(document.id, None)
+        self._polygons.pop(document.id, None)
         self.bus.publish(DocumentClosed(document.id))
         if self._active == document:
             self._active = None
@@ -170,30 +173,46 @@ class Session:
             (i, area) for i, areas in self._crossing.get(document.id, {}).items() for area in areas
         ]
 
+    def crossing_polygons(self, document: CadDocument) -> list[tuple[int, tuple[Point, ...]]]:
+        """Validated polygon provenance for every still-selected entity."""
+        return [
+            (entity_id, polygon)
+            for entity_id, polygons in self._polygons.get(document.id, {}).items()
+            for polygon in polygons
+        ]
+
     def select(
-        self, document: CadDocument, entity_ids: Iterable[int], crossing: CadBounds2 | None = None
+        self,
+        document: CadDocument,
+        entity_ids: Iterable[int],
+        crossing: CadBounds2 | None = None,
+        *,
+        polygon: tuple[Point, ...] | None = None,
     ) -> None:
         """Adds entities to the selection of ``document`` (a click, a window)."""
         current = self.selection(document)
         if (
             crossing is None
+            and polygon is None
             and isinstance(entity_ids, tuple)
             and entity_ids == current
             and not self._crossing.get(document.id)
+            and not self._polygons.get(document.id)
         ):
             return
         ids = tuple(entity_ids)
         current_ids = set(current)
-        if crossing is None:
-            windows = self._crossing.get(document.id)
-            if windows:
-                for i in ids:
-                    windows.pop(i, None)
-        else:
-            windows = self._crossing.setdefault(document.id, {})
-            for i in ids:
-                if i not in current_ids or i in windows:
-                    windows.setdefault(i, []).append(crossing)
+        windows = self._crossing.setdefault(document.id, {})
+        polygons = self._polygons.setdefault(document.id, {})
+        for entity_id in ids:
+            if crossing is None and polygon is None:
+                windows.pop(entity_id, None)
+                polygons.pop(entity_id, None)
+            elif entity_id not in current_ids or entity_id in windows or entity_id in polygons:
+                if crossing is not None:
+                    windows.setdefault(entity_id, []).append(crossing)
+                if polygon is not None:
+                    polygons.setdefault(entity_id, []).append(polygon)
         added = tuple(dict.fromkeys(i for i in ids if i not in current_ids))
         self._set_selection(document.id, current + added)
 
@@ -202,6 +221,7 @@ class Session:
         removed = set(entity_ids)
         for i in removed:
             self._crossing.get(document.id, {}).pop(i, None)
+            self._polygons.get(document.id, {}).pop(i, None)
         self._set_selection(
             document.id, tuple(i for i in self.selection(document) if i not in removed)
         )
@@ -210,15 +230,18 @@ class Session:
         """Empties the selection of ``document`` (Esc, the end of an editing
         command)."""
         self._crossing.pop(document.id, None)
+        self._polygons.pop(document.id, None)
         self._set_selection(document.id, ())
 
     def _set_selection(self, document_id: int, entity_ids: tuple[int, ...]) -> None:
-        windows = self._crossing.get(document_id)
-        if windows:
+        provenances = (self._crossing.get(document_id), self._polygons.get(document_id))
+        if any(provenances):
             kept = set(entity_ids)
-            for i in tuple(windows):
-                if i not in kept:
-                    del windows[i]
+            for provenance in provenances:
+                if provenance:
+                    for entity_id in tuple(provenance):
+                        if entity_id not in kept:
+                            del provenance[entity_id]
         if entity_ids != self._selection.get(document_id, ()):
             self._selection[document_id] = entity_ids
             self.bus.publish(SelectionChanged(document_id, entity_ids))

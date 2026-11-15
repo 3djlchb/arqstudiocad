@@ -70,3 +70,10 @@ The initial BREAK workflow follows the publicly documented behavior of
 a proprietary product used only as a behavioral reference. No Autodesk code,
 artwork or documentation text is copied. Geometry and implementation are
 original project code under GPL-3.0-or-later.
+
+## STRETCH crossing-polygon selection
+
+The CP workflow uses the public behavior of [AutoCAD 2021 SELECT (CPolygon)](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-0DD5DA73-9DC5-4424-8FED-7BBE3BE52A4D.htm)
+as a behavioral reference only. No proprietary code, artwork or documentation
+text is copied. The implementation is original GPL-3.0-or-later project code,
+reusing the project's existing Region and curve-intersection algorithms.

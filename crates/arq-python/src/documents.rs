@@ -20,7 +20,7 @@ use arq_core::{
     CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
     DocumentId, EntityId, LayerId, Money,
 };
-use arq_geometry::{Geometry2, Line};
+use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -341,6 +341,17 @@ impl CadDocument {
     #[pyo3(signature = (area, crossing = false))]
     fn select_window(&self, area: CadBounds2, crossing: bool) -> PyResult<Vec<EntityId>> {
         self.read(|cad| cad.select_window(area.0, crossing))
+    }
+
+    /// Visible objects touching or enclosed by a simple crossing polygon.
+    fn select_crossing_polygon(&self, points: Vec<PyPoint>) -> PyResult<Vec<EntityId>> {
+        let polygon = SelectionPolygon::new(
+            points.into_iter().map(|p| p.0).collect(),
+            Tolerance::DEFAULT,
+        )
+        .map_err(CadError::from)
+        .py()?;
+        self.read(|cad| cad.select_crossing_polygon(&polygon))
     }
 
     /// Exact ordered TRIM/EXTEND fence picks; crossing uses two corners.
@@ -1079,17 +1090,33 @@ impl CadDocument {
 
     /// Stretches line endpoints and polyline vertices in crossing windows;
     /// entities without a crossing window move whole. One undo step.
+    #[pyo3(signature = (entity_ids, offset, crossing, polygons = Vec::new()))]
     fn stretch_entities(
         &self,
         entity_ids: Vec<EntityId>,
         offset: PyVector,
         crossing: Vec<(EntityId, CadBounds2)>,
+        polygons: Vec<(EntityId, Vec<PyPoint>)>,
     ) -> PyResult<CadChangeSet> {
         let areas: Vec<_> = crossing
             .into_iter()
             .map(|(id, area)| (id, area.0))
             .collect();
-        self.change(|cad| cad.stretch_entities(&entity_ids, offset.0, &areas))
+        let polygons: Vec<_> = polygons
+            .into_iter()
+            .map(|(id, points)| {
+                SelectionPolygon::new(
+                    points.into_iter().map(|p| p.0).collect(),
+                    Tolerance::DEFAULT,
+                )
+                .map(|polygon| (id, polygon))
+            })
+            .collect::<Result<_, _>>()
+            .map_err(CadError::from)
+            .py()?;
+        self.change(|cad| {
+            cad.stretch_entities_with_polygons(&entity_ids, offset.0, &areas, &polygons)
+        })
     }
 
     /// Moves one lightweight-polyline vertex to a plan point.

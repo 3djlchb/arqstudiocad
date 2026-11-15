@@ -203,6 +203,7 @@ class CommandPrompt(Event):
     drag: Drag | None = None
     entity: bool = False
     multiple: bool = False
+    polygon: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -1437,3 +1437,52 @@ fn break_circle_changes_kind_and_undo_restores_the_original_id() {
     assert!(cad.document().entity(circle).is_none());
     assert!(matches!(geometry(&cad, left[0]), Geometry2::Arc(_)));
 }
+
+#[test]
+fn polygon_stretch_combines_areas_once_and_rolls_back_a_later_collapse() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0., 0.), p(10., 0.)).unwrap();
+    let (b, _) = cad.add_line(p(0., 5.), p(12., 5.)).unwrap();
+    let polygon = SelectionPolygon::new(
+        vec![
+            p(9., -1.),
+            p(11., -1.),
+            p(11., 6.),
+            p(10.5, 6.),
+            p(10.5, 1.),
+            p(9., 1.),
+        ],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(cad.select_crossing_polygon(&polygon), vec![a, b]);
+    let areas = vec![
+        (a, polygon.clone()),
+        (a, polygon.clone()),
+        (b, polygon.clone()),
+    ];
+    let rect = arq_geometry::Bounds2::new(p(9., -1.), p(11., 1.));
+    cad.stretch_entities_with_polygons(&[a, b], v(2., 3.), &[(a, rect)], &areas)
+        .unwrap();
+    assert_eq!(line_ends(&cad, a), (p(0., 0.), p(12., 3.)));
+    assert_eq!(
+        line_ends(&cad, b),
+        (p(0., 5.), p(12., 5.)),
+        "the second end is outside the concave polygon"
+    );
+    assert_eq!(cad.undo_name(), Some("STRETCH"));
+    cad.undo().unwrap();
+    assert_eq!(line_ends(&cad, a), (p(0., 0.), p(10., 0.)));
+    cad.redo().unwrap();
+    assert_eq!(line_ends(&cad, a).1, p(12., 3.));
+    cad.undo().unwrap();
+    let history = cad.undo_names().len();
+    let rollback_areas = vec![(a, polygon)];
+    assert!(
+        cad.stretch_entities_with_polygons(&[b, a], v(-10., 0.), &[], &rollback_areas)
+            .is_err()
+    );
+    assert_eq!(cad.undo_names().len(), history);
+    assert_eq!(line_ends(&cad, b), (p(0., 5.), p(12., 5.)));
+    assert_eq!(line_ends(&cad, a), (p(0., 0.), p(10., 0.)));
+}

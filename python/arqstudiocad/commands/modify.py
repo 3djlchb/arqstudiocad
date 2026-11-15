@@ -61,8 +61,44 @@ def select_objects(
     if not ctx.session.selection(document):
         options = [Option("ALL", tr("All")), Option("L", tr("Last")), Option("P", tr("Previous"))]
         if windows:
-            options += [Option("C", tr("Crossing")), Option("W", tr("Window"))]
+            options += [
+                Option("C", tr("Crossing")),
+                Option("W", tr("Window")),
+                Option("CP", tr("Crossing polygon")),
+            ]
         while (answer := (yield ctx.select(tr("Select objects"), options))) is not None:
+            if answer == "CP":
+                points = [(yield ctx.point(tr("Specify first polygon point")))]
+                while True:
+                    point = yield ctx.point(
+                        tr("Specify next polygon point or press Enter to finish"),
+                        base=points[-1],
+                        options=[Option("U", tr("Undo"))],
+                        optional=True,
+                        polygon=tuple(points),
+                    )
+                    if point == "U":
+                        if len(points) > 1:
+                            points.pop()
+                        else:
+                            ctx.message(tr("Nothing to undo."))
+                    elif point is None:
+                        break
+                    else:
+                        points.append(point)
+                try:
+                    found = tuple(document.select_crossing_polygon(points))
+                except InvalidGeometryError:
+                    ctx.message(
+                        tr(
+                            "Invalid crossing polygon: use at least three corners "
+                            "without self-crossings."
+                        )
+                    )
+                    continue
+                ctx.session.select(document, found, polygon=tuple(points))
+                ctx.message(tr("{count} found", count=len(found)))
+                continue
             if answer in ("C", "W"):
                 first = yield ctx.point(tr("Specify first corner"))
                 second = yield ctx.point(tr("Specify opposite corner"), base=first)

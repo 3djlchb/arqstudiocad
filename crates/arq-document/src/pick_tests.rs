@@ -412,3 +412,52 @@ fn fence_candidates_find_exact_curves_and_skip_blocks_and_texts() {
             .is_empty()
     );
 }
+
+#[test]
+fn crossing_polygon_selects_exact_drawings_instead_of_their_enclosing_box() {
+    use arq_geometry::{Circle, Line, SelectionPolygon, Tolerance};
+    let mut doc = Document::new();
+    let zero = doc.current_layer().id();
+    let mut add = |curve| {
+        doc.add_entity(crate::PlanGeometry::new(curve), zero)
+            .unwrap()
+    };
+    let a = add(Line::new(p(-1., 0.5), p(5., 0.5)).unwrap().into());
+    let b = add(Line::new(p(2., 2.), p(3., 3.)).unwrap().into());
+    let circle = add(Circle::new(p(0.5, 3.), 0.2).unwrap().into());
+    let polygon = SelectionPolygon::new(
+        vec![
+            p(0., 0.),
+            p(4., 0.),
+            p(4., 1.),
+            p(1., 1.),
+            p(1., 4.),
+            p(0., 4.),
+        ],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(
+        doc.select_polygon_candidates(&polygon, &[a, b, circle]),
+        vec![a, circle]
+    );
+    let wide = doc
+        .add_polyline_with(
+            &[(p(0., 10.), 0.), (p(10., 10.), 0.)],
+            false,
+            crate::PolylineStyle {
+                width: 4.,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let inside_band = SelectionPolygon::new(
+        vec![p(4., 9.5), p(6., 9.5), p(6., 10.5), p(4., 10.5)],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(
+        doc.select_polygon_candidates(&inside_band, &[a, b, circle, wide]),
+        vec![wide]
+    );
+}

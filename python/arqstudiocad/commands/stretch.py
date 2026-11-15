@@ -40,7 +40,10 @@ def stretch(ctx: CommandContext) -> CommandScript:
             tr("Specify second point <use first point as displacement>"), base=base, optional=True
         )
         offset = base if second is None else (second[0] - base[0], second[1] - base[1])
-    ctx.session.report(document, document.stretch_entities(ids, offset, windows))
+    ctx.session.report(
+        document,
+        document.stretch_entities(ids, offset, windows, ctx.session.crossing_polygons(document)),
+    )
     ctx.remembered[DISPLACEMENT] = offset
     done_selecting(ctx, document, ids)
 
