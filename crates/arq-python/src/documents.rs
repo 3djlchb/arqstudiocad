@@ -1226,6 +1226,17 @@ impl CadDocument {
             .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
+    /// BREAK: remove the gap between projected points on a line, arc or circle.
+    fn break_entity(
+        &self,
+        entity_id: EntityId,
+        first: PyPoint,
+        second: PyPoint,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.break_entity(entity_id, first.0, second.0))
+            .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
     /// Extends line or arc `entity_id` at the end nearer `at` to the nearest
     /// of `edges` (Standard), or of every other entity drawn (None, Quick),
     /// it reaches (EXTEND); an `InvalidGeometryError` when none.

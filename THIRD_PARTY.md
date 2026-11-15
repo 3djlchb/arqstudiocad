@@ -62,3 +62,11 @@ TRIM and EXTEND's multiple-object selection uses the publicly documented
 as a behavioral compatibility reference only. The implementation and tests
 are original GPL-3.0-or-later code; no Autodesk implementation, artwork or
 documentation passages are copied. See [the command brief](docs/design/trim-multiple.md).
+
+## BREAK command behavior
+
+The initial BREAK workflow follows the publicly documented behavior of
+[AutoCAD 2021 BREAK](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-36A1CDE0-3871-4B25-AC98-93235FA83863.htm),
+a proprietary product used only as a behavioral reference. No Autodesk code,
+artwork or documentation text is copied. Geometry and implementation are
+original project code under GPL-3.0-or-later.

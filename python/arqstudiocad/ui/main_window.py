@@ -396,6 +396,7 @@ class MainWindow(QMainWindow):
             "OFFSET",
             "TRIM",
             "EXTEND",
+            "BREAK",
             "FILLET",
             "CHAMFER",
             "EXPLODE",

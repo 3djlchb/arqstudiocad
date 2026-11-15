@@ -14,7 +14,7 @@ use arq_document::{
 };
 use arq_geometry::{
     Arc, Circle, Geometry2, GeometryError, Line, Point2, Point3, Tolerance, Transform2, Vector2,
-    cutting_points, extend, trim,
+    break_curve, cutting_points, extend, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -376,23 +376,28 @@ impl CadDocument {
                     .into());
                 }
             };
-            let mut left = Vec::new();
-            match (curve, pieces.as_slice()) {
-                (_, []) => doc.delete_entity(id)?,
-                (Geometry2::Circle(_), [Geometry2::Arc(arc)]) => {
-                    left.push(doc.circle_to_arc(id, *arc)?);
-                }
-                (_, [first, rest @ ..]) => {
-                    doc.set_plan_geometry(id, plan.with_geometry(*first))?;
-                    left.push(id);
-                    for piece in rest {
-                        let copy = doc.copy_entity(id)?;
-                        doc.set_plan_geometry(copy, plan.with_geometry(*piece))?;
-                        left.push(copy);
-                    }
-                }
-            }
-            Ok(left)
+            replace_curve_pieces(doc, id, plan, &pieces)
+        })
+    }
+
+    /// Removes the gap between projected points on a line, arc or circle.
+    /// Each piece retains the source properties. One atomic BREAK undo step.
+    pub fn break_entity(
+        &mut self,
+        id: EntityId,
+        first: Point2,
+        second: Point2,
+    ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        self.transact("BREAK", |doc| {
+            let entity = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &entity)?;
+            let plan = entity.plan().ok_or(DocumentError::NotEditable {
+                id,
+                kind: entity.kind(),
+            })?;
+            let pieces = break_curve(plan.geometry(), first, second, Tolerance::DEFAULT)
+                .map_err(DocumentError::from)?;
+            replace_curve_pieces(doc, id, plan, &pieces)
         })
     }
 
@@ -853,6 +858,32 @@ fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> 
             _ => None,
         })
         .collect()
+}
+
+/// Applies already-computed pieces using the existing document writers.
+fn replace_curve_pieces(
+    doc: &mut Document,
+    id: EntityId,
+    plan: PlanGeometry,
+    pieces: &[Geometry2],
+) -> CadResult<Vec<EntityId>> {
+    let mut left = Vec::new();
+    match (plan.geometry(), pieces) {
+        (_, []) => doc.delete_entity(id)?,
+        (Geometry2::Circle(_), [Geometry2::Arc(arc)]) => {
+            left.push(doc.circle_to_arc(id, *arc)?);
+        }
+        (_, [first, rest @ ..]) => {
+            doc.set_plan_geometry(id, plan.with_geometry(*first))?;
+            left.push(id);
+            for piece in rest {
+                let copy = doc.copy_entity(id)?;
+                doc.set_plan_geometry(copy, plan.with_geometry(*piece))?;
+                left.push(copy);
+            }
+        }
+    }
+    Ok(left)
 }
 
 #[cfg(test)]
