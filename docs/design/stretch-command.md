@@ -264,3 +264,8 @@ A proposed development-host diagnostic (100 selected lines in 100000
 synthetic lines; before/after edit cost and separate preview cost) awaits
 maintainer scenario approval before measurement. No timing or floor
 acceptance is claimed yet.
+
+The public contour query also refuses non-Top views, rather than returning
+XY contours through a camera for another plane. Removing that guard caused
+the binding's Front-view assertion to fail; exact-byte restoration, touch,
+uv sync and all mandatory local checks passed again afterwards.

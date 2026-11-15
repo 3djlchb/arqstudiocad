@@ -35,6 +35,9 @@ def test_stretch_outlines_are_exact_read_only_and_validate_inputs() -> None:
     geometry = doc.get_entity(source).geometry
     assert isinstance(geometry, CadLine)
     assert geometry.end == pytest.approx((12, 3))
+    view.view = "Front"
+    with pytest.raises(CadError, match="Top view"):
+        view.stretch_outlines([source], (2, 3), crossing, polygons)
 
 
 @pytest.mark.parametrize("displacement", [False, True])

@@ -379,7 +379,7 @@ class Viewport(QWidget):
         if self._dragged is None or self._base is None or self._target is None:
             return None
         if self._dragged.kind in ("rectangle", "stretch"):
-            return None  # drawn by its corners, not moved
+            return None  # drawn from candidate geometry, not a rigid transform
         (bx, by), (tx, ty) = self._base, self._target
         world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
         if world is None:
