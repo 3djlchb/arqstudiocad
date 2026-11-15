@@ -572,6 +572,15 @@ class CadDocument:
     def copy_entities(
         self, entity_ids: _Ids, offset: _PointLike
     ) -> tuple[list[int], CadChangeSet]: ...
+    def rectangular_array(
+        self,
+        entity_ids: _Ids,
+        rows: int,
+        columns: int,
+        row_spacing: float,
+        column_spacing: float,
+        angle: float,
+    ) -> tuple[list[int], CadChangeSet]: ...
     def move_entities(self, entity_ids: _Ids, offset: _PointLike) -> CadChangeSet: ...
     def rotate_entities(
         self, entity_ids: _Ids, center: _PointLike, angle: float

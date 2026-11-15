@@ -1333,6 +1333,30 @@ impl CadDocument {
             .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
+    /// Independent rectangular copies; angle is in radians. One undo step.
+    #[allow(clippy::too_many_arguments)]
+    fn rectangular_array(
+        &self,
+        entity_ids: Vec<EntityId>,
+        rows: usize,
+        columns: usize,
+        row_spacing: f64,
+        column_spacing: f64,
+        angle: f64,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| {
+            cad.rectangular_array(
+                &entity_ids,
+                rows,
+                columns,
+                row_spacing,
+                column_spacing,
+                angle,
+            )
+        })
+        .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
     /// Moves entities by `offset` (MOVE).
     fn move_entities(&self, entity_ids: Vec<EntityId>, offset: PyVector) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.move_entities(&entity_ids, offset.0))

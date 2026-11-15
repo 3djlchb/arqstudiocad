@@ -77,3 +77,11 @@ The CP workflow uses the public behavior of [AutoCAD 2021 SELECT (CPolygon)](htt
 as a behavioral reference only. No proprietary code, artwork or documentation
 text is copied. The implementation is original GPL-3.0-or-later project code,
 reusing the project's existing Region and curve-intersection algorithms.
+
+## Rectangular ARRAY behavioral reference
+
+The non-associative rectangular command uses the public behavior described in
+[AutoCAD 2021 -ARRAY](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-8336B4CD-5375-4290-BD08-7D9E022741F6.htm)
+as a compatibility reference. The implementation and tests are original
+GPL-3.0-or-later code. No Autodesk source, artwork or manual passages are
+copied or distributed; proprietary product behavior is a reference only.
