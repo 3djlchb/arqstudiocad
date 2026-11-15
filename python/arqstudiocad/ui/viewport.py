@@ -49,13 +49,15 @@ Keys typed in the viewport go to the command line (:attr:`Viewport.key_typed`),
 as in AutoCAD, where typing anywhere answers the command.
 """
 
+import contextlib
 import logging
 import math
 import os
 import time
+from collections.abc import Callable
 from typing import Literal
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QColor,
     QContextMenuEvent,
@@ -72,11 +74,13 @@ from PySide6.QtGui import (
     QPaintEngine,
     QPainter,
     QPaintEvent,
+    QPlatformSurfaceEvent,
     QRegion,
     QResizeEvent,
     QShowEvent,
     QTransform,
     QWheelEvent,
+    QWindow,
 )
 from PySide6.QtWidgets import QWidget
 
@@ -296,9 +300,10 @@ class Viewport(QWidget):
         self._gpu_adapter: tuple[int, str] | None = None
         self._gpu = False
         self._presented = False
-        app = QGuiApplication.instance()
-        if app is not None:
-            app.aboutToQuit.connect(self._detach_gpu)
+        # Watches the native window the GPU presents to (_watch_surface).
+        self._surface_watch: _SurfaceWatch | None = None
+        # Let go when its native window went, to take the next one.
+        self._reattach = False
         self.set_gpu(_gpu_backend())
 
     # The view, for commands (ViewControl)
@@ -462,12 +467,17 @@ class Viewport(QWidget):
             self._attach_gpu()
 
     def event(self, event: QEvent) -> bool:
-        kind = event.type()
-        if kind == QEvent.Type.DeferredDelete:
-            # Before Qt destroys the native window the GPU presents to.
-            self._detach_gpu()
-        elif kind == QEvent.Type.WinIdChange and self._gpu:
-            self._detach_gpu()
+        if (
+            event.type() == QEvent.Type.WinIdChange
+            and self._reattach
+            and self.isVisible()
+            and self.internalWinId()
+        ):
+            # Its native window went (_surface_going) and a new one came
+            # while shown: the widget moved to another window, and the GPU
+            # presents into the new one. Not while closing or hidden, where
+            # winId() would make a window for a widget going away; showEvent
+            # attaches when it is shown again.
             self._attach_gpu()
         return super().event(event)
 
@@ -1096,11 +1106,35 @@ class Viewport(QWidget):
             self._gpu_failed(str(error))
             return
         self._gpu = True
+        self._reattach = False
         self._presented = False
+        self._watch_surface()
         _log.info("viewport presented by the GPU: %s", adapter)
         self._redraw()
 
+    def _watch_surface(self) -> None:
+        """Lets go of the GPU just before Qt destroys the native window it
+        presents to, however that comes: the widget or a window holding it
+        deleted, the application quitting with or without its event loop,
+        the widget moved to another window. A swapchain must not outlive its
+        window: NVIDIA's driver crashes when it does (ADR 0034)."""
+        self._unwatch_surface()
+        window = self.windowHandle()
+        if window is not None:
+            self._surface_watch = _SurfaceWatch(window, self._surface_going)
+
+    def _unwatch_surface(self) -> None:
+        if self._surface_watch is not None:
+            self._surface_watch.stop()
+            self._surface_watch = None
+
+    def _surface_going(self) -> None:
+        if self._gpu:
+            self._detach_gpu()
+            self._reattach = True
+
     def _detach_gpu(self) -> None:
+        self._unwatch_surface()
         if self._gpu:
             self.view.detach_window()
             self._gpu = False
@@ -1134,6 +1168,34 @@ class Viewport(QWidget):
         image.setDevicePixelRatio(self.devicePixelRatioF())
         self._image = image
         self._dirty = False
+
+
+class _SurfaceWatch(QObject):
+    """Calls ``going`` when ``window``'s native surface is about to be
+    destroyed, the moment Qt says so (QPlatformSurfaceEvent), before the
+    window goes. A child of the window, which outlives that event: a
+    widget deletes its children before its native window."""
+
+    def __init__(self, window: QWindow, going: Callable[[], None]) -> None:
+        super().__init__(window)
+        self._window = window
+        self._going = going
+        window.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt API)
+        if (
+            isinstance(event, QPlatformSurfaceEvent)
+            and event.surfaceEventType()
+            == QPlatformSurfaceEvent.SurfaceEventType.SurfaceAboutToBeDestroyed
+        ):
+            self._going()
+        return False
+
+    def stop(self) -> None:
+        """Watches no more; safe from within ``going``."""
+        with contextlib.suppress(RuntimeError):  # the window already deleted
+            self._window.removeEventFilter(self)
+        self.deleteLater()
 
 
 def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None:

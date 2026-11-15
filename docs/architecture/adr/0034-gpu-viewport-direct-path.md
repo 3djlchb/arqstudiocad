@@ -215,7 +215,8 @@ until the last:
   makes viewports present with the GPU on X11. The overlays are not drawn in
   that mode until D6.2. The surface is released before Qt destroys the
   native window: on `DeferredDelete`, on quitting, and when the window is
-  recreated (`WinIdChange`).
+  recreated (`WinIdChange`); since 2026-11-15, by one watch on the window
+  instead (see "The surface let go before its window" below).
 
 Measured on the reference machine, a viewport of 1200 × 650 on the
 100,000-entity drawing (lines, circles and arcs), the median frame while
@@ -533,3 +534,21 @@ and saving keep both of theirs. On the development laptop, where the survey
 takes about 7 s, the same drawing opened at start went from 2763 ms to
 526 ms (median of 5); the window shows as before. The reference machine
 measures it again, as `AGENTS.md` asks for a change to start-up.
+
+**The surface let go before its window** (2026-11-15). On the development
+machine with an NVIDIA card (RTX 3070 Ti, proprietary driver 550) the
+application crashed on the way out when its window went without the event
+loop, or when a window holding a viewport was deleted: the swapchain was
+dropped after its X11 window or display had gone. Releasing it on
+`DeferredDelete` and on quitting missed those ways, and `WinIdChange`, on
+the window being destroyed, attached the GPU again, making a new native
+window for a widget going away. Now one mechanism lets it go, by the
+maintainer's choice: the viewport watches its native window
+(`QPlatformSurfaceEvent`, `SurfaceAboutToBeDestroyed`), which Qt sends
+before destroying it however that comes. The watch is a child of that
+window, since a widget deletes its children before its native window.
+`WinIdChange` only attaches again, and only while the viewport is shown.
+On X11 a viewport moved into another window keeps its native window and
+the GPU. The GPU tests of `arq-render` run one at a time: two threads
+making Vulkan instances at once crash NVIDIA's loader, which the
+application never does, its checks being in child processes (ADR 0007).
