@@ -1,5 +1,6 @@
 ;;; Behavioral comparison for milestone 02.14 in ProgeCAD (docs/testing/
-;;; stretch-arcs-windows.md, docs/testing/break-closed-polylines-windows.md):
+;;; stretch-arcs-windows.md, break-closed-polylines-windows.md,
+;;; array-rectangular-windows.md):
 ;;; synthetic entities made here, stretched or broken by ProgeCAD's own
 ;;; commands at fixed points, every field written to a log, each case saved
 ;;; before and after as DWG 2018 and DXF 2018. Load inside ProgeCAD on a
@@ -7,6 +8,12 @@
 ;;;
 ;;;   (load "tools/progecad_command_compare.lsp")
 ;;;   (arq:compare-02-14 "C:/path/to/saved" "C:/path/to/cases.log")
+;;;   (arq:compare-array "C:/path/to/array" "C:/path/to/array.log")
+;;;
+;;; arq:compare-array runs rectangular -ARRAY with ARRAYASSOCIATIVITY 0
+;;; (independent copies, as ours) and saves each result as pc-<case>.dwg;
+;;; tools/progecad_array_ours.py writes ours-<case>.dwg/.dxf for the same
+;;; cases. Reopened, both are described with arq:dump-full.
 ;;;
 ;;; Each saved file is then reopened by ProgeCAD from its command line and
 ;;; described with (arq:dump (vla-get-ActiveDocument (vlax-get-acad-object))
@@ -186,4 +193,83 @@
   (arq:case "B10-second-at-vertex-10_5-to-10_10" '(arq:closed doc sq nil nil) '(command "_.BREAK" (vlax-vla-object->ename arq:e) "_F" '(10 5) '(10 10)) dir log)
   (arq:case "B11-both-at-vertices-10_0-to-0_10" '(arq:closed doc sq nil nil) '(command "_.BREAK" (vlax-vla-object->ename arq:e) "_F" '(10 0) '(0 10)) dir log)
   (arq:restore)
+  (arq:mark log "run done"))
+
+(defun arq:full (obj / d)
+  (setq d (arq:describe obj))
+  (strcat d " layer=" (vla-get-Layer obj) " color=" (itoa (vla-get-Color obj))))
+
+(defun arq:dump-full (doc label log / ms n d)
+  (setq ms (vla-get-ModelSpace doc) n 0)
+  (arq:mark log (strcat "  " label ":"))
+  (vlax-for obj ms
+    (setq n (1+ n))
+    (setq d (vl-catch-all-apply 'arq:full (list obj)))
+    (arq:mark log (strcat "    " (if (vl-catch-all-error-p d)
+                                     (strcat (vla-get-ObjectName obj) " describe-error: " (vl-catch-all-error-message d))
+                                     d))))
+  (arq:mark log (strcat "    (" (itoa n) " entities)")))
+
+(defun arq:count (doc / n) (setq n 0) (vlax-for obj (vla-get-ModelSpace doc) (setq n (1+ n))) n)
+
+(defun arq:sources (doc kind / ms l c a p lay)
+  (setq ms (vla-get-ModelSpace doc))
+  (cond
+    ((= kind 'line) (list (vla-AddLine ms (arq:v '(0 0 0)) (arq:v '(1 0.5 0)))))
+    ((= kind 'many)
+     (if (not (tblsearch "LAYER" "ARRAY-TEST")) (vla-Add (vla-get-Layers doc) "ARRAY-TEST"))
+     (setq l (vla-AddLine ms (arq:v '(0 0 0)) (arq:v '(1 0.5 0))))
+     (vla-put-Layer l "ARRAY-TEST")
+     (vla-put-Color l 1)
+     (setq c (vla-AddCircle ms (arq:v '(5 5 0)) 1.0))
+     (setq a (arq:arc doc '(8 1 0) 1.0 0.0 90.0))
+     (setq p (arq:closed doc '((10 0) (12 0) (12 2) (10 2)) nil 0.25))
+     (list l c a p))
+    ((= kind 'elevated)
+     (setq p (arq:closed doc '((0 0) (1 0) (1 1) (0 1)) nil nil))
+     (vla-put-Elevation p 2.0)
+     (list p))))
+
+(defun arq:ss (objs / ss)
+  (setq ss (ssadd))
+  (foreach o objs (ssadd (vlax-vla-object->ename o) ss))
+  ss)
+
+;;; One -ARRAY case: sources, the command's own arguments, saved and described.
+(defun arq:array-case (name kind args angle dir log count-only / doc r k)
+  (setq doc (vla-get-ActiveDocument (vlax-get-acad-object)))
+  (arq:mark log (strcat "case " name))
+  (arq:clear doc)
+  (setvar "SNAPANG" (* pi (/ angle 180.0)))
+  (setq arq:objs (arq:sources doc kind))
+  (command "_.ZOOM" "_W" '(-200 -200) '(200 200))
+  (setq r (vl-catch-all-apply 'eval (list (append (list 'command "_.-ARRAY" (arq:ss arq:objs) "" "_R") args))))
+  (if (vl-catch-all-error-p r) (arq:mark log (strcat "  command error: " (vl-catch-all-error-message r))))
+  (setq k 0)
+  (while (and (= 1 (logand 1 (getvar "CMDACTIVE"))) (< k 5)) (command "") (setq k (1+ k)))
+  (if (> k 0) (arq:mark log (strcat "  command needed " (itoa k) " Enter(s) to end")))
+  (setvar "SNAPANG" 0.0)
+  (if count-only
+    (arq:mark log (strcat "  after: " (itoa (arq:count doc)) " entities"))
+    (progn
+      (arq:dump-full doc "after" log)
+      (if dir (vl-catch-all-apply 'vla-SaveAs (list doc (strcat dir "/pc-" name ".dwg") 64))))))
+
+(defun arq:compare-array (dir log / assoc0)
+  (arq:mark log (strcat "ProgeCAD " (getvar "ACADVER") " ARRAYASSOCIATIVITY=" (vl-princ-to-string (getvar "ARRAYASSOCIATIVITY"))))
+  (arq:prepare)
+  (setq assoc0 (getvar "ARRAYASSOCIATIVITY"))
+  (setvar "ARRAYASSOCIATIVITY" 0)
+  (arq:array-case "C1-basic-3x4" 'line '(3 4 2 3) 0.0 dir log nil)
+  (arq:array-case "C2-negative-3x4" 'line '(3 4 -2 -3) 0.0 dir log nil)
+  (arq:array-case "C3-snapang30-3x4" 'line '(3 4 2 3) 30.0 dir log nil)
+  (arq:array-case "C4-many-sources-2x3" 'many '(2 3 4 15) 0.0 dir log nil)
+  (arq:array-case "C5-one-row-1x5" 'line '(1 5 3) 0.0 dir log nil)
+  (arq:array-case "C6-one-column-5x1" 'line '(5 1 2) 0.0 dir log nil)
+  (arq:array-case "C7-elevated-2x2" 'elevated '(2 2 3 3) 0.0 dir log nil)
+  (arq:array-case "C8-zero-spacing-3x3" 'line '(3 3 0 0) 0.0 dir log nil)
+  (arq:array-case "C9-over-limit-317x316" 'line '(317 316 2 3) 0.0 nil log t)
+  (setvar "ARRAYASSOCIATIVITY" assoc0)
+  (arq:restore)
+  (arq:mark log (strcat "ARRAYASSOCIATIVITY restored=" (vl-princ-to-string (getvar "ARRAYASSOCIATIVITY"))))
   (arq:mark log "run done"))
