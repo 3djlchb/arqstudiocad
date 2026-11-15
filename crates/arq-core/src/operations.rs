@@ -917,23 +917,34 @@ impl CadDocument {
         crossing: &[(EntityId, arq_geometry::Bounds2)],
         polygons: &[(EntityId, SelectionPolygon)],
     ) -> CadResult<ChangeSet> {
-        let mut regions = BTreeMap::<EntityId, Vec<CrossingArea>>::new();
-        for &(id, area) in crossing {
-            regions
-                .entry(id)
-                .or_default()
-                .push(CrossingArea::Rectangle(area));
-        }
-        for (id, polygon) in polygons {
-            regions
-                .entry(*id)
-                .or_default()
-                .push(CrossingArea::Polygon(polygon.clone()));
-        }
+        let regions = stretch_regions(crossing, polygons);
         self.edit_entities("STRETCH", ids, |doc, e| {
             let areas = regions.get(&e.id()).map_or(&[][..], Vec::as_slice);
             Ok(doc.stretch_entity_in_areas(e.id(), areas, offset)?)
         })
+    }
+
+    /// Pure STRETCH preview, with the same source checks and plans as commit.
+    pub fn stretch_preview(
+        &self,
+        ids: &[EntityId],
+        offset: Vector2,
+        crossing: &[(EntityId, arq_geometry::Bounds2)],
+        polygons: &[(EntityId, SelectionPolygon)],
+    ) -> CadResult<Vec<arq_document::Shape>> {
+        let regions = stretch_regions(crossing, polygons);
+        let doc = self.document();
+        let mut shapes = Vec::new();
+        for id in distinct(ids) {
+            let entity = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &entity)?;
+            shapes.extend(doc.stretch_shapes(
+                id,
+                regions.get(&id).map_or(&[][..], Vec::as_slice),
+                offset,
+            )?);
+        }
+        Ok(shapes)
     }
 
     /// Moves one lightweight-polyline vertex to a plan point (grip stretch).
@@ -1048,6 +1059,27 @@ impl CadDocument {
         let ((), summary) = self.transact("LAYER", |doc| Ok(f(doc)?))?;
         Ok(summary)
     }
+}
+
+/// Crossing provenance shared by the pure preview and atomic edit.
+fn stretch_regions(
+    crossing: &[(EntityId, arq_geometry::Bounds2)],
+    polygons: &[(EntityId, SelectionPolygon)],
+) -> BTreeMap<EntityId, Vec<CrossingArea>> {
+    let mut regions = BTreeMap::<EntityId, Vec<CrossingArea>>::new();
+    for &(id, area) in crossing {
+        regions
+            .entry(id)
+            .or_default()
+            .push(CrossingArea::Rectangle(area));
+    }
+    for (id, polygon) in polygons {
+        regions
+            .entry(*id)
+            .or_default()
+            .push(CrossingArea::Polygon(polygon.clone()));
+    }
+    regions
 }
 
 /// `ids` without repeats, in first-seen order.

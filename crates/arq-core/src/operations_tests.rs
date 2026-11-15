@@ -1637,6 +1637,44 @@ fn geometry_of(doc: &Document, id: EntityId) -> Geometry2 {
 }
 
 #[test]
+fn stretch_preview_and_commit_share_polygon_union_and_validation_without_history() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0.0, 0.0), p(10.0, 0.0)).unwrap();
+    let polygon = SelectionPolygon::new(
+        vec![p(9.0, -1.0), p(11.0, -1.0), p(11.0, 1.0), p(9.0, 1.0)],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    let crossing = [(a, arq_geometry::Bounds2::new(p(9.0, -1.0), p(11.0, 1.0)))];
+    let polygons = [(a, polygon)];
+    let offset = v(2.0, 3.0);
+    let shapes = cad
+        .stretch_preview(&[a, a], offset, &crossing, &polygons)
+        .unwrap();
+    assert_eq!(shapes.len(), 1);
+    let arq_document::Shape::Line(line) = shapes[0] else {
+        panic!()
+    };
+    assert_eq!((line.start(), line.end()), (p(0.0, 0.0), p(12.0, 3.0)));
+    assert_eq!(cad.undo_name(), Some("LINE"));
+    assert_eq!(line_ends(&cad, a), (p(0.0, 0.0), p(10.0, 0.0)));
+    assert!(
+        cad.stretch_preview(&[a, u64::MAX], offset, &crossing, &polygons)
+            .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(
+        cad.stretch_preview(&[a], offset, &crossing, &polygons)
+            .is_err()
+    );
+    cad.set_layer_locked(layer, false).unwrap();
+    cad.stretch_entities_with_polygons(&[a], offset, &crossing, &polygons)
+        .unwrap();
+    assert_eq!(geometry(&cad, a), line.into());
+}
+
+#[test]
 fn rectangular_array_keeps_sources_styles_and_one_history_step() {
     let mut cad = CadDocument::new();
     let (a, _) = cad.add_line(p(0.0, 0.0), p(2.0, 0.0)).unwrap();

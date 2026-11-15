@@ -905,6 +905,13 @@ class CadView:
     def path_outline(
         self, vertices: Sequence[tuple[_PointLike, float]], closed: bool = True
     ) -> list[_Point]: ...
+    def stretch_outlines(
+        self,
+        entity_ids: _Ids,
+        offset: _PointLike,
+        crossing: Sequence[tuple[int, CadBounds2]],
+        polygons: Sequence[tuple[int, Sequence[_PointLike]]],
+    ) -> list[list[_Point]]: ...
     def outlines(self, entity_ids: _Ids) -> list[list[_Point]]: ...
     @property
     def width(self) -> int: ...
