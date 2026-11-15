@@ -12,11 +12,13 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import pytest
-from PySide6.QtCore import Qt
+import shiboken6
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QImage
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
 
 from arqstudiocad.core import CadApplication, CadView
@@ -341,21 +343,49 @@ APP_SCRIPT = textwrap.dedent(
         time.sleep(0.05)
         if viewport.gpu is not None and not sentinel.armed:
             break
+    gpu = viewport.gpu
+    # How the window goes, sys.argv[2]: closed and the script ended, without
+    # an event loop ("close"); closed in the event loop ("exec"); deleted
+    # with the viewport inside ("delete"); or after the viewport moved,
+    # shown, into another window ("move").
+    ending = sys.argv[2]
+    moved = None
+    if ending == "move" and gpu is not None:
+        from PySide6.QtWidgets import QWidget
+        other = QWidget()
+        other.resize(400, 300)
+        other.show()
+        viewport.setParent(other)
+        viewport.show()
+        for _ in range(40):
+            app.processEvents()
+            time.sleep(0.02)
+        moved = viewport.gpu
     print(json.dumps({
         "renderer": [window.renderer.backend, window.renderer.adapter],
-        "viewport": viewport.gpu,
+        "viewport": gpu,
+        "moved": moved,
         "sentinel": sentinel.armed,
         "history": window.command_window.history.toPlainText(),
-    }))
-    window.close()
+    }), flush=True)
+    if ending == "exec":
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, window.close)
+        app.exec()
+    elif ending == "delete":
+        import shiboken6
+        window.close()
+        shiboken6.delete(window)
+    else:
+        window.close()
     """
 )
 
 
-def test_the_app_chooses_the_graphics_card_by_itself(tmp_path: Path) -> None:
-    """No backend forced: the window probes, takes a hardware adapter, gives
-    the viewport the GPU, says so, and its first frame disarms the
-    sentinel (ADR 0034 D5)."""
+def _run_app(tmp_path: Path, ending: str) -> dict[str, Any]:
+    """APP_SCRIPT's answer, ended as ``ending``: skips without an X11 display
+    or a graphics card, and fails under ``ARQ_GPU_TESTS=require``. A crash
+    on the way out fails it too."""
     if not os.environ.get("DISPLAY"):
         if REQUIRED:
             pytest.fail("ARQ_GPU_TESTS=require, but there is no X11 display")
@@ -365,7 +395,7 @@ def test_the_app_chooses_the_graphics_card_by_itself(tmp_path: Path) -> None:
     env = dict(os.environ, QT_QPA_PLATFORM="xcb")
     env.pop(GPU_VIEWPORT_ENV, None)
     done = subprocess.run(
-        [sys.executable, str(script), str(tmp_path)],
+        [sys.executable, str(script), str(tmp_path), ending],
         capture_output=True,
         text=True,
         timeout=120,
@@ -374,13 +404,78 @@ def test_the_app_chooses_the_graphics_card_by_itself(tmp_path: Path) -> None:
         cwd=tmp_path,
     )
     assert done.returncode == 0, done.stderr[-2000:]
-    result = json.loads(done.stdout.strip().splitlines()[-1])
+    result: dict[str, Any] = json.loads(done.stdout.strip().splitlines()[-1])
     if result["renderer"][0] is None:
         if REQUIRED:
             pytest.fail(f"ARQ_GPU_TESTS=require, but the CPU was chosen: {result['history']}")
         pytest.skip(f"no graphics card here: {result['history']}")
+    return result
+
+
+def test_the_app_chooses_the_graphics_card_by_itself(tmp_path: Path) -> None:
+    """No backend forced: the window probes, takes a hardware adapter, gives
+    the viewport the GPU, says so, and its first frame disarms the
+    sentinel (ADR 0034 D5)."""
+    result = _run_app(tmp_path, "close")
     backend, adapter = result["renderer"]
     assert result["viewport"] is not None and result["viewport"][0] == backend
     assert result["viewport"][2] != "Cpu", "never a software adapter"
     assert f"Drawing with the graphics card: {adapter}" in result["history"]
     assert not result["sentinel"], "the first frame disarmed it"
+
+
+@pytest.mark.parametrize("ending", ["exec", "delete", "move"])
+def test_the_gpu_lets_go_of_its_window_however_the_window_goes(tmp_path: Path, ending: str) -> None:
+    """The application quits cleanly however the viewport's native window
+    goes (the plain close is the test above): a swapchain kept past its
+    window crashed NVIDIA's driver on the way out. A viewport moved, shown,
+    into another window keeps the GPU there (on X11 its native window moves
+    with it)."""
+    result = _run_app(tmp_path, ending)
+    assert result["viewport"] is not None
+    if ending == "move":
+        assert result["moved"] == result["viewport"], "still presented by the GPU"
+
+
+def test_the_gpu_is_let_go_before_its_native_window_goes(qtbot: QtBot) -> None:
+    """Deleting a window that holds the viewport destroys the viewport's
+    native window: the watch on that window lets the GPU go first (ADR
+    0034). Offscreen no GPU attaches, so the viewport is told it presents."""
+    holder = QWidget()
+    document = CadApplication().create_document("Plano")
+    viewport = Viewport(document)
+    QVBoxLayout(holder).addWidget(viewport)
+    viewport.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+    holder.show()
+    qtbot.waitExposed(holder)
+    viewport._gpu = True
+    viewport._watch_surface()
+
+    shiboken6.delete(holder)
+
+    assert not viewport._gpu, "let go before the window went"
+
+
+def test_a_new_native_window_takes_the_gpu_only_while_shown(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once its native window went, the viewport presents into the next one
+    it gets while shown; hidden, or closing, it attaches nothing, where
+    winId() would make a window for a widget going away."""
+    document = CadApplication().create_document("Plano")
+    viewport = Viewport(document)
+    qtbot.addWidget(viewport)
+    viewport.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+    viewport.show()
+    qtbot.waitExposed(viewport)
+    attached: list[bool] = []
+    monkeypatch.setattr(viewport, "_attach_gpu", lambda: attached.append(True))
+    viewport._reattach = True
+
+    QApplication.sendEvent(viewport, QEvent(QEvent.Type.WinIdChange))
+    assert attached == [True], "shown: the GPU takes the new window"
+
+    attached.clear()
+    viewport.hide()
+    QApplication.sendEvent(viewport, QEvent(QEvent.Type.WinIdChange))
+    assert attached == [], "hidden: nothing attached"
