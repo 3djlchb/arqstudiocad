@@ -9,15 +9,18 @@ was 0.061386 ms on the Ryzen host. These are not reference-floor results.
 
 Use the actual i7-2600/GT 730, 16 GB, LMDE 7 Cinnamon/X11 reference machine.
 Follow the agent workflow and reserve a distinct measurement branch first;
-leave other agents' worktrees alone. The PR is #192; the maintainer merges
-manually. No ProgeCAD is needed for this work.
+leave other agents' worktrees alone. The implementation landed in #192; the reference follow-up uses a separate
+measurement branch and PR, reviewed and merged manually. No ProgeCAD is needed for this work.
 
 Measured development source: base `755c67c`, candidate `bf2cbe9`, both retained
 in the public history. Later main includes OPEN and ARRAY (#190/#191).
-For current acceptance compare updated main (at least `66c0125`) against the
-current #192 head, recording exact full SHAs actually built. The historical
-pair may also be repeated separately; do not attribute its timings to the
-newer integrated branch without measurement. Keep base and candidate environments separate; use the same
+For the integrated implementation compare `66c0125` (before STRETCH preview)
+against `5ac83f4` (merged #192), recording exact full SHAs actually built.
+Both include ARRAY and OPEN's improvements. If later main contains other
+features, report its validation separately from this controlled pair; latest
+main already includes the preview and is not its before-version. The
+historical development pair may also be repeated separately; its timings
+are not attributed to the integrated branch without measurement. Keep base and candidate environments separate; use the same
 public/synthetic fixture, default release profile and repetitions. Do not
 raise target-cpu, AVX2/FMA requirements or simulate performance by limits.
 
@@ -59,7 +62,8 @@ Store sanitized reference reports as specified by
 and ratios to its table and the PR; never substitute the historical timing
 table for current candidate validation. No fixed time threshold or multiplier
 is inferred from the development host. The maintainer reviews the evidence
-before accepting the floor and marking #192 ready.
+before accepting the floor. Since #192 is merged, publish the measurement
+results in a follow-up PR referencing it.
 
 Standalone partial arcs remain refused: their Windows behavioral comparison
 is a different pending task, described in [stretch-arcs-windows.md](stretch-arcs-windows.md).

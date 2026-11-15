@@ -264,8 +264,9 @@ The maintainer-approved development-host diagnostic is recorded in
 [testing and performance](../TESTING_AND_PERFORMANCE.md): 100 selected lines
 in 100000 lines, before/after edit cost and separate preview cost. The pooled
 edit ratio is 1.00521 with overlapping batch ranges. Reference-machine
-measurement and real cursor interaction remain pending; this PR stays in
-draft until that required check supplies evidence.
+measurement and real cursor interaction remain pending. The maintainer
+merged implementation PR #192 on 2026-11-15; floor acceptance still requires
+the separate reference-machine follow-up.
 
 The public contour query also refuses non-Top views, rather than returning
 XY contours through a camera for another plane. Removing that guard caused

@@ -17,8 +17,12 @@ def break_object(ctx: CommandContext) -> CommandScript:
             return
         assert isinstance(picked, Picked)
         entity = document.get_entity(picked.entity_id)
-        if entity.kind not in ("LINE", "ARC", "CIRCLE") or entity.geometry is None:
-            ctx.message(tr("BREAK currently supports lines, arcs and circles only."))
+        if entity.kind != "LWPOLYLINE" and (
+            entity.kind not in ("LINE", "ARC", "CIRCLE") or entity.geometry is None
+        ):
+            ctx.message(
+                tr("BREAK currently supports lines, arcs, circles and open lightweight polylines.")
+            )
             continue
         first = picked.point
         second = yield ctx.point(

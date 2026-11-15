@@ -76,12 +76,15 @@ def test_break_cancellation_never_changes_the_drawing(stage: str) -> None:
 
 def test_break_unsupported_entities_and_invalid_points_leave_no_edit() -> None:
     h = Harness()
-    polyline, _ = h.document.add_polyline([((0, 0), 0), ((10, 0), 0)])
+    unsupported, _ = h.document.add_text("unsupported", (0, 0), 1, 0)
     circle, _ = h.document.add_circle((20, 0), 5)
     before = h.document.undo_history
     h.run("BREAK")
-    h.runner.answer_entity(polyline, (3, 0))
-    assert h.messages()[-1] == "BREAK currently supports lines, arcs and circles only."
+    h.runner.answer_entity(unsupported, (3, 0))
+    assert (
+        h.messages()[-1]
+        == "BREAK currently supports lines, arcs, circles and open lightweight polylines."
+    )
     assert h.prompt().entity
     h.runner.answer_entity(circle, (25, 0))
     h.run("@")
