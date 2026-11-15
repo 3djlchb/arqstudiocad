@@ -127,3 +127,10 @@ segment, with a bulged segment and with coincident picks. Save/reopen DWG
 and DXF and record ProgeCAD's version. Use only synthetic/public data and
 report observations through GitHub before approving the Rust rule; do not
 infer it from the circle's counterclockwise convention.
+
+After retaining the maintainer's remote branch updates and incorporating
+main through ARRAY #191 (`66c0125`), all mandatory local checks passed
+again: 885 Rust cases (20 ignored), 1116 Python cases (5 skipped), all nine
+explicit public-codec corpus cases, fmt, Clippy, Ruff, mypy, stubtest and
+deny. The approved scope is open paths; closed traversal remains the
+separate Windows follow-up above.
