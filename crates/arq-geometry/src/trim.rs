@@ -12,6 +12,10 @@ use crate::line::Line;
 use crate::point::Point2;
 use crate::tolerance::Tolerance;
 
+/// Historical EXTEND on-edge slack per unit of world-coordinate magnitude.
+/// Broad-phase queries use this same factor; changing it changes exact results.
+pub const EXTEND_EDGE_RELATIVE_TOLERANCE: f64 = 1e-9;
+
 /// Where a curve stands at a point on it: a line's fraction from its start,
 /// an arc's turn from its start, a circle's angle.
 fn parameter(curve: Geometry2, p: Point2) -> f64 {
@@ -189,8 +193,7 @@ pub fn extend(
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Geometry2>> {
-    let at = parameter(curve, curve.closest_point(pick));
-    let at_end = at > span(curve) / 2.0;
+    let at_end = extends_at_end(curve, pick);
     // Where the curve's line or circle meets each edge, on the edge.
     let reach: Vec<Point2> = edges
         .iter()
@@ -277,11 +280,16 @@ pub fn extend(
     }
 }
 
+/// Same end choice for the operation and its broad-phase query.
+pub fn extends_at_end(curve: Geometry2, pick: Point2) -> bool {
+    parameter(curve, curve.closest_point(pick)) > span(curve) / 2.0
+}
+
 /// Whether `q`, computed where two curves meet, lies on `edge`: within a
 /// hair, relative to the coordinates' size.
 fn on(edge: Geometry2, q: Point2) -> bool {
     let scale = q.x().abs().max(q.y().abs()).max(1.0);
-    edge.distance_to(q) <= 1e-9 * scale
+    edge.distance_to(q) <= EXTEND_EDGE_RELATIVE_TOLERANCE * scale
 }
 
 #[cfg(test)]

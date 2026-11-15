@@ -100,5 +100,97 @@ fn queries(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, queries);
+/// N unrelated short lines, one target and two possible boundaries.
+fn quick_drawing(count: usize, extending: bool) -> (CadDocument, u64, Point2) {
+    let mut doc = Document::new();
+    let layer = doc.current_layer().id();
+    for i in 0..count {
+        let x = 1000.0 + (i % 317) as f64 * 10.0;
+        let y = 1000.0 + (i / 317) as f64 * 10.0;
+        doc.add_entity(
+            PlanGeometry::new(Line::new(p(x, y), p(x + 1.0, y + 1.0)).unwrap().into()),
+            layer,
+        )
+        .unwrap();
+    }
+    let target = doc
+        .add_entity(
+            PlanGeometry::new(Line::new(p(0., 0.), p(10., 0.)).unwrap().into()),
+            layer,
+        )
+        .unwrap();
+    let positions = if extending { [20., 30.] } else { [3., 7.] };
+    for x in positions {
+        doc.add_entity(
+            PlanGeometry::new(Line::new(p(x, -1.), p(x, 1.)).unwrap().into()),
+            layer,
+        )
+        .unwrap();
+    }
+    (
+        CadDocument::from_document(doc),
+        target,
+        if extending { p(9., 0.) } else { p(5., 0.) },
+    )
+}
+
+fn quick_edits(c: &mut Criterion) {
+    use criterion::BenchmarkId;
+    use std::time::{Duration, Instant};
+    let mut group = c.benchmark_group("TRIM EXTEND Quick");
+    group
+        .sample_size(20)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(3));
+    for count in [10_000, 100_000] {
+        for extending in [false, true] {
+            let (mut cad, target, pick) = quick_drawing(count, extending);
+            assert_eq!(cad.document().entities().len(), count + 3);
+            let name = if extending { "extend" } else { "trim" };
+            group.bench_function(BenchmarkId::new(name, count), |b| {
+                b.iter_custom(|iterations| {
+                    let mut elapsed = Duration::ZERO;
+                    for _ in 0..iterations {
+                        let start = Instant::now();
+                        if extending {
+                            black_box(cad.extend_entity(target, pick, None).expect("extends"));
+                        } else {
+                            let (ids, changes) =
+                                cad.trim_entity(target, pick, None, true).expect("trims");
+                            black_box(changes);
+                            assert_eq!(ids.len(), 2);
+                        }
+                        elapsed += start.elapsed();
+                        let geometry = cad
+                            .document()
+                            .entity(target)
+                            .unwrap()
+                            .plan()
+                            .unwrap()
+                            .geometry();
+                        assert_eq!(
+                            geometry.end_point(),
+                            Some(if extending { p(20., 0.) } else { p(3., 0.) })
+                        );
+                        cad.undo().expect("restore outside timing");
+                        assert_eq!(
+                            cad.document()
+                                .entity(target)
+                                .unwrap()
+                                .plan()
+                                .unwrap()
+                                .geometry()
+                                .end_point(),
+                            Some(p(10., 0.))
+                        );
+                    }
+                    elapsed
+                })
+            });
+        }
+    }
+    group.finish();
+}
+
+criterion_group!(benches, queries, quick_edits);
 criterion_main!(benches);

@@ -132,3 +132,46 @@ PYBENCH
   strict mypy, stubtest and cargo-deny pass.
 - The shared overlay primitives are reused. GPU presentation on the
   reference machine and independent external CAD validation are not claimed.
+
+## Quick-mode edge candidates (milestone 02.14)
+
+Quick TRIM obtains broad-phase entity IDs from the spatial index around the
+operative target curve, including angular endpoint tolerance for arcs and
+world-space centerline geometry for lightweight polylines. Quick EXTEND uses
+the same terminal-curve/end decision as the edit, with a finite ray clipped
+to the R-tree's root envelope for a straight end or the full supporting
+circle for a curved end. Root extents do not scan the document.
+
+Queries are calculated before the transaction and preserve drawing order.
+Padding conservatively includes the existing relative on-edge tolerance.
+Unsafe/overflowing/missing search bounds fall back to exhaustive entity IDs,
+without rendering every object just to enumerate IDs. Both routes keep the
+original target/text filters and draw each candidate once. Blocks contribute
+their existing drawn pieces; Standard mode's explicitly supplied edges retain
+its existing behavior. All exact intersections, edits, errors and undo/redo
+remain in the existing operations. No Python API or codec changes are needed.
+
+The fence/crossing command continues to invoke one edit per target. Candidate
+searches are therefore recomputed from the index after each preceding edit;
+no stale whole-gesture edge list is cached. Broad-phase pruning is deliberately
+conservative, not a promise of constant time for every drawing arrangement.
+
+Equivalence tests compare against independently enumerated drawing IDs fed to
+the unchanged explicit-edge path, including results/change sets, geometry,
+properties and undo/redo. Long crossing lines, curves, block contents,
+polylines with either bulge sign and mirrored planes, remote extension limits,
+relative tolerance and index updates are covered. Narrowing the query and
+substituting the original object box for an extension ray are sabotage cases.
+
+
+Local verification for the indexed Quick delivery (2026-11-15): 865 Rust tests,
+1088 Python tests and nine explicit public-codec corpus tests passed; five
+Python platform/adapter cases skipped. Locale was C.UTF-8. The GPU shutdown
+fix from PR #185 is in the base and passed; previous GPU failures were not
+silently classified as passing. Format, Clippy, Ruff, mypy, stubtest and
+cargo-deny passed. Shrinking the query failed all four new core equivalence
+tests; using an original-object box for EXTEND failed its remote-boundary
+case; invalidating terminal-curve extraction failed the new geometry test;
+restoring unsafe support-circle bounds failed the overflow fallback case.
+Saved bytes were restored exactly and touched before rebuilding. All five
+focused tests then passed. No private drawing was copied or committed.

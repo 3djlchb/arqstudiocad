@@ -154,3 +154,18 @@ fn an_arc_at_the_end_grows_round_its_circle_either_way() {
         &[(0.0, 5.0, -(sweep / 4.0).tan()), (4.0, -3.0, 0.0)],
     );
 }
+
+#[test]
+fn quick_search_reuses_polyline_terminal_choice_and_conservative_bounds() {
+    let vertices = [(p(0., 0.), 0.), (p(10., 0.), -1.), (p(10., 10.), 0.)];
+    let (first, pick) = polyline_extension_target(&vertices, false, p(0., 0.)).unwrap();
+    assert!(matches!(first, Geometry2::Line(_)));
+    assert_eq!(pick, p(0., 0.));
+    let (last, pick) = polyline_extension_target(&vertices, false, p(10., 10.)).unwrap();
+    assert!(matches!(last, Geometry2::Arc(_)));
+    assert_eq!(pick, p(10., 10.));
+    assert!(polyline_extension_target(&vertices, true, p(0., 0.)).is_err());
+    let bounds = polyline_trim_bounds(&vertices, false, TOL).unwrap();
+    assert!(bounds.contains_point(p(5., 5.), TOL));
+    assert!(bounds.contains_point(p(10., 10.), TOL));
+}

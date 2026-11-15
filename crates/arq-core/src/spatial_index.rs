@@ -62,6 +62,20 @@ impl SpatialIndex {
         }
     }
 
+    /// Root envelope, maintained by the R-tree; never scans the entities.
+    pub(crate) fn bounds(&self) -> Option<Bounds2> {
+        if self.tree.size() == 0 {
+            return None;
+        }
+        let envelope = self.tree.root().envelope();
+        let [x0, y0] = envelope.lower();
+        let [x1, y1] = envelope.upper();
+        Some(Bounds2::new(
+            arq_geometry::Point2::new(x0, y0).ok()?,
+            arq_geometry::Point2::new(x1, y1).ok()?,
+        ))
+    }
+
     pub(crate) fn query(&self, area: Bounds2) -> Vec<EntityId> {
         let tol = Tolerance::default();
         let search = area.expanded(tol.linear()).unwrap_or(area);

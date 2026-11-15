@@ -237,19 +237,7 @@ pub fn extend_polyline(
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Vec<(Point2, f64)>>> {
-    if closed {
-        return Err(GeometryError::OutOfRange {
-            what: "closed polyline",
-        });
-    }
-    let path = segments(vertices, false)?;
-    let at = nearest(&path, pick)?;
-    let at_end = at > path.len() as f64 / 2.0;
-    let (index, s) = if at_end {
-        (path.len() - 1, path[path.len() - 1])
-    } else {
-        (0, path[0])
-    };
+    let (index, s, at_end) = extension_segment(vertices, closed, pick)?;
     let tip = if at_end { s.end } else { s.start };
     let curve = s.curve()?;
     let Some(grown) = extend(curve, edges, tip, tol)? else {
@@ -282,6 +270,54 @@ pub fn extend_polyline(
         Geometry2::Circle(_) => return Ok(None),
     }
     Ok(Some(out))
+}
+
+/// The very same terminal curve and pick that EXTEND uses, in world plan.
+pub fn polyline_extension_target(
+    vertices: &[(Point2, f64)],
+    closed: bool,
+    pick: Point2,
+) -> GeometryResult<(Geometry2, Point2)> {
+    let (_, segment, at_end) = extension_segment(vertices, closed, pick)?;
+    Ok((
+        segment.curve()?,
+        if at_end { segment.end } else { segment.start },
+    ))
+}
+
+fn extension_segment(
+    vertices: &[(Point2, f64)],
+    closed: bool,
+    pick: Point2,
+) -> GeometryResult<(usize, Segment, bool)> {
+    if closed {
+        return Err(GeometryError::OutOfRange {
+            what: "closed polyline",
+        });
+    }
+    let path = segments(vertices, false)?;
+    let at_end = nearest(&path, pick)? > path.len() as f64 / 2.0;
+    let index = if at_end { path.len() - 1 } else { 0 };
+    Ok((index, path[index], at_end))
+}
+
+/// Conservative operative bounds, including angular endpoint slack of arcs.
+pub fn polyline_trim_bounds(
+    vertices: &[(Point2, f64)],
+    closed: bool,
+    tol: Tolerance,
+) -> GeometryResult<crate::Bounds2> {
+    let mut bounds = None;
+    for segment in segments(vertices, closed)? {
+        let curve = segment.curve()?;
+        let margin = match curve {
+            Geometry2::Arc(a) => a.radius() * tol.angular(),
+            _ => 0.0,
+        } + tol.linear();
+        let area = curve.bounds().expanded(margin)?;
+        bounds = Some(bounds.map_or(area, |old: crate::Bounds2| old.union(area)));
+    }
+    bounds.ok_or(GeometryError::ShortContour)
 }
 
 #[cfg(test)]
