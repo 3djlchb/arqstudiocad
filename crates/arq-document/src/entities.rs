@@ -436,6 +436,44 @@ impl Document {
         Ok((done.done, done.too_short))
     }
 
+    /// Operative curve bounds for Quick TRIM, independent of tessellation/width.
+    pub fn trim_search_bounds(&self, id: EntityId) -> DocumentResult<Bounds2> {
+        let entity = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        let tol = Tolerance::DEFAULT;
+        if let Some(plan) = entity.plan() {
+            let curve = plan.geometry();
+            let margin = match curve {
+                Geometry2::Arc(a) => a.radius() * tol.angular(),
+                _ => 0.0,
+            } + tol.linear();
+            return Ok(curve.bounds().expanded(margin)?);
+        }
+        let path = self.polyline_in_world(id)?;
+        Ok(arq_geometry::polyline_trim_bounds(
+            &path.vertices,
+            path.closed,
+            tol,
+        )?)
+    }
+
+    /// Same world curve and end choice used by the existing EXTEND operation.
+    pub fn extension_search_target(
+        &self,
+        id: EntityId,
+        at: Point2,
+    ) -> DocumentResult<(Geometry2, Point2)> {
+        let entity = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        if let Some(plan) = entity.plan() {
+            return Ok((plan.geometry(), at));
+        }
+        let path = self.polyline_in_world(id)?;
+        Ok(arq_geometry::polyline_extension_target(
+            &path.vertices,
+            path.closed,
+            at,
+        )?)
+    }
+
     /// Extends open lightweight polyline `id` at the end nearer `at` to the
     /// nearest of `edges` its end segment reaches (EXTEND); refused when
     /// none does, and for a closed polyline.

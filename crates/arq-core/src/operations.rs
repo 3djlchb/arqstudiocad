@@ -352,6 +352,12 @@ impl CadDocument {
         edges: Option<&[EntityId]>,
         erase_uncut: bool,
     ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let candidates = if edges.is_none() {
+            self.quick_edge_candidates(id, at, false)
+        } else {
+            None
+        };
+        let edges = edges.or(candidates.as_deref());
         let tol = Tolerance::DEFAULT;
         self.transact("TRIM", |doc| {
             let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
@@ -378,6 +384,40 @@ impl CadDocument {
             };
             replace_curve_pieces(doc, id, plan, &pieces)
         })
+    }
+
+    /// Broad-phase IDs only; uncertainty falls back to the exhaustive path.
+    fn quick_edge_candidates(
+        &self,
+        id: EntityId,
+        at: Point2,
+        extending: bool,
+    ) -> Option<Vec<EntityId>> {
+        let extent = self.spatial_index.bounds()?;
+        // EXTEND's current on-edge predicate accepts 1e-9 * coordinate scale.
+        // Four times the global scale safely encloses that relative slack,
+        // ray clipping roundoff and the geometry layer's linear tolerance.
+        let scale = [
+            extent.min().x(),
+            extent.min().y(),
+            extent.max().x(),
+            extent.max().y(),
+        ]
+        .into_iter()
+        .map(f64::abs)
+        .fold(1.0, f64::max);
+        let padding = 4.0 * arq_geometry::EXTEND_EDGE_RELATIVE_TOLERANCE * scale;
+        let area = if extending {
+            let (curve, pick) = self.document().extension_search_target(id, at).ok()?;
+            extension_query_area(curve, pick, extent, padding)?
+        } else {
+            self.document()
+                .trim_search_bounds(id)
+                .ok()?
+                .expanded(padding)
+                .ok()?
+        };
+        Some(self.query_entities(area))
     }
 
     /// Removes the gap between projected points on a line, arc or circle.
@@ -412,6 +452,12 @@ impl CadDocument {
         at: Point2,
         edges: Option<&[EntityId]>,
     ) -> CadResult<ChangeSet> {
+        let candidates = if edges.is_none() {
+            self.quick_edge_candidates(id, at, true)
+        } else {
+            None
+        };
+        let edges = edges.or(candidates.as_deref());
         let tol = Tolerance::DEFAULT;
         let (_, changes) = self.transact("EXTEND", |doc| {
             let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
@@ -857,13 +903,71 @@ fn check_unlocked(doc: &Document, e: &Entity) -> CadResult<()> {
     Ok(())
 }
 
+/// Finite ray to the index envelope, or an arc's full supporting circle.
+/// No bounds()/drawing_all() scan is needed to bound a ray.
+fn extension_query_area(
+    curve: Geometry2,
+    pick: Point2,
+    extent: arq_geometry::Bounds2,
+    padding: f64,
+) -> Option<arq_geometry::Bounds2> {
+    match curve {
+        Geometry2::Circle(_) => None,
+        Geometry2::Arc(arc) => {
+            let bounds = arc.circle().bounds();
+            let scale = [
+                bounds.min().x(),
+                bounds.min().y(),
+                bounds.max().x(),
+                bounds.max().y(),
+            ]
+            .into_iter()
+            .map(f64::abs)
+            .fold(1.0, f64::max);
+            bounds
+                .expanded(padding.max(4.0 * arq_geometry::EXTEND_EDGE_RELATIVE_TOLERANCE * scale))
+                .ok()
+        }
+        Geometry2::Line(line) => {
+            let at_end = arq_geometry::extends_at_end(curve, pick);
+            let tip = if at_end { line.end() } else { line.start() };
+            let direction = line.vector().normalized().ok()? * if at_end { 1.0 } else { -1.0 };
+            let extent = extent.expanded(padding).ok()?;
+            let exit = |p: f64, d: f64, lo: f64, hi: f64| {
+                if d > 0.0 {
+                    (hi - p) / d
+                } else if d < 0.0 {
+                    (lo - p) / d
+                } else {
+                    f64::INFINITY
+                }
+            };
+            let t = exit(tip.x(), direction.x(), extent.min().x(), extent.max().x()).min(exit(
+                tip.y(),
+                direction.y(),
+                extent.min().y(),
+                extent.max().y(),
+            ));
+            if !t.is_finite() || t < 0.0 {
+                return None;
+            }
+            let end = Point2::new(tip.x() + direction.x() * t, tip.y() + direction.y() * t).ok()?;
+            arq_geometry::Bounds2::new(tip, end).expanded(padding).ok()
+        }
+    }
+}
+
 /// The curves TRIM cuts at and EXTEND reaches: the lines, arcs and circles
 /// `edges` draw (every entity drawn but `target` when None), those inside
 /// blocks and polylines included; texts never.
 fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> Vec<Geometry2> {
     let ids: Vec<EntityId> = match edges {
         Some(edges) => edges.to_vec(),
-        None => doc.drawing_all().into_iter().map(|(id, _)| id).collect(),
+        None => doc
+            .entities()
+            .into_iter()
+            .map(|entity| entity.id())
+            .collect(),
     };
     ids.into_iter()
         .filter(|&id| id != target)
@@ -910,3 +1014,7 @@ fn replace_curve_pieces(
 #[cfg(test)]
 #[path = "operations_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "quick_edges_tests.rs"]
+mod quick_edges_tests;

@@ -113,13 +113,17 @@ pub use point::Point2;
 pub use point3::Point3;
 pub use polyline_corners::{CornerCut, CutCorners, cut_polyline_corners, shared_vertex};
 pub use polyline_offset::{offset_polyline, offset_polyline_through};
-pub use polyline_trim::{PolylinePath, extend_polyline, trim_polyline};
+pub use polyline_trim::{
+    PolylinePath, extend_polyline, polyline_extension_target, polyline_trim_bounds, trim_polyline,
+};
 pub use rectangle::{Corners, Rectangle};
 pub use region::{Containment, Region};
 pub use selection_polygon::{CrossingArea, SelectionPolygon};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
 pub use transform3::Transform3;
-pub use trim::{break_curve, cutting_points, extend, trim};
+pub use trim::{
+    EXTEND_EDGE_RELATIVE_TOLERANCE, break_curve, cutting_points, extend, extends_at_end, trim,
+};
 pub use vector::Vector2;
 pub use vector3::Vector3;
