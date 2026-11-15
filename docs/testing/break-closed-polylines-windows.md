@@ -2,8 +2,9 @@
 
 Milestone 02.14. Our BREAK refuses closed paths until a Windows comparison
 shows how they behave ([design](../design/break-command.md); maintainer,
-2026-11-15). This page is that comparison. The rule it shows awaits the
-maintainer's approval before closed-path traversal is implemented.
+2026-11-15). This page is that comparison. The maintainer approved the rule
+it shows the same day, ProgeCAD's own, so the same BREAK gives the same
+drawing in both programs ([rule](#rule-approved-2026-11-15)).
 
 ## Observations (2026-11-15, Windows agent)
 
@@ -46,7 +47,7 @@ The square is (0,0), (10,0), (10,10), (0,10), closed, in that (counterclockwise)
   - Widths stay with their segments (B7). The last vertex of the open polyline has width 0, and `ConstantWidth` then reads 0.
 - **A single point** (`@`, or two equal parameters) opens the polyline there and removes nothing. The point is both its first and its last vertex (B5).
 
-### Rule proposed for approval
+### Rule approved (2026-11-15)
 
 For a closed LWPOLYLINE given to BREAK with a first and a second point:
 

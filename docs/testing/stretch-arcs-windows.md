@@ -1,8 +1,8 @@
 # Partial standalone STRETCH arcs: Windows comparison
 
-Observed in ProgeCAD on Windows on 2026-11-15 (below). The reconstruction
-rule they show awaits the maintainer's approval before partial standalone
-arc reshaping is implemented. AutoCAD 2021 is the command baseline; its
+Observed in ProgeCAD on Windows on 2026-11-15 (below). The maintainer
+approved the reconstruction rule they show the same day: the arc keeps its
+sagitta ([rule](#rule-approved-2026-11-15)). AutoCAD 2021 is the command baseline; its
 public STRETCH help does not specify the circle reconstruction rule when
 only one endpoint moves. The live-preview delivery does not invent that
 rule or enable partial arcs.
@@ -79,13 +79,13 @@ In every case the arc kept its handle and its normal (0,0,1), and no other entit
 - **Controls (A6, A7).** The arc moved whole: center (3,2), radius and angles unchanged.
 - **Degenerate case (A8).** Moving the end onto the start leaves no chord: ProgeCAD left the arc unchanged and reported no error.
 
-### Rule proposed for approval
+### Rule approved (2026-11-15)
 
 For a standalone ARC with exactly one endpoint selected by STRETCH's crossing selection:
 
 1. Move that endpoint by the displacement; keep the other, the normal, the elevation, the direction (counterclockwise from start to end in the arc's own coordinate system) and the entity.
 2. Keep the sagitta. With the old chord length c and included angle θ, h = (c/2)·tan(θ/4). With the new chord c′, the new bulge is b′ = 2h/c′, the included angle θ′ = 4·atan(b′), and the radius r′ = c′ / (2 sin(θ′/2)). The center lies on the chord's perpendicular bisector, on the side that keeps the arc counterclockwise.
-3. If the new chord is zero, leave the arc unchanged, as ProgeCAD does. Refusing the stretch with a message is the alternative for the maintainer to choose.
+3. If the new chord is zero, refuse the stretch with a message and leave the document unchanged. ProgeCAD leaves the arc unchanged in silence; the maintainer chose to say why (2026-11-15), as every failed operation here is all-or-nothing and explained.
 4. Both endpoints selected, or the arc picked as an object: translate it whole.
 
 Rule 2 reproduces A1–A4b to 5·10⁻¹¹, the precision of the log. The table's rows are the expected coordinates for the Rust tests.

@@ -1,7 +1,7 @@
 # BREAK command — initial 2D delivery
 
 Milestone 02.14, group 3. Maintainer-approved scope: lines, arcs and circles,
-with AutoCAD 2021 as the baseline. Open lightweight polylines are implemented on `feature/break-polylines`; closed paths were compared in ProgeCAD on Windows on 2026-11-15 ([evidence and proposed rule](../testing/break-closed-polylines-windows.md)) and await the maintainer's approval of that rule.
+with AutoCAD 2021 as the baseline. Open lightweight polylines are implemented on `feature/break-polylines`; closed paths were compared in ProgeCAD on Windows on 2026-11-15, and the maintainer approved ProgeCAD's rule the same day ([evidence and rule](../testing/break-closed-polylines-windows.md)); it is to be implemented.
 
 ## Behavior
 
@@ -92,8 +92,8 @@ The Python API signature is unchanged. Tilted and legacy heavyweight/3D
 polylines remain unsupported. Closed paths are currently refused explicitly;
 the maintainer approved the open-path delivery and chose Windows confirmation
 before implementing closed-path traversal (2026-11-15). That comparison is
-[recorded](../testing/break-closed-polylines-windows.md); no behavior is
-implemented for closed paths until the maintainer approves its rule. This is Linux internal validation, not independent ProgeCAD
+[recorded](../testing/break-closed-polylines-windows.md) and its rule
+approved (2026-11-15); closed paths stay refused until it is implemented. This is Linux internal validation, not independent ProgeCAD
 acceptance. The codec, rendering and CPU baseline are unchanged.
 
 ### Open-polyline local verification
