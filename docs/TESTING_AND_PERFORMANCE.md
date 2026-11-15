@@ -43,6 +43,50 @@ and separation between tests, checking containment before writing.
 | Scene build / render, 100,000 entities at 1080p (CPU) | 59 ms / 69 ms, 1 % redraw 10 ms | `cargo bench -p arq-render`, ADR 0013 |
 | Read DWG/DXF, 201 drawings, median / p95 | 12.6 ms / 38.5 ms; peak memory median 11 MiB | `tools/dwg-bench` |
 | Read a 100,000-entity DXF | 0.37 s, 84 MiB | `tools/dwg-bench` |
+| TRIM Quick, 100,000 unrelated lines + target + 2 cutters | Median 58.041 ms → 4.099 µs; after/before 0.0000706 | LMDE 7 development host, Ryzen 9 5900X; native Criterion benchmark, optimized Cargo bench profile, 20 samples (2026-11-15); method below |
+| EXTEND Quick, same fixture size | Median 60.694 ms → 2.735 µs; after/before 0.0000451 | Same host, profile and repetitions; method below |
+
+### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
+
+Base production code: `a2236f4deb5a4a168acfba2ad66c628076a10ba4`, with the
+same added benchmark harness as candidate `fff33a0bcd07312e4c7ac975ccfc1a9d0d39ad82`.
+Harness: `crates/arq-core/benches/query.rs`, SHA-256
+`f1572ee4c33a7526ab3a94563b06fd453369531373cd6aa4c8d396c302705b45`.
+Rust 1.99.0; LMDE 7, Linux 6.12.117+deb13-amd64, Ryzen 9 5900X (24 logical
+CPUs); repository-default optimized bench profile, no raised CPU baseline.
+These are same-machine diagnostics, not reference-floor acceptance.
+
+Each fixture has N distant short lines, target `(0,0)`–`(10,0)` and two
+vertical cutters: x=3/7 for TRIM, x=20/30 for EXTEND. Total entities N+3.
+The target, picks and unrelated grid are identical before and after. Criterion
+uses 20 samples, 1 s warm-up and 3 s requested measurement time per case.
+`iter_custom` accumulates operation time; fixture construction and undo/reset
+are outside that interval. Every iteration checks the edited endpoint and
+restored original geometry. Undo preserves normal lifetime ID allocation;
+the drawing geometry and entity count are restored, not the ID allocator.
+The measured operation includes its normal transaction/history bookkeeping.
+
+| Unrelated lines | Operation | Base median | Candidate median | After / before |
+|---|---|---|---|---|
+| 10,000 | TRIM | 4.867 ms | 4.050 µs | 0.000832 |
+| 10,000 | EXTEND | 4.792 ms | 2.696 µs | 0.000563 |
+| 100,000 | TRIM | 58.041 ms | 4.099 µs | 0.0000706 |
+| 100,000 | EXTEND | 60.694 ms | 2.735 µs | 0.0000451 |
+
+Commands: `cargo bench --locked -p arq-core --bench query -- "TRIM EXTEND Quick" --save-baseline before`
+on the base, then the identical harness with `--baseline before` on the
+candidate. Values are Criterion's median point estimates. A first base run
+was discarded after detecting a concurrent agent build; the base was repeated
+in an idle window. Candidate measurement monitored heavy build/test processes
+throughout and detected no overlap. Measurements were separate from checks
+and compilation. No desktop/system setting or CPU feature was changed.
+
+The distant-grid scenario demonstrates candidate pruning, not a universal
+speedup. Dense/overlapping drawings and broad arc-circle envelopes can retain
+many candidates. Python command dispatch, viewport redraw and full fence
+latency are not measured here. Validate actual interaction on the i7-2600 /
+GT 730 reference machine before asserting minimum supported performance;
+never convert these numbers using a CPU multiplier. No ProgeCAD is required.
 
 ## Metrics to keep
 

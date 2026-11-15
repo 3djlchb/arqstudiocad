@@ -162,3 +162,16 @@ properties and undo/redo. Long crossing lines, curves, block contents,
 polylines with either bulge sign and mirrored planes, remote extension limits,
 relative tolerance and index updates are covered. Narrowing the query and
 substituting the original object box for an extension ray are sabotage cases.
+
+
+Local verification for the indexed Quick delivery (2026-11-15): 865 Rust tests,
+1088 Python tests and nine explicit public-codec corpus tests passed; five
+Python platform/adapter cases skipped. Locale was C.UTF-8. The GPU shutdown
+fix from PR #185 is in the base and passed; previous GPU failures were not
+silently classified as passing. Format, Clippy, Ruff, mypy, stubtest and
+cargo-deny passed. Shrinking the query failed all four new core equivalence
+tests; using an original-object box for EXTEND failed its remote-boundary
+case; invalidating terminal-curve extraction failed the new geometry test;
+restoring unsafe support-circle bounds failed the overflow fallback case.
+Saved bytes were restored exactly and touched before rebuilding. All five
+focused tests then passed. No private drawing was copied or committed.
