@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from arqstudiocad.core import CadChangeSet
+from arqstudiocad.core import CadBounds2, CadChangeSet
 
 __all__ = [
     "ActiveDocumentChanged",
@@ -175,7 +175,7 @@ class Drag:
     ``"rectangle"``, the rectangle RECTANG would draw from the base point
     to it."""
 
-    kind: Literal["move", "rotate", "scale", "mirror", "rectangle"]
+    kind: Literal["move", "rotate", "scale", "mirror", "rectangle", "stretch"]
     entity_ids: tuple[int, ...] = ()
     #: Whether a rubber band joins the base point to the cursor.
     band: bool = True
@@ -186,6 +186,9 @@ class Drag:
     size: tuple[float, float] | None = None
     fillet: float = 0.0
     chamfer: tuple[float, float] = (0.0, 0.0)
+    #: Selection provenance captured once, rather than queried per mouse move.
+    crossing: tuple[tuple[int, CadBounds2], ...] = ()
+    polygons: tuple[tuple[int, tuple[tuple[float, float], ...]], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

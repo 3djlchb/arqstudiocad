@@ -23,10 +23,25 @@ pub type Polyline = Vec<(f64, f64)>;
 /// point as a small cross, a text or an entity not drawn yet as its box.
 /// Entities not in the scene (hidden, unknown) give nothing.
 pub fn outline(scene: &Scene, camera: &Camera, ids: &[EntityId]) -> Vec<Polyline> {
+    outline_shapes(
+        ids.iter()
+            .filter_map(|&id| scene.items(id))
+            .flatten()
+            .map(|item| item.shape),
+        camera,
+    )
+}
+
+/// Transient shapes, flattened exactly as selected scene entities.
+pub fn shapes_outline(shapes: &[Shape], camera: &Camera) -> Vec<Polyline> {
+    outline_shapes(shapes.iter().copied(), camera)
+}
+
+fn outline_shapes(shapes: impl Iterator<Item = Shape>, camera: &Camera) -> Vec<Polyline> {
     let screen = |p: arq_geometry::Point2| camera.to_screen(p.x(), p.y());
     let mut out = Vec::new();
-    for item in ids.iter().filter_map(|&id| scene.items(id)).flatten() {
-        match item.shape {
+    for shape in shapes {
+        match shape {
             Shape::Line(l) => out.push(vec![screen(l.start()), screen(l.end())]),
             Shape::Circle(c) => out.push(arc(
                 camera,

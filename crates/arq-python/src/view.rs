@@ -19,7 +19,7 @@ use pyo3::types::PyBytes;
 use crate::changes::CadChangeSet;
 use crate::documents::CadDocument;
 use crate::errors::IntoPy;
-use crate::values::{CadBounds2, PyPoint};
+use crate::values::{CadBounds2, PyPoint, PyVector};
 
 struct State {
     scene: Scene,
@@ -356,6 +356,36 @@ impl CadView {
     fn outlines(&self, entity_ids: Vec<u64>) -> Vec<Vec<(f64, f64)>> {
         let state = self.state();
         arq_render::outline(&state.scene, &state.camera, &entity_ids)
+    }
+
+    /// Read-only STRETCH outlines; errors leave both document and view alone.
+    fn stretch_outlines(
+        &self,
+        entity_ids: Vec<u64>,
+        offset: PyVector,
+        crossing: Vec<(u64, CadBounds2)>,
+        polygons: Vec<(u64, Vec<PyPoint>)>,
+    ) -> PyResult<Vec<Vec<(f64, f64)>>> {
+        let areas: Vec<_> = crossing.into_iter().map(|(id, b)| (id, b.0)).collect();
+        let polygons: Vec<_> = polygons
+            .into_iter()
+            .map(|(id, points)| {
+                arq_geometry::SelectionPolygon::new(
+                    points.into_iter().map(|p| p.0).collect(),
+                    arq_geometry::Tolerance::DEFAULT,
+                )
+                .map(|polygon| (id, polygon))
+            })
+            .collect::<Result<_, _>>()
+            .map_err(arq_core::CadError::from)
+            .py()?;
+        let shapes = self
+            .document
+            .get()
+            .read(|cad| cad.stretch_preview(&entity_ids, offset.0, &areas, &polygons))?
+            .py()?;
+        let state = self.state();
+        Ok(arq_render::shapes_outline(&shapes, &state.camera))
     }
 
     /// Width in pixels.

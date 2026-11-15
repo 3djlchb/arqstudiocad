@@ -88,6 +88,7 @@ from arqstudiocad.core import (
     CadBounds2,
     CadChangeSet,
     CadDocument,
+    CadError,
     CadGrip,
     CadRectangle,
     CadSnap,
@@ -377,7 +378,7 @@ class Viewport(QWidget):
         transform the point under the cursor would apply to them."""
         if self._dragged is None or self._base is None or self._target is None:
             return None
-        if self._dragged.kind == "rectangle":
+        if self._dragged.kind in ("rectangle", "stretch"):
             return None  # drawn by its corners, not moved
         (bx, by), (tx, ty) = self._base, self._target
         world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
@@ -909,6 +910,7 @@ class Viewport(QWidget):
         preview = self.preview
         if preview is not None and self._dragged is not None:
             self._outline_strokes(out, self._dragged.entity_ids, text, 1.0, preview)
+        self._stretch_items(out, text)
         self._grip_items(out)
         if self._asking:
             self._rectangle_items(out, text)
@@ -984,6 +986,24 @@ class Viewport(QWidget):
             out.items.append(
                 Stroke(tuple((p.x() / ratio, p.y() / ratio) for p in points), color, width)
             )
+
+    def _stretch_items(self, out: Overlay, color: RGBA) -> None:
+        dragged, base, target = self._dragged, self._base, self._target
+        if dragged is None or dragged.kind != "stretch" or base is None or target is None:
+            return
+        try:
+            paths = self.view.stretch_outlines(
+                dragged.entity_ids,
+                (target[0] - base[0], target[1] - base[1]),
+                dragged.crossing,
+                dragged.polygons,
+            )
+        except CadError:
+            # Invalid geometry has no valid preview and remains uncommitted.
+            return
+        ratio = self.devicePixelRatioF()
+        for path in paths:
+            out.items.append(Stroke(tuple((x / ratio, y / ratio) for x, y in path), color, 1.0))
 
     def _grip_items(self, out: Overlay) -> None:
         """Grips as filled squares, the hot one red, edged in the base color."""

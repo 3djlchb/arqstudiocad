@@ -12,6 +12,7 @@ from arqstudiocad.commands import (
     Option,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
+from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 
 DISPLACEMENT = "STRETCH_DISPLACEMENT"
@@ -26,23 +27,32 @@ def stretch(ctx: CommandContext) -> CommandScript:
     if not ids:
         return
     windows = ctx.session.crossing_selection(document)
+    polygons = ctx.session.crossing_polygons(document)
+    preview = Drag(
+        "stretch", ids, crossing=tuple(windows), polygons=tuple((i, tuple(p)) for i, p in polygons)
+    )
     base = yield ctx.point(
         tr("Specify base point"),
         options=[Option("D", tr("Displacement"))],
         default="D",
     )
     if base is None or base == "D":
-        offset = yield ctx.point(tr("Specify displacement"), base=(0.0, 0.0), optional=True)
+        offset = yield ctx.point(
+            tr("Specify displacement"), base=(0.0, 0.0), optional=True, drag=preview
+        )
         if offset is None:
             offset = ctx.remembered.get(DISPLACEMENT, (0.0, 0.0))
     else:
         second = yield ctx.point(
-            tr("Specify second point <use first point as displacement>"), base=base, optional=True
+            tr("Specify second point <use first point as displacement>"),
+            base=base,
+            optional=True,
+            drag=preview,
         )
         offset = base if second is None else (second[0] - base[0], second[1] - base[1])
     ctx.session.report(
         document,
-        document.stretch_entities(ids, offset, windows, ctx.session.crossing_polygons(document)),
+        document.stretch_entities(ids, offset, windows, polygons),
     )
     ctx.remembered[DISPLACEMENT] = offset
     done_selecting(ctx, document, ids)
