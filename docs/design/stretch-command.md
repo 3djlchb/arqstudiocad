@@ -235,9 +235,12 @@ new dependency or compile-time CPU requirement is introduced. Cancellation
 clears the preview; invalid geometry shows no candidate and leaves history
 unchanged. Polyline width fills are not previewed, as with ordinary outlines.
 
-Partial standalone arcs remain refused in both paths until the agreed
-[Windows comparison](../testing/stretch-arcs-windows.md) establishes the
-behavior. The maintainer chose this order over inventing an arc rule.
+Partial standalone arcs remain refused in both paths until the approved
+rule is implemented. The agreed [Windows comparison](../testing/stretch-arcs-windows.md)
+was made in ProgeCAD on 2026-11-15: the arc keeps its sagitta. The maintainer
+approved that rule the same day, a zero chord refused with a message; the
+expected coordinates for its tests are there. The maintainer chose this order
+over inventing an arc rule.
 
 Pointer overlay work increases with selected geometry and polygon corner
 count. Actual interaction/CPU-floor acceptance remains on the i7-2600/GT 730
