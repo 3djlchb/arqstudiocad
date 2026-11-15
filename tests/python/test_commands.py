@@ -30,8 +30,10 @@ from arqstudiocad.commands import (
 )
 from arqstudiocad.commands.builtin import _write, builtin_registry
 from arqstudiocad.core import (
+    CadApplication,
     CadBlockData,
     CadDocument,
+    CadError,
     LossyConversionError,
     SaveNotVerifiedError,
 )
@@ -646,3 +648,23 @@ def test_properties_opens_its_panel_with_or_without_a_drawing() -> None:
     assert h.of(CommandCancelled)[-1] == CommandCancelled(
         "PROPERTIES", "The properties panel is not available here."
     )
+
+
+def test_the_opened_count_is_every_entity_listed() -> None:
+    """OPEN says how many entities a drawing holds by counting them, not
+    listing them; on every public sample (blocks, dimensions, solids) the
+    count is the list's length."""
+    corpus = Path(__file__).resolve().parents[2] / "target/corpus"
+    drawings = sorted(p for p in corpus.rglob("*") if p.suffix.lower() in (".dwg", ".dxf"))
+    if not drawings:
+        regression_drawing(SURFACE_2004)  # fails under CI, skips locally
+    app = CadApplication()
+    checked = 0
+    for path in drawings:
+        try:
+            document = app.open_document(path)
+        except CadError:
+            continue  # refused or damaged on purpose: nothing to count
+        assert document.entity_count == len(document.get_entities()), path.name
+        checked += 1
+    assert checked >= 5, "the public samples were opened"
