@@ -54,6 +54,7 @@ from arqstudiocad.ui.crosshair import (
     CrosshairType,
     crosshair_color,
 )
+from arqstudiocad.ui.number_format import with_cad_numbers
 from arqstudiocad.ui.options_widgets import ColorField, CrosshairPreview, color_value
 from arqstudiocad.ui.theme import THEMES, Theme, theme_title
 from arqstudiocad.ui.viewport import (
@@ -354,7 +355,7 @@ class OptionsDialog(QDialog):
             self.zoom_wheel_reversed.toggled.connect(self._changed)
             self.zoom_factor_label = QLabel()
             self.zoom_slider = QSlider(Qt.Orientation.Horizontal)
-            self.zoom_spin = QSpinBox()
+            self.zoom_spin = with_cad_numbers(QSpinBox())
             for control in (self.zoom_slider, self.zoom_spin):
                 control.setRange(*WHEEL_PERCENTS)
             self.zoom_slider.valueChanged.connect(self.zoom_spin.setValue)
@@ -399,7 +400,7 @@ class OptionsDialog(QDialog):
         self.crosshair_group = QGroupBox()
         self.size_label = QLabel()
         self.size_slider = QSlider(Qt.Orientation.Horizontal)
-        self.size_spin = QSpinBox()
+        self.size_spin = with_cad_numbers(QSpinBox())
         for control in (self.size_slider, self.size_spin):
             control.setRange(*SIZES)
         # The number is the value; the slider follows it, and moves it.

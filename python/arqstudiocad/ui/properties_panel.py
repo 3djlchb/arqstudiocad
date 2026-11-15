@@ -5,7 +5,6 @@ the block definition's budget data (ADR 0027 step 5)."""
 import math
 from collections.abc import Sequence
 
-from PySide6.QtCore import QLocale
 from PySide6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
 from arqstudiocad.core import (
@@ -31,6 +30,7 @@ from arqstudiocad.ui.color_picker import (
     remember_color,
 )
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.number_format import format_number, parse_number
 from arqstudiocad.ui.property_grid import EDIT_IN_DIALOG, Choice, Property, PropertyGrid, Section
 
 _VARIES = "__varies__"
@@ -404,7 +404,7 @@ def _extent_section(entities: Sequence[CadEntityInfo]) -> Section:
         value = tr("*Varies*")
     else:
         sizes = [
-            (_format_number(bound.width), _format_number(bound.height))
+            (format_number(bound.width), format_number(bound.height))
             for bound in bounds
             if bound is not None
         ]
@@ -496,12 +496,8 @@ def _common[T](values: Sequence[T]) -> T | str:
     return first if all(value == first for value in values[1:]) else _VARIES
 
 
-def _format_number(value: float) -> str:
-    return QLocale().toString(float(value), "g", 12)
-
-
 def _number_text(value: float | str | None) -> str:
-    return _format_number(value) if isinstance(value, (int, float)) else tr("*Varies*")
+    return format_number(value) if isinstance(value, (int, float)) else tr("*Varies*")
 
 
 def _arc_sweep(arc: CadArc) -> float:
@@ -629,8 +625,8 @@ class PropertiesPanel(QDockWidget):
     def _edit_geometry(
         self, document: CadDocument, ids: Sequence[int], key: str, text: str
     ) -> None:
-        value, valid = QLocale().toDouble(text)
-        if not valid or not math.isfinite(value):
+        value = parse_number(text)
+        if value is None or not math.isfinite(value):
             raise ValueError(text)
         with document.group("PROPERTIES") as group:
             for entity in document.get_entities(ids):
@@ -654,8 +650,8 @@ class PropertiesPanel(QDockWidget):
             content = text
             self._session.edit(document, lambda doc: doc.set_text(ids, content=content))
             return
-        value, valid = QLocale().toDouble(text)
-        if not valid or not math.isfinite(value):
+        value = parse_number(text)
+        if value is None or not math.isfinite(value):
             raise ValueError(text)
         if key == "text.height":
             self._session.edit(document, lambda doc: doc.set_text(ids, height=value))

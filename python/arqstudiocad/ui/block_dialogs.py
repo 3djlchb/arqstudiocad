@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from arqstudiocad.core import CadDocument
 from arqstudiocad.i18n import tr
 from arqstudiocad.ui.blocks_panel import InsertOptions, preview_pixmap
+from arqstudiocad.ui.number_format import with_cad_numbers
 
 #: Each preview's side in the redefine confirmation, as the clash dialog's.
 REDEFINE_PREVIEW = 96
@@ -33,11 +34,11 @@ class InsertOptionsDialog(QDialog):
         super().__init__(parent)
         self.setObjectName("insert_options_dialog")
         self.setWindowTitle(tr("Insert {name}", name=name))
-        self.scale = QDoubleSpinBox()
+        self.scale = with_cad_numbers(QDoubleSpinBox())
         self.scale.setDecimals(3)
         self.scale.setRange(0.001, 1_000_000.0)
         self.scale.setValue(options.scale)
-        self.rotation = QDoubleSpinBox()
+        self.rotation = with_cad_numbers(QDoubleSpinBox())
         self.rotation.setDecimals(2)
         self.rotation.setRange(-360.0, 360.0)
         self.rotation.setSuffix("°")

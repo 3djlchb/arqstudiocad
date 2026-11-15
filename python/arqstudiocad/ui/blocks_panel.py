@@ -98,6 +98,7 @@ from arqstudiocad.recent_files import RecentFiles, same_file
 from arqstudiocad.session import Session
 from arqstudiocad.ui.block_drag import block_mime
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.number_format import with_cad_numbers
 from arqstudiocad.ui.panel_style import (
     SELECTION_BACKGROUND,
     SELECTION_LINE,
@@ -649,11 +650,11 @@ class BlocksPanel(QDockWidget):
         self.options_band.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.options_band.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.options_band.toggled.connect(self._fold_options)
-        self.scale = QDoubleSpinBox()
+        self.scale = with_cad_numbers(QDoubleSpinBox())
         self.scale.setDecimals(3)
         self.scale.setRange(0.001, 1_000_000.0)
         self.scale.setValue(1.0)
-        self.rotation = QDoubleSpinBox()
+        self.rotation = with_cad_numbers(QDoubleSpinBox())
         self.rotation.setDecimals(2)
         self.rotation.setRange(-360.0, 360.0)
         self.rotation.setSuffix("°")
