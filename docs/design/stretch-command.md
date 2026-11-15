@@ -260,10 +260,12 @@ restored and touched; uv sync rebuilt the restored native extension.
 The focused restored suites passed (4 document, 6 core, 21 Python cases).
 Temporary scripts and logs remain outside the repository.
 
-A proposed development-host diagnostic (100 selected lines in 100000
-synthetic lines; before/after edit cost and separate preview cost) awaits
-maintainer scenario approval before measurement. No timing or floor
-acceptance is claimed yet.
+The maintainer-approved development-host diagnostic is recorded in
+[testing and performance](../TESTING_AND_PERFORMANCE.md): 100 selected lines
+in 100000 lines, before/after edit cost and separate preview cost. The pooled
+edit ratio is 1.00521 with overlapping batch ranges. Reference-machine
+measurement and real cursor interaction remain pending; this PR stays in
+draft until that required check supplies evidence.
 
 The public contour query also refuses non-Top views, rather than returning
 XY contours through a camera for another plane. Removing that guard caused

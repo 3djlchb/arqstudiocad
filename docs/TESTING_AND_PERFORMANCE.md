@@ -45,6 +45,8 @@ and separation between tests, checking containment before writing.
 | Read a 100,000-entity DXF | 0.37 s, 84 MiB | `tools/dwg-bench` |
 | TRIM Quick, 100,000 unrelated lines + target + 2 cutters | Median 58.041 ms → 4.099 µs; after/before 0.0000706 | LMDE 7 development host, Ryzen 9 5900X; native Criterion benchmark, optimized Cargo bench profile, 20 samples (2026-11-15); method below |
 | EXTEND Quick, same fixture size | Median 60.694 ms → 2.735 µs; after/before 0.0000451 | Same host, profile and repetitions; method below |
+| STRETCH edit, 100 selected lines in 100000 lines | Initial median 0.168242 → 0.178892 ms (1.063); five alternating batches pooled 0.168732 → 0.169612 ms (1.005) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension; 3 warm-ups + 20 samples per run (2026-11-15); diagnostic only; reference check pending |
+| STRETCH read-only preview, same selection | Median 0.061386 ms per contour query | Same host/profile; 3 warm-ups + 20 samples; excludes Qt overlay construction, painting and frame scheduling |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -96,6 +98,68 @@ and 0.0000543), and with 10,000 lines 10.964 ms → 9.474 µs and 11.912 ms
 ([benchmarks](testing/reference-machine/2026-11-15/benchmarks.txt)).
 The core operation is validated there; Python dispatch, the viewport's
 redraw and full fence latency still are not measured.
+
+### STRETCH preview diagnostic (2026-11-15)
+
+Maintainer-approved scenario: 100 selected lines in 100000 synthetic lines;
+compare committing the same stretch before/after, and measure the new
+read-only contour query separately. Measured base
+`755c67c9ec6ddf11bb421f9026119a0b1c7e2a94`; measured candidate
+`bf2cbe975f4dc4e7b39e1be1d35c84a8d9fcd7c4`. Both used their existing
+`uv sync` release extensions, Rust 1.99.0, Python 3.13.5 on LMDE 7,
+Linux 6.12.117+deb13-amd64, Ryzen 9 5900X (24 logical CPUs). No raised
+CPU baseline, feature flags, system preferences or private drawings.
+These values were collected before integrating main's later OPEN and ARRAY
+changes. They describe the exact historical revisions above, not a timing
+claim for the newer integrated branch. Current reference-floor validation
+must record its actual updated base and candidate commits separately.
+
+Fixture: a temporary ASCII DXF with 100000 LINE entities; source i has start
+`((i % 1000)*3, (i // 1000)*3)` and end `(start.x+1, start.y)`. Query box
+`(-0.1,-0.1)`–`(298.1,0.1)` selects the first 100. Each has a crossing box
+of ±0.1 around its endpoint. Displacement is `(2,3)`; no polygons. A Top-view
+CadView, 800×600 physical pixels, fits the same complete drawing once.
+Fixture writing/opening, view construction and all assertions are outside
+operation timing. No GPU is attached or probed, and no Qt settings are read.
+
+Each call is timed with `time.perf_counter_ns()`, garbage collection disabled
+only during sampling: three warm-ups, then twenty samples. Commit uses
+`doc.stretch_entities(ids, (2,3), areas, [])` in both versions; after each
+sample it checks the first endpoint `(3,3)`, undoes outside timing and checks
+restoration to `(1,0)`. Preview uses
+`view.stretch_outlines(ids, (2,3), areas, [])`; every call checks 100 contours,
+the first screen endpoints, unchanged history and original endpoint.
+Time includes API dispatch and normal operation bookkeeping; preview time
+includes conversion to screen contours, not the Qt overlay loop or drawing.
+
+The initial sequential run found base 0.1682415 ms, candidate 0.1788915 ms
+(ratio 1.06330), and preview 0.061386 ms. Candidate samples had a burst of
+higher values, so the edit comparison was repeated in five batches with
+order B/C, C/B, B/C, C/B, B/C. Every batch recreates the identical fixture
+and uses the same three warm-ups and twenty samples. No samples were dropped.
+
+| Batch | Base median, ms | Candidate median, ms |
+|---|---|---|
+| 1 | 0.167392 | 0.167972 |
+| 2 | 0.167422 | 0.170452 |
+| 3 | 0.1683415 | 0.172142 |
+| 4 | 0.173342 | 0.169807 |
+| 5 | 0.167031 | 0.1669715 |
+| Pooled 100 samples per version | 0.168732 | 0.1696115 |
+
+Pooled candidate/base is 1.00521; batch ranges overlap. These short
+measurements establish neither an improvement nor a conclusive regression.
+The initial and pooled ratios are both above one, so the reference-machine
+check remains required by the project's performance rule. A process monitor
+polled heavy build/test processes every 250 ms throughout both measurement
+windows; none were detected. Temporary scripts and raw logs stayed outside
+the repository.
+
+Follow [the reference handoff](testing/stretch-preview-reference.md) before
+claiming floor acceptance. In particular, 0.061386 ms is not a complete
+cursor-frame time; curved/dense selections and long crossing polygons are
+not represented. Do not convert these development timings with a fixed
+CPU multiplier.
 
 ## Metrics to keep
 
