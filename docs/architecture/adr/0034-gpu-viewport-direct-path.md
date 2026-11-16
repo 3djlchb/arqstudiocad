@@ -391,6 +391,18 @@ per frame:
     and Options › Graphics say why. `ARQ_GPU_VIEWPORT` and
     `tools/gpu_viewport_check.py` still reach it, to see whether a later
     driver draws.
+  - **The cause, found (2026-11-16).** It was not Intel's driver. On
+    Windows, `QWidget::setAttribute(WA_PaintOnScreen)` asks the widget for
+    its paint engine and, when QWidget's own answers, drops the attribute.
+    The viewport answered with QWidget's until the GPU had attached, which
+    is after the attribute is set, so on Windows Qt kept painting the
+    widget through its backing store, over the window OpenGL presents to.
+    The viewport now always answers that it has no engine. With it,
+    `tools/gpu_viewport_check.py` draws OpenGL on the UHD 630 as the CPU
+    does, 0 pixels apart, in two runs; with the previous answer, in the
+    same environment, black again. DirectX 12 and Vulkan on the GTX 1050
+    Ti stay 0 pixels apart, panning and zooming at 16.6 ms. The exclusion
+    in `renderer.FAILS_ON_SCREEN` stays until the maintainer decides on it.
 - **Vulkan crashes in its probe**: the child process ends with an access
   violation (0xC0000005) and no output, so it is reported as failed and
   never used. The probe in a child process (ADR 0007) keeps the

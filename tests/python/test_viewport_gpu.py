@@ -11,12 +11,13 @@ import os
 import subprocess
 import sys
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, qInstallMessageHandler
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
@@ -60,8 +61,17 @@ def test_attaching_needs_a_known_backend_and_a_real_window() -> None:
     assert len(v.render()) == 200 * 100 * 4, "the CPU keeps rendering"
 
 
+@pytest.fixture
+def qt_messages() -> Iterator[list[str]]:
+    """Qt's messages while the test runs."""
+    messages: list[str] = []
+    previous = qInstallMessageHandler(lambda _kind, _where, text: messages.append(text))
+    yield messages
+    qInstallMessageHandler(previous)
+
+
 def test_without_x11_the_viewport_draws_on_the_cpu(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, qt_messages: list[str]
 ) -> None:
     monkeypatch.setenv(GPU_VIEWPORT_ENV, "opengl")
     document = CadApplication().create_document("Plano")
@@ -75,6 +85,11 @@ def test_without_x11_the_viewport_draws_on_the_cpu(
 
     assert viewport.gpu is None, "offscreen Qt has no X11 window"
     assert not viewport.testAttribute(Qt.WidgetAttribute.WA_PaintOnScreen), "Qt paints it again"
+    # Qt paints it through its backing store: the widget gives no engine of
+    # its own, and never QWidget's, which warns and, on Windows, drops
+    # WA_PaintOnScreen when asked while it is being set.
+    assert viewport.paintEngine() is None
+    assert not [m for m in qt_messages if "paintEngine" in m]
     image = viewport.grab().toImage()
     background = viewport.view.background
     drawn = 0

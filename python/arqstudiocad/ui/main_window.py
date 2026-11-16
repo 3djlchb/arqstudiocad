@@ -99,6 +99,7 @@ from arqstudiocad.ui.options_dialog import (
     save_options,
     saved_options,
 )
+from arqstudiocad.ui.popup import popup
 from arqstudiocad.ui.properties_panel import PropertiesPanel
 from arqstudiocad.ui.qt_services import QtUiServices
 from arqstudiocad.ui.qt_translations import QtTranslations
@@ -647,7 +648,7 @@ class MainWindow(QMainWindow):
         menu = model_space_menu(self.runner.last, viewport, self._repeat_last, self._open_options)
         self.context_menu = menu
         area = QRect(viewport.mapToGlobal(QPoint(0, 0)), viewport.size())
-        menu.popup(inside(menu, at, area))
+        popup(menu, inside(menu, at, area))
 
     def _repeat_last(self) -> None:
         """The context menu's Repeat: exactly an empty Enter."""

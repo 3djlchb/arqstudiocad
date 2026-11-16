@@ -36,6 +36,7 @@ from arqstudiocad.ui.color_picker import (
 from arqstudiocad.ui.color_picker import color_name as color_name
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
+from arqstudiocad.ui.popup import popup
 
 CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE = range(8)
 LAYER_ID = Qt.ItemDataRole.UserRole
@@ -319,7 +320,7 @@ class LayersPanel(QDockWidget):
         item = self.table.item(row, column)
         if item is not None:
             rect = self.table.visualItemRect(item)
-            menu.popup(self.table.viewport().mapToGlobal(rect.bottomLeft()))
+            popup(menu, self.table.viewport().mapToGlobal(rect.bottomLeft()))
 
     def _pick_color(self, layer_id: int) -> None:
         document = self._session.active

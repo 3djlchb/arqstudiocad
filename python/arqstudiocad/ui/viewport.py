@@ -466,8 +466,12 @@ class Viewport(QWidget):
     # Qt documents returning no engine for WA_PaintOnScreen; PySide6's stub
     # says the engine is never None.
     def paintEngine(self) -> QPaintEngine | None:  # type: ignore[override]  # noqa: N802
-        # None while the GPU paints: Qt must not paint over its window.
-        return None if self._gpu else super().paintEngine()
+        # None, always: Qt must not paint over the GPU's window, and paints
+        # the CPU's image through its backing store, never asking a widget
+        # for an engine. QWidget's own only warns "Should no longer be
+        # called", and on Windows, asked while WA_PaintOnScreen is being set
+        # (_set_native, before the GPU attaches), drops that attribute.
+        return None
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 (Qt API)
         super().showEvent(event)
@@ -502,6 +506,10 @@ class Viewport(QWidget):
             if not self._presented:
                 self._presented = True
                 self.gpu_presented.emit()
+            return
+        if self.testAttribute(Qt.WidgetAttribute.WA_PaintOnScreen):
+            # The GPU's window, between letting go of it and taking the
+            # next one (_surface_going): nothing to paint it with.
             return
         if self._dirty or self._image is None:
             self._render()
