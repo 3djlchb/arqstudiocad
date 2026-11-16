@@ -102,6 +102,31 @@ impl Body {
     pub fn difference(&self, other: &Self) -> Result<Option<Self>, BooleanError> {
         boolean(self, other, Op::Difference)
     }
+
+    /// Whether the booleans take this body's faces and edges: planes,
+    /// cylinders and cones (ADR 0033 deliveries 1 and 2). A sphere's, a
+    /// torus's or a NURBS surface's face is not yet; two curved faces
+    /// meeting other than as cylinders with parallel axes are refused by
+    /// the boolean itself ([`BooleanError::Curved`]).
+    pub fn combinable(&self) -> bool {
+        is_flat(self) || crate::boolean_curved::takes(self)
+    }
+
+    /// Whether every face is flat and every edge straight: the planar
+    /// path's solids (ADR 0032 D1).
+    pub fn is_flat(&self) -> bool {
+        is_flat(self)
+    }
+}
+
+fn is_flat(body: &Body) -> bool {
+    body.faces()
+        .iter()
+        .all(|f| matches!(f.surface, Surface::Plane(_)))
+        && body
+            .edges()
+            .iter()
+            .all(|e| matches!(e.curve, Some(Curve::Line(_))))
 }
 
 /// A flat face: its outward unit normal and its loops as corner indices.
@@ -127,16 +152,7 @@ fn boolean(a: &Body, b: &Body, op: Op) -> Result<Option<Body>, BooleanError> {
     // Solids of flat faces take the planar path, coincident faces
     // included; with a cylinder or a cone, the curved one (ADR 0033
     // delivery 2).
-    let flat = |body: &Body| {
-        body.faces()
-            .iter()
-            .all(|f| matches!(f.surface, Surface::Plane(_)))
-            && body
-                .edges()
-                .iter()
-                .all(|e| matches!(e.curve, Some(Curve::Line(_))))
-    };
-    if !(flat(a) && flat(b)) {
+    if !(is_flat(a) && is_flat(b)) {
         return if crate::boolean_curved::takes(a) && crate::boolean_curved::takes(b) {
             crate::boolean_curved::boolean(a, b, op)
         } else {

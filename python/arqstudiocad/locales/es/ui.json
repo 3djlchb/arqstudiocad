@@ -1082,7 +1082,7 @@
   "{count} references in the drawing will change.": "Cambiarán {count} referencias del dibujo.",
   "{count} references to {name} selected.": "{count} referencias a {name} seleccionadas.",
   "{count} solids cannot be read yet.": "{count} sólidos aún no se pueden leer.",
-  "{count} solids have curved faces: only flat ones combine yet.": "{count} sólidos tienen caras curvas: por ahora solo se combinan los de caras planas.",
+  "{count} solids have faces that cannot be combined yet: spheres, tori, free-form surfaces, or curved faces crossing each other (only cylinders with parallel axes do).": "{count} sólidos tienen caras que todavía no se pueden combinar: esferas, toros, superficies libres o caras curvas que se cruzan entre sí (solo los cilindros de ejes paralelos se combinan).",
   "{count} solids have no faces.": "{count} sólidos no tienen caras.",
   "{count} were not closed polylines or circles.": "{count} no eran polilíneas cerradas ni círculos.",
   "{count} were not in plan.": "{count} no estaban en planta.",

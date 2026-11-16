@@ -1,9 +1,12 @@
 //! Tests of UNION, SUBTRACT and INTERSECT in the document (a submodule of
 //! `combining`): the result in the first solid, which keeps its handle and
-//! properties, the others erased, and nothing changed when a solid is
-//! curved, too few are chosen or nothing would be left.
+//! properties, the others erased, cylinders and cones combined, and nothing
+//! changed when faces cannot be combined yet, too few are chosen or nothing
+//! would be left.
 
 use acadrust::types::Color as CodecColor;
+use std::f64::consts::PI;
+
 use arq_geometry::Point3;
 
 use super::*;
@@ -155,13 +158,74 @@ fn nothing_left_changes_nothing() {
 }
 
 #[test]
-fn curved_solids_change_nothing() {
+fn a_column_through_a_box_bores_a_round_hole() {
+    // Cylinders and cones combine since ADR 0033 delivery 2.
     let (mut doc, ids) = boxes(&[((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))]);
     let column = doc.add_cone(p(1.0, 1.0, -1.0), 0.5, 0.5, 4.0).unwrap();
     let out = doc.subtract_solids(&ids, &[column]).unwrap();
-    assert_eq!(out.outcome, Combination::Curved(vec![column]));
-    assert_eq!(solids(&doc), [ids[0], column]);
+    assert_eq!(out.outcome, Combination::Made(ids[0]));
+    assert_eq!(solids(&doc), [ids[0]]);
+    about(volume(&doc, ids[0]), 8.0 - PI * 0.25 * 2.0);
+}
+
+#[test]
+fn round_columns_side_by_side_unite_and_survive_a_save() {
+    let mut doc = Document::new();
+    let a = doc.add_cone(p(0.0, 0.0, 0.0), 1.0, 1.0, 2.0).unwrap();
+    let b = doc.add_cone(p(1.5, 0.0, 0.0), 1.0, 1.0, 2.0).unwrap();
+    let out = doc.union_solids(&[a, b]).unwrap();
+    assert_eq!(out.outcome, Combination::Made(a));
+    // Two discs less the lens they share, 2 high.
+    let lens = 2.0 * (0.75_f64).acos() - 0.75 * (4.0_f64 - 2.25).sqrt();
+    let expected = (2.0 * PI - lens) * 2.0;
+    about(volume(&doc, a), expected);
+    for back in [
+        Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap(),
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("columns.dwg");
+            doc.save(&path).unwrap();
+            Document::open(&path).unwrap()
+        },
+    ] {
+        about(volume(&back, a), expected);
+    }
+}
+
+#[test]
+fn a_sphere_changes_nothing() {
+    let (mut doc, ids) = boxes(&[((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))]);
+    let ball = doc.add_sphere(p(1.0, 1.0, 1.0), 0.5).unwrap();
+    let out = doc.subtract_solids(&ids, &[ball]).unwrap();
+    assert_eq!(out.outcome, Combination::Curved(vec![ball]));
+    assert_eq!(solids(&doc), [ids[0], ball]);
     about(volume(&doc, ids[0]), 8.0);
+}
+
+#[test]
+fn only_the_solids_that_cannot_combine_are_named() {
+    // A column would combine; the sphere beside it is the one refused.
+    let (mut doc, ids) = boxes(&[((0.0, 0.0, 0.0), (2.0, 2.0, 2.0))]);
+    let column = doc.add_cone(p(1.0, 1.0, -1.0), 0.5, 0.5, 4.0).unwrap();
+    let ball = doc.add_sphere(p(5.0, 5.0, 5.0), 0.5).unwrap();
+    let out = doc.union_solids(&[ids[0], column, ball]).unwrap();
+    assert_eq!(out.outcome, Combination::Curved(vec![ball]));
+    assert_eq!(solids(&doc), [ids[0], column, ball]);
+}
+
+#[test]
+fn curved_faces_meeting_as_not_combined_yet_change_nothing() {
+    // A cone and a column crossing: two curved faces meeting other than as
+    // cylinders with parallel axes (delivery 4). The kernel refuses; the
+    // curved solids are named and nothing changes.
+    let (mut doc, ids) = boxes(&[((5.0, 5.0, 0.0), (6.0, 6.0, 1.0))]);
+    let column = doc.add_cone(p(0.0, 0.0, 0.0), 1.0, 1.0, 2.0).unwrap();
+    let cone = doc.add_cone(p(0.8, 0.0, 0.0), 1.0, 0.2, 2.0).unwrap();
+    let before = doc.cad().get_entity(handle(column)).cloned();
+    let out = doc.union_solids(&[ids[0], column, cone]).unwrap();
+    assert_eq!(out.outcome, Combination::Curved(vec![column, cone]));
+    assert_eq!(solids(&doc), [ids[0], column, cone]);
+    assert_eq!(doc.cad().get_entity(handle(column)).cloned(), before);
 }
 
 #[test]

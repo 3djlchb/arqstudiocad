@@ -482,7 +482,12 @@ def _combined(
         return
     if outcome == "curved":
         ctx.message(
-            tr("{count} solids have curved faces: only flat ones combine yet.", count=len(solids))
+            tr(
+                "{count} solids have faces that cannot be combined yet: spheres, tori, "
+                "free-form surfaces, or curved faces crossing each other (only cylinders "
+                "with parallel axes do).",
+                count=len(solids),
+            )
         )
     elif outcome == "unreadable":
         ctx.message(tr("{count} solids cannot be read yet.", count=len(solids)))
