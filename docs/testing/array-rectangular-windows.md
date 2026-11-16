@@ -72,6 +72,6 @@ In C4, the closed polyline 0.25 wide reopened from **our DXF** with its constant
 
 So a reader that follows the reference takes our constant-width polylines as having width 0. ProgeCAD's bounding boxes leave widths out, so the run did not show how it draws them.
 
-**This affects every constant-width polyline we save as DXF, not only arrays.** The fix belongs in the DXF writer of our AcadRust fork (ADR 0017 D2): omit 40/41 when every width equals the constant width, or write the real widths. It is recorded here for a separate task.
+**This affects every constant-width polyline we save as DXF, not only arrays.** It is fixed in the DXF writer of our AcadRust fork (ADR 0017 D2), which now writes 40/41 only when some vertex has a width of its own, as its DWG writer does ([correction and validation](lwpolyline-dxf-width.md), 2026-11-15).
 
 **The drawings themselves are not committed**, as for the other comparisons: the two tools reproduce them.

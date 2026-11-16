@@ -78,6 +78,8 @@ opt-level = 3
 # dimension style a read drawing lacks names that drawing's text style.
 # SAT 400 (DWG 2000 and earlier) lumps and shells keep their next pointers,
 # so a solid's void and a body's second lump survive.
-# Immutable tag: arqstudiocad/on-ea66abe-acis400-topology.
+# An LWPOLYLINE's vertex widths (40/41) are written in DXF only when some
+# vertex has one, so a constant width (43) is read by every reader.
+# Immutable tag: arqstudiocad/on-ea66abe-lwpolyline-dxf-width.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "f10cc742384aa84baea9376d486cb8023a39b1e0" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "81b8de18af11fadd2f884eba253cc4aed1a2f2bf" }

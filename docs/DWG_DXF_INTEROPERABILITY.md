@@ -511,3 +511,15 @@ the same mistake back, so the codec's own round trips hid it. The
 `8823d84`, stacked on `6e03fb1`) drops and restores that pointer at token 0
 for every topology record. ProgeCAD now measures the void and the second lump
 in DWG 2000.
+
+### Constant polyline widths in DXF (2026-11-15)
+
+The DXF writer wrote an LWPOLYLINE's vertex widths (groups 40/41) at every
+vertex, zero for a polyline with a constant width (group 43). The DXF
+reference does not use 43 when 40/41 are given, and ProgeCAD 2026 read such
+polylines at width 0; our own reader, taking 43, hid it. The
+[ARRAY comparison](testing/array-rectangular-windows.md#our-dxf-polyline-widths)
+found it. The [correction](testing/lwpolyline-dxf-width.md) in fork `81b8de1`
+(immutable tag `arqstudiocad/on-ea66abe-lwpolyline-dxf-width`, red test
+`9a6d8ef`, stacked on `f10cc74`) writes vertex widths only when some vertex
+has one, as the DWG writer encodes them.
