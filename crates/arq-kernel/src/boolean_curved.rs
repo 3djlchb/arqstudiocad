@@ -28,8 +28,10 @@
 //!   on them, shells grouped by their volume's sign, a void given to the
 //!   smallest shell a ray from it crosses an odd number of times.
 //!
-//! Cylinders and cones meet flat faces only: two curved faces meeting are
-//! delivery 4.
+//! Cylinders and cones meet flat faces, and cylinders meet cylinders whose
+//! axes are parallel (delivery 2.3c): their sides cross in lines along the
+//! axes, or lie on one cylinder, whose section the ends round them bound.
+//! Other curved faces meeting are delivery 4.
 
 use std::collections::HashMap;
 use std::f64::consts::{PI, TAU};
@@ -543,7 +545,7 @@ fn merge_coplanar(parts: Vec<Part>, tol: Tolerance) -> Result<Vec<Part>, Boolean
         let (n, origin) = outward(&group[0]).expect("flat");
         let (u, v) = frame(n);
         let domain = Domain::Plane { origin, u, v, n };
-        let mut merged = CurvedRegion::default();
+        let mut regions = Vec::new();
         for part in &group {
             let mut contours = Vec::new();
             for contour in part.region.contours() {
@@ -555,21 +557,74 @@ fn merge_coplanar(parts: Vec<Part>, tol: Tolerance) -> Result<Vec<Part>, Boolean
                         .collect::<Result<Vec<_>, _>>()?,
                 );
             }
-            let region = CurvedRegion::new(contours, tol).map_err(|_| BooleanError::NonManifold)?;
-            merged = merged.union(&region, tol);
+            regions.push(CurvedRegion::new(contours, tol).map_err(|_| BooleanError::NonManifold)?);
         }
         let plane = Plane::new(origin, n).map_err(geometry)?;
-        for piece in merged.pieces(tol) {
-            out.push(Part {
-                surface: Surface::Plane(plane),
-                reversed: false,
-                flipped: false,
-                domain,
-                region: piece,
-            });
+        // United only where they overlap or share a stretch of edge: parts
+        // touching at a point stay faces of their own, as the planar
+        // booleans keep two boxes touching along an edge two lumps (two
+        // round columns side by side, touching, have ends that touch so).
+        for members in joined_parts(&regions, tol) {
+            let mut merged = CurvedRegion::default();
+            for i in members {
+                merged = merged.union(&regions[i], tol);
+            }
+            for piece in merged.pieces(tol) {
+                out.push(Part {
+                    surface: Surface::Plane(plane),
+                    reversed: false,
+                    flipped: false,
+                    domain,
+                    region: piece,
+                });
+            }
         }
     }
     Ok(out)
+}
+
+/// The regions of one plane grouped where they overlap or share a stretch
+/// of edge, each group by its regions' indices.
+fn joined_parts(regions: &[CurvedRegion], tol: Tolerance) -> Vec<Vec<usize>> {
+    let t = tol.linear();
+    let on_edge =
+        |r: &CurvedRegion, q: Point2| r.contains(q, tol) == arq_geometry::Containment::Boundary;
+    let touch = |a: &CurvedRegion, b: &CurvedRegion| {
+        // Overlapping by more than rounding, or sharing a stretch of edge:
+        // a piece of one's edge lying on the other's along its length.
+        a.intersection(b, tol).area() > t * t
+            || a.contours().iter().flatten().any(|trim| {
+                (trim.start() - trim.end()).length() > t
+                    && [0.25, 0.5, 0.75].iter().all(|&w| on_edge(b, trim.point(w)))
+            })
+    };
+    let mut group: Vec<usize> = (0..regions.len()).collect();
+    fn root(group: &mut [usize], mut i: usize) -> usize {
+        while group[i] != i {
+            group[i] = group[group[i]];
+            i = group[i];
+        }
+        i
+    }
+    for i in 0..regions.len() {
+        for j in i + 1..regions.len() {
+            if touch(&regions[i], &regions[j]) || touch(&regions[j], &regions[i]) {
+                let (a, b) = (root(&mut group, i), root(&mut group, j));
+                group[a] = b;
+            }
+        }
+    }
+    let mut out: Vec<Vec<usize>> = Vec::new();
+    let mut slot: HashMap<usize, usize> = HashMap::new();
+    for i in 0..regions.len() {
+        let r = root(&mut group, i);
+        let k = *slot.entry(r).or_insert_with(|| {
+            out.push(Vec::new());
+            out.len() - 1
+        });
+        out[k].push(i);
+    }
+    out
 }
 
 /// A cylinder's pieces joined again where the window's seam cut one face
@@ -1276,11 +1331,13 @@ fn cut(
             plane_cone(origin, n, &face.domain, heights(&face.domain, [face, g]), t)?
         }
         (Domain::Cone { .. }, Domain::Cone { .. }) => {
-            return if apart(face, g, t) {
-                Ok(Vec::new())
+            if let Some(lines) = cylinder_cylinder(&face.domain, &g.domain, t) {
+                lines
+            } else if apart(face, g, t) {
+                return Ok(Vec::new());
             } else {
-                Err(BooleanError::Curved)
-            };
+                return Err(BooleanError::Curved);
+            }
         }
     };
     let mut out = Vec::new();
@@ -1410,6 +1467,66 @@ fn plane_cylinder(o: Point3, n: Vector3, cyl: &Domain) -> Vec<Span> {
             }
         })
         .collect()
+}
+
+/// Where two cylinders with parallel axes meet (ADR 0033 delivery 2.3c):
+/// the lines along the axes through the points where their sections across
+/// cross, long, cut to the faces later. `None` when they are not two
+/// cylinders with parallel axes, which wait for delivery 4.
+///
+/// Circles that touch, lie one inside the other or are the same (coaxial
+/// cylinders, coincident when their radii are equal) give no lines: as
+/// for a plane touching a cylinder, or two planes in one, the faces round
+/// them bound the other solid's section (ADR 0033 D1).
+fn cylinder_cylinder(a: &Domain, b: &Domain, t: f64) -> Option<Vec<Span>> {
+    let (
+        Domain::Cone {
+            origin: oa,
+            axis,
+            r: ra,
+            k: ka,
+            ..
+        },
+        Domain::Cone {
+            origin: ob,
+            axis: axis_b,
+            r: rb,
+            k: kb,
+            ..
+        },
+    ) = (*a, *b)
+    else {
+        return None;
+    };
+    // Cylinders only, along the same direction (either way round).
+    if ka != 0.0 || kb != 0.0 || axis.cross(axis_b).length() > 1e-12 {
+        return None;
+    }
+    // Their sections in the plane across the axes, through `oa`.
+    let w = ob - oa;
+    let across = w - axis * w.dot(axis);
+    let d = across.length();
+    if d <= t || d >= ra + rb - t || d <= (ra - rb).abs() + t {
+        return Some(Vec::new());
+    }
+    let u = across / d;
+    let side = axis.cross(u);
+    // The chord's foot along u from `oa`, and half its length.
+    let x = (d * d + ra * ra - rb * rb) / (2.0 * d);
+    let y = (ra * ra - x * x).max(0.0).sqrt();
+    let long = 1e6 * ra.max(rb).max(1.0);
+    Some(
+        [y, -y]
+            .iter()
+            .map(|&s| {
+                let foot = oa + u * x + side * s;
+                Span::Line {
+                    from: foot - axis * long,
+                    to: foot + axis * long,
+                }
+            })
+            .collect(),
+    )
 }
 
 /// The heights along a cone's axis that two faces span, its apex among
@@ -2606,3 +2723,7 @@ mod tests;
 #[cfg(test)]
 #[path = "boolean_cone_tests.rs"]
 mod cone_tests;
+
+#[cfg(test)]
+#[path = "boolean_parallel_tests.rs"]
+mod parallel_tests;

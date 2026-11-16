@@ -109,7 +109,7 @@ fn a_millimetre_column_through_a_slab() {
 }
 
 #[test]
-fn two_columns_meeting_wait_for_delivery_4() {
+fn two_columns_crossing_wait_for_delivery_4() {
     let a = column((0.0, 0.0, 0.0), 1.0, 2.0);
     let b = turned(
         &column((0.0, 0.0, -2.0), 0.5, 4.0),
