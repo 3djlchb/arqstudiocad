@@ -15,6 +15,7 @@ from arqstudiocad.points import SNAP_KEYS
 from arqstudiocad.ui.command_icons import drafting_icon
 from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import toggle_focus_style
+from arqstudiocad.ui.popup import popup
 from arqstudiocad.ui.theme import Theme
 from arqstudiocad.ui.viewport import snap_name
 
@@ -55,7 +56,7 @@ class DraftingBar(QWidget):
         self.osnap_button.setDefaultAction(self.osnap_action)
         self.osnap_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.osnap_button.customContextMenuRequested.connect(
-            lambda at: self.snaps_menu.popup(self.osnap_button.mapToGlobal(at))
+            lambda at: popup(self.snaps_menu, self.osnap_button.mapToGlobal(at))
         )
         self.ortho_button = QToolButton()
         self.ortho_button.setDefaultAction(self.ortho_action)

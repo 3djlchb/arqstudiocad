@@ -104,6 +104,7 @@ from arqstudiocad.ui.panel_style import (
     SELECTION_LINE,
     apply_data_view_style,
 )
+from arqstudiocad.ui.popup import popup
 from arqstudiocad.ui.property_grid import PropertyGrid, Section
 
 #: The palette's sources, in the order the mockup shows them.
@@ -1381,7 +1382,7 @@ class BlocksPanel(QDockWidget):
             return
         menu = self.block_menu()
         if menu is not None:
-            menu.popup(at)
+            popup(menu, at)
 
     def _copyable(self, row: int) -> bool:
         """Whether the block at ``row`` comes from another file than the
