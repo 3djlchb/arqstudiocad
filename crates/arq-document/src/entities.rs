@@ -1706,3 +1706,7 @@ mod stretch_tests;
 #[cfg(test)]
 #[path = "break_polyline_tests.rs"]
 mod break_polyline_tests;
+
+#[cfg(test)]
+#[path = "dxf_width_tests.rs"]
+mod dxf_width_tests;
