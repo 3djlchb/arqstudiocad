@@ -44,8 +44,11 @@ Every case reads back the same from our DWG and from our DXF.
 
 **RECTANG with two chamfer distances (R3).**
 - **The difference.** ProgeCAD applies them the other way round from ours. From (0,0) to (10,6) with distances 1 and 2, its corner at (10,0) is cut from (8,0) to (10,1); ours from (9,0) to (10,2).
-- **ProgeCAD's rule.** Drawn from each of the four corners, ProgeCAD walks the rectangle from its first corner, along X first; that order is ours too. At every corner it puts the first distance on the side the walk leaves by, and the second on the side it arrives by. Ours does the reverse.
+- **ProgeCAD's rule.** Drawn from each of the four corners, ProgeCAD walks the rectangle from its first corner, along X first (ours runs counterclockwise from the first corner, the same walk when ProgeCAD's is counterclockwise). At every corner it puts the first distance on the side the walk leaves by, and the second on the side it arrives by. Ours does the reverse.
 - **Decision.** The maintainer chose to make ours match ProgeCAD's (2026-11-15), in a pull request of its own.
+- **Done** (2026-11-15). Our rectangle from each of the four corners, reopened in ProgeCAD, now has the shape of ProgeCAD's.
+  - Drawn from (0,0) or from (10,6), it also starts at ProgeCAD's first vertex.
+  - From (0,6) or from (10,0), ProgeCAD walks clockwise while ours keeps its counterclockwise order, so the first vertex differs; the shape does not.
 - **Not affected.** CHAMFER between two lines (C1) already matches.
 
 **JOIN of collinear lines (J1).**

@@ -270,31 +270,94 @@ fn filleted_corners_are_quarter_circles_from_the_first_corner_on() {
     assert!((r.area_with(Corners::Fillet(0.5)) - expected).abs() < 1e-12);
 }
 
+/// The polyline's vertices as a set: a shape, whatever its first vertex.
+fn shape(v: &[(Point2, f64)]) -> Vec<(i64, i64)> {
+    let mut s: Vec<(i64, i64)> = v
+        .iter()
+        .map(|(q, _)| ((q.x() * 1e6).round() as i64, (q.y() * 1e6).round() as i64))
+        .collect();
+    s.sort_unstable();
+    s
+}
+
 #[test]
-fn chamfered_corners_cut_the_length_by_the_first_distance() {
-    let r = Rectangle::from_corners(p(0.0, 0.0), p(4.0, 2.0), 0.0, TOL).unwrap();
-    let v = r.vertices(Corners::Chamfer(1.0, 0.5), TOL).unwrap();
+fn chamfered_corners_are_cut_as_progecad_cuts_them() {
+    // ProgeCAD 2026's RECTANG, chamfer 1 then 2, 10 by 6, drawn from each
+    // of the four corners (docs/testing/commands-02-14-windows.md): walking
+    // from the first corner along the length first, the first distance is
+    // on the side the walk leaves each corner by, the second on the side it
+    // arrives by.
+    let from_bottom_left: [((f64, f64), f64); 8] = [
+        ((1.0, 0.0), 0.0),
+        ((8.0, 0.0), 0.0),
+        ((10.0, 1.0), 0.0),
+        ((10.0, 4.0), 0.0),
+        ((9.0, 6.0), 0.0),
+        ((2.0, 6.0), 0.0),
+        ((0.0, 5.0), 0.0),
+        ((0.0, 2.0), 0.0),
+    ];
+    let from_top_left: [((f64, f64), f64); 8] = [
+        ((1.0, 6.0), 0.0),
+        ((8.0, 6.0), 0.0),
+        ((10.0, 5.0), 0.0),
+        ((10.0, 2.0), 0.0),
+        ((9.0, 0.0), 0.0),
+        ((2.0, 0.0), 0.0),
+        ((0.0, 1.0), 0.0),
+        ((0.0, 4.0), 0.0),
+    ];
+    let as_points = |list: &[((f64, f64), f64)]| {
+        list.iter()
+            .map(|&((x, y), b)| (p(x, y), b))
+            .collect::<Vec<_>>()
+    };
+    for (first, other, expected) in [
+        ((0.0, 0.0), (10.0, 6.0), &from_bottom_left),
+        ((10.0, 6.0), (0.0, 0.0), &from_bottom_left),
+        ((0.0, 6.0), (10.0, 0.0), &from_top_left),
+        ((10.0, 0.0), (0.0, 6.0), &from_top_left),
+    ] {
+        let r =
+            Rectangle::from_corners(p(first.0, first.1), p(other.0, other.1), 0.0, TOL).unwrap();
+        let v = r.vertices(Corners::Chamfer(1.0, 2.0), TOL).unwrap();
+        assert_eq!(
+            shape(&v),
+            shape(&as_points(expected)),
+            "from {first:?}: {v:?}"
+        );
+        assert!(
+            (polyline_area(&v) - 56.0).abs() < 1e-12,
+            "counterclockwise, 60 less 4"
+        );
+        assert_eq!(r.area_with(Corners::Chamfer(1.0, 2.0)), 56.0);
+    }
+    // From (0,0), vertex for vertex as ProgeCAD's: from where the first
+    // corner's cut ends.
+    let r = Rectangle::from_corners(p(0.0, 0.0), p(10.0, 6.0), 0.0, TOL).unwrap();
     same_vertices(
-        &v,
-        &[
-            ((1.0, 0.0), 0.0),
-            ((3.0, 0.0), 0.0),
-            ((4.0, 0.5), 0.0),
-            ((4.0, 1.5), 0.0),
-            ((3.0, 2.0), 0.0),
-            ((1.0, 2.0), 0.0),
-            ((0.0, 1.5), 0.0),
-            ((0.0, 0.5), 0.0),
-        ],
+        &r.vertices(Corners::Chamfer(1.0, 2.0), TOL).unwrap(),
+        &from_bottom_left,
     );
-    assert!((polyline_area(&v) - 7.0).abs() < 1e-12);
-    assert_eq!(r.area_with(Corners::Chamfer(1.0, 0.5)), 7.0);
-    // Turned a right angle, the length runs up: the first distance cuts it.
+    // Turned a right angle, the walk leaves the first corner along the
+    // length, now running up: the first distance is cut on it.
     let r = Rectangle::from_corners(p(0.0, 0.0), p(-2.0, 4.0), FRAC_PI_2, TOL).unwrap();
     let v = r.vertices(Corners::Chamfer(1.0, 0.5), TOL).unwrap();
     assert!(v.iter().any(|(q, _)| near(*q, p(0.0, 1.0))), "{v:?}");
     assert!(v.iter().any(|(q, _)| near(*q, p(-0.5, 0.0))), "{v:?}");
     assert!((polyline_area(&v) - 7.0).abs() < 1e-12);
+}
+
+#[test]
+fn every_side_loses_one_chamfer_distance_of_each_kind() {
+    // 10 by 6: each side loses one distance of each kind. 1 + 2 and 3 + 3
+    // fit the width of 6; 4 + 3 does not, though twice 3 did before.
+    let r = Rectangle::from_corners(p(0.0, 0.0), p(10.0, 6.0), 0.0, TOL).unwrap();
+    assert!(r.fits(Corners::Chamfer(1.0, 2.0), TOL));
+    assert!(r.fits(Corners::Chamfer(3.0, 3.0), TOL));
+    assert!(!r.fits(Corners::Chamfer(4.0, 3.0), TOL));
+    assert!(!r.fits(Corners::Chamfer(3.0, 4.0), TOL));
+    assert!(r.vertices(Corners::Chamfer(4.0, 3.0), TOL).is_err());
 }
 
 #[test]
@@ -317,16 +380,22 @@ fn corners_that_take_a_whole_side_leave_no_segment_there() {
     let v = r.vertices(Corners::Fillet(1.0), TOL).unwrap();
     assert_eq!(v.len(), 6, "{v:?}");
     assert!((polyline_area(&v) - (8.0 - (4.0 - PI))).abs() < 1e-12);
-    // Chamfers meeting in the middle: a diamond.
-    let v = r.vertices(Corners::Chamfer(2.0, 1.0), TOL).unwrap();
+    // Chamfers meeting in the middle of every side: a diamond. Each side
+    // loses one distance of each kind, so it takes a square and equal ones.
+    let square = Rectangle::from_corners(p(0.0, 0.0), p(2.0, 2.0), 0.0, TOL).unwrap();
+    let v = square.vertices(Corners::Chamfer(1.0, 1.0), TOL).unwrap();
     same_vertices(
         &v,
         &[
-            ((2.0, 0.0), 0.0),
-            ((4.0, 1.0), 0.0),
-            ((2.0, 2.0), 0.0),
+            ((1.0, 0.0), 0.0),
+            ((2.0, 1.0), 0.0),
+            ((1.0, 2.0), 0.0),
             ((0.0, 1.0), 0.0),
         ],
+    );
+    assert!(
+        r.vertices(Corners::Chamfer(2.0, 1.0), TOL).is_err(),
+        "3 does not fit a side of 2"
     );
 }
 
