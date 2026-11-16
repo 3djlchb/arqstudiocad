@@ -1,4 +1,4 @@
-# Planar booleans compared with Truck
+# Booleans compared with Truck
 
 ADR 0032 D4 asks for our booleans of planar solids to be compared with
 Truck's where Truck works: in general position, with no face of one solid
@@ -56,3 +56,42 @@ The coincident cases Truck cannot do (faces on faces, solids touching) are
 covered by the kernel's own tests: `boolean_tests.rs`, among them 300
 random pairs of boxes on a coarse grid, half of them turned alike, checked
 against the same identities.
+
+## Cylinders, 2026-11-16
+
+ADR 0033 D4 asks for the same comparison for each delivery of curved
+solids. For delivery 2 the tool takes a third argument:
+
+```sh
+cd tools/truck-compare
+cargo run --release -- 50 1e-3 columns
+```
+
+- **Parallel columns:** pairs of upright cylinders, apart, touching,
+  crossing, one inside the other and on one axis (one pair in five), at
+  random heights. Their union, intersection and difference have exact
+  volumes: the lens their circles share times the height they share.
+- **Columns with turned boxes:** a column and a box turned about a random
+  axis. No closed form exists; our intersection is the reference, and our
+  union and difference must meet the volume identities with it.
+- **Truck's side:** each column a disc swept up, its volume from the
+  triangulation at its tolerance, 1e-3.
+
+### Results, 50 pairs of each (300 operations)
+
+| | Parallel columns | Columns with turned boxes |
+|---|---|---|
+| Ours fails | 0 | 0 |
+| Ours, worst volume error | 1.3e-11 | 8.0e-14 |
+| Truck answers | 27 of 150 | 72 of 150 |
+| … within 10 × its tolerance of the exact volume | 20 | 55 |
+| … worst volume error | 0.81 | 0.91 |
+| Truck fails | 123 | 78 |
+
+The errors are relative to the pair's volume.
+
+- **Ours:** every operation answered, every volume exact.
+- **Truck:** most operations on cylinders fail, and some of its answers
+  miss by most of the volume. Where it
+  answers right, it agrees with ours within its triangulation's error.
+- **Time:** 20 pairs took six minutes, nearly all of it in Truck.

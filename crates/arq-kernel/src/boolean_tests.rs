@@ -297,6 +297,22 @@ fn curved_solids_are_refused() {
 }
 
 #[test]
+fn which_solids_the_booleans_take() {
+    let a = cuboid((0.0, 0.0, 0.0), (2.0, 2.0, 2.0));
+    assert!(a.is_flat() && a.combinable());
+    let column = Body::cylinder(p(1.0, 1.0, -1.0), 0.5, 4.0).unwrap();
+    let cone = Body::cone(p(1.0, 1.0, -1.0), 0.5, 0.0, 4.0).unwrap();
+    for curved in [&column, &cone] {
+        assert!(!curved.is_flat() && curved.combinable());
+    }
+    let ball = Body::sphere(p(1.0, 1.0, 1.0), 0.5).unwrap();
+    let ring = Body::torus(p(1.0, 1.0, 1.0), 2.0, 0.5).unwrap();
+    for refused in [&ball, &ring] {
+        assert!(!refused.is_flat() && !refused.combinable());
+    }
+}
+
+#[test]
 fn edges_lying_on_a_face_plane() {
     // A square post turned 45° in plan, its two side edges exactly in the
     // plane of the box's face x = 2 (corners on a plane: the symbolic
