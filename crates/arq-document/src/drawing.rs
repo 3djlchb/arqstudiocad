@@ -529,6 +529,17 @@ impl<'a> Painter<'a> {
                     line.common = h.common.clone();
                     parts.push(EntityType::Line(line));
                 }
+                // A whole turn, as AutoCAD stores a circular boundary (0° to
+                // 360°): a circle, which an arc cannot be.
+                BoundaryEdge::CircularArc(a)
+                    if (a.end_angle - a.start_angle).abs() >= TAU - 1e-9 =>
+                {
+                    let mut circle = acadrust::entities::Circle::new();
+                    circle.common = h.common.clone();
+                    circle.center = world(a.center);
+                    circle.radius = a.radius;
+                    parts.push(EntityType::Circle(circle));
+                }
                 BoundaryEdge::CircularArc(a) => {
                     let (start, end) = ccw_range(a.start_angle, a.end_angle, a.counter_clockwise);
                     let (start, end) = n.map_arc(start, end);

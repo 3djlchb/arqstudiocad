@@ -248,6 +248,43 @@ fn a_hatch_is_drawn_by_its_boundary() {
     assert!(items.iter().all(|i| i.color == Color::Index(1)));
 }
 
+#[test]
+fn a_hatch_bounded_by_whole_circles_draws_them() {
+    // AutoCAD stores a circular boundary as one ARC edge from 0° to 360°:
+    // here around (3,4), radius 2, counterclockwise, and around (10,0),
+    // radius 1, clockwise. Each is a circle, never the hatch's box (trees
+    // in real drawings, blocks of circles and a solid fill).
+    // Mirrored (normal -Z), world x is -x.
+    for (normal_z, sign) in [("1", 1.0), ("-1", -1.0)] {
+        let doc = hatch(
+            normal_z,
+            &[
+                "91", "2", //
+                "92", "1", "93", "1", "72", "2", "10", "3", "20", "4", "40", "2", "50", "0", "51",
+                "360", "73", "1", "97", "0", //
+                "92", "1", "93", "1", "72", "2", "10", "10", "20", "0", "40", "1", "50", "0", "51",
+                "360", "73", "0", "97", "0",
+            ],
+        );
+        let items = shapes(&doc);
+        let circles: Vec<(Point2, f64)> = items
+            .iter()
+            .filter_map(|i| match i.shape {
+                Shape::Circle(c) => Some((c.center(), c.radius())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!((circles.len(), items.len()), (2, 2), "{items:?}");
+        let wanted = [(p(3.0 * sign, 4.0), 2.0), (p(10.0 * sign, 0.0), 1.0)];
+        for ((center, radius), (at, r)) in circles.iter().zip(wanted) {
+            assert!(
+                near(*center, at) && (radius - r).abs() < 1e-12,
+                "{center:?} {radius}"
+            );
+        }
+    }
+}
+
 /// The box of everything drawn.
 fn extent(items: &[DrawItem]) -> Bounds2 {
     items
