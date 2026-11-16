@@ -405,7 +405,10 @@ def test_fillet_rounds_the_corners(tmp_path: Path) -> None:
     assert len(saved_path(h, tmp_path)) == 8
 
 
-def test_chamfer_cuts_the_length_by_the_first_distance(tmp_path: Path) -> None:
+def test_chamfer_cuts_each_corner_as_progecad_does(tmp_path: Path) -> None:
+    # The first distance on the side the walk from the first corner leaves
+    # each corner by, the second on the side it arrives by, as ProgeCAD 2026
+    # draws it (docs/testing/commands-02-14-windows.md).
     h = Harness()
     h.run("RECTANG", "C")
     assert h.prompt().text == "Specify first chamfer distance for rectangles <0>:"
@@ -418,12 +421,12 @@ def test_chamfer_cuts_the_length_by_the_first_distance(tmp_path: Path) -> None:
         saved_path(h, tmp_path),
         [
             ((1.0, 0.0), 0.0),
-            ((3.0, 0.0), 0.0),
-            ((4.0, 0.5), 0.0),
+            ((3.5, 0.0), 0.0),
+            ((4.0, 1.0), 0.0),
             ((4.0, 1.5), 0.0),
             ((3.0, 2.0), 0.0),
-            ((1.0, 2.0), 0.0),
-            ((0.0, 1.5), 0.0),
+            ((0.5, 2.0), 0.0),
+            ((0.0, 1.0), 0.0),
             ((0.0, 0.5), 0.0),
         ],
     )

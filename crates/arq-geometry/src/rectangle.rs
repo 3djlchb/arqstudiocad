@@ -16,9 +16,11 @@ pub enum Corners {
     Square,
     /// Each corner rounded by a quarter circle of this radius.
     Fillet(f64),
-    /// Each corner cut by a straight segment: the first distance along the
-    /// sides that run with the rotation (the length), the second along the
-    /// sides square to it (the width).
+    /// Each corner cut by a straight segment, as ProgeCAD draws it: walking
+    /// the rectangle from its first corner along its length first, the first
+    /// distance on the side the walk leaves each corner by, the second on the
+    /// side it arrives by, so every side loses one of each (ProgeCAD 2026,
+    /// 2026-11-15, `docs/testing/commands-02-14-windows.md`).
     Chamfer(f64, f64),
 }
 
@@ -57,8 +59,8 @@ impl Corners {
         }
     }
 
-    /// How far back each corner cuts the sides along the rotation and
-    /// square to it.
+    /// How far back each corner cuts the side the walk leaves it by and the
+    /// side it arrives by (see [`Corners::Chamfer`]).
     fn cuts(self) -> (f64, f64) {
         match self.checked().unwrap_or(Self::Square) {
             Self::Square => (0.0, 0.0),
@@ -227,10 +229,12 @@ impl Rectangle {
         self.area() - corners.area_lost()
     }
 
-    /// Whether `corners` fit: no two of them overlap on a side.
+    /// Whether `corners` fit: no two of them overlap on a side. Every side
+    /// loses one cut of each kind, one at each end.
     pub fn fits(self, corners: Corners, tol: Tolerance) -> bool {
-        let (along, across) = corners.cuts();
-        2.0 * along <= self.length() + tol.linear() && 2.0 * across <= self.width() + tol.linear()
+        let (leave, arrive) = corners.cuts();
+        let side = leave + arrive;
+        side <= self.length() + tol.linear() && side <= self.width() + tol.linear()
     }
 
     /// The closed polyline RECTANG draws with `corners`, each vertex with
@@ -247,22 +251,22 @@ impl Rectangle {
         if corners == Corners::Square {
             return Ok(ring.iter().map(|&p| (p, 0.0)).collect());
         }
-        let (cut_along, cut_across) = corners.cuts();
+        let (leave, arrive) = corners.cuts();
         // A quarter circle turning left, counterclockwise: tan(90° / 4).
         let bulge = if matches!(corners, Corners::Fillet(_)) {
             FRAC_PI_8.tan()
         } else {
             0.0
         };
-        let (u, _) = frame(self.rotation)?;
-        let cut = |from: Point2, to: Point2| {
-            let d = to - from;
-            // Sides run along the rotation or square to it.
-            if d.dot(u).abs() > d.length() / 2.0 {
-                cut_along
-            } else {
-                cut_across
-            }
+        // ProgeCAD walks from the first corner along the length first; the
+        // ring runs counterclockwise, so against that walk when the opposite
+        // corner lies to the right of the length (see `corners`). Then the
+        // ring arrives at each corner by the side the walk leaves it by.
+        let against_walk = self.along * self.across < 0.0;
+        let (cut_in, cut_out) = if against_walk {
+            (leave, arrive)
+        } else {
+            (arrive, leave)
         };
         let mut out: Vec<(Point2, f64)> = Vec::with_capacity(8);
         for i in 0..4 {
@@ -271,8 +275,8 @@ impl Rectangle {
             let on = (after - corner).normalized()?;
             // Where the corner's cut begins, with the bulge across it, and
             // where it ends, with the straight side after it.
-            push(&mut out, corner - back * cut(before, corner), bulge, tol);
-            push(&mut out, corner + on * cut(corner, after), 0.0, tol);
+            push(&mut out, corner - back * cut_in, bulge, tol);
+            push(&mut out, corner + on * cut_out, 0.0, tol);
         }
         // The last vertex may land on the first: the side between them is
         // gone, and the first keeps the bulge leaving it.
