@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 publish = false
 license = "GPL-3.0-or-later"
-description = "Compares arq-kernel's planar booleans with Truck's in general position (ADR 0032 D4)"
+description = "Compares arq-kernel's booleans with Truck's where Truck works (ADR 0032 D4, ADR 0033 D4)"
 
 # A workspace of its own: Truck is never a dependency of the product, of its
 # checks or of its dependency policy; this tool is run by hand.
