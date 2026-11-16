@@ -50,7 +50,8 @@ use crate::surface::{Plane, Surface};
 #[derive(Clone, Debug, PartialEq)]
 pub enum BooleanError {
     /// A face or an edge this version does not combine: a sphere's, a
-    /// torus's or a NURBS surface's face, or two curved faces meeting.
+    /// torus's or a NURBS surface's face, or two curved faces meeting other
+    /// than cylinders with parallel axes.
     Curved,
     /// A body encloses no volume: a face without area, or faces turned in.
     NotSolid,
@@ -65,7 +66,7 @@ impl fmt::Display for BooleanError {
         match self {
             Self::Curved => write!(
                 f,
-                "only solids of planes, cylinders and cones are supported, curved faces meeting flat ones"
+                "only solids of planes, cylinders and cones are supported, curved faces meeting flat ones or cylinders with parallel axes"
             ),
             Self::NotSolid => write!(f, "a body does not enclose a volume"),
             Self::NonManifold => write!(f, "the result's faces do not close"),
