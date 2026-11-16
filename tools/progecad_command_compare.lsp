@@ -1,6 +1,6 @@
 ;;; Behavioral comparison for milestone 02.14 in ProgeCAD (docs/testing/
 ;;; stretch-arcs-windows.md, break-closed-polylines-windows.md,
-;;; array-rectangular-windows.md):
+;;; array-rectangular-windows.md, commands-02-14-windows.md):
 ;;; synthetic entities made here, stretched or broken by ProgeCAD's own
 ;;; commands at fixed points, every field written to a log, each case saved
 ;;; before and after as DWG 2018 and DXF 2018. Load inside ProgeCAD on a
@@ -9,6 +9,7 @@
 ;;;   (load "tools/progecad_command_compare.lsp")
 ;;;   (arq:compare-02-14 "C:/path/to/saved" "C:/path/to/cases.log")
 ;;;   (arq:compare-array "C:/path/to/array" "C:/path/to/array.log")
+;;;   (arq:compare-commands "C:/path/to/cmd" "C:/path/to/commands.log")
 ;;;
 ;;; arq:compare-array runs rectangular -ARRAY with ARRAYASSOCIATIVITY 0
 ;;; (independent copies, as ours) and saves each result as pc-<case>.dwg;
@@ -272,4 +273,110 @@
   (setvar "ARRAYASSOCIATIVITY" assoc0)
   (arq:restore)
   (arq:mark log (strcat "ARRAYASSOCIATIVITY restored=" (vl-princ-to-string (getvar "ARRAYASSOCIATIVITY"))))
+  (arq:mark log "run done"))
+
+;;; The 2D commands of milestone 02.14 in ProgeCAD (docs/testing/
+;;; commands-02-14-windows.md): each case's synthetic sources, ProgeCAD's own
+;;; command at fixed points (TRIM in its Quick mode, as ours; EXTEND with the
+;;; boundary given, as ours finds it),
+;;; the result saved as pc-<case>.dwg and described with layer and color.
+;;; tools/progecad_02_14_ours.py runs the same cases through our core.
+
+(defun arq:ln (doc a b) (vla-AddLine (vla-get-ModelSpace doc) (arq:v a) (arq:v b)))
+(defun arq:circ (doc c r) (vla-AddCircle (vla-get-ModelSpace doc) (arq:v c) r))
+(defun arq:en (o) (vlax-vla-object->ename o))
+
+;;; An open LWPOLYLINE through 2D points, with bulges.
+(defun arq:open (doc pts bulges / arr pl i)
+  (setq arr (vlax-make-safearray vlax-vbDouble (cons 0 (1- (* 2 (length pts))))))
+  (vlax-safearray-fill arr (apply 'append (mapcar '(lambda (p) (list (car p) (cadr p))) pts)))
+  (setq pl (vla-AddLightWeightPolyline (vla-get-ModelSpace doc) arr))
+  (setq i 0)
+  (foreach b bulges (vla-SetBulge pl i b) (setq i (1+ i)))
+  pl)
+
+;;; One case: make returns the source objects (arq:o), act runs the command.
+(defun arq:command-case (name make act dir log / doc r k)
+  (setq doc (vla-get-ActiveDocument (vlax-get-acad-object)))
+  (arq:mark log (strcat "case " name))
+  (arq:clear doc)
+  (setq arq:o (eval make))
+  (command "_.ZOOM" "_W" '(-20 -20) '(30 30))
+  (setq r (vl-catch-all-apply 'eval (list act)))
+  (if (vl-catch-all-error-p r) (arq:mark log (strcat "  command error: " (vl-catch-all-error-message r))))
+  (setq k 0)
+  (while (and (= 1 (logand 1 (getvar "CMDACTIVE"))) (< k 5)) (command "") (setq k (1+ k)))
+  (if (> k 0) (arq:mark log (strcat "  needed " (itoa k) " Enter(s) to end")))
+  (arq:dump-full doc "after" log)
+  (if dir (vl-catch-all-apply 'vla-SaveAs (list doc (strcat dir "/pc-" name ".dwg") 64))))
+
+;;; RECTANG remembers its options from one rectangle to the next, and
+;;; several options in one command are not taken from a script: each is set
+;;; by a rectangle of its own, far away and erased.
+(defun arq:rect-option (option / before e)
+  (setq before (entlast))
+  (eval (append '(command "_.RECTANG") option '((1000 1000) (1001 1001))))
+  (setq e (entlast))
+  (if (and e (not (equal e before)))
+    (vla-Delete (vlax-ename->vla-object e))))
+
+(defun arq:rectang (fillet chamfer width elevation)
+  (if chamfer (arq:rect-option (list "_C" (car chamfer) (cadr chamfer))) (arq:rect-option (list "_F" fillet)))
+  (arq:rect-option (list "_W" width))
+  (arq:rect-option (list "_E" elevation))
+  (arq:rect-option '("_T" 0.0))
+  (command "_.RECTANG" '(0 0) '(10 6)))
+
+;;; EXTEND in its standard mode: the boundary given, the object picked by a
+;;; point (a picked entity with its point is not taken from a script).
+(defun arq:extend (boundary at / mode)
+  (setq mode (getvar "TRIMEXTENDMODE"))
+  (setvar "TRIMEXTENDMODE" 0)
+  (command "_.EXTEND" (arq:en boundary) "" at "")
+  (setvar "TRIMEXTENDMODE" mode))
+
+(defun arq:compare-commands (dir log / sq)
+  (arq:mark log (strcat "ProgeCAD " (getvar "ACADVER") " TRIMEXTENDMODE="
+                        (vl-princ-to-string (getvar "TRIMEXTENDMODE"))))
+  (arq:prepare)
+  (setq sq '((0 0) (10 0) (10 6) (0 6)))
+  ;; OFFSET
+  (arq:command-case "O1-offset-line" '(list (arq:ln doc '(0 0) '(10 0))) '(command "_.OFFSET" 2.0 (list (arq:en (car arq:o)) '(5 0)) '(5 5) "") dir log)
+  (arq:command-case "O2-offset-circle-out" '(list (arq:circ doc '(0 0) 5.0)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(5 0)) '(10 0) "") dir log)
+  (arq:command-case "O3-offset-arc-in" '(list (arq:arc doc '(0 0 0) 5.0 0.0 90.0)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(3.5355339 3.5355339)) '(1 1) "") dir log)
+  (arq:command-case "O4-offset-closed-polyline-out" '(list (arq:closed doc sq nil nil)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(5 0)) '(-5 -5) "") dir log)
+  (arq:command-case "O5-offset-open-polyline-with-arc" '(list (arq:open doc '((0 0) (10 0) (10 6)) '(0.0 0.41421356237))) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(5 0)) '(5 5) "") dir log)
+  ;; TRIM, Quick mode, the object picked by a point; EXTEND to the boundary given
+  (arq:command-case "T1-trim-line-end" '(list (arq:ln doc '(0 0) '(10 0)) (arq:ln doc '(5 -5) '(5 5))) '(command "_.TRIM" '(8 0) "") dir log)
+  (arq:command-case "T2-trim-circle-top" '(list (arq:circ doc '(0 0) 5.0) (arq:ln doc '(-10 0) '(10 0))) '(command "_.TRIM" '(0 5) "") dir log)
+  (arq:command-case "T3-trim-line-middle" '(list (arq:ln doc '(0 0) '(10 0)) (arq:ln doc '(3 -5) '(3 5)) (arq:ln doc '(7 -5) '(7 5))) '(command "_.TRIM" '(5 0) "") dir log)
+  (arq:command-case "E1-extend-line" '(list (arq:ln doc '(0 0) '(4 0)) (arq:ln doc '(10 -5) '(10 5))) '(arq:extend (cadr arq:o) '(3 0)) dir log)
+  (arq:command-case "E2-extend-arc" '(list (arq:arc doc '(0 0 0) 5.0 0.0 45.0) (arq:ln doc '(0 -10) '(0 10))) '(arq:extend (cadr arq:o) '(3.9931 3.0091)) dir log)
+  ;; STRETCH, before FILLET and CHAMFER: after a polyline CHAMFER, ProgeCAD's
+  ;; next STRETCH selects nothing
+  (arq:command-case "S1-stretch-polyline-side" '(list (arq:closed doc sq nil nil)) '(command "_.STRETCH" "_C" '(12 7) '(8 -1) "" '(0 0) '(3 0)) dir log)
+  (arq:command-case "S2-stretch-line-end" '(list (arq:ln doc '(0 0) '(10 0))) '(command "_.STRETCH" "_C" '(12 1) '(8 -1) "" '(0 0) '(3 2)) dir log)
+  ;; FILLET and CHAMFER
+  (arq:command-case "F1-fillet-lines" '(list (arq:ln doc '(0 0) '(8 0)) (arq:ln doc '(10 2) '(10 10))) '(progn (command "_.FILLET" "_R" 2.0) (command "_.FILLET" (list (arq:en (car arq:o)) '(4 0)) (list (arq:en (cadr arq:o)) '(10 8)))) dir log)
+  (arq:command-case "F2-fillet-polyline" '(list (arq:closed doc sq nil nil)) '(progn (command "_.FILLET" "_R" 1.0) (command "_.FILLET" "_P" (arq:en (car arq:o)))) dir log)
+  (arq:command-case "C1-chamfer-lines" '(list (arq:ln doc '(0 0) '(8 0)) (arq:ln doc '(10 2) '(10 10))) '(progn (command "_.CHAMFER" "_D" 2.0 3.0) (command "_.CHAMFER" (list (arq:en (car arq:o)) '(4 0)) (list (arq:en (cadr arq:o)) '(10 8)))) dir log)
+  (arq:command-case "C2-chamfer-polyline" '(list (arq:closed doc sq nil nil)) '(progn (command "_.CHAMFER" "_D" 1.0 1.0) (command "_.CHAMFER" "_P" (arq:en (car arq:o)))) dir log)
+  ;; BREAK
+  (arq:command-case "B1-break-line" '(list (arq:ln doc '(0 0) '(10 0))) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(3 0) '(7 0)) dir log)
+  (arq:command-case "B2-break-circle" '(list (arq:circ doc '(0 0) 5.0)) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(5 0) '(0 5)) dir log)
+  (arq:command-case "B3-break-arc" '(list (arq:arc doc '(0 0 0) 5.0 0.0 180.0)) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(4.330127019 2.5) '(2.5 4.330127019)) dir log)
+  (arq:command-case "B4-break-open-polyline" '(list (arq:open doc '((0 0) (10 0) (10 10)) nil)) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(5 0) '(10 5)) dir log)
+  ;; JOIN
+  (arq:command-case "J1-join-collinear-lines" '(list (arq:ln doc '(0 0) '(4 0)) (arq:ln doc '(6 0) '(10 0))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  (arq:command-case "J2-join-arcs" '(list (arq:arc doc '(0 0 0) 5.0 0.0 90.0) (arq:arc doc '(0 0 0) 5.0 180.0 270.0)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; RECTANG, every option given each time (ProgeCAD remembers them)
+  (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
+  (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)
+  (arq:command-case "R3-rectang-chamfer" 'nil '(arq:rectang 0.0 '(1.0 2.0) 0.0 0.0) dir log)
+  (arq:command-case "R4-rectang-width-elevation" 'nil '(arq:rectang 0.0 nil 0.5 2.0) dir log)
+  (arq:rect-option '("_F" 0.0))
+  (arq:rect-option '("_W" 0.0))
+  (arq:rect-option '("_E" 0.0))
+  (arq:rect-option '("_T" 0.0))
+  (arq:restore)
   (arq:mark log "run done"))
