@@ -62,7 +62,9 @@ DWG/DXF persistence, command prompts, cancellation, Spanish names and the
 shared menu/ribbon/toolbar action. New tests are sabotage-verified.
 
 Linux validation does not constitute an independent AutoCAD/ProgeCAD
-comparison. A Windows comparison remains pending. Large generated drawings
+comparison. The [Windows comparison](../testing/array-rectangular-windows.md) was made in ProgeCAD on
+2026-11-15: the same copies in DWG and DXF; zero spacing and more than 100,000
+cells refused here as designed, made by ProgeCAD. Large generated drawings
 may incur redraw costs; reference-floor interactive acceptance belongs on
 the actual i7-2600/GT 730 machine, not this development host.
 
