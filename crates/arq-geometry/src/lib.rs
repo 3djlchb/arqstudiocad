@@ -109,7 +109,7 @@ pub use error::{GeometryError, GeometryResult};
 pub use fillet::{Corner, chamfer, chamfer_second_distance, fillet};
 pub use geometry::{Geometry2, GeometryKind};
 pub use intersect::{Intersections, intersect};
-pub use join::{join_arcs, join_groups, join_lines};
+pub use join::{Chain, JoinPath, chain_paths, join_arcs, join_groups, join_lines};
 pub use line::Line;
 pub use point::Point2;
 pub use point3::Point3;
