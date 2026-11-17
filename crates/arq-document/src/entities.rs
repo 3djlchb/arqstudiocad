@@ -119,6 +119,7 @@ impl Document {
                             Shape::Line(l) => Shape::Line(t.apply_line(l)?),
                             Shape::Circle(c) => Shape::Circle(t.apply_circle(c)?),
                             Shape::Arc(a) => Shape::Arc(t.apply_arc(a)?),
+                            Shape::Ellipse(e) => Shape::Ellipse(e.transformed(t)?),
                             Shape::Point(p) => Shape::Point(t.apply_point(p)),
                             Shape::Text(b) => Shape::Text(Bounds2::new(
                                 t.apply_point(b.min()),

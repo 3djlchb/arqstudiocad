@@ -1300,3 +1300,70 @@ fn a_thick_polyline_rises_in_space_and_its_band_stays_in_plan() {
     )]);
     assert_eq!(in_space(&doc).len(), 4);
 }
+
+#[test]
+fn an_ellipse_in_the_plan_draws_the_chords_it_always_drew() {
+    // Upward and downward normals, a whole ellipse, a half, and an arc
+    // past 2π: the exact shape's chords are those of the old segments,
+    // which tilted ellipses still draw (ADR 0040).
+    let ellipse = |normal_z: &'static str, start: &'static str, end: &'static str| {
+        dxf(
+            LAYERS,
+            &[],
+            &[&[
+                "0", "ELLIPSE", "8", "0", "10", "3", "20", "-1", "30", "0", "11", "2", "21", "1",
+                "31", "0", "210", "0", "220", "0", "230", normal_z, "40", "0.4", "41", start, "42",
+                end,
+            ]],
+        )
+    };
+    let chords = |points: Vec<Point2>| {
+        let mut c: Vec<[(f64, f64); 2]> = points
+            .windows(2)
+            .map(|w| {
+                let r = |p: Point2| ((p.x() * 1e9).round() / 1e9, (p.y() * 1e9).round() / 1e9);
+                let mut pair = [r(w[0]), r(w[1])];
+                pair.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                pair
+            })
+            .collect();
+        c.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        c
+    };
+    for normal in ["1", "-1"] {
+        for (start, end) in [
+            ("0", "6.283185307179586"),
+            ("0", "3.141592653589793"),
+            ("4.5", "1.2"),
+        ] {
+            let doc = ellipse(normal, start, end);
+            let items = shapes(&doc);
+            let [
+                DrawItem {
+                    shape: Shape::Ellipse(e),
+                    ..
+                },
+            ] = items[..]
+            else {
+                panic!("one exact ellipse: {items:?}")
+            };
+            let raw = doc
+                .cad()
+                .entities()
+                .find_map(|e| match e {
+                    EntityType::Ellipse(el) => Some(el.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            let old: Vec<Point2> = ellipse_points(&raw)
+                .into_iter()
+                .map(|v| Point2::new(v.x, v.y).unwrap())
+                .collect();
+            assert_eq!(
+                chords(e.flatten()),
+                chords(old),
+                "normal {normal}, {start}..{end}"
+            );
+        }
+    }
+}

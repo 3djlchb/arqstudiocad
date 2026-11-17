@@ -60,6 +60,10 @@ pub enum Shape {
     /// polyline's band (ADR 0038). Drawn under the strokes; the entity's
     /// curves still come as their own shapes, which snap and highlight.
     Triangle([Point2; 3]),
+    /// An ellipse or elliptical arc lying in the plan (ADR 0040): picked
+    /// and snapped to exactly; drawn by [`arq_geometry::Ellipse::flatten`]'s
+    /// points, as ellipses have always been.
+    Ellipse(arq_geometry::Ellipse),
 }
 
 impl Shape {
@@ -72,6 +76,7 @@ impl Shape {
             Shape::Point(p) => Bounds2::from_point(p),
             Shape::Text(b) | Shape::Placeholder(b) => b,
             Shape::Triangle([a, b, c]) => Bounds2::new(a, b).including(c),
+            Shape::Ellipse(e) => e.bounds(),
         }
     }
 }
@@ -854,13 +859,41 @@ fn segment(a: (f64, f64), b: (f64, f64)) -> Option<Shape> {
     })
 }
 
-/// An ellipse as segments between points on it, seen in plan.
+/// An ellipse seen in plan: itself when it lies in the plan, else segments
+/// between points on it.
 fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
+    if let Some(ellipse) = plan_ellipse(el) {
+        out.push(DrawItem {
+            shape: Shape::Ellipse(ellipse),
+            color,
+        });
+        return;
+    }
     for pair in ellipse_points(el).windows(2) {
         if let Some(shape) = segment((pair[0].x, pair[0].y), (pair[1].x, pair[1].y)) {
             out.push(DrawItem { shape, color });
         }
     }
+}
+
+/// An ellipse whose normal is along ±Z, in world plan coordinates (DWG
+/// keeps its center and major axis in the world); counterclockwise seen from
+/// above, so one seen from below has its parameters' signs changed. None
+/// when it is tilted or not finite.
+pub(crate) fn plan_ellipse(el: &Ellipse) -> Option<arq_geometry::Ellipse> {
+    let normal = plan_normal(el.normal.x, el.normal.y, el.normal.z)?;
+    let center = Point2::new(el.center.x, el.center.y).ok()?;
+    let major = arq_geometry::Vector2::new(el.major_axis.x, el.major_axis.y).ok()?;
+    let (start, end) = if el.is_full() {
+        (0.0, TAU)
+    } else {
+        (el.start_parameter, el.end_parameter)
+    };
+    let (start, end) = match normal {
+        crate::ocs::PlanNormal::Up => (start, end),
+        crate::ocs::PlanNormal::Down => (-end, -start),
+    };
+    arq_geometry::Ellipse::new(center, major, el.minor_axis_ratio, start, end).ok()
 }
 
 /// Points along an ellipse, in world coordinates (the codec would
@@ -1023,6 +1056,11 @@ fn raised(item: DrawItem, z: f64) -> Option<SpaceItem> {
             .filter_map(|p| at(p.x(), p.y()))
             .collect(),
         Shape::Point(p) => at(p.x(), p.y()).into_iter().collect(),
+        Shape::Ellipse(e) => e
+            .flatten()
+            .into_iter()
+            .filter_map(|p| at(p.x(), p.y()))
+            .collect(),
         Shape::Circle(c) => {
             let center = Vector3::new(c.center().x(), c.center().y(), z);
             ocs_arc(up, center, c.radius(), 0.0, TAU)
