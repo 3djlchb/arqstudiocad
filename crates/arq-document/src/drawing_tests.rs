@@ -1367,3 +1367,43 @@ fn an_ellipse_in_the_plan_draws_the_chords_it_always_drew() {
         }
     }
 }
+
+#[test]
+fn an_ellipse_seen_from_below_turns_and_mirrors_where_it_is_drawn() {
+    // Normal (0,0,-1), parameters 0.5 to 2: drawn clockwise from above.
+    let doc_of = || {
+        dxf(
+            LAYERS,
+            &[],
+            &[&[
+                "0", "ELLIPSE", "8", "0", "10", "3", "20", "-1", "30", "0", "11", "2", "21", "1",
+                "31", "0", "210", "0", "220", "0", "230", "-1", "40", "0.4", "41", "0.5", "42",
+                "2",
+            ]],
+        )
+    };
+    let only = |doc: &Document| -> (EntityId, arq_geometry::Ellipse) {
+        let (id, items) = doc.drawing_all().into_iter().next().unwrap();
+        let Shape::Ellipse(e) = items[0].shape else {
+            panic!("{items:?}")
+        };
+        (id, e)
+    };
+    let axis = Line::new(p(0.0, 0.0), p(1.0, 2.0)).unwrap();
+    for t in [
+        arq_geometry::Transform2::rotation(p(1.0, 1.0), 0.9).unwrap(),
+        arq_geometry::Transform2::mirror(axis),
+    ] {
+        let mut doc = doc_of();
+        let (id, before) = only(&doc);
+        let raw = doc.cad_mut().get_entity_mut(handle(id)).unwrap();
+        crate::translate::transform_whole(raw, t);
+        let (_, after) = only(&doc);
+        for i in 0..=6 {
+            let q =
+                before.point_at_param(before.start_param() + before.sweep() * f64::from(i) / 6.0);
+            assert!(after.distance_to(t.apply_point(q)) < 1e-9, "{t:?}");
+        }
+        assert!((after.sweep() - before.sweep()).abs() < 1e-12);
+    }
+}

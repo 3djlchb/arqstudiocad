@@ -1177,6 +1177,29 @@ impl Document {
         Ok(h.value())
     }
 
+    /// Draws `ellipse`, an ellipse or elliptical arc in world plan
+    /// coordinates, on the current layer at `elevation`, in the World plane
+    /// (ELLIPSE, ADR 0040); returns its id.
+    pub fn add_ellipse(
+        &mut self,
+        ellipse: arq_geometry::Ellipse,
+        elevation: f64,
+    ) -> DocumentResult<EntityId> {
+        if !elevation.is_finite() {
+            return Err(DocumentError::Geometry(GeometryError::NonFinite {
+                what: "elevation",
+            }));
+        }
+        let mut el = acadrust::entities::Ellipse::new();
+        el.normal = Vector3::new(0.0, 0.0, 1.0);
+        el.center = Vector3::new(0.0, 0.0, elevation);
+        crate::drawing::write_plan_ellipse(&mut el, ellipse);
+        el.common.layer = self.current_layer().name().to_owned();
+        let h = self.cad_mut().add_entity(EntityType::Ellipse(el))?;
+        self.sync_entity(h.value());
+        Ok(h.value())
+    }
+
     /// Writes an MTEXT on the current layer with the current text style
     /// (ADR 0022 D6): `content` is plain text whose line breaks are
     /// paragraphs, wrapped to `width` (0: no wrapping), hanging from

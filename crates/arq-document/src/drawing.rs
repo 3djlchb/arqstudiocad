@@ -896,6 +896,30 @@ pub(crate) fn plan_ellipse(el: &Ellipse) -> Option<arq_geometry::Ellipse> {
     arq_geometry::Ellipse::new(center, major, el.minor_axis_ratio, start, end).ok()
 }
 
+/// Writes `g`, an ellipse in world plan coordinates, into ellipse `el`
+/// lying in the plan, in its own sense (seen from below, parameters change
+/// sign): center (its height kept), major axis, ratio and parameters, a
+/// whole one as DWG's 0 to 2π.
+pub(crate) fn write_plan_ellipse(el: &mut Ellipse, g: arq_geometry::Ellipse) {
+    let down = el.normal.z < 0.0;
+    el.center = Vector3::new(g.center().x(), g.center().y(), el.center.z);
+    el.major_axis = Vector3::new(g.major_axis().x(), g.major_axis().y(), 0.0);
+    el.minor_axis_ratio = g.ratio();
+    let (start, end) = if g.is_full() {
+        (0.0, TAU)
+    } else if down {
+        (-g.end_param(), -g.start_param())
+    } else {
+        (g.start_param(), g.end_param())
+    };
+    let wrap = |a: f64| a.rem_euclid(TAU);
+    (el.start_parameter, el.end_parameter) = if g.is_full() {
+        (start, end)
+    } else {
+        (wrap(start), wrap(end))
+    };
+}
+
 /// Points along an ellipse, in world coordinates (the codec would
 /// approximate it with a spline through points near it).
 fn ellipse_points(el: &Ellipse) -> Vec<Vector3> {

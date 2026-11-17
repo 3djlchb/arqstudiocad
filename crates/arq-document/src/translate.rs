@@ -103,6 +103,7 @@ pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
         EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
         EntityType::Text(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
         EntityType::MText(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
+        EntityType::Ellipse(el) => crate::drawing::plan_ellipse(el).is_some(),
         // ACIS bodies whose data reads: their placement takes the change
         // (maintainer, 2026-11-05).
         EntityType::Solid3D(_)
@@ -487,6 +488,14 @@ pub(crate) fn whole_grip(e: &EntityType) -> Option<(bool, Point2)> {
 /// it, with the wires and silhouettes the drawing keeps for it (ADR 0024
 /// step 5a).
 pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
+    // An ellipse in the plan moves as our geometry says, its sense kept
+    // through a mirror (ADR 0040).
+    if let EntityType::Ellipse(el) = e
+        && let Some(moved) = crate::drawing::plan_ellipse(el).and_then(|g| g.transformed(t).ok())
+    {
+        crate::drawing::write_plan_ellipse(el, moved);
+        return;
+    }
     let reading = text_data(e).map(|text| text.rotation());
     let [[a, b, tx], [c, d, ty]] = t.affine();
     // A solid scales in height too, as AutoCAD's SCALE does, about the
@@ -529,6 +538,13 @@ pub(crate) fn bounds_of(e: &EntityType) -> Option<Bounds2> {
 fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
     match plan {
         Some(p) => Some(p.geometry().bounds()),
+        // An ellipse in the plan, exactly: the codec's box is its whole
+        // ellipse's, an arc's too (ADR 0040).
+        None if let EntityType::Ellipse(el) = e
+            && let Some(g) = crate::drawing::plan_ellipse(el) =>
+        {
+            Some(g.bounds())
+        }
         // A text's box is where its letters are drawn (text_layout.rs).
         None => text_layout(e).map(|l| l.bounds).or_else(|| codec_bounds(e)),
     }

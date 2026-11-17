@@ -30,8 +30,8 @@ use crate::info::{
     CadBlockData, CadBlockInfo, CadCurrency, CadEntityInfo, CadLayerInfo, CadSolidMeasures,
 };
 use crate::values::{
-    CadArc, CadBounds2, CadCircle, CadColor, CadGrip, CadLine, CadSnap, PyPoint, PyVector,
-    snap_kinds,
+    CadArc, CadBounds2, CadCircle, CadColor, CadEllipse, CadGrip, CadLine, CadSnap, PyPoint,
+    PyVector, snap_kinds,
 };
 
 /// The open documents of one application.
@@ -1057,6 +1057,11 @@ impl CadDocument {
     /// Draws a circle on the current layer.
     fn add_circle(&self, center: PyPoint, radius: f64) -> PyResult<(EntityId, CadChangeSet)> {
         self.create(|cad| cad.add_circle(center.0, radius))
+    }
+
+    /// Draws `ellipse` on the current layer (ELLIPSE, ADR 0040).
+    fn add_ellipse(&self, ellipse: CadEllipse) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_ellipse(ellipse.0))
     }
 
     /// Draws an arc on the current layer, counterclockwise from

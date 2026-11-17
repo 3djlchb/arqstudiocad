@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 
 use arq_core::{Color, Grip, SnapKind, SnapPoint};
 use arq_geometry::{
-    Arc, Bounds2, Circle, Corners, Geometry2, Line, Point2, Rectangle, Tolerance, Vector2,
+    Arc, Bounds2, Circle, Corners, Ellipse, Geometry2, Line, Point2, Rectangle, Tolerance, Vector2,
 };
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -337,6 +337,127 @@ impl CadLine {
             "CadLine(start={}, end={})",
             fmt_xy(self.0.start()),
             fmt_xy(self.0.end())
+        )
+    }
+}
+
+/// An ellipse or elliptical arc in the plan (ELLIPSE, ADR 0040): its
+/// center, major semi-axis, minor to major ratio and parameters, as DWG
+/// keeps it.
+#[pyclass(frozen, eq, from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone, Copy, PartialEq)]
+pub struct CadEllipse(pub Ellipse);
+
+#[pymethods]
+impl CadEllipse {
+    /// The ellipse about `center` with major semi-axis `major_axis` (a
+    /// vector), `ratio` in (0, 1], counterclockwise from parameter `start`
+    /// to `end`; equal ones make the whole ellipse.
+    #[new]
+    #[pyo3(signature = (center, major_axis, ratio, start = 0.0, end = 0.0))]
+    fn new(
+        center: PyPoint,
+        major_axis: PyVector,
+        ratio: f64,
+        start: f64,
+        end: f64,
+    ) -> PyResult<Self> {
+        Ellipse::new(center.0, major_axis.0, ratio, start, end)
+            .py()
+            .map(Self)
+    }
+
+    /// The whole ellipse about `center` through `axis_end`, its other
+    /// semi-axis `other` long; the longer axis is the major one.
+    #[staticmethod]
+    fn from_axis(center: PyPoint, axis_end: PyPoint, other: f64) -> PyResult<Self> {
+        Ellipse::from_axis(center.0, axis_end.0, other)
+            .py()
+            .map(Self)
+    }
+
+    /// The whole ellipse about `center` through `axis_end`, a circle seen
+    /// turned `rotation` radians about that axis (ELLIPSE's Rotation, up
+    /// to 89.4 degrees).
+    #[staticmethod]
+    fn from_rotation(center: PyPoint, axis_end: PyPoint, rotation: f64) -> PyResult<Self> {
+        Ellipse::from_rotation(center.0, axis_end.0, rotation)
+            .py()
+            .map(Self)
+    }
+
+    /// This whole ellipse cut to the arc from `start` to `end` (radians),
+    /// measured counterclockwise from the first axis drawn, toward
+    /// `first_axis_end`: as angles about the center, or as the ellipse's
+    /// own parameters when `parameters` is true (ELLIPSE's Arc).
+    #[pyo3(signature = (first_axis_end, start, end, parameters = false))]
+    fn arc(
+        &self,
+        first_axis_end: PyPoint,
+        start: f64,
+        end: f64,
+        parameters: bool,
+    ) -> PyResult<Self> {
+        let first = first_axis_end.0 - self.0.center();
+        self.0
+            .arc_from(first, start, end, parameters)
+            .py()
+            .map(Self)
+    }
+
+    /// Center.
+    #[getter]
+    fn center(&self) -> (f64, f64) {
+        xy(self.0.center())
+    }
+
+    /// The major semi-axis, from the center, as a vector.
+    #[getter]
+    fn major_axis(&self) -> (f64, f64) {
+        let v = self.0.major_axis();
+        (v.x(), v.y())
+    }
+
+    /// Minor to major axis ratio.
+    #[getter]
+    fn ratio(&self) -> f64 {
+        self.0.ratio()
+    }
+
+    /// Start parameter, radians in [0, 2π).
+    #[getter]
+    fn start_param(&self) -> f64 {
+        self.0.start_param()
+    }
+
+    /// End parameter, radians in [0, 2π).
+    #[getter]
+    fn end_param(&self) -> f64 {
+        self.0.end_param()
+    }
+
+    /// Whether it is the whole ellipse.
+    #[getter]
+    fn is_full(&self) -> bool {
+        self.0.is_full()
+    }
+
+    /// The points it is drawn by, its ends included.
+    fn points(&self) -> Vec<(f64, f64)> {
+        self.0.flatten().into_iter().map(xy).collect()
+    }
+
+    fn __repr__(&self) -> String {
+        let (c, m) = (self.0.center(), self.0.major_axis());
+        format!(
+            "CadEllipse(({}, {}), ({}, {}), {}, {}, {})",
+            c.x(),
+            c.y(),
+            m.x(),
+            m.y(),
+            self.0.ratio(),
+            self.0.start_param(),
+            self.0.end_param()
         )
     }
 }
@@ -881,6 +1002,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadBounds2>()?;
     m.add_class::<CadLine>()?;
     m.add_class::<CadCircle>()?;
+    m.add_class::<CadEllipse>()?;
     m.add_class::<CadArc>()?;
     m.add_class::<CadRectangle>()?;
     Ok(())
