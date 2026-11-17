@@ -69,3 +69,11 @@ Added to both tools on 2026-11-17 with JOIN's second delivery: a constant
 width meeting a line, two widths, a rectangle of lines many at once, a
 branch, and a line with an arc. What ours gives, and what to confirm, is in
 [JOIN's design](../design/join-command.md#windows-comparison-of-the-polylines-to-run).
+
+## To run: MATCHPROP (M1–M3)
+
+Added on 2026-11-17: a line's layer and color given to a circle, a
+polyline's width and thickness, and a varying width that is not given. The
+dump now also writes each entity's linetype, linetype scale, lineweight,
+thickness and transparency. What ours gives is in
+[MATCHPROP's design](../design/matchprop-command.md#windows-comparison-to-run).

@@ -16,6 +16,7 @@ from arqstudiocad._core import (
     CadArc,
     CadBounds2,
     CadCircle,
+    CadColor,
     CadDocument,
     CadLine,
     CadRectangle,
@@ -185,6 +186,43 @@ def j7(doc: CadDocument) -> None:
     doc.join_entities(None, [first, other])
 
 
+EVERY = [
+    "color",
+    "layer",
+    "linetype",
+    "ltscale",
+    "lineweight",
+    "transparency",
+    "thickness",
+    "polyline",
+]
+
+
+def m1(doc: CadDocument) -> None:
+    layer = doc.create_layer("A-WALLS")[0]
+    source = line(doc, (0, 0), (4, 0))
+    doc.set_entity_layer([source], layer)
+    doc.set_entity_color([source], CadColor.from_index(1))
+    target = doc.add_circle((8, 0), 1.0)[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def m2(doc: CadDocument) -> None:
+    path = [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)]
+    source = doc.add_polyline(path, width=0.5, thickness=2.0)[0]
+    target = doc.add_polyline([((0.0, 2.0), 0.0), ((4.0, 2.0), 0.0)])[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def m3(doc: CadDocument) -> None:
+    # A varying width, as JOIN leaves two widths: 0.2 then 0.8.
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.2)[0]
+    other = doc.add_polyline([((4.0, 0.0), 0.0), ((8.0, 0.0), 0.0)], width=0.8)[0]
+    doc.join_entities(source, [other])
+    target = doc.add_polyline([((0.0, 2.0), 0.0), ((4.0, 2.0), 0.0)], width=0.25)[0]
+    doc.match_properties(source, [target], EVERY)
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -213,6 +251,9 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("J5-join-rectangle-at-once", j5),
     ("J6-join-polyline-branch", j6),
     ("J7-join-line-arc-at-once", j7),
+    ("M1-matchprop-line-to-circle", m1),
+    ("M2-matchprop-polyline-width", m2),
+    ("M3-matchprop-varying-width", m3),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),
