@@ -48,6 +48,7 @@ and separation between tests, checking containment before writing.
 | Rectangular ARRAY, 100 lines × 10 rows × 10 columns | Grouped COPY median 27.539 ms → atomic ARRAY 19.784 ms; after/before 0.718 | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warm-ups + 10 samples (2026-11-15); diagnostic only; method below |
 | STRETCH edit, 100 selected lines in 100000 lines | Initial median 0.168242 → 0.178892 ms (1.063); five alternating batches pooled 0.168732 → 0.169612 ms (1.005) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension; 3 warm-ups + 20 samples per run (2026-11-15); diagnostic only; reference check pending |
 | STRETCH read-only preview, same selection | Median 0.061386 ms per contour query | Same host/profile; 3 warm-ups + 20 samples; excludes Qt overlay construction, painting and frame scheduling |
+| World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -226,3 +227,51 @@ the reference every development machine compares against, are in
 
 Structural, energy, hydraulic and other calculations are accepted only with
 reference cases, units, numerical tolerances and independent verification.
+
+### World-coordinate overlay diagnostic (2026-11-17)
+
+Maintainer-approved scenario: CPU viewport 800 x 600 logical/physical pixels
+(DPI 1), 100 synthetic lines, Top and SW isometric, five warm-ups followed by
+100 samples per view. Base `78ae515c0295f1ad4caee730054c875aa5bfa2be`;
+candidate `8274d9075e4e51414219959ce388672630a39515`. Both use their own
+`uv sync` release extensions, Python 3.13.5, PySide6 6.12.0, default Qt font,
+LMDE 7/Linux 6.12.117+deb13-amd64, Ryzen 9 5900X. No build baseline or system
+configuration changes; no private drawing. The later documentation commit
+does not change the measured implementation.
+
+Fixture: for i = 0..99, source start `(i % 10 - 5, i // 10 - 5)` and end
+`(start.x + 0.5, start.y + 0.25)`. For each view, fit normally and pan so the
+projected origin is `(400,300)`. Use `QT_QPA_PLATFORM=offscreen`, no GPU
+attachment/probe, no cursor, selection or active command; settings paths are
+redirected to a temporary INI directory. An 800 x 600 RGB32 QImage is filled
+with the model background outside each timed interval.
+
+Measure `Viewport.overlay()`, QPainter construction, `overlay.paint` and
+`QPainter.end()` with `time.perf_counter_ns()`, garbage collection disabled
+only during sampling. Assert 100 entities, nonempty render geometry and a
+complete render outside timing, and check every overlay has XYZ labels on
+the candidate and no labels on the base. Fixture creation, model rendering,
+assertions and image filling are outside timing. One identical temporary
+harness was used on both revisions, SHA-256
+`6f12fcc54a38b621c38252ada1199847087ba4f1669039b7b3a1157c08910eed`.
+
+| View | Base median, ms | Candidate median, ms | After / before | Added, ms |
+|---|---|---|---|---|
+| Top | 0.011100 | 0.121881 | 10.980 | 0.110781 |
+| SW isometric | 0.010960 | 0.105006 | 9.581 | 0.094046 |
+
+The base overlay in this scenario is empty; the candidate paints the new
+arrows, ring and labels. These ratios describe added overlay work, not a
+whole-frame slowdown. They exclude model rasterization, scheduling, native
+GPU presentation and GPU label uploads. Heavy build/test processes were
+monitored every 10 ms across both runs; none were detected. Scripts and raw
+samples stayed outside the repository. No QSettings or system preference was
+changed outside the temporary configuration.
+
+Both ratios exceed one, so reference-machine validation remains required.
+Run `tools/reference_machine_report.sh` and
+`uv run python tools/gpu_viewport_check.py` on the actual i7-2600/GT 730, and
+repeat this overlay scenario at identical commits/settings before claiming
+floor acceptance. Functional CPU/GPU overlay equivalence passed locally on
+Vulkan, but that is not minimum-machine performance acceptance. No ProgeCAD
+is needed.

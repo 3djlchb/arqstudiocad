@@ -47,3 +47,13 @@ Reference-machine acceptance remains separate; run
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`
 on the i7-2600/GT 730 before asserting minimum-machine frame performance.
 ProgeCAD is not required.
+
+## Local delivery checks
+
+On the development host: 906 Rust tests and 1138 Python tests passed;
+three Python tests were explicitly skipped (two PowerShell-only worktree
+checks and the Windows-only OpenGL card-selection test). Formatting, workspace
+clippy with warnings denied, Ruff lint/format, strict mypy, stubtest and
+cargo-deny passed. The real CPU/GPU overlay comparison passed on Vulkan.
+The diagnostic's exact revisions, timings and remaining reference check are
+recorded in [Testing and performance](../TESTING_AND_PERFORMANCE.md#world-coordinate-overlay-diagnostic-2026-11-17).
