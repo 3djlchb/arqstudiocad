@@ -77,3 +77,8 @@ polyline's width and thickness, and a varying width that is not given. The
 dump now also writes each entity's linetype, linetype scale, lineweight,
 thickness and transparency. What ours gives is in
 [MATCHPROP's design](../design/matchprop-command.md#windows-comparison-to-run).
+
+Text cases M4–M6 added the same day: a text's height given to a text and
+to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
+oblique angle and rotation, to see which ProgeCAD gives. The dump now
+describes texts and MTEXTs.

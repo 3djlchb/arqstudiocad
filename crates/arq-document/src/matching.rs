@@ -1,8 +1,9 @@
 //! MATCHPROP, as AutoCAD's: one entity's properties given to others
 //! (milestone 02.14, `docs/design/matchprop-command.md`). The basic
 //! properties every entity has (color, layer, linetype, linetype scale,
-//! lineweight, transparency) and its thickness, and a polyline's width and
-//! linetype generation.
+//! lineweight, transparency) and its thickness; a polyline's width and
+//! linetype generation; a text's style, height, width factor and oblique
+//! angle.
 
 use acadrust::EntityType;
 use acadrust::entities::LwPolyline;
@@ -33,6 +34,10 @@ pub struct MatchSettings {
     /// Between polylines, the width (only a uniform one, as AutoCAD) and
     /// the linetype generation.
     pub polyline: bool,
+    /// Between texts (TEXT, MTEXT, attribute definitions and attributes),
+    /// the text style and height, and, where both have them, the width
+    /// factor and oblique angle; never the justification or the rotation.
+    pub text: bool,
 }
 
 impl MatchSettings {
@@ -46,6 +51,7 @@ impl MatchSettings {
         transparency: false,
         thickness: false,
         polyline: false,
+        text: false,
     };
 
     /// Every property, as AutoCAD starts.
@@ -58,6 +64,7 @@ impl MatchSettings {
         transparency: true,
         thickness: true,
         polyline: true,
+        text: true,
     };
 }
 
@@ -117,12 +124,88 @@ fn uniform_width(p: &LwPolyline) -> Option<f64> {
         .then_some(first)
 }
 
+/// How a text's characters look: its style and height, and its width
+/// factor and oblique angle where it has them (an MTEXT does not).
+struct TextLook {
+    style: String,
+    height: f64,
+    width_factor: Option<f64>,
+    oblique_angle: Option<f64>,
+}
+
+fn text_look(e: &EntityType) -> Option<TextLook> {
+    let (style, height, width_factor, oblique_angle) = match e {
+        EntityType::Text(t) => (
+            &t.style,
+            t.height,
+            Some(t.width_factor),
+            Some(t.oblique_angle),
+        ),
+        EntityType::MText(t) => (&t.style, t.height, None, None),
+        EntityType::AttributeDefinition(t) => (
+            &t.text_style,
+            t.height,
+            Some(t.width_factor),
+            Some(t.oblique_angle),
+        ),
+        EntityType::AttributeEntity(t) => (
+            &t.text_style,
+            t.height,
+            Some(t.width_factor),
+            Some(t.oblique_angle),
+        ),
+        _ => return None,
+    };
+    Some(TextLook {
+        style: style.clone(),
+        height,
+        width_factor,
+        oblique_angle,
+    })
+}
+
+/// Gives `to` the look `look`; true when that changed it.
+fn give_look(to: &mut EntityType, look: &TextLook) -> bool {
+    let (style, height, width_factor, oblique_angle) = match to {
+        EntityType::Text(t) => (
+            &mut t.style,
+            &mut t.height,
+            Some(&mut t.width_factor),
+            Some(&mut t.oblique_angle),
+        ),
+        EntityType::MText(t) => (&mut t.style, &mut t.height, None, None),
+        EntityType::AttributeDefinition(t) => (
+            &mut t.text_style,
+            &mut t.height,
+            Some(&mut t.width_factor),
+            Some(&mut t.oblique_angle),
+        ),
+        EntityType::AttributeEntity(t) => (
+            &mut t.text_style,
+            &mut t.height,
+            Some(&mut t.width_factor),
+            Some(&mut t.oblique_angle),
+        ),
+        _ => return false,
+    };
+    let mut changed = put(style, look.style.clone());
+    changed |= put(height, look.height);
+    if let (Some(field), Some(value)) = (width_factor, look.width_factor) {
+        changed |= put(field, value);
+    }
+    if let (Some(field), Some(value)) = (oblique_angle, look.oblique_angle) {
+        changed |= put(field, value);
+    }
+    changed
+}
+
 impl Document {
     /// Gives entity `target` the properties of entity `source` that
     /// `settings` names (MATCHPROP): those of every entity, the thickness
     /// when both have one, and, between two lightweight polylines, the
     /// width when the source's is uniform (a varying one is not given, as
-    /// in AutoCAD) and the linetype generation. Returns whether anything
+    /// in AutoCAD) and the linetype generation, and between texts their
+    /// look (`MatchSettings::text`). Returns whether anything
     /// changed; a target that already matches is left untouched.
     pub fn match_properties(
         &mut self,
@@ -186,6 +269,11 @@ impl Document {
                     changed |= put(&mut vertex.end_width, 0.0);
                 }
             }
+        }
+        if settings.text
+            && let Some(look) = text_look(&from)
+        {
+            changed |= give_look(to, &look);
         }
         if changed {
             let entity = self

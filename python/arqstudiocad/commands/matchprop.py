@@ -13,8 +13,9 @@ from arqstudiocad.i18n import tr
 
 #: The basic properties, as Property Settings lists them.
 BASIC = ("color", "layer", "linetype", "ltscale", "lineweight", "transparency", "thickness")
-#: The special properties the drawing model holds so far.
-SPECIAL = ("polyline",)
+#: The special properties the drawing model holds so far, in Property
+#: Settings' order.
+SPECIAL = ("text", "polyline")
 #: Where the chosen properties are remembered for the session.
 MEMORY = "MATCHPROP_SETTINGS"
 
@@ -29,6 +30,7 @@ def setting_label(name: str) -> str:
         "lineweight": tr("Lineweight"),
         "transparency": tr("Transparency"),
         "thickness": tr("Thickness"),
+        "text": tr("Text"),
         "polyline": tr("Polyline"),
     }
     return labels[name]

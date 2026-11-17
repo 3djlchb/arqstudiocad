@@ -15,7 +15,7 @@ from arqstudiocad.ui.ribbon import RibbonGroupWidget
 
 EVERY = (
     "Current active settings: Color Layer Linetype Linetype scale Lineweight"
-    " Transparency Thickness Polyline"
+    " Transparency Thickness Text Polyline"
 )
 
 
@@ -115,6 +115,7 @@ def test_the_settings_dialog_checks_what_is_chosen(qtbot: QtBot) -> None:
         "lineweight",
         "transparency",
         "thickness",
+        "text",
         "polyline",
     }
     assert dialog.chosen() == {"color", "polyline"}
@@ -160,3 +161,15 @@ def test_the_binding_gives_the_named_properties_and_refuses_unknown_ones() -> No
     assert document.get_entity(target).color != CadColor.from_index(5), "color not named"
     with pytest.raises(ValueError, match="unknown MATCHPROP setting"):
         document.match_properties(source, [target], ["colour"])
+
+
+def test_the_binding_gives_a_texts_height_by_the_text_setting() -> None:
+    document = CadApplication().create_document("matchprop-text")
+    source, _ = document.add_text("A-101", (0, 0), 2.5, 0.0)
+    target, _ = document.add_text("B-202", (0, 5), 1.0, 0.0)
+    changed, _, _ = document.match_properties(source, [target], ["color"])
+    assert changed == 0, "the text setting not named: nothing"
+    changed, _, _ = document.match_properties(source, [target], ["text"])
+    assert changed == 1
+    text = document.get_entity(target).text
+    assert text is not None and text.height == 2.5 and text.content == "B-202"
