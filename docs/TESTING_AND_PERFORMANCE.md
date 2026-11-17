@@ -49,6 +49,7 @@ and separation between tests, checking containment before writing.
 | STRETCH edit, 100 selected lines in 100000 lines | Initial median 0.168242 → 0.178892 ms (1.063); five alternating batches pooled 0.168732 → 0.169612 ms (1.005) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension; 3 warm-ups + 20 samples per run (2026-11-15); diagnostic only; reference check pending |
 | STRETCH read-only preview, same selection | Median 0.061386 ms per contour query | Same host/profile; 3 warm-ups + 20 samples; excludes Qt overlay construction, painting and frame scheduling |
 | World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
+| ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -275,3 +276,58 @@ repeat this overlay scenario at identical commits/settings before claiming
 floor acceptance. Functional CPU/GPU overlay equivalence passed locally on
 Vulkan, but that is not minimum-machine performance acceptance. No ProgeCAD
 is needed.
+
+### ID XYZ capture diagnostic (2026-11-17)
+
+Maintainer-approved scenario: 100 captures in Top and SW isometric over the
+same 100000 synthetic lines. Base `6f9379da2080f211f69a9cf15cc725a04cf3020f`
+(including MATCHPROP); candidate `ced90bab1893e342a24dd6389760d14663cd10fb`.
+Both revisions use their own `uv sync` repository-default release extension,
+Python 3.13.5, Rust 1.99.0, LMDE 7/Linux 6.12.117+deb13-amd64, Ryzen 9 5900X.
+The documentation-only follow-up does not change the measured implementation.
+No CPU baseline/feature changes, private files or system settings.
+
+The same temporary ASCII DXF has 100000 LINEs. Source i (0..99999) starts at
+`((i % 1000)*3, (i // 1000)*3, 7)` and ends one unit along +X, at the same Y/Z.
+Use an 800 x 600 physical-pixel CadView. In each view, zoom to 20 pixels per
+model unit and pan so source 50050's midpoint `(150.5,150,7)` projects to
+`(400,300)`. Aperture is 7 physical pixels; modes END/MID/CEN/INT in both
+versions. No Qt application, widget, native GPU probe, rendering or QSettings
+is constructed/accessed by this query diagnostic.
+
+Five warm-ups precede 100 samples timed with `time.perf_counter_ns()` and GC
+disabled only around each call. In Top, base calls
+`document.snap(view.to_world(*screen), 7/view.scale, modes)`; candidate calls
+`view.snap_point3(*screen, 7, modes)`. In SW isometric, the base ID previously
+called only `view.plane_point(*screen)`, without a geometry snap; the candidate
+uses the XYZ reference query. Fixture loading, scene/index construction,
+view setup and assertions are outside timing. Every call checks the source
+midpoint (XY on the base Top, XYZ on the candidate), or the round-trip screen
+projection of the base isometric XY-plane intersection. Entity count and
+unchanged dirty/history state are checked too.
+
+| View / capability | Base median, ms | Candidate median, ms | After / before | Added, ms |
+|---|---|---|---|---|
+| Top, planar reference → XYZ reference | 0.001710 | 0.001540 | 0.900585 | -0.000170 |
+| SW isometric, XY-plane intersection → XYZ reference | 0.000420 | 0.071691 | 170.692857 | 0.071271 |
+
+The isometric ratio compares different capabilities: the old call could not
+identify the elevated reference. It is added feature cost, not a whole-frame
+slowdown. The very small Top values from one short run do not establish a
+universal speedup. These measurements exclude Python command dispatch, Qt
+markers, GPU text uploads and actual cursor-frame scheduling.
+
+An initial attempt was blocked before timing because another build was
+running. The valid measurement window monitored heavy build/test processes
+every 10 ms; none were detected. Temporary harness SHA-256:
+`318ec5ee784939bbb4b4a4839863c200ac4e7dd27d75657c94256ad74934f973`. Raw samples/scripts and the generated DXF remained outside
+the repository. Both extensions keep the normal release profile and ISA floor.
+
+Reference-machine acceptance remains pending because ID now adds a geometric
+query in non-plan views, and reference traversal adds a branch to drawing
+visits. On the actual i7-2600/GT 730, repeat the query scenario with these exact
+commits/settings and exercise ID cursor capture in Top/SW isometric, CPU and
+GPU, at 800 x 600 and the reference report's normal viewport size. Also run
+`tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`
+for redraw checks. Do not turn these development timings into reference-host
+times using a CPU multiplier. No ProgeCAD is required.

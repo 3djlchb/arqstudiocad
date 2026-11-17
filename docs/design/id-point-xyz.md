@@ -75,3 +75,14 @@ XY query with the XYZ query at exact recorded commits. It measures query
 cost, not whole-frame latency or minimum-machine acceptance. The reference
 host must check cursor interaction and redraw with
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`.
+
+## Delivery evidence
+
+Integrated with main at `6f9379d` (MATCHPROP): 931 Rust tests, 1181 Python
+tests and the nine explicit codec corpus tests passed. Three Python tests
+were skipped for platform availability (two PowerShell cases and a Windows
+OpenGL card-selection case). Formatting, workspace clippy with warnings
+denied, Ruff lint/format, strict mypy, stubtest and cargo-deny passed.
+[Diagnostic measurements](../TESTING_AND_PERFORMANCE.md#id-xyz-capture-diagnostic-2026-11-17)
+record the exact base/candidate commits; actual reference-host acceptance
+remains pending. The supported command behavior needs no ProgeCAD validation.
