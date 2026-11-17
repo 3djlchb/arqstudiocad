@@ -84,6 +84,11 @@
              " style=" (vla-get-StyleName obj) " width=" (arq:num (vla-get-ScaleFactor obj))
              " oblique=" (arq:deg (vla-get-ObliqueAngle obj))
              " rotation=" (arq:deg (vla-get-Rotation obj))))
+    ((= k "AcDbEllipse")
+     (strcat "ELLIPSE h=" (vla-get-Handle obj) " center=" (arq:pt (vla-get-Center obj))
+             " major=" (arq:pt (vla-get-MajorAxis obj)) " ratio=" (arq:num (vla-get-RadiusRatio obj))
+             " start=" (arq:num (vla-get-StartParameter obj))
+             " end=" (arq:num (vla-get-EndParameter obj))))
     ((= k "AcDbMText")
      (strcat "MTEXT h=" (vla-get-Handle obj) " at=" (arq:pt (vla-get-InsertionPoint obj))
              " value=" (vla-get-TextString obj) " height=" (arq:num (vla-get-Height obj))
@@ -446,6 +451,12 @@
   ;; ROTULO, width factor 0.8, oblique 15 degrees, rotated 30 degrees.
   ;; Which of style, width, oblique (and not rotation) does it give?
   (arq:command-case "M6-matchprop-text-look" '(list (arq:look (arq:txt doc "A-101" '(0 0) 2.5) doc) (arq:txt doc "B-202" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; ELLIPSE (docs/design/ellipse-command.md)
+  (arq:command-case "EL1-ellipse-axis-distance" 'nil '(command "_.ELLIPSE" '(0 0) '(10 0) 3) dir log)
+  (arq:command-case "EL2-ellipse-center" 'nil '(command "_.ELLIPSE" "_C" '(5 0) '(7 0) 4) dir log)
+  (arq:command-case "EL3-ellipse-rotation" 'nil '(command "_.ELLIPSE" '(0 0) '(10 0) "_R" 60) dir log)
+  ;; EL4: angles from the first axis drawn, which points west from (5,0).
+  (arq:command-case "EL4-ellipse-arc" 'nil '(command "_.ELLIPSE" "_A" '(0 0) '(10 0) 3 30 120) dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)
