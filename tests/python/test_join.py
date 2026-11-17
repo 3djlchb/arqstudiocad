@@ -78,7 +78,7 @@ def test_join_leaves_the_drawing_alone_when_nothing_can_join() -> None:
     before = h.document.undo_history
     h.run("JOIN")
     choose(h, [circle])
-    assert h.messages()[-1] == "JOIN currently joins lines and arcs only."
+    assert h.messages()[-1] == "JOIN joins lines, arcs and open polylines."
     h.run("JOIN")
     choose(h, [source])
     choose(h, [other])
@@ -136,3 +136,44 @@ def test_join_action_is_shared_and_speaks_spanish(qtbot: QtBot) -> None:
         == "Seleccione el objeto de origen o varios objetos para unirlos a la vez"
     )
     window.runner.cancel()
+
+
+def test_join_from_a_polyline_takes_what_touches_its_ends() -> None:
+    h = Harness()
+    source, _ = h.document.add_polyline([((0.0, 0.0), 0.0), ((2.0, 0.0), 0.0)])
+    after = h.line((2.0, 0.0), (2.0, 2.0))
+    loose = h.line((5.0, 5.0), (6.0, 5.0))
+    h.run("JOIN")
+    choose(h, [source])
+    assert h.prompt().text == "Select objects to join to source:"
+    choose(h, [after, loose])
+    assert h.runner.active is None
+    assert h.document.get_entity(source).kind == "LWPOLYLINE"
+    assert h.lines() == [((5.0, 5.0), (6.0, 5.0))], "the line joined is gone"
+    assert h.messages()[-2:] == ["Joined to the source: 1.", "Discarded from the operation: 1."]
+    assert h.document.undo_history[-1] == "JOIN"
+
+
+def test_join_refuses_a_closed_polyline_as_source() -> None:
+    h = Harness()
+    square, _ = h.document.add_polyline(
+        [((0.0, 0.0), 0.0), ((1.0, 0.0), 0.0), ((1.0, 1.0), 0.0)], closed=True
+    )
+    before = h.document.undo_history
+    h.run("JOIN")
+    choose(h, [square])
+    assert h.runner.active is None
+    assert h.messages()[-1] == "A closed polyline cannot be joined."
+    assert h.document.undo_history == before
+
+
+def test_join_many_at_once_makes_a_polyline_of_lines_that_touch() -> None:
+    h = Harness()
+    a = h.line((0.0, 0.0), (4.0, 0.0))
+    b = h.line((4.0, 0.0), (4.0, 3.0))
+    h.session.select(h.document, [a, b])
+    h.run("JOIN")
+    assert h.lines() == []
+    kinds = [e.kind for e in h.document.get_entities()]
+    assert kinds == ["LWPOLYLINE"]
+    assert h.messages()[-1] == "Joined: 1, into 1."
