@@ -50,6 +50,7 @@ and separation between tests, checking containment before writing.
 | STRETCH read-only preview, same selection | Median 0.061386 ms per contour query | Same host/profile; 3 warm-ups + 20 samples; excludes Qt overlay construction, painting and frame scheduling |
 | World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
 | ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
+| BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -331,3 +332,62 @@ GPU, at 800 x 600 and the reference report's normal viewport size. Also run
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`
 for redraw checks. Do not turn these development timings into reference-host
 times using a CPU multiplier. No ProgeCAD is required.
+
+### Closed BREAK diagnostic (2026-11-17)
+
+Maintainer-approved scenario: a synthetic 1000-vertex polyline inside a drawing
+of 100000 unrelated lines. Compare the existing open operation before/after,
+and measure the newly supported closed operation separately. Base
+`d83b8610846d1aed7113dce096293d4f0032b58c`; implementation candidate
+`aabdeace0d4abd8f056d767b151936ed244e89e2`. The documentation-only follow-up
+does not change the measured implementation. Both use their own `uv sync`
+release extension, Python 3.13.5, Rust 1.99.0, LMDE 7/Linux
+6.12.117+deb13-amd64, Ryzen 9 5900X. No raised CPU baseline or feature flags.
+
+Fixture vertex i is `(100*cos(2*pi*i/1000), 100*sin(2*pi*i/1000))`, bulge zero.
+Separate open/closed ASCII DXFs differ only in the closed flag. Unrelated line
+j runs from `(10000+(j%1000)*3, 10000+(j//1000)*3)` one unit along +X. There are
+100001 entities before each call. Pick vertices 100 and 400. The open result
+is two polylines with 101 and 600 vertices; the closed result is one open
+polyline with 701 vertices, from vertex 400 through vertex zero to vertex 100.
+All fixtures are synthetic and generated outside the repository.
+
+Five warm-ups precede 100 timed `document.break_entity` calls per case per
+run, with `time.perf_counter_ns()` and GC disabled only during each call.
+Time includes normal API dispatch, mutation, history and index maintenance.
+Fixture creation/loading, entity-count/geometry/change-set assertions and
+undo are outside timing. Every call checks the surviving ID, piece/vertex
+counts, cut endpoints and BREAK history entry; undo restores the original ID
+and its 1000 vertices and 100001 total entities. Normal ID allocation continues
+for open-path copies. No Qt application, viewport, GPU probe or QSettings is
+used, so model redraw and cursor-frame latency are not measured.
+
+The first pair showed a 1.2594 open-operation ratio. Reversing order did not
+reproduce it, so the same scenario was repeated in five alternating pairs
+(B/C, C/B, B/C, C/B, B/C), preserving all samples:
+
+| Pair | Base open median, ms | Candidate open median, ms | Candidate closed median, ms |
+|---|---|---|---|
+| 1 | 0.3475140 | 0.4376590 | 0.3771240 |
+| 2 | 0.3802985 | 0.3474180 | 0.3814740 |
+| 3 | 0.3489280 | 0.3433130 | 0.3778235 |
+| 4 | 0.3413180 | 0.3473285 | 0.3754335 |
+| 5 | 0.3458680 | 0.3417530 | 0.3754030 |
+| Pooled 500 samples per case | 0.3473430 | 0.3489680 | 0.3769885 |
+
+Pooled open after/before is 1.004678. The initial 26% increase was not
+reproduced consistently; the short runs show variability, not a demonstrated
+universal speedup or equivalence guarantee. The new closed measurement has no
+successful old closed-operation counterpart and is not a before/after ratio.
+All windows monitored heavy build/test processes every 10 ms; none overlapped.
+The identical temporary measurement harness has SHA-256
+`ed9b3e3c71ab457dfeff536be95dc63f657e6fdb9facd8718c4b0639ece0e677`.
+Raw logs, scripts and synthetic files stayed outside the repository; no private
+drawing, real app preference or system setting was changed.
+
+The pooled ratio is above one, so actual reference-machine validation remains
+required before floor acceptance: repeat these operations on the i7-2600/GT 730
+and exercise the resulting paths interactively with
+`tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`.
+No time conversion using a CPU multiplier, minimum-machine claim or new
+ProgeCAD execution is implied.

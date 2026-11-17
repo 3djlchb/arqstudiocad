@@ -1,7 +1,7 @@
 # BREAK on closed polylines: Windows comparison
 
-Milestone 02.14. Our BREAK refuses closed paths until a Windows comparison
-shows how they behave ([design](../design/break-command.md); maintainer,
+Milestone 02.14. Our initial BREAK refused closed paths until a Windows comparison
+showed how they behave ([design](../design/break-command.md); maintainer,
 2026-11-15). This page is that comparison. The maintainer approved the rule
 it shows the same day, ProgeCAD's own, so the same BREAK gives the same
 drawing in both programs ([rule](#rule-approved-2026-11-15)).
@@ -67,3 +67,13 @@ Reopened in ProgeCAD, 43 of the 44 BREAK files matched what was recorded when ea
 **After the break,** the widths are per vertex: 0.5 on every segment, 0 on the open polyline's last vertex. ProgeCAD's DXF writer then writes neither group 43 nor the vertices' groups 40/41, so the widths are lost. The same case saved as DWG kept them.
 
 So a ProgeCAD DXF cannot serve as the reference for polylines with varying widths: compare those through DWG. For our own writer, groups 40/41 must be written whenever the widths are not all equal.
+
+## Implementation regression coverage (2026-11-17)
+
+The approved rule is implemented on `feature/break-closed-polylines`.
+Geometry tests use B1-B11's explicit expected vertex order and bulges.
+Document/core tests additionally check effective widths, mirrored plan
+normals, identity, atomicity, index maintenance and undo/redo. Python tests
+save and reopen DWG and DXF and inspect the resulting per-vertex widths,
+including the B7 normalization. This does not constitute a new ProgeCAD
+run: external observations above remain dated 2026-11-15.

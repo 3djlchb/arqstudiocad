@@ -21,7 +21,7 @@ def break_object(ctx: CommandContext) -> CommandScript:
             entity.kind not in ("LINE", "ARC", "CIRCLE") or entity.geometry is None
         ):
             ctx.message(
-                tr("BREAK currently supports lines, arcs, circles and open lightweight polylines.")
+                tr("BREAK currently supports lines, arcs, circles and lightweight polylines.")
             )
             continue
         first = picked.point

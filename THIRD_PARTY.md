@@ -95,3 +95,12 @@ No upstream source or artwork is copied. Implementation and tests are
 original GPL-3.0-or-later project code, reusing this project's Rust view basis
 and shared overlay representation. The maintainer requested world-origin
 anchoring; editable UCS and upstream interactive controls are outside scope.
+
+## Closed BREAK behavior
+
+Closed lightweight polyline traversal follows the maintainer's approved
+[Windows observations](docs/testing/break-closed-polylines-windows.md) from
+ProgeCAD 2026 (2026-11-15). Only observed behavior is a reference; no proprietary
+code, artwork or documentation passages are copied. Geometry, implementation
+and regression tests are original GPL-3.0-or-later project code, reusing the
+existing projection and subpath algorithms.
