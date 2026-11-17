@@ -68,6 +68,12 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   faces left in one plane, and UNION, SUBTRACT and INTERSECT (UNION,
   DIFERENCIA, INTERSEC) combine them in the 3D tab's Solid Editing group,
   checked in ProgeCAD.
+- **World-coordinate indicator (2026-11-17):** model viewports show red X,
+  green Y and blue Z at the projected universal origin, following the ten
+  preset views, through the shared CPU/GPU overlay. Screen size is independent
+  of zoom/DPI; end-on axes retain a ring and label. Editable UCS stays deferred
+  ([scope and verification](design/world-axes.md)); reference-machine frame
+  performance remains to be checked.
 - **Milestone 02.14, the basic 2D commands, began (2026-11-10):** RECTANG
   (RECTANG) draws rectangles by two corners, Area, Dimensions and Rotation,
   their corners chamfered or filleted, at an elevation, with a thickness

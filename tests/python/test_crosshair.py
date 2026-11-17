@@ -98,6 +98,9 @@ def viewport(qtbot: QtBot) -> Viewport:
     v.resize(400, 300)
     v.show()
     qtbot.waitExposed(v)
+    # Keep the world-origin indicator away from the cursor pixels under test.
+    v.view.pan(1000, 0)
+    v.update()
     return v
 
 

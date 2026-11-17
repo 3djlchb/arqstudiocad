@@ -113,6 +113,7 @@ from arqstudiocad.ui.overlay import (
     to_core,
 )
 from arqstudiocad.ui.overlay import paint as paint_overlay
+from arqstudiocad.ui.world_axes import world_axes_overlay
 
 #: How much one wheel notch (120 eighths of a degree) zooms, in percent:
 #: the default of Options > User preferences > Zoom, and its bounds.
@@ -904,11 +905,19 @@ class Viewport(QWidget):
 
     def overlay(self) -> Overlay:
         """What is drawn over the drawing now, in logical pixels and in the
-        order it is painted (ADR 0034 D4): the selection, the highlight, the
+        order it is painted (ADR 0034 D4): world axes, selection, highlight, the
         dragged outlines, the grips, the rubber band and the snap, the drop
         frame, the window, and the crosshair. Painted by ``QPainter`` over
         the CPU image, or drawn by the GPU."""
-        out = Overlay()
+        origin, axes = self.view.world_axes
+        ratio = self.devicePixelRatioF()
+        out = world_axes_overlay(
+            (origin[0] / ratio, origin[1] / ratio),
+            axes,
+            self.width(),
+            self.height(),
+            self.view.background,
+        )
         text = rgba(self.palette().text().color())
         if self._selected:
             self._outline_strokes(out, self._selected, rgba(SELECTED), 2.0)

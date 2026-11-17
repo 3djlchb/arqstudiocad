@@ -85,3 +85,13 @@ The non-associative rectangular command uses the public behavior described in
 as a compatibility reference. The implementation and tests are original
 GPL-3.0-or-later code. No Autodesk source, artwork or manual passages are
 copied or distributed; proprietary product behavior is a reference only.
+
+## World-coordinate indicator visual reference
+
+The colored XYZ tripod uses [OpenCADStudio's UCS indicator](https://github.com/HakanSeven12/OpenCADStudio/blob/6949482b719b56b1f6f0ea641928593bcb90a63b/src/ui/overlay.rs#L4778)
+(GPL-3.0) as a visual/behavioral reference: red X, green Y (darker on a light
+background), blue Z, projected arms with screen-sized labels and arrows.
+No upstream source or artwork is copied. Implementation and tests are
+original GPL-3.0-or-later project code, reusing this project's Rust view basis
+and shared overlay representation. The maintainer requested world-origin
+anchoring; editable UCS and upstream interactive controls are outside scope.
