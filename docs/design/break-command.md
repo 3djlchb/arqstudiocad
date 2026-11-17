@@ -205,3 +205,12 @@ case detected their targeted mutations. Exact saved bytes were restored,
 native sources touched and `uv sync` rebuilt the extension; restored Python
 bytecode caches were invalidated. The six focused Rust cases and 20 BREAK
 Python cases then passed. Temporary scripts/logs stayed outside the repo.
+
+### Closed-path local delivery checks
+
+All required local gates passed after sabotage restoration: 941 Rust tests,
+1190 Python tests (3 platform-only skips), the nine explicit public-codec
+corpus cases, fmt, workspace/all-target Clippy with warnings denied, Ruff
+lint/format, strict mypy, stubtest and cargo-deny. The diagnostic's exact
+revisions, all five pairs and remaining reference-machine check are recorded
+in [Testing and performance](../TESTING_AND_PERFORMANCE.md#closed-break-diagnostic-2026-11-17).
