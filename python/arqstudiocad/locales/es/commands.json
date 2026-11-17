@@ -116,6 +116,9 @@
   "MASSPROP": [
     "PROPFIS"
   ],
+  "MATCHPROP": [
+    "IGUALARPROP"
+  ],
   "MIRROR": [
     "SIMETRIA",
     "SI"

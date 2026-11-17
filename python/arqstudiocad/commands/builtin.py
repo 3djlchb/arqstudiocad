@@ -30,6 +30,7 @@ from arqstudiocad.commands.budget import BUDGET_COMMANDS
 from arqstudiocad.commands.corners import CORNER_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
 from arqstudiocad.commands.joining import JOIN_COMMAND
+from arqstudiocad.commands.matchprop import MATCHPROP_COMMAND
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.commands.solids import SOLID_COMMANDS
 from arqstudiocad.commands.stretch import STRETCH_COMMAND
@@ -402,6 +403,7 @@ def builtin_registry() -> CommandRegistry:
             STRETCH_COMMAND,
             BREAK_COMMAND,
             JOIN_COMMAND,
+            MATCHPROP_COMMAND,
             ARRAY_COMMAND,
             *TRIM_COMMANDS,
             *CORNER_COMMANDS,

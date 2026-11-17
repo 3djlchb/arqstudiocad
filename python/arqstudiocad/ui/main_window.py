@@ -388,6 +388,7 @@ class MainWindow(QMainWindow):
             self._modeling_menu.addAction(self.command_actions[name])
         self._modify_menu = menu_bar.addMenu("")
         for name in (
+            "MATCHPROP",
             "ERASE",
             "MOVE",
             "COPY",

@@ -343,6 +343,11 @@ class UiServices(Protocol):
         D6); None if it was cancelled."""
         ...
 
+    def choose_match_settings(self, chosen: frozenset[str]) -> frozenset[str] | None:
+        """The properties MATCHPROP gives, checked in its Property Settings
+        window, ``chosen`` checked at first; None if it was cancelled."""
+        ...
+
     def view(self, document: CadDocument) -> ViewControl | None: ...
     def show_panel(self, name: str) -> bool:
         """Shows and raises a panel (``"layers"``…); False if there is none."""

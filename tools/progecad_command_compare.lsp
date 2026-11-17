@@ -198,7 +198,19 @@
 
 (defun arq:full (obj / d)
   (setq d (arq:describe obj))
-  (strcat d " layer=" (vla-get-Layer obj) " color=" (itoa (vla-get-Color obj))))
+  (strcat d " layer=" (vla-get-Layer obj) " color=" (itoa (vla-get-Color obj)) (arq:extra obj)))
+
+;;; The properties MATCHPROP gives, those the object has (added 2026-11-17).
+(defun arq:extra (obj / s v)
+  (setq s "")
+  (foreach pair (list (cons " ltype=" 'vla-get-Linetype) (cons " ltscale=" 'vla-get-LinetypeScale)
+                      (cons " lweight=" 'vla-get-Lineweight) (cons " thickness=" 'vla-get-Thickness)
+                      (cons " transparency=" 'vla-get-EntityTransparency))
+    (setq v (vl-catch-all-apply (cdr pair) (list obj)))
+    (if (not (vl-catch-all-error-p v))
+      (setq s (strcat s (car pair)
+                      (cond ((= (type v) 'STR) v) ((= (type v) 'INT) (itoa v)) (T (arq:num v)))))))
+  s)
 
 (defun arq:dump-full (doc label log / ms n d)
   (setq ms (vla-get-ModelSpace doc) n 0)
@@ -288,6 +300,19 @@
 
 ;;; POLYLINE with a constant width, returned.
 (defun arq:wide (pl width) (vla-put-ConstantWidth pl width) pl)
+
+;;; An object's thickness, color 1 (red) or layer set (made when missing), returned.
+(defun arq:thick (o th) (vla-put-Thickness o th) o)
+(defun arq:red (o) (vla-put-Color o 1) o)
+(defun arq:on-layer (o doc name)
+  (vl-catch-all-apply 'vla-Add (list (vla-get-Layers doc) name))
+  (vla-put-Layer o name) o)
+
+;;; A polyline with each segment's start and end widths, returned.
+(defun arq:widths (pl pairs / i)
+  (setq i 0)
+  (foreach w pairs (vla-SetWidth pl i (car w) (cadr w)) (setq i (1+ i)))
+  pl)
 
 ;;; An open LWPOLYLINE through 2D points, with bulges.
 (defun arq:open (doc pts bulges / arr pl i)
@@ -384,6 +409,13 @@
   (arq:command-case "J6-join-polyline-branch" '(list (arq:open doc '((0 0) (1 0)) '(0)) (arq:ln doc '(1 0) '(2 1)) (arq:ln doc '(1 0) '(2 -1))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) (arq:en (caddr arq:o)) "") dir log)
   ;; J7: a line and an arc touching, many at once: a polyline with the line's properties.
   (arq:command-case "J7-join-line-arc-at-once" '(list (arq:ln doc '(0 0) '(4 0)) (arq:arc doc '(4 2 0) 2.0 270.0 90.0)) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
+  ;; MATCHPROP, every setting on (docs/design/matchprop-command.md)
+  ;; M1: a line on A-WALLS, red, gives them to a circle.
+  (arq:command-case "M1-matchprop-line-to-circle" '(list (arq:on-layer (arq:red (arq:ln doc '(0 0) '(4 0))) doc "A-WALLS") (arq:circ doc '(8 0) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M2: a polyline with width 0.5 and thickness 2 gives them to a plain one.
+  (arq:command-case "M2-matchprop-polyline-width" '(list (arq:thick (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.5) 2.0) (arq:open doc '((0 2) (4 2)) '(0))) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M3: a varying width (0.2 then 0.8) is not given: the target keeps 0.25.
+  (arq:command-case "M3-matchprop-varying-width" '(list (arq:widths (arq:open doc '((0 0) (4 0) (8 0)) '(0 0)) '((0.2 0.2) (0.8 0.8))) (arq:wide (arq:open doc '((0 2) (4 2)) '(0)) 0.25)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)
