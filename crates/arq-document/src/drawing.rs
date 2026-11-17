@@ -119,6 +119,7 @@ struct Painter<'a> {
     every_layer: bool,
     /// Where what is drawn goes placed in space, when it is wanted there.
     space: Option<RefCell<Vec<SpaceItem>>>,
+    references: Option<RefCell<Vec<(arq_geometry::snap::SnapKind, Point3)>>>,
 }
 
 /// Where an entity sits: inside which inserts.
@@ -138,6 +139,25 @@ struct Context {
 }
 
 impl Document {
+    /// Exact visible XYZ reference points of candidate entities, in caller order.
+    /// Blocks use their full placements and effective layers; unsupported
+    /// entities contribute no invented or tessellated reference points.
+    pub fn reference_points3(
+        &self,
+        ids: &[EntityId],
+    ) -> Vec<(arq_geometry::snap::SnapKind, Point3)> {
+        let painter = Painter {
+            references: Some(RefCell::default()),
+            ..Painter::new(self)
+        };
+        for &id in ids {
+            if let Some(entity) = self.cad().get_entity(handle(id)) {
+                painter.emit(entity, &Context::top(), &mut Vec::new());
+            }
+        }
+        painter.references.unwrap().into_inner()
+    }
+
     /// What to draw for one entity, visible parts only; `None` if no entity
     /// has this id. Empty when it is hidden (off or frozen layer, invisible
     /// flag) or has nothing to draw (a viewport, an infinite line).
@@ -261,6 +281,7 @@ impl<'a> Painter<'a> {
             layers,
             every_layer: false,
             space: None,
+            references: None,
         }
     }
 
@@ -333,6 +354,19 @@ impl<'a> Painter<'a> {
         // stay visible (as AutoCAD does).
         let block_reference = matches!(e, EntityType::Insert(_) | EntityType::Dimension(_));
         if style.frozen || (!style.shown && !block_reference) {
+            return;
+        }
+        if let Some(references) = &self.references
+            && !matches!(e, EntityType::Insert(_))
+        {
+            let points = crate::references::points(e)
+                .into_iter()
+                .filter_map(|(kind, p)| {
+                    let v = Vector3::new(p.x(), p.y(), p.z());
+                    let q = ctx.placement.map_or(v, |t| t.apply(v));
+                    point3(q).map(|p| (kind, p))
+                });
+            references.borrow_mut().extend(points);
             return;
         }
         let color = self.resolve_color(color_from_codec(e.as_entity().color()), &layer, ctx);
@@ -656,6 +690,11 @@ impl<'a> Painter<'a> {
         };
         let base = record.base_point;
         for t in insert_copies(ins, base) {
+            let t = if self.references.is_some() {
+                ctx.placement.map_or(t, |outer| t.then(&outer))
+            } else {
+                t
+            };
             if is_xref(record) {
                 if self.style(layer).shown {
                     let label = record
@@ -707,7 +746,7 @@ impl<'a> Painter<'a> {
             if matches!(child, EntityType::AttributeDefinition(_)) {
                 continue; // definitions are drawn through the insert's values
             }
-            if identity || crate::acis::is_body(child) {
+            if identity || crate::acis::is_body(child) || self.references.is_some() {
                 self.emit(child, &inner, out);
             } else {
                 let mut moved = child.clone();
@@ -1054,7 +1093,7 @@ fn ccw_range(start: f64, end: f64, counter_clockwise: bool) -> (f64, f64) {
 }
 
 /// The OCS of `normal` to world: AutoCAD's arbitrary axis algorithm.
-fn ocs_to_world(normal: Vector3) -> Transform {
+pub(crate) fn ocs_to_world(normal: Vector3) -> Transform {
     let len = (normal.x * normal.x + normal.y * normal.y + normal.z * normal.z).sqrt();
     if !(len.is_finite() && len > 0.0) {
         return Transform::identity();

@@ -75,6 +75,20 @@ def parse_point(text: str, last: Point | None = None, toward: Point | None = Non
     return _finite((last[0] + dx / length * distance, last[1] + dy / length * distance))
 
 
+def parse_point3(text: str) -> tuple[float, float, float]:
+    """Read-only XYZ input for ID; omitted Z is on the world XY plane.
+
+    Other point prompts retain their existing 2D parsing and drafting rules.
+    """
+    parts = text.strip().replace(" ", "").split(",")
+    if len(parts) > 3:
+        raise PointSyntaxError(tr("A point is x,y or x,y,z."))
+    if len(parts) == 3 and not text.strip().startswith("@"):
+        return (_number(parts[0]), _number(parts[1]), _number(parts[2]))
+    x, y = parse_point(text)
+    return (x, y, 0.0)
+
+
 def ortho(base: Point, point: Point) -> Point:
     """``point`` kept horizontal or vertical from ``base``, whichever is
     closer (ORTHO, ADR 0016 D5)."""

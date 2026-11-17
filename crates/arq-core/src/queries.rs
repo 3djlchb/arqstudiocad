@@ -30,6 +30,76 @@ impl CadDocument {
         self.spatial_index.query(area)
     }
 
+    /// Conservative candidates for a parallel-view XYZ snap aperture.
+    /// The infinite sight line's XY projection is clipped to the index root,
+    /// then queried in bounded pieces. This uses exact entity bounds, not a
+    /// tessellated projected curve that can miss an extremum at high zoom.
+    pub fn query_point_ray(
+        &self,
+        origin: arq_geometry::Point3,
+        direction: arq_geometry::Vector3,
+        aperture: f64,
+    ) -> CadResult<Vec<EntityId>> {
+        check_aperture(aperture)?;
+        let direction = direction.normalized()?;
+        let Some(bounds) = self.spatial_index.bounds() else {
+            return Ok(Vec::new());
+        };
+        let all = || self.query_entities(bounds);
+        let Some(limit) = bounds.expanded(aperture).ok() else {
+            return Ok(all());
+        };
+        let o = [origin.x(), origin.y()];
+        let d = [direction.x(), direction.y()];
+        let lower = [limit.min().x(), limit.min().y()];
+        let upper = [limit.max().x(), limit.max().y()];
+        let mut lo = f64::NEG_INFINITY;
+        let mut hi = f64::INFINITY;
+        for i in 0..2 {
+            if d[i] == 0.0 {
+                if o[i] < lower[i] || o[i] > upper[i] {
+                    return Ok(Vec::new());
+                }
+            } else {
+                let a = (lower[i] - o[i]) / d[i];
+                let b = (upper[i] - o[i]) / d[i];
+                lo = lo.max(a.min(b));
+                hi = hi.min(a.max(b));
+            }
+        }
+        if lo > hi {
+            return Ok(Vec::new());
+        }
+        if d == [0.0, 0.0] {
+            let Some(area) = Point2::new(o[0], o[1])
+                .ok()
+                .and_then(|p| aperture_area(p, aperture))
+            else {
+                return Ok(all());
+            };
+            return Ok(self.query_entities(area));
+        }
+        if !lo.is_finite() || !hi.is_finite() {
+            return Ok(all());
+        }
+        // Bound query count without imposing a model-unit length or CPU ISA.
+        const PIECES: usize = 64;
+        let mut ids = std::collections::BTreeSet::new();
+        let point = |t: f64| Point2::new(o[0] + d[0] * t, o[1] + d[1] * t);
+        for i in 0..PIECES {
+            let t0 = lo + (hi - lo) * (i as f64 / PIECES as f64);
+            let t1 = lo + (hi - lo) * ((i + 1) as f64 / PIECES as f64);
+            let (Ok(a), Ok(b)) = (point(t0), point(t1)) else {
+                return Ok(all());
+            };
+            let Ok(area) = Bounds2::new(a, b).expanded(aperture) else {
+                return Ok(all());
+            };
+            ids.extend(self.query_entities(area));
+        }
+        Ok(ids.into_iter().collect())
+    }
+
     /// The entity whose drawn geometry passes closest to `at` within
     /// `aperture` (world units), the one drawn last on a tie; never one on
     /// an off or frozen layer (ADR 0016 D2). A block counts as a whole.
@@ -185,3 +255,7 @@ fn check_aperture(aperture: f64) -> CadResult<()> {
 #[cfg(test)]
 #[path = "queries_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "point_ray_tests.rs"]
+mod point_ray_tests;

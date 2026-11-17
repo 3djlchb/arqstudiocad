@@ -21,6 +21,8 @@ use crate::documents::CadDocument;
 use crate::errors::IntoPy;
 use crate::values::{CadBounds2, PyPoint, PyVector};
 
+type SpatialSnap = (&'static str, (f64, f64, f64), (f64, f64));
+
 type ProjectedAxes = ((f64, f64), [(f64, f64); 3]);
 
 struct State {
@@ -307,6 +309,101 @@ impl CadView {
             state.camera.to_screen(0.0, 0.0),
             std::array::from_fn(|i| (right[i], -up[i])),
         )
+    }
+
+    /// Exact XYZ reference point nearest the cursor in screen pixels.
+    /// END/MID/CEN/QUA only; other modes do not invent a depth. Equal screen
+    /// distances prefer the point nearest the viewer. No document mutation.
+    fn snap_point3(
+        &self,
+        x: f64,
+        y: f64,
+        aperture: f64,
+        modes: Vec<String>,
+    ) -> PyResult<Option<SpatialSnap>> {
+        if ![x, y, aperture].iter().all(|v| v.is_finite()) || aperture < 0.0 {
+            return Err(PyValueError::new_err(
+                "cursor and aperture must be finite; aperture must be nonnegative",
+            ));
+        }
+        if modes.is_empty() {
+            return Ok(None);
+        }
+        let state = self.state();
+        let (u, v) = state.camera.to_world(x, y);
+        let radius = aperture / state.camera.scale();
+        let view = state.scene.view();
+        let (right, up) = view.axes();
+        let origin = arq_geometry::Point3::new(
+            u * right[0] + v * up[0],
+            u * right[1] + v * up[1],
+            u * right[2] + v * up[2],
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let dir = view.direction();
+        let direction = arq_geometry::Vector3::new(dir[0], dir[1], dir[2])
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let doc = self.document.get();
+        let (ids, points) = doc
+            .read_core(|cad| {
+                let ids = cad.query_point_ray(origin, direction, radius)?;
+                let points = cad.document().reference_points3(&ids);
+                Ok::<_, arq_core::CadError>((ids, points))
+            })
+            .py()?
+            .py()?;
+        let direction = state.scene.view().direction();
+        let mut best: Option<(f64, f64, SpatialSnap)> = None;
+        let tie = arq_geometry::Tolerance::default().linear();
+        for (kind, point) in points {
+            if !modes
+                .iter()
+                .any(|mode| mode.eq_ignore_ascii_case(kind.name()))
+            {
+                continue;
+            }
+            let (u, v) = state.scene.view().project(point);
+            let screen = state.camera.to_screen(u, v);
+            let distance = (screen.0 - x).hypot(screen.1 - y);
+            let depth =
+                point.x() * direction[0] + point.y() * direction[1] + point.z() * direction[2];
+            if distance <= aperture
+                && best.as_ref().is_none_or(|(d, z, _)| {
+                    distance < *d - tie || ((distance - d).abs() <= tie && depth > *z)
+                })
+            {
+                best = Some((
+                    distance,
+                    depth,
+                    (kind.name(), (point.x(), point.y(), point.z()), screen),
+                ));
+            }
+        }
+        if best.is_none() && modes.iter().any(|m| m.eq_ignore_ascii_case("CEN")) {
+            let at = arq_geometry::Point2::new(u, v)
+                .map_err(|e| PyValueError::new_err(e.to_string()))?;
+            if let Some(id) = state.scene.pick_candidates(&ids, at, radius) {
+                let centers = doc
+                    .read_core(|cad| cad.document().reference_points3(&[id]))
+                    .py()?;
+                for (kind, point) in centers {
+                    if kind != arq_core::SnapKind::Center {
+                        continue;
+                    }
+                    let (u, v) = state.scene.view().project(point);
+                    let screen = state.camera.to_screen(u, v);
+                    let distance = (screen.0 - x).hypot(screen.1 - y);
+                    if best.as_ref().is_none_or(|(d, _, _)| distance < *d) {
+                        best = Some((
+                            distance,
+                            0.0,
+                            (kind.name(), (point.x(), point.y(), point.z()), screen),
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(best.map(|(_, _, snap)| snap))
     }
 
     /// The entity drawn under pixel `(x, y)`, within `aperture` pixels, in

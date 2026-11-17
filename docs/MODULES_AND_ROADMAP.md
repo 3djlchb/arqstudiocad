@@ -74,6 +74,12 @@ Legend: ✅ done · ◐ in progress · ○ to do.
   of zoom/DPI; end-on axes retain a ring and label. Editable UCS stays deferred
   ([scope and verification](design/world-axes.md)); reference-machine frame
   performance remains to be checked.
+- **IDPOINT XYZ (2026-11-17):** ID/IDPUNTO reports typed or captured world
+  X/Y/Z, with exact compatible geometric references in Top, isometric and
+  edge-on views. Free clicks remain on XY; editing commands retain their
+  existing 2D behavior ([scope](design/id-point-xyz.md)). Internal tests and
+  diagnostic measurements accompany the change; reference-host interaction
+  performance remains to be checked.
 - **Milestone 02.14, the basic 2D commands, began (2026-11-10):** RECTANG
   (RECTANG) draws rectangles by two corners, Area, Dimensions and Rotation,
   their corners chamfered or filleted, at an elevation, with a thickness

@@ -70,6 +70,19 @@ impl Scene {
         scene
     }
 
+    /// Pick only among an already selected broad phase, in caller order.
+    pub fn pick_candidates(&self, ids: &[EntityId], at: Point2, aperture: f64) -> Option<EntityId> {
+        pick_among(
+            ids.iter().filter_map(|id| {
+                self.index
+                    .get(id)
+                    .map(|&i| (*id, self.entries[i].items.as_slice()))
+            }),
+            at,
+            aperture,
+        )
+    }
+
     /// The view it is seen from.
     pub fn view(&self) -> View {
         self.view

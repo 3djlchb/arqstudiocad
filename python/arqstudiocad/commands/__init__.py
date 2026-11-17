@@ -38,7 +38,7 @@ from arqstudiocad.events import (
     WorkStarted,
 )
 from arqstudiocad.i18n import fold_name, localized_commands, tr
-from arqstudiocad.points import PointSyntaxError, ortho, parse_point, snap_key
+from arqstudiocad.points import PointSyntaxError, ortho, parse_point, parse_point3, snap_key
 from arqstudiocad.session import Session
 
 log = logging.getLogger(__name__)
@@ -144,6 +144,8 @@ class Prompt:
     signed: bool = False
     multiple: bool = False
     polygon: tuple[tuple[float, float], ...] = ()
+    #: Read-only XYZ input for ID; ordinary point prompts remain XY.
+    spatial: bool = False
 
     @property
     def picks(self) -> bool:
@@ -403,13 +405,24 @@ class CommandContext:
         optional: bool = False,
         drag: Drag | None = None,
         polygon: tuple[tuple[float, float], ...] = (),
+        *,
+        spatial: bool = False,
     ) -> Prompt:
         """A prompt for a point (ADR 0016 D6); yield it to get ``(x, y)``,
         or the key of one of ``options``, or ``None`` for Enter if it is
         ``optional``. ``base`` is the last point; ``drag`` follows the
-        cursor from it."""
+        cursor from it. ``spatial`` requests read-only XYZ input for ID,
+        without enabling 3D editing in other commands."""
         return Prompt(
-            message, "point", tuple(options), default, base, optional, drag, polygon=polygon
+            message,
+            "point",
+            tuple(options),
+            default,
+            base,
+            optional,
+            drag,
+            polygon=polygon,
+            spatial=spatial,
         )
 
     def distance(
@@ -634,7 +647,7 @@ class CommandRunner:
         self.context.message(tr("*Cancel*"))
         self.bus.publish(CommandCancelled(name, reason or "cancelled by the user"))
 
-    def answer_point(self, point: tuple[float, float]) -> None:
+    def answer_point(self, point: tuple[float, float] | tuple[float, float, float]) -> None:
         """A point picked in the viewport, already snapped (ADR 0016 D5):
         the answer to a point or distance prompt; ignored at any other."""
         prompt = self._prompt
@@ -740,6 +753,10 @@ class CommandRunner:
             return
         snap = snap_key(typed)
         if snap is not None:
+            if prompt.spatial and snap not in ("END", "MID", "CEN", "QUA"):
+                self.context.message(tr("ID supports END, MID, CEN and QUA object snaps."))
+                self._show(prompt)
+                return
             drafting.override = snap
             self._show(prompt)
             return
@@ -758,7 +775,11 @@ class CommandRunner:
             toward = drafting.cursor
             if drafting.ortho and prompt.base is not None and toward is not None:
                 toward = ortho(prompt.base, toward)
-            point = parse_point(typed, last=prompt.base, toward=toward)
+            point = (
+                parse_point3(typed)
+                if prompt.spatial
+                else parse_point(typed, last=prompt.base, toward=toward)
+            )
         except PointSyntaxError as error:
             self.context.message(str(error))
             self._show(prompt)
@@ -766,9 +787,20 @@ class CommandRunner:
         drafting.override = None
         self._send_point(prompt, point)
 
-    def _send_point(self, prompt: Prompt, point: tuple[float, float]) -> None:
+    def _send_point(
+        self, prompt: Prompt, point: tuple[float, float] | tuple[float, float, float]
+    ) -> None:
         """A point answers a point prompt, gives a distance prompt the
         distance from its base and an angle prompt the direction from it."""
+        if prompt.spatial:
+            spatial = (point[0], point[1], point[2] if len(point) == 3 else 0.0)
+            if not all(math.isfinite(value) for value in spatial):
+                self.context.message(tr("That point is out of range."))
+                self._show(prompt)
+                return
+            self._advance(lambda script: script.send(spatial))
+            return
+        point2 = (point[0], point[1])
         if prompt.kind != "point" and prompt.base is not None:
             dx, dy = point[0] - prompt.base[0], point[1] - prompt.base[1]
             if prompt.kind == "distance":
@@ -779,7 +811,7 @@ class CommandRunner:
             else:
                 self._send_angle(prompt, math.atan2(dy, dx))
         else:
-            self._advance(lambda script: script.send(point))
+            self._advance(lambda script: script.send(point2))
 
     def _send_angle(self, prompt: Prompt, angle: float) -> None:
         if not math.isfinite(angle):
@@ -895,6 +927,7 @@ class CommandRunner:
                 entity=prompt.kind == "entity",
                 multiple=prompt.multiple,
                 polygon=prompt.polygon,
+                spatial=prompt.spatial,
             )
         )
 

@@ -55,7 +55,7 @@ import math
 import os
 import time
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -186,6 +186,14 @@ MODEL_SPACE_BACKGROUND = (33, 40, 48)
 BLOCK_EDITOR_BACKGROUND = (96, 96, 96)
 
 
+class SpatialSnap(NamedTuple):
+    """Exact XYZ capture and its projected marker position, exclusively for ID."""
+
+    kind: str
+    point: tuple[float, float, float]
+    screen: Point
+
+
 class Viewport(QWidget):
     """Shows one document; also the :class:`~arqstudiocad.commands.ViewControl`
     the ZOOM command acts on."""
@@ -200,7 +208,7 @@ class Viewport(QWidget):
     #: Esc: the running command should be cancelled and the selection
     #: emptied, as Esc does on the command line.
     escape_pressed = Signal()
-    #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
+    #: A snapped world point: XY normally, XYZ for ID's spatial prompt.
     point_picked = Signal(object)
     #: An object picked at an entity prompt: ``(entity_id, (x, y), shift)``,
     #: the world point clicked and whether Shift was held.
@@ -261,6 +269,9 @@ class Viewport(QWidget):
         self._band: QPointF | None = None  # the other corner while dragging a window
         # A point prompt: whether one is open, its last point, and where a
         # click would put the point now (snapped or ORTHO) with its snap.
+        self._spatial = False
+        self._target3: tuple[float, float, float] | None = None
+        self._snap3: SpatialSnap | None = None
         self._asking = False
         self._picking_entity = False  # an entity prompt: a click picks one object
         self._multiple_entities = False
@@ -369,9 +380,9 @@ class Viewport(QWidget):
         return self._target
 
     @property
-    def snap(self) -> CadSnap | None:
+    def snap(self) -> CadSnap | SpatialSnap | None:
         """The object snap under the cursor, at a point prompt."""
-        return self._snap
+        return self._snap3 if self._spatial else self._snap
 
     @property
     def preview(self) -> QTransform | None:
@@ -394,12 +405,18 @@ class Viewport(QWidget):
         return to_plane * world * plane if invertible else None
 
     def ask_point(
-        self, base: Point | None, drag: Drag | None = None, *, polygon: tuple[Point, ...] = ()
+        self,
+        base: Point | None,
+        drag: Drag | None = None,
+        *,
+        polygon: tuple[Point, ...] = (),
+        spatial: bool = False,
     ) -> None:
         """A command asks for a point, from ``base`` if it has one; ``drag``
         follows the cursor from it."""
         self.end_point()
         self._asking, self._base, self._dragged = True, base, drag
+        self._spatial = spatial
         self._polygon_points = polygon
         self._target = self._snap = None
         self._set_hover(None)
@@ -411,6 +428,7 @@ class Viewport(QWidget):
             bool(self._entity_path) or self._fence_anchor is not None or bool(self._polygon_points)
         )
         self._polygon_points = ()
+        self._spatial, self._target3, self._snap3 = False, None, None
         self._picking_entity = False
         self._multiple_entities = False
         self._entity_path = []
@@ -550,7 +568,7 @@ class Viewport(QWidget):
             if self._asking:
                 self._aim(event.position())
                 if self._target is not None:
-                    self.point_picked.emit(self._target)
+                    self.point_picked.emit(self._target3 if self._spatial else self._target)
                 elif not self.in_plan:
                     self.point_refused.emit()
                 event.accept()
@@ -874,6 +892,25 @@ class Viewport(QWidget):
         there, else the cursor kept by ORTHO, else the cursor. In another
         view, the point of the XY plane under the cursor, without snaps or
         ORTHO for now; none where the plane is seen edge on."""
+        if self._spatial:
+            modes = list(self.drafting.active_snaps()) if self.drafting is not None else []
+            found3 = self.view.snap_point3(
+                *self._physical(position), SNAP_PIXELS * self.devicePixelRatioF(), modes
+            )
+            plane = self.view.plane_point(*self._physical(position)) if found3 is None else None
+            target3 = (
+                found3[1] if found3 is not None else ((*plane, 0.0) if plane is not None else None)
+            )
+            target = target3[:2] if target3 is not None else None
+            if (target3, found3) != (self._target3, self._snap3):
+                self._target3, self._snap3, self._target, self._snap = (
+                    target3,
+                    (SpatialSnap(*found3) if found3 is not None else None),
+                    target,
+                    None,
+                )
+                self.update()
+            return
         if not self.in_plan:
             point = self.view.plane_point(*self._physical(position))
             if (point, None) != (self._target, self._snap):
@@ -1065,6 +1102,21 @@ class Viewport(QWidget):
 
     def _point_items(self, out: Overlay, text: RGBA) -> None:
         """The rubber band from the last point and the snap marker."""
+        if self._spatial:
+            if self._snap3 is not None:
+                kind, _, screen = self._snap3
+                ratio = self.devicePixelRatioF()
+                to = (screen[0] / ratio, screen[1] / ratio)
+                color = rgba(self._marker)
+                out.items.extend(marker(kind, to, MARKER_PIXELS, color, 2.0))
+                out.labels.append(
+                    Label(
+                        (to[0] + MARKER_PIXELS + 4, to[1] - MARKER_PIXELS - 4),
+                        snap_name(kind),
+                        color,
+                    )
+                )
+            return
         if self._target is None:
             return
         at = self.screen_point(self._target)
