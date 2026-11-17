@@ -84,10 +84,12 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from arqstudiocad import ellipses
 from arqstudiocad.core import (
     CadBounds2,
     CadChangeSet,
     CadDocument,
+    CadEllipse,
     CadError,
     CadGrip,
     CadRectangle,
@@ -390,7 +392,7 @@ class Viewport(QWidget):
         transform the point under the cursor would apply to them."""
         if self._dragged is None or self._base is None or self._target is None:
             return None
-        if self._dragged.kind in ("rectangle", "stretch"):
+        if self._dragged.kind in ("rectangle", "stretch", "ellipse"):
             return None  # drawn from candidate geometry, not a rigid transform
         (bx, by), (tx, ty) = self._base, self._target
         world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
@@ -968,6 +970,7 @@ class Viewport(QWidget):
         self._grip_items(out)
         if self._asking:
             self._rectangle_items(out, text)
+            self._ellipse_items(out, text)
             self._point_items(out, text)
         if self._drop_name is not None:
             highlight = rgba(self.palette().highlight().color())
@@ -1099,6 +1102,25 @@ class Viewport(QWidget):
         ratio = self.devicePixelRatioF()
         points = self.view.path_outline(path, True)
         out.items.append(Stroke(tuple((x / ratio, y / ratio) for x, y in points), text, 1.0))
+
+    def ellipse_preview(self) -> CadEllipse | None:
+        """The ellipse ELLIPSE would draw with the point under the cursor
+        (ADR 0040); none while there is no such ellipse."""
+        dragged, target = self._dragged, self._target
+        if dragged is None or dragged.kind != "ellipse" or dragged.ellipse is None:
+            return None
+        if target is None:
+            return None
+        center, first, other, start, parameters = dragged.ellipse
+        return ellipses.candidate(center, first, other, start, parameters, target)
+
+    def _ellipse_items(self, out: Overlay, text: RGBA) -> None:
+        """The ellipse being drawn, following the cursor."""
+        shape = self.ellipse_preview()
+        if shape is None:
+            return
+        pixels = tuple((q.x(), q.y()) for q in map(self.screen_point, shape.points()))
+        out.items.append(Stroke(pixels, text, 1.0))
 
     def _point_items(self, out: Overlay, text: RGBA) -> None:
         """The rubber band from the last point and the snap marker."""
