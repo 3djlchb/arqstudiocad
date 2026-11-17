@@ -448,3 +448,32 @@ fn a_polygon_is_clipped_to_the_rectangle() {
     let kept = clip_polygon(&huge, 0.0, 0.0, 4.0, 3.0);
     assert_eq!(kept.len(), 4, "{kept:?}");
 }
+
+#[test]
+fn an_ellipse_draws_the_pixels_its_chords_drew() {
+    // ADR 0040: an ellipse is now one exact shape, drawn chord by chord;
+    // the image is the one its chords, as lines, made before.
+    let e = arq_geometry::Ellipse::new(
+        p(10.0, -5.0),
+        Vector2::new(30.0, 12.0).unwrap(),
+        0.45,
+        0.3,
+        4.9,
+    )
+    .unwrap();
+    let mut exact = CadDocument::new();
+    exact.add_ellipse(e).unwrap();
+    let mut chords = CadDocument::new();
+    for w in e.flatten().windows(2) {
+        chords.add_line(w[0], w[1]).unwrap();
+    }
+    let light = Style {
+        background: [250, 250, 250],
+    };
+    for style in [DARK, light] {
+        assert_eq!(
+            render(&scene_of(&exact), &camera(), style),
+            render(&scene_of(&chords), &camera(), style)
+        );
+    }
+}

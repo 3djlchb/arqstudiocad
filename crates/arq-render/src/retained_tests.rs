@@ -238,3 +238,28 @@ fn a_band_is_kept_as_triangles_clipped_to_the_region() {
     }
     assert_eq!(r.vertices.len(), 2, "its centerline is a line too");
 }
+
+#[test]
+fn an_ellipse_keeps_the_vertices_its_chords_kept() {
+    // ADR 0040: the GPU gets the very lines, dots and ends of the chords.
+    let e = arq_geometry::Ellipse::new(
+        p(10.0, -5.0),
+        arq_geometry::Vector2::new(30.0, 12.0).unwrap(),
+        0.45,
+        0.3,
+        4.9,
+    )
+    .unwrap();
+    let mut exact = CadDocument::new();
+    exact.add_ellipse(e).unwrap();
+    let mut chords = CadDocument::new();
+    for w in e.flatten().windows(2) {
+        chords.add_line(w[0], w[1]).unwrap();
+    }
+    let a = Retained::build(&Scene::build(exact.document()), &camera(), DARK).unwrap();
+    let b = Retained::build(&Scene::build(chords.document()), &camera(), DARK).unwrap();
+    assert_eq!(a.vertices, b.vertices);
+    assert_eq!(a.dots, b.dots);
+    assert_eq!(a.ends, b.ends);
+    assert!(!a.vertices.is_empty());
+}
