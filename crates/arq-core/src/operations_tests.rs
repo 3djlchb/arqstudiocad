@@ -2014,3 +2014,42 @@ fn matchprop_gives_the_source_properties_in_one_step_and_skips_locked_targets() 
             .is_err()
     );
 }
+
+#[test]
+fn closed_break_updates_index_and_restores_identity_closure_and_style() {
+    let mut cad = CadDocument::new();
+    let square = [
+        (p(0., 0.), 0.),
+        (p(10., 0.), 0.),
+        (p(10., 10.), 0.),
+        (p(0., 10.), 0.),
+    ];
+    let (id, _) = cad.add_polyline(&square, true).unwrap();
+    cad.set_entity_color(&[id], Color::Index(3)).unwrap();
+    let original = cad.grips(&[id]);
+    assert!(cad.document().join_path(id).is_err());
+    let (ids, changes) = cad.break_entity(id, p(0., 5.), p(5., 0.)).unwrap();
+    assert_eq!(ids, [id]);
+    assert_eq!(changes.modified(), [id]);
+    assert!(changes.created().is_empty() && changes.deleted().is_empty());
+    let opened = cad.document().join_path(id).unwrap().0;
+    assert_eq!(
+        opened.vertices,
+        vec![(p(0., 5.), 0.), (p(0., 0.), 0.), (p(5., 0.), 0.)]
+    );
+    assert_eq!(cad.document().entity(id).unwrap().color(), Color::Index(3));
+    let removed = arq_geometry::Bounds2::new(p(9., 9.), p(11., 11.));
+    assert!(cad.query_entities(removed).is_empty());
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+    let undone = cad.undo().unwrap();
+    assert_eq!(undone.modified(), [id]);
+    assert_eq!(cad.grips(&[id]), original);
+    assert!(cad.document().join_path(id).is_err());
+    assert_eq!(cad.query_entities(removed), [id]);
+    cad.redo().unwrap();
+    assert_eq!(cad.document().join_path(id).unwrap().0, opened);
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(cad.break_entity(id, p(1., 0.), p(2., 0.)).is_err());
+    assert_eq!(cad.document().join_path(id).unwrap().0, opened);
+}

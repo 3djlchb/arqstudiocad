@@ -644,7 +644,7 @@ impl CadDocument {
         self.transact("JOIN", |doc| Ok(doc.arc_to_circle(id)?))
     }
 
-    /// Removes a projected gap on a line, arc, circle or open lightweight polyline.
+    /// Removes a projected gap on a line, arc, circle or lightweight polyline.
     /// Each piece retains the source properties. One atomic BREAK undo step.
     pub fn break_entity(
         &mut self,
