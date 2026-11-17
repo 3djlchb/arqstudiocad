@@ -286,6 +286,9 @@
 (defun arq:circ (doc c r) (vla-AddCircle (vla-get-ModelSpace doc) (arq:v c) r))
 (defun arq:en (o) (vlax-vla-object->ename o))
 
+;;; POLYLINE with a constant width, returned.
+(defun arq:wide (pl width) (vla-put-ConstantWidth pl width) pl)
+
 ;;; An open LWPOLYLINE through 2D points, with bulges.
 (defun arq:open (doc pts bulges / arr pl i)
   (setq arr (vlax-make-safearray vlax-vbDouble (cons 0 (1- (* 2 (length pts))))))
@@ -369,6 +372,18 @@
   ;; JOIN
   (arq:command-case "J1-join-collinear-lines" '(list (arq:ln doc '(0 0) '(4 0)) (arq:ln doc '(6 0) '(10 0))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   (arq:command-case "J2-join-arcs" '(list (arq:arc doc '(0 0 0) 5.0 0.0 90.0) (arq:arc doc '(0 0 0) 5.0 180.0 270.0)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; JOIN on polylines (second delivery): what to confirm against ours,
+  ;; see docs/design/join-command.md
+  ;; J3: a polyline with a constant width 0.5 and a line: the joined segment's width.
+  (arq:command-case "J3-join-polyline-width-line" '(list (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.5) (arq:ln doc '(4 0) '(4 3))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; J4: widths 0.2 and 0.8, the second polyline running the other way.
+  (arq:command-case "J4-join-polylines-two-widths" '(list (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.2) (arq:wide (arq:open doc '((8 0) (4 0)) '(0)) 0.8)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; J5: four lines of a rectangle, many at once: a closed polyline?
+  (arq:command-case "J5-join-rectangle-at-once" '(list (arq:ln doc '(0 0) '(4 0)) (arq:ln doc '(4 0) '(4 3)) (arq:ln doc '(0 3) '(4 3)) (arq:ln doc '(0 0) '(0 3))) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
+  ;; J6: a branch at the source's end: which line joins?
+  (arq:command-case "J6-join-polyline-branch" '(list (arq:open doc '((0 0) (1 0)) '(0)) (arq:ln doc '(1 0) '(2 1)) (arq:ln doc '(1 0) '(2 -1))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) (arq:en (caddr arq:o)) "") dir log)
+  ;; J7: a line and an arc touching, many at once: a polyline with the line's properties.
+  (arq:command-case "J7-join-line-arc-at-once" '(list (arq:ln doc '(0 0) '(4 0)) (arq:arc doc '(4 2 0) 2.0 270.0 90.0)) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)
