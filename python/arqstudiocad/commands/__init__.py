@@ -146,6 +146,10 @@ class Prompt:
     polygon: tuple[tuple[float, float], ...] = ()
     #: Read-only XYZ input for ID; ordinary point prompts remain XY.
     spatial: bool = False
+    #: An angle prompt's: the direction, radians, a point's direction from
+    #: the base is measured from (ELLIPSE's arc angles, from its first
+    #: axis); a typed angle is already measured from it.
+    angle_base: float = 0.0
 
     @property
     def picks(self) -> bool:
@@ -448,13 +452,17 @@ class CommandContext:
         drag: Drag | None = None,
         options: Sequence[Option] = (),
         optional: bool = False,
+        angle_base: float = 0.0,
     ) -> Prompt:
         """A prompt for an angle, typed in degrees or shown by a point from
         ``base``; yield it to get radians, the key of one of ``options``, or
         ``None`` for Enter if it is ``optional``. ``default`` is in
-        radians."""
+        radians. A point's direction is measured from ``angle_base``, as a
+        typed angle is."""
         shown = None if default is None else f"{math.degrees(default):.10g}"
-        return Prompt(message, "angle", tuple(options), shown, base, optional, drag)
+        return Prompt(
+            message, "angle", tuple(options), shown, base, optional, drag, angle_base=angle_base
+        )
 
     def number(
         self,
@@ -809,7 +817,7 @@ class CommandRunner:
                 self.context.message(tr("A point on the base point shows no direction."))
                 self._show(prompt)
             else:
-                self._send_angle(prompt, math.atan2(dy, dx))
+                self._send_angle(prompt, math.atan2(dy, dx) - prompt.angle_base)
         else:
             self._advance(lambda script: script.send(point2))
 

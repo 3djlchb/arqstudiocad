@@ -199,6 +199,14 @@ impl Builder {
                 self.segment(p3, p0, true);
             }
             Shape::Triangle(t) => self.triangle(t),
+            // Chord by chord, each as the line it used to be (ADR 0040).
+            Shape::Ellipse(e) => {
+                for w in e.flatten().windows(2) {
+                    if let Ok(chord) = arq_geometry::Line::new(w[0], w[1]) {
+                        self.add(Shape::Line(chord));
+                    }
+                }
+            }
         }
     }
 

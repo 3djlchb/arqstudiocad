@@ -82,3 +82,11 @@ Text cases M4–M6 added the same day: a text's height given to a text and
 to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
 oblique angle and rotation, to see which ProgeCAD gives. The dump now
 describes texts and MTEXTs.
+
+## To run: ELLIPSE (EL1–EL4)
+
+Added on 2026-11-17: by an axis and a distance, by its Center, by a
+Rotation, and an elliptical Arc whose first axis points west. The dump now
+describes ellipses (center, major axis, ratio, parameters). What ours
+gives, and what to confirm, is in
+[ELLIPSE's design](../design/ellipse-command.md#windows-comparison-to-run).

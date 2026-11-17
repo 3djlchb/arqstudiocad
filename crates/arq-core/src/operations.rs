@@ -13,9 +13,9 @@ use arq_document::{
     PolylineStyle, Revolved,
 };
 use arq_geometry::{
-    Arc, Chain, Circle, CrossingArea, Geometry2, GeometryError, JoinPath, Line, Point2, Point3,
-    SelectionPolygon, Tolerance, Transform2, Vector2, break_curve, chain_paths, cutting_points,
-    extend, join_arcs, join_groups, join_lines, trim,
+    Arc, Chain, Circle, CrossingArea, Ellipse, Geometry2, GeometryError, JoinPath, Line, Point2,
+    Point3, SelectionPolygon, Tolerance, Transform2, Vector2, break_curve, chain_paths,
+    cutting_points, extend, join_arcs, join_groups, join_lines, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -140,6 +140,12 @@ impl CadDocument {
         opposite: Point3,
     ) -> CadResult<(EntityId, ChangeSet)> {
         self.transact("WEDGE", |doc| Ok(doc.add_wedge(first, opposite)?))
+    }
+
+    /// Draws an ellipse or elliptical arc on the current layer, in the
+    /// World plane at elevation 0 (ELLIPSE, ADR 0040).
+    pub fn add_ellipse(&mut self, ellipse: Ellipse) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("ELLIPSE", |doc| Ok(doc.add_ellipse(ellipse, 0.0)?))
     }
 
     /// Draws a circle on the current layer.

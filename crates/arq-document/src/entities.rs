@@ -119,6 +119,7 @@ impl Document {
                             Shape::Line(l) => Shape::Line(t.apply_line(l)?),
                             Shape::Circle(c) => Shape::Circle(t.apply_circle(c)?),
                             Shape::Arc(a) => Shape::Arc(t.apply_arc(a)?),
+                            Shape::Ellipse(e) => Shape::Ellipse(e.transformed(t)?),
                             Shape::Point(p) => Shape::Point(t.apply_point(p)),
                             Shape::Text(b) => Shape::Text(Bounds2::new(
                                 t.apply_point(b.min()),
@@ -1186,6 +1187,29 @@ impl Document {
         let style = self.current_text_style();
         let text = new_text(content, anchor, height, rotation, &layer, &style);
         let h = self.cad_mut().add_entity(text)?;
+        self.sync_entity(h.value());
+        Ok(h.value())
+    }
+
+    /// Draws `ellipse`, an ellipse or elliptical arc in world plan
+    /// coordinates, on the current layer at `elevation`, in the World plane
+    /// (ELLIPSE, ADR 0040); returns its id.
+    pub fn add_ellipse(
+        &mut self,
+        ellipse: arq_geometry::Ellipse,
+        elevation: f64,
+    ) -> DocumentResult<EntityId> {
+        if !elevation.is_finite() {
+            return Err(DocumentError::Geometry(GeometryError::NonFinite {
+                what: "elevation",
+            }));
+        }
+        let mut el = acadrust::entities::Ellipse::new();
+        el.normal = Vector3::new(0.0, 0.0, 1.0);
+        el.center = Vector3::new(0.0, 0.0, elevation);
+        crate::drawing::write_plan_ellipse(&mut el, ellipse);
+        el.common.layer = self.current_layer().name().to_owned();
+        let h = self.cad_mut().add_entity(EntityType::Ellipse(el))?;
         self.sync_entity(h.value());
         Ok(h.value())
     }

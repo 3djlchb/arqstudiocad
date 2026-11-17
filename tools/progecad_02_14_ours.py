@@ -18,6 +18,7 @@ from arqstudiocad._core import (
     CadCircle,
     CadColor,
     CadDocument,
+    CadEllipse,
     CadLine,
     CadRectangle,
 )
@@ -235,6 +236,23 @@ def m5(doc: CadDocument) -> None:
     doc.match_properties(source, [target], EVERY)
 
 
+def el1(doc: CadDocument) -> None:
+    doc.add_ellipse(CadEllipse.from_axis((5, 0), (0, 0), 3.0))
+
+
+def el2(doc: CadDocument) -> None:
+    doc.add_ellipse(CadEllipse.from_axis((5, 0), (7, 0), 4.0))
+
+
+def el3(doc: CadDocument) -> None:
+    doc.add_ellipse(CadEllipse.from_rotation((5, 0), (0, 0), math.radians(60)))
+
+
+def el4(doc: CadDocument) -> None:
+    whole = CadEllipse.from_axis((5, 0), (0, 0), 3.0)
+    doc.add_ellipse(whole.arc((0, 0), math.radians(30), math.radians(120)))
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -268,6 +286,10 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("M3-matchprop-varying-width", m3),
     ("M4-matchprop-text-height", m4),
     ("M5-matchprop-text-to-mtext", m5),
+    ("EL1-ellipse-axis-distance", el1),
+    ("EL2-ellipse-center", el2),
+    ("EL3-ellipse-rotation", el3),
+    ("EL4-ellipse-arc", el4),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),

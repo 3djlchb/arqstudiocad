@@ -1,5 +1,7 @@
 //! Tests of picking, window selection and snaps (a submodule of `pick`).
 
+use std::f64::consts::PI;
+
 use arq_geometry::snap::SnapKind::{self, *};
 use arq_geometry::{Bounds2, Point2};
 
@@ -459,5 +461,83 @@ fn crossing_polygon_selects_exact_drawings_instead_of_their_enclosing_box() {
     assert_eq!(
         doc.select_polygon_candidates(&inside_band, &[a, b, circle, wide]),
         vec![wide]
+    );
+}
+
+/// An elliptical arc about (10,0), semi-axes 4 along x and 2, parameters 0
+/// to 3π/2: from (14,0) round through (10,2) and (6,0) to (10,-2).
+fn ellipse_arc() -> Document {
+    dxf(
+        LAYERS,
+        &[],
+        &[&[
+            "0",
+            "ELLIPSE",
+            "8",
+            "0",
+            "10",
+            "10",
+            "20",
+            "0",
+            "30",
+            "0",
+            "11",
+            "4",
+            "21",
+            "0",
+            "31",
+            "0",
+            "210",
+            "0",
+            "220",
+            "0",
+            "230",
+            "1",
+            "40",
+            "0.5",
+            "41",
+            "0",
+            "42",
+            "4.71238898038469",
+        ]],
+    )
+}
+
+#[test]
+fn an_ellipse_snaps_to_its_own_points_not_to_its_chords() {
+    let doc = ellipse_arc();
+    let at = |cursor: Point2, modes: &[SnapKind]| doc.snap(cursor, 0.3, modes, None);
+    // Ends, quadrants and the arc's middle (parameter 3π/4).
+    let end = at(p(10.1, -2.1), &[Endpoint]).unwrap();
+    assert!(near(end.point, p(10.0, -2.0)));
+    let top = at(p(10.1, 2.1), &[Quadrant]).unwrap();
+    assert!(near(top.point, p(10.0, 2.0)));
+    let middle = (10.0 + 4.0 * (0.75 * PI).cos(), 2.0 * (0.75 * PI).sin());
+    let mid = at(p(middle.0 + 0.05, middle.1), &[Midpoint]).unwrap();
+    assert!(near(mid.point, p(middle.0, middle.1)), "{mid:?}");
+    // No endpoint between chords, where segments used to end.
+    let along = (10.0 + 4.0 * 0.3f64.cos(), 2.0 * 0.3f64.sin());
+    assert!(at(p(along.0, along.1), &[Endpoint, Midpoint]).is_none());
+    // Its center from anywhere on it; the nearest point exactly on it.
+    let center = at(p(along.0, along.1), &[Center]).unwrap();
+    assert!(near(center.point, p(10.0, 0.0)));
+    let nearest = at(p(along.0 + 0.1, along.1 + 0.05), &[Nearest]).unwrap();
+    let off = ((nearest.point.x() - 10.0) / 4.0).powi(2) + (nearest.point.y() / 2.0).powi(2);
+    assert!((off - 1.0).abs() < 1e-9, "on the ellipse: {nearest:?}");
+}
+
+#[test]
+fn an_ellipse_is_picked_and_selected_by_its_curve() {
+    let doc = ellipse_arc();
+    let id = doc.entities()[0].id();
+    assert_eq!(doc.pick(p(14.05, 0.0), 0.1), Some(id));
+    // Its missing quarter, between (10,-2) and (14,0), is not it.
+    assert_eq!(doc.pick(p(12.9, -1.4), 0.1), None);
+    assert_eq!(doc.select_window(area(5.9, -2.1, 14.1, 2.1), false), [id]);
+    assert_eq!(doc.select_window(area(13.5, -0.5, 15.0, 0.5), true), [id]);
+    assert!(
+        doc.select_window(area(11.0, -1.0, 13.0, 1.0), true)
+            .is_empty(),
+        "inside, untouched"
     );
 }

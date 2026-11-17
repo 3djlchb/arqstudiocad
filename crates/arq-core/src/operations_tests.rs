@@ -5,7 +5,7 @@
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
-use arq_geometry::{Geometry2, Tolerance};
+use arq_geometry::{Ellipse, Geometry2, Tolerance};
 
 use super::*;
 
@@ -2013,6 +2013,84 @@ fn matchprop_gives_the_source_properties_in_one_step_and_skips_locked_targets() 
         cad.match_properties(999_999, &[a], MatchSettings::ALL)
             .is_err()
     );
+}
+
+fn drawn_ellipse(cad: &CadDocument, id: EntityId) -> Ellipse {
+    let items = cad.document().drawing(id).unwrap();
+    let [item] = items[..] else {
+        panic!("{items:?}")
+    };
+    let arq_document::Shape::Ellipse(e) = item.shape else {
+        panic!("{item:?}")
+    };
+    e
+}
+
+#[test]
+fn an_ellipse_is_drawn_and_undone_as_one_step() {
+    let mut cad = CadDocument::new();
+    let e = Ellipse::from_axis(p(5.0, 1.0), p(10.0, 1.0), 3.0)
+        .unwrap()
+        .arc_from(v(5.0, 0.0), 0.2, 2.5, false)
+        .unwrap();
+    let (id, changes) = cad.add_ellipse(e).unwrap();
+    assert_eq!(changes.created(), [id]);
+    assert_eq!(cad.undo_name(), Some("ELLIPSE"));
+    let drawn = drawn_ellipse(&cad, id);
+    let (a, b) = (e.ends().unwrap(), drawn.ends().unwrap());
+    assert!(near(a.0, b.0) && near(a.1, b.1));
+    assert_eq!(cad.document().entity(id).unwrap().kind(), "ELLIPSE");
+    cad.undo().unwrap();
+    assert!(cad.document().entity(id).is_none());
+}
+
+#[test]
+fn an_ellipse_moves_turns_scales_and_mirrors_as_a_whole() {
+    let arc = Ellipse::new(p(2.0, 1.0), v(3.0, 1.0), 0.5, 0.4, 2.6).unwrap();
+    let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
+    type Op = fn(&mut CadDocument, EntityId);
+    let ops: [(Op, Transform2); 4] = [
+        (
+            |cad, id| drop(cad.move_entities(&[id], v(4.0, -1.0)).unwrap()),
+            Transform2::translation(v(4.0, -1.0)),
+        ),
+        (
+            |cad, id| drop(cad.rotate_entities(&[id], p(1.0, 1.0), 0.7).unwrap()),
+            Transform2::rotation(p(1.0, 1.0), 0.7).unwrap(),
+        ),
+        (
+            |cad, id| drop(cad.scale_entities(&[id], p(0.0, 0.0), 2.5).unwrap()),
+            Transform2::scaling(p(0.0, 0.0), 2.5).unwrap(),
+        ),
+        (
+            |cad, id| {
+                let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
+                drop(cad.mirror_entities(&[id], axis).unwrap())
+            },
+            Transform2::mirror(axis),
+        ),
+    ];
+    for (op, t) in ops {
+        let mut cad = CadDocument::new();
+        let (id, _) = cad.add_ellipse(arc).unwrap();
+        op(&mut cad, id);
+        let moved = drawn_ellipse(&cad, id);
+        for i in 0..=8 {
+            let q = t.apply_point(arc.point_at_param(0.4 + 2.2 * f64::from(i) / 8.0));
+            assert!(moved.distance_to(q) < 1e-9, "{t:?}: {q:?} off {moved:?}");
+        }
+        let (a, b) = arc.ends().unwrap();
+        let ends = moved.ends().unwrap();
+        let expected = if t.is_reflection() {
+            (t.apply_point(b), t.apply_point(a))
+        } else {
+            (t.apply_point(a), t.apply_point(b))
+        };
+        assert!(
+            near(ends.0, expected.0) && near(ends.1, expected.1),
+            "{t:?}"
+        );
+    }
 }
 
 #[test]

@@ -195,15 +195,29 @@ impl Document {
         from: Option<Point2>,
     ) -> Option<SnapPoint> {
         let on = |kind: SnapKind| modes.contains(&kind);
-        // The curves the cursor rests on, closest first.
-        let mut near: Vec<(Geometry2, f64)> = drawings
+        let shapes: Vec<Shape> = drawings
             .into_iter()
             .flat_map(|(_, items)| items)
-            .filter_map(|item| curve(item.shape))
+            .map(|item| item.shape)
+            .collect();
+        // The curves the cursor rests on, closest first; ellipses apart
+        // (ADR 0040), as they are no `Geometry2` yet.
+        let mut near: Vec<(Geometry2, f64)> = shapes
+            .iter()
+            .filter_map(|&shape| curve(shape))
             .map(|g| (g, g.distance_to(cursor)))
             .filter(|(_, d)| *d <= aperture)
             .collect();
         near.sort_by(|a, b| a.1.total_cmp(&b.1));
+        let mut ellipses: Vec<(arq_geometry::Ellipse, f64)> = shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Ellipse(e) => Some((*e, e.distance_to(cursor))),
+                _ => None,
+            })
+            .filter(|(_, d)| *d <= aperture)
+            .collect();
+        ellipses.sort_by(|a, b| a.1.total_cmp(&b.1));
 
         let within = |p: &SnapPoint| p.point.distance_to(cursor) <= aperture;
         let closest = |points: Vec<SnapPoint>| {
@@ -217,6 +231,7 @@ impl Document {
         let mut points: Vec<SnapPoint> = near
             .iter()
             .flat_map(|(g, _)| key_points(*g))
+            .chain(ellipses.iter().flat_map(|(e, _)| ellipse_key_points(*e)))
             .filter(|p| p.kind != SnapKind::Center && on(p.kind) && within(p))
             .collect();
         if on(SnapKind::Intersection) {
@@ -253,8 +268,28 @@ impl Document {
             }
         }
 
+        if on(SnapKind::Center)
+            && let Some((e, _)) = ellipses.first()
+            && near.first().is_none_or(|(_, d)| *d >= ellipses[0].1)
+        {
+            return Some(SnapPoint {
+                kind: SnapKind::Center,
+                point: e.center(),
+            });
+        }
         if on(SnapKind::Nearest) {
-            return near.first().map(|(g, _)| nearest_point(*g, cursor));
+            let curve = near.first().map(|(g, d)| (nearest_point(*g, cursor), *d));
+            let ellipse = ellipses.first().map(|(e, d)| {
+                let point = SnapPoint {
+                    kind: SnapKind::Nearest,
+                    point: e.closest_point(cursor),
+                };
+                (point, *d)
+            });
+            return match (curve, ellipse) {
+                (Some(c), Some(e)) => Some(if e.1 < c.1 { e.0 } else { c.0 }),
+                (c, e) => c.or(e).map(|(p, _)| p),
+            };
         }
         None
     }
@@ -310,13 +345,41 @@ pub fn select_among<'a>(
         .collect()
 }
 
+/// An ellipse's snap points: its center, its arc's ends and middle, the
+/// ends of its axes on it (ADR 0040).
+fn ellipse_key_points(e: arq_geometry::Ellipse) -> Vec<SnapPoint> {
+    let mut points = vec![SnapPoint {
+        kind: SnapKind::Center,
+        point: e.center(),
+    }];
+    if let Some((a, b)) = e.ends() {
+        points.extend([a, b].map(|point| SnapPoint {
+            kind: SnapKind::Endpoint,
+            point,
+        }));
+        points.push(SnapPoint {
+            kind: SnapKind::Midpoint,
+            point: e.point_at_param(e.start_param() + e.sweep() / 2.0),
+        });
+    }
+    points.extend(e.quadrants().into_iter().map(|point| SnapPoint {
+        kind: SnapKind::Quadrant,
+        point,
+    }));
+    points
+}
+
 /// The geometry of a shape that is a curve.
 fn curve(shape: Shape) -> Option<Geometry2> {
     match shape {
         Shape::Line(l) => Some(l.into()),
         Shape::Circle(c) => Some(c.into()),
         Shape::Arc(a) => Some(a.into()),
-        Shape::Point(_) | Shape::Text(_) | Shape::Placeholder(_) | Shape::Triangle(_) => None,
+        Shape::Point(_)
+        | Shape::Text(_)
+        | Shape::Placeholder(_)
+        | Shape::Triangle(_)
+        | Shape::Ellipse(_) => None,
     }
 }
 
@@ -342,6 +405,7 @@ fn distance(shape: Shape, at: Point2) -> f64 {
             .filter_map(|(p, q)| Line::new(p, q).ok())
             .map(|l| l.distance_to(at))
             .fold(f64::INFINITY, f64::min),
+        Shape::Ellipse(e) => e.distance_to(at),
         _ => curve(shape).map_or(f64::INFINITY, |g| g.distance_to(at)),
     }
 }
@@ -364,6 +428,19 @@ fn touches(shape: Shape, area: Bounds2) -> bool {
                     edges(area)
                         .into_iter()
                         .any(|edge| !arq_geometry::intersect(side, edge, TOL).is_empty())
+                });
+    }
+    if let Shape::Ellipse(e) = shape {
+        // Its drawn points: one inside, or a chord crossing an edge.
+        let points = e.flatten();
+        return points.iter().any(|&p| area.contains_point(p, TOL))
+            || points
+                .windows(2)
+                .filter_map(|w| Line::new(w[0], w[1]).ok().map(Geometry2::from))
+                .any(|chord| {
+                    edges(area)
+                        .into_iter()
+                        .any(|edge| !arq_geometry::intersect(chord, edge, TOL).is_empty())
                 });
     }
     let Some(g) = curve(shape) else {

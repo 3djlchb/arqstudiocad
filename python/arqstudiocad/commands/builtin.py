@@ -29,6 +29,7 @@ from arqstudiocad.commands.breaking import BREAK_COMMAND
 from arqstudiocad.commands.budget import BUDGET_COMMANDS
 from arqstudiocad.commands.corners import CORNER_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
+from arqstudiocad.commands.ellipse import ELLIPSE_COMMAND
 from arqstudiocad.commands.joining import JOIN_COMMAND
 from arqstudiocad.commands.matchprop import MATCHPROP_COMMAND
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
@@ -399,6 +400,7 @@ def builtin_registry() -> CommandRegistry:
         (
             *BUILTIN_COMMANDS,
             *DRAW_COMMANDS,
+            ELLIPSE_COMMAND,
             *MODIFY_COMMANDS,
             STRETCH_COMMAND,
             BREAK_COMMAND,
