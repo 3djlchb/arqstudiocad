@@ -116,8 +116,8 @@ pub use point3::Point3;
 pub use polyline_corners::{CornerCut, CutCorners, cut_polyline_corners, shared_vertex};
 pub use polyline_offset::{offset_polyline, offset_polyline_through};
 pub use polyline_trim::{
-    BrokenPolyline, PolylinePath, PolylineSpan, break_polyline, extend_polyline,
-    polyline_extension_target, polyline_trim_bounds, trim_polyline,
+    BrokenPolyline, PolylinePath, PolylineSpan, break_closed_polyline, break_polyline,
+    extend_polyline, polyline_extension_target, polyline_trim_bounds, trim_polyline,
 };
 pub use rectangle::{Corners, Rectangle};
 pub use region::{Containment, Region};

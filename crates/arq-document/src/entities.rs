@@ -5,8 +5,8 @@ use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{
     Bounds2, Chain, CornerCut, CrossingArea, Geometry2, GeometryError, JoinPath, Point2, Tolerance,
-    Transform2, break_polyline, cut_polyline_corners, extend_polyline, offset_polyline,
-    offset_polyline_through, shared_vertex, trim_polyline,
+    Transform2, break_closed_polyline, break_polyline, cut_polyline_corners, extend_polyline,
+    offset_polyline, offset_polyline_through, shared_vertex, trim_polyline,
 };
 
 use crate::document::Document;
@@ -471,9 +471,9 @@ impl Document {
         Ok(left)
     }
 
-    /// BREAK an open lightweight polyline at projected points, preserving
-    /// its properties and interpolating each original segment's widths.
-    /// Closed paths await independently confirmed traversal semantics.
+    /// BREAK a lightweight polyline at projected points, preserving its
+    /// properties and interpolating each original segment's widths. Closed
+    /// paths open with the approved vertex-parameter traversal semantics.
     pub fn break_polyline(
         &mut self,
         id: EntityId,
@@ -486,20 +486,29 @@ impl Document {
             normal,
             elevation,
         } = self.polyline_in_world(id)?;
-        if closed {
-            return Err(DocumentError::NotEditable {
-                id,
-                kind: "closed LWPOLYLINE",
-            });
-        }
-        let pieces = break_polyline(&vertices, first, second, Tolerance::DEFAULT)?;
+        let pieces = if closed {
+            vec![break_closed_polyline(
+                &vertices,
+                first,
+                second,
+                Tolerance::DEFAULT,
+            )?]
+        } else {
+            break_polyline(&vertices, first, second, Tolerance::DEFAULT)?
+        };
         let EntityType::LwPolyline(source) = self.cad().get_entity(handle(id)).unwrap() else {
             unreachable!()
         };
         let widths: Vec<_> = source
             .vertices
             .iter()
-            .map(|v| (v.start_width, v.end_width))
+            .map(|v| {
+                if closed && source.constant_width > 0.0 {
+                    (source.constant_width, source.constant_width)
+                } else {
+                    (v.start_width, v.end_width)
+                }
+            })
             .collect();
         if pieces.is_empty() {
             self.delete_entity(id)?;
@@ -517,6 +526,11 @@ impl Document {
             else {
                 unreachable!()
             };
+            if closed {
+                // The opened path represents effective widths per segment;
+                // the terminal vertex has no outgoing width.
+                poly.constant_width = 0.0;
+            }
             for (vertex, span) in poly.vertices.iter_mut().zip(piece.spans) {
                 let (a, b) = widths[span.segment];
                 vertex.start_width = a + (b - a) * span.from;

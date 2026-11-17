@@ -1,7 +1,7 @@
 # BREAK command — initial 2D delivery
 
 Milestone 02.14, group 3. Maintainer-approved scope: lines, arcs and circles,
-with AutoCAD 2021 as the baseline. Open lightweight polylines are implemented on `feature/break-polylines`; closed paths were compared in ProgeCAD on Windows on 2026-11-15, and the maintainer approved ProgeCAD's rule the same day ([evidence and rule](../testing/break-closed-polylines-windows.md)); it is to be implemented.
+with AutoCAD 2021 as the baseline. Open and closed lightweight polylines are implemented. Closed traversal follows the maintainer-approved Windows rule ([evidence](../testing/break-closed-polylines-windows.md)), implemented on 2026-11-17.
 
 ## Behavior
 
@@ -89,12 +89,11 @@ the complete source before any source path is rewritten.
 
 One BREAK transaction updates the index and undoes/redoes all pieces.
 The Python API signature is unchanged. Tilted and legacy heavyweight/3D
-polylines remain unsupported. Closed paths are currently refused explicitly;
+polylines remain unsupported. At the open-path delivery, closed paths were refused explicitly;
 the maintainer approved the open-path delivery and chose Windows confirmation
 before implementing closed-path traversal (2026-11-15). That comparison is
 [recorded](../testing/break-closed-polylines-windows.md) and its rule
-approved (2026-11-15); closed paths stay refused until it is implemented. This is Linux internal validation, not independent ProgeCAD
-acceptance. The codec, rendering and CPU baseline are unchanged.
+approved (2026-11-15); closed paths are implemented as described below. The implementation checks here are Linux internal validation, not a fresh independent ProgeCAD comparison. The codec, rendering and CPU baseline are unchanged.
 
 ### Open-polyline local verification
 
@@ -120,7 +119,7 @@ first open-path delivery.
 
 ### Closed-path follow-up approved by the maintainer
 
-The current delivery is open paths only. On Windows, create a synthetic
+For the original open-path delivery, the Windows follow-up was: create a synthetic
 closed square in both vertex orders, then BREAK at two interior edge points.
 Record the exact picks and which directed span remains, resulting vertex
 order, closure flag, properties and undo/redo. Repeat across the closing
@@ -133,8 +132,8 @@ After retaining the maintainer's remote branch updates and incorporating
 main through ARRAY #191 (`66c0125`), all mandatory local checks passed
 again: 885 Rust cases (20 ignored), 1116 Python cases (5 skipped), all nine
 explicit public-codec corpus cases, fmt, Clippy, Ruff, mypy, stubtest and
-deny. The approved scope is open paths; closed traversal remains the
-separate Windows follow-up above.
+deny. At that delivery, the approved scope was open paths; closed traversal
+was the separate Windows follow-up above.
 
 ### Integration after STRETCH #192 merged
 
@@ -147,3 +146,62 @@ passed on the combined tree: 888 Rust cases (20 ignored), 1119 Python cases
 stubtest and deny. The actual reference-machine STRETCH check remains a
 separate follow-up; closing its implementation PR does not establish a
 performance result.
+
+## Closed lightweight polylines (2026-11-17)
+
+The maintainer approved implementing the already recorded Windows B1-B11
+rule in LMDE 7. BREAK now projects both points onto the closed path, removes
+the interval between the smaller and larger stored vertex parameters, and
+keeps the complementary path through vertex zero. Pick order is irrelevant;
+clockwise paths follow their own vertex order. The same entity is opened,
+starting at the larger parameter and ending at the smaller. A single point
+(`@`) opens the full path at that point without removing geometry, including
+at vertex zero or on the closing segment.
+
+The geometry layer reuses the existing projection/slicing helpers on an
+unrolled path. Each output span maps back to its original source segment,
+so a partial curved closing segment keeps its circle, signed bulge and
+interpolated widths through the wrap. No extra vertex is introduced at an
+existing vertex; the open terminal vertex has no bulge or width.
+
+The document preserves the source ID, layer, color, normal, elevation,
+thickness and other metadata. As observed in Windows, an effective constant
+width becomes per-segment widths and ConstantWidth becomes zero. Variable
+widths are interpolated from their original segment fractions, including
+self-crossings. Upward and downward plan normals are covered. The original
+open-path implementation and its API remain unchanged.
+
+The existing BREAK transaction emits one modified ID, with no created or
+deleted IDs for a closed source, updates the index and undoes/redoes the
+entire change. Locked layers and invalid geometry remain refused atomically.
+No command options or Python API signatures change; the unsupported-kind
+message now includes closed lightweight polylines. Top view remains required;
+tilted and legacy heavyweight/3D polylines remain unsupported.
+
+Tests cover the eleven recorded Windows outcomes, both closing-arc signs,
+source width provenance, projected picks around coordinates 1e6/2e6, vertex
+zero, constant/variable widths and both plane normals, index changes,
+identity/properties, undo/redo, invalid binding inputs, English/Spanish
+command cancellation, `F` and `@`, and DWG/DXF save/reopen with explicit
+inspection of group codes 40/41. The public codec corpus is run separately.
+These are internal regression checks against existing approved evidence;
+no new ProgeCAD execution or Windows file acceptance is claimed here.
+
+The maintainer approved a diagnostic on a 1000-vertex synthetic polyline
+inside a drawing of 100000 unrelated lines: compare the existing open BREAK
+before/after and time the new closed case separately, five warm-ups plus
+100 measured calls, excluding setup and undo. Exact commits and results
+belong in TESTING_AND_PERFORMANCE.md. Actual reference-floor interaction
+acceptance remains separate; no startup or renderer path is changed.
+
+### Closed-path sabotage verification
+
+The focused tests were observed failing when the retained interval was
+reversed, invalid paths returned an empty success, constant-width
+normalization was removed, closed dispatch was refused, and the unsupported
+message reverted to open-only. All four new geometry tests, the document
+and core cases, all eight new Python cases and the modified unsupported-kind
+case detected their targeted mutations. Exact saved bytes were restored,
+native sources touched and `uv sync` rebuilt the extension; restored Python
+bytecode caches were invalidated. The six focused Rust cases and 20 BREAK
+Python cases then passed. Temporary scripts/logs stayed outside the repo.
