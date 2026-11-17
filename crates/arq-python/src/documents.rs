@@ -1290,7 +1290,7 @@ impl CadDocument {
 
     /// MATCHPROP: gives `targets` the properties of `source` named in
     /// `settings` (any of "color", "layer", "linetype", "ltscale",
-    /// "lineweight", "transparency", "thickness", "polyline"), in one undo
+    /// "lineweight", "transparency", "thickness", "text", "polyline"), in one undo
     /// step. Returns how many targets changed, how many were on a locked
     /// layer and left, and what changed. An unknown name raises.
     fn match_properties(
@@ -1310,6 +1310,7 @@ impl CadDocument {
                 "transparency" => &mut chosen.transparency,
                 "thickness" => &mut chosen.thickness,
                 "polyline" => &mut chosen.polyline,
+                "text" => &mut chosen.text,
                 other => {
                     return Err(PyValueError::new_err(format!(
                         "unknown MATCHPROP setting: {other}"
