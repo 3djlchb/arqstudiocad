@@ -324,7 +324,13 @@ def test_the_gpu_draws_the_overlays_the_cpu_paints(tmp_path: Path) -> None:
             for x in range(0, image.width())
         )
 
-    for color, what in (((30, 144, 255), "selection"), ((230, 40, 40), "hot grip")):
+    for color, what in (
+        ((30, 144, 255), "selection"),
+        ((230, 40, 40), "hot grip"),
+        ((230, 56, 56), "world X"),
+        ((56, 217, 56), "world Y"),
+        ((56, 115, 230), "world Z"),
+    ):
         assert has(cpu, color) and has(gpu, color), what
 
 

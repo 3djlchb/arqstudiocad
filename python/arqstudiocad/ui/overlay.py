@@ -1,7 +1,7 @@
 """What the viewport draws over the drawing, described once (ADR 0034 D4).
 
 The selection, the highlight, the grips, rubber bands, snap markers, the
-drop frame, the window and the crosshair are an :class:`Overlay`: strokes,
+drop frame, the window, world axes and the crosshair are an :class:`Overlay`: strokes,
 fills and labels in logical pixels, in the order they are painted. The CPU
 path paints it with ``QPainter`` over the rendered image (:func:`paint`);
 the GPU path hands it to the view, which draws it with wgpu

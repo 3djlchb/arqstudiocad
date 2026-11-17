@@ -21,6 +21,8 @@ use crate::documents::CadDocument;
 use crate::errors::IntoPy;
 use crate::values::{CadBounds2, PyPoint, PyVector};
 
+type ProjectedAxes = ((f64, f64), [(f64, f64); 3]);
+
 struct State {
     scene: Scene,
     camera: Camera,
@@ -292,6 +294,19 @@ impl CadView {
     /// World `(x, y)` to pixels.
     fn to_screen(&self, x: f64, y: f64) -> (f64, f64) {
         self.state().camera.to_screen(x, y)
+    }
+
+    /// World origin in physical pixels and projected positive X/Y/Z directions.
+    /// Directions use screen coordinates (Y down), independent of zoom, so a
+    /// presentation overlay can keep a fixed logical-pixel size.
+    #[getter]
+    fn world_axes(&self) -> ProjectedAxes {
+        let state = self.state();
+        let (right, up) = state.scene.view().axes();
+        (
+            state.camera.to_screen(0.0, 0.0),
+            std::array::from_fn(|i| (right[i], -up[i])),
+        )
     }
 
     /// The entity drawn under pixel `(x, y)`, within `aperture` pixels, in
