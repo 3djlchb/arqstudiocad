@@ -78,6 +78,16 @@
     ((= k "AcDbCircle")
      (strcat "CIRCLE h=" (vla-get-Handle obj) " center=" (arq:pt (vla-get-Center obj))
              " radius=" (arq:num (vla-get-Radius obj))))
+    ((= k "AcDbText")
+     (strcat "TEXT h=" (vla-get-Handle obj) " at=" (arq:pt (vla-get-InsertionPoint obj))
+             " value=" (vla-get-TextString obj) " height=" (arq:num (vla-get-Height obj))
+             " style=" (vla-get-StyleName obj) " width=" (arq:num (vla-get-ScaleFactor obj))
+             " oblique=" (arq:deg (vla-get-ObliqueAngle obj))
+             " rotation=" (arq:deg (vla-get-Rotation obj))))
+    ((= k "AcDbMText")
+     (strcat "MTEXT h=" (vla-get-Handle obj) " at=" (arq:pt (vla-get-InsertionPoint obj))
+             " value=" (vla-get-TextString obj) " height=" (arq:num (vla-get-Height obj))
+             " style=" (vla-get-StyleName obj)))
     (t (strcat k " h=" (vla-get-Handle obj)))))
 
 (defun arq:dump (doc label log / ms n d)
@@ -308,6 +318,17 @@
   (vl-catch-all-apply 'vla-Add (list (vla-get-Layers doc) name))
   (vla-put-Layer o name) o)
 
+;;; A text, an MTEXT 10 wide, or a text given style ROTULO (made when
+;;; missing), width factor 0.8, oblique 15 and rotation 30, returned.
+(defun arq:txt (doc s p h) (vla-AddText (vla-get-ModelSpace doc) s (arq:v p) h))
+(defun arq:mtxt (doc s p h / m)
+  (setq m (vla-AddMText (vla-get-ModelSpace doc) (arq:v p) 10.0 s))
+  (vla-put-Height m h) m)
+(defun arq:look (o doc)
+  (vl-catch-all-apply 'vla-Add (list (vla-get-TextStyles doc) "ROTULO"))
+  (vla-put-StyleName o "ROTULO") (vla-put-ScaleFactor o 0.8)
+  (vla-put-ObliqueAngle o (* pi (/ 15.0 180.0))) (vla-put-Rotation o (* pi (/ 30.0 180.0))) o)
+
 ;;; A polyline with each segment's start and end widths, returned.
 (defun arq:widths (pl pairs / i)
   (setq i 0)
@@ -416,6 +437,15 @@
   (arq:command-case "M2-matchprop-polyline-width" '(list (arq:thick (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.5) 2.0) (arq:open doc '((0 2) (4 2)) '(0))) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   ;; M3: a varying width (0.2 then 0.8) is not given: the target keeps 0.25.
   (arq:command-case "M3-matchprop-varying-width" '(list (arq:widths (arq:open doc '((0 0) (4 0) (8 0)) '(0 0)) '((0.2 0.2) (0.8 0.8))) (arq:wide (arq:open doc '((0 2) (4 2)) '(0)) 0.25)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; MATCHPROP's Text: what ProgeCAD gives besides the style (to confirm).
+  ;; M4: a text 2.5 high gives its height to one 1.0 high?
+  (arq:command-case "M4-matchprop-text-height" '(list (arq:txt doc "A-101" '(0 0) 2.5) (arq:txt doc "B-202" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M5: a text gives its height to an MTEXT?
+  (arq:command-case "M5-matchprop-text-to-mtext" '(list (arq:txt doc "A-101" '(0 0) 2.5) (arq:mtxt doc "Notes" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M6 (ProgeCAD only: ours cannot make this source yet): a text in style
+  ;; ROTULO, width factor 0.8, oblique 15 degrees, rotated 30 degrees.
+  ;; Which of style, width, oblique (and not rotation) does it give?
+  (arq:command-case "M6-matchprop-text-look" '(list (arq:look (arq:txt doc "A-101" '(0 0) 2.5) doc) (arq:txt doc "B-202" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)

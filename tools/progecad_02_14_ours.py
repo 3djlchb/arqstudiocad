@@ -194,6 +194,7 @@ EVERY = [
     "lineweight",
     "transparency",
     "thickness",
+    "text",
     "polyline",
 ]
 
@@ -220,6 +221,17 @@ def m3(doc: CadDocument) -> None:
     other = doc.add_polyline([((4.0, 0.0), 0.0), ((8.0, 0.0), 0.0)], width=0.8)[0]
     doc.join_entities(source, [other])
     target = doc.add_polyline([((0.0, 2.0), 0.0), ((4.0, 2.0), 0.0)], width=0.25)[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def m4(doc: CadDocument) -> None:
+    source = doc.add_text("A-101", (0, 0), 2.5, 0.0)[0]
+    doc.match_properties(source, [doc.add_text("B-202", (0, 5), 1.0, 0.0)[0]], EVERY)
+
+
+def m5(doc: CadDocument) -> None:
+    source = doc.add_text("A-101", (0, 0), 2.5, 0.0)[0]
+    target = doc.add_mtext("Notes", (0, 5), 1.0, 0.0, 10.0, "TopLeft")[0]
     doc.match_properties(source, [target], EVERY)
 
 
@@ -254,6 +266,8 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("M1-matchprop-line-to-circle", m1),
     ("M2-matchprop-polyline-width", m2),
     ("M3-matchprop-varying-width", m3),
+    ("M4-matchprop-text-height", m4),
+    ("M5-matchprop-text-to-mtext", m5),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),
