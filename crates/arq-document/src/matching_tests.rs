@@ -185,3 +185,123 @@ fn matched_properties_survive_dwg_and_dxf() {
         assert_eq!(back.entity(id).unwrap().color(), Color::Index(3));
     }
 }
+
+/// A text in a style of its own, `ROTULO`, height 2.5, narrowed and slanted.
+fn styled_text(doc: &mut Document) -> EntityId {
+    let mut style = acadrust::tables::TextStyle::new("ROTULO");
+    style.handle = doc.cad_mut().allocate_handle();
+    doc.cad_mut().text_styles.add(style).unwrap();
+    let id = doc.add_text("A-101", p(0.0, 0.0), 2.5, 0.3).unwrap();
+    let EntityType::Text(t) = doc.cad_mut().get_entity_mut(handle(id)).unwrap() else {
+        unreachable!()
+    };
+    t.style = "ROTULO".to_owned();
+    t.width_factor = 0.8;
+    t.oblique_angle = 0.25;
+    id
+}
+
+#[test]
+fn a_text_gives_its_style_height_width_and_slant_but_not_its_rotation() {
+    let mut doc = Document::new();
+    let source = styled_text(&mut doc);
+    let target = doc.add_text("B-202", p(9.0, 9.0), 1.0, 0.0).unwrap();
+    assert!(
+        doc.match_properties(source, target, MatchSettings::ALL)
+            .unwrap()
+    );
+    let EntityType::Text(t) = raw(&doc, target) else {
+        unreachable!()
+    };
+    assert_eq!(
+        (t.style.as_str(), t.height, t.width_factor, t.oblique_angle),
+        ("ROTULO", 2.5, 0.8, 0.25)
+    );
+    assert_eq!(t.rotation, 0.0, "its own rotation");
+    assert_eq!(t.value, "B-202", "its own words");
+    assert!(doc.check_model().is_empty());
+}
+
+#[test]
+fn an_mtext_takes_and_gives_only_the_style_and_height() {
+    let mut doc = Document::new();
+    let source = styled_text(&mut doc);
+    let mtext = doc
+        .add_mtext("Notes", p(0.0, 5.0), 1.0, 0.0, 10.0, "TopLeft")
+        .unwrap();
+    assert!(
+        doc.match_properties(source, mtext, MatchSettings::ALL)
+            .unwrap()
+    );
+    let EntityType::MText(m) = raw(&doc, mtext) else {
+        unreachable!()
+    };
+    assert_eq!((m.style.as_str(), m.height), ("ROTULO", 2.5));
+    // Back to a text: its width factor and slant stay its own.
+    let text = doc.add_text("C", p(0.0, 8.0), 1.0, 0.0).unwrap();
+    let EntityType::Text(t) = doc.cad_mut().get_entity_mut(handle(text)).unwrap() else {
+        unreachable!()
+    };
+    (t.width_factor, t.oblique_angle) = (0.6, 0.1);
+    doc.match_properties(mtext, text, MatchSettings::ALL)
+        .unwrap();
+    let EntityType::Text(t) = raw(&doc, text) else {
+        unreachable!()
+    };
+    assert_eq!((t.style.as_str(), t.height), ("ROTULO", 2.5));
+    assert_eq!(
+        (t.width_factor, t.oblique_angle),
+        (0.6, 0.1),
+        "its own kept"
+    );
+}
+
+#[test]
+fn the_text_setting_off_leaves_texts_alone() {
+    let mut doc = Document::new();
+    let source = styled_text(&mut doc);
+    let target = doc.add_text("D", p(0.0, 3.0), 1.0, 0.0).unwrap();
+    let without_text = MatchSettings {
+        text: false,
+        ..MatchSettings::ALL
+    };
+    doc.match_properties(source, target, without_text).unwrap();
+    let EntityType::Text(t) = raw(&doc, target) else {
+        unreachable!()
+    };
+    assert_eq!(t.height, 1.0);
+    assert_ne!(t.style, "ROTULO");
+}
+
+#[test]
+fn a_texts_look_survives_dwg_and_dxf() {
+    let mut doc = Document::new();
+    let source = styled_text(&mut doc);
+    let target = doc.add_text("E", p(0.0, 4.0), 1.0, 0.0).unwrap();
+    doc.match_properties(source, target, MatchSettings::ALL)
+        .unwrap();
+    let dxf = Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap();
+    let dwg = Document::read(
+        doc.to_dwg_bytes().unwrap(),
+        crate::format::FileFormat::Dwg,
+        std::path::Path::new("text.dwg"),
+    )
+    .unwrap();
+    for back in [dxf, dwg] {
+        let found: Vec<_> = back
+            .cad()
+            .entities()
+            .filter_map(|e| match e {
+                EntityType::Text(t) if t.value == "E" => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        let [t] = &found[..] else {
+            panic!("{} texts", found.len())
+        };
+        assert_eq!(t.style, "ROTULO");
+        assert_eq!(t.height, 2.5);
+        assert!((t.width_factor - 0.8).abs() < 1e-12);
+        assert!((t.oblique_angle - 0.25).abs() < 1e-12);
+    }
+}
