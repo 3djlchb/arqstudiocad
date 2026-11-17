@@ -18,7 +18,7 @@ use std::sync::Arc;
 use arq_core::{
     BlockData, BlockDefinition, BlockObjects, CadApplication as CoreApplication,
     CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
-    DocumentId, EntityId, LayerId, Money,
+    DocumentId, EntityId, LayerId, MatchSettings, Money,
 };
 use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -1286,6 +1286,40 @@ impl CadDocument {
                     CadChangeSet(changes),
                 )
             })
+    }
+
+    /// MATCHPROP: gives `targets` the properties of `source` named in
+    /// `settings` (any of "color", "layer", "linetype", "ltscale",
+    /// "lineweight", "transparency", "thickness", "polyline"), in one undo
+    /// step. Returns how many targets changed, how many were on a locked
+    /// layer and left, and what changed. An unknown name raises.
+    fn match_properties(
+        &self,
+        source: EntityId,
+        targets: Vec<EntityId>,
+        settings: Vec<String>,
+    ) -> PyResult<(usize, usize, CadChangeSet)> {
+        let mut chosen = MatchSettings::NONE;
+        for name in &settings {
+            let flag = match name.as_str() {
+                "color" => &mut chosen.color,
+                "layer" => &mut chosen.layer,
+                "linetype" => &mut chosen.linetype,
+                "ltscale" => &mut chosen.linetype_scale,
+                "lineweight" => &mut chosen.lineweight,
+                "transparency" => &mut chosen.transparency,
+                "thickness" => &mut chosen.thickness,
+                "polyline" => &mut chosen.polyline,
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown MATCHPROP setting: {other}"
+                    )));
+                }
+            };
+            *flag = true;
+        }
+        self.edit(|cad| cad.match_properties(source, &targets, chosen))
+            .map(|(m, changes)| (m.changed, m.locked, CadChangeSet(changes)))
     }
 
     /// JOIN's Close: arc `entity_id` becomes its full circle, every
