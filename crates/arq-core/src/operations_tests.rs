@@ -3,7 +3,7 @@
 //! Expected geometry is worked out by hand, not with `Transform2`, so a bug
 //! shared by the transform and its use here cannot hide.
 
-use std::f64::consts::FRAC_PI_2;
+use std::f64::consts::{FRAC_PI_2, PI};
 
 use arq_geometry::{Geometry2, Tolerance};
 
@@ -1813,4 +1813,138 @@ fn break_open_polyline_updates_index_preserves_style_and_undoes_atomically() {
     cad.set_layer_locked(layer, true).unwrap();
     assert!(cad.break_entity(id, p(1.0, 0.0), p(2.0, 0.0)).is_err());
     assert_eq!(cad.document().entities().len(), 2);
+}
+
+fn path_points(cad: &CadDocument, id: EntityId) -> Vec<Point2> {
+    let (path, _) = cad.document().join_path(id).unwrap();
+    path.vertices.iter().map(|v| v.0).collect()
+}
+
+#[test]
+fn join_from_a_polyline_chains_what_touches_its_ends() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad
+        .add_polyline(&[(p(0.0, 0.0), 0.0), (p(2.0, 0.0), 0.0)], false)
+        .unwrap();
+    cad.set_entity_color(&[source], Color::Index(2)).unwrap();
+    let (after, _) = cad.add_line(p(2.0, 0.0), p(2.0, 2.0)).unwrap();
+    // From (0,0) round to (-1,1): it starts where the source starts.
+    let (before, _) = cad.add_arc(p(-1.0, 0.0), 1.0, 0.0, FRAC_PI_2).unwrap();
+    let (more, _) = cad
+        .add_polyline(&[(p(3.0, 2.0), 0.0), (p(2.0, 2.0), 0.0)], false)
+        .unwrap();
+    let (away, _) = cad.add_line(p(9.0, 9.0), p(8.0, 8.0)).unwrap();
+    let (joined, changes) = cad
+        .join_entities(Some(source), &[after, before, more, away])
+        .unwrap();
+    assert_eq!(joined.results, [source], "the polyline, its id kept");
+    assert_eq!((joined.joined, joined.discarded), (3, 1));
+    let expected = [
+        p(-1.0, 1.0),
+        p(0.0, 0.0),
+        p(2.0, 0.0),
+        p(2.0, 2.0),
+        p(3.0, 2.0),
+    ];
+    let got = path_points(&cad, source);
+    assert!(
+        got.len() == expected.len() && got.iter().zip(expected).all(|(&a, b)| near(a, b)),
+        "{got:?}"
+    );
+    assert_eq!(
+        cad.document().entity(source).unwrap().color(),
+        Color::Index(2)
+    );
+    for gone in [after, before, more] {
+        assert!(cad.document().entity(gone).is_none());
+    }
+    assert_eq!(changes.modified(), [source]);
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    cad.undo().unwrap();
+    assert_eq!(path_points(&cad, source), [p(0.0, 0.0), p(2.0, 0.0)]);
+    assert!(cad.document().entity(more).is_some());
+}
+
+#[test]
+fn join_many_at_once_makes_polylines_of_touching_lines_and_arcs() {
+    let mut cad = CadDocument::new();
+    // An L of two lines: a polyline with the first line's properties.
+    let (first, _) = cad.add_line(p(0.0, 0.0), p(4.0, 0.0)).unwrap();
+    cad.set_entity_color(&[first], Color::Index(6)).unwrap();
+    let (up, _) = cad.add_line(p(4.0, 0.0), p(4.0, 3.0)).unwrap();
+    // Two collinear lines touching: still a line.
+    let (a, _) = cad.add_line(p(0.0, 10.0), p(1.0, 10.0)).unwrap();
+    let (b, _) = cad.add_line(p(1.0, 10.0), p(2.0, 10.0)).unwrap();
+    // Four sides: a closed polyline.
+    let sides = [
+        ((10.0, 0.0), (12.0, 0.0)),
+        ((12.0, 0.0), (12.0, 2.0)),
+        ((10.0, 2.0), (12.0, 2.0)),
+        ((10.0, 0.0), (10.0, 2.0)),
+    ];
+    let sides: Vec<EntityId> = sides
+        .iter()
+        .map(|&(s, e)| cad.add_line(p(s.0, s.1), p(e.0, e.1)).unwrap().0)
+        .collect();
+    let mut ids = vec![first, up, a, b];
+    ids.extend(&sides);
+    let (joined, _) = cad.join_entities(None, &ids).unwrap();
+    assert_eq!((joined.joined, joined.discarded), (5, 0));
+    let [l, line, square] = joined.results[..] else {
+        panic!("{joined:?}")
+    };
+    assert_eq!(cad.document().entity(l).unwrap().kind(), "LWPOLYLINE");
+    assert_eq!(cad.document().entity(l).unwrap().color(), Color::Index(6));
+    assert_eq!(
+        path_points(&cad, l),
+        [p(0.0, 0.0), p(4.0, 0.0), p(4.0, 3.0)]
+    );
+    assert!(
+        cad.document().entity(first).is_none(),
+        "the line became the polyline"
+    );
+    assert_eq!(line, a);
+    assert_eq!(line_ends(&cad, a), (p(0.0, 10.0), p(2.0, 10.0)));
+    assert_eq!(cad.document().entity(square).unwrap().kind(), "LWPOLYLINE");
+    assert_eq!(detail(&cad, square, "Closed"), "true");
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entity(first).unwrap().kind(), "LINE");
+    assert!(cad.document().entity(l).is_none());
+}
+
+#[test]
+fn join_leaves_closed_polylines_and_other_heights_out() {
+    let mut cad = CadDocument::new();
+    let square = [(p(0.0, 0.0), 0.0), (p(1.0, 0.0), 0.0), (p(1.0, 1.0), 0.0)];
+    let (closed, _) = cad.add_polyline(&square, true).unwrap();
+    let (source, _) = cad
+        .add_polyline(&[(p(1.0, 0.0), 0.0), (p(3.0, 0.0), 0.0)], false)
+        .unwrap();
+    let style = PolylineStyle {
+        elevation: 4.0,
+        ..PolylineStyle::default()
+    };
+    let (high, _) = cad
+        .add_polyline_with(&[(p(3.0, 0.0), 0.0), (p(5.0, 0.0), 0.0)], false, style)
+        .unwrap();
+    let steps = cad.undo_names().len();
+    let (joined, _) = cad.join_entities(Some(source), &[closed, high]).unwrap();
+    assert_eq!((joined.joined, joined.discarded), (0, 2));
+    assert_eq!(cad.undo_names().len(), steps);
+    assert!(
+        cad.join_entities(Some(closed), &[source]).is_err(),
+        "closed: no source"
+    );
+}
+
+#[test]
+fn join_many_at_once_closes_touching_arcs_of_one_circle_into_it() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_arc(p(0.0, 0.0), 2.0, 0.0, PI).unwrap();
+    let (b, _) = cad.add_arc(p(0.0, 0.0), 2.0, PI, 0.0).unwrap();
+    let (joined, _) = cad.join_entities(None, &[a, b]).unwrap();
+    let [circle] = joined.results[..] else {
+        panic!("{joined:?}")
+    };
+    assert_eq!(cad.document().entity(circle).unwrap().kind(), "CIRCLE");
 }

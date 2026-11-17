@@ -13,9 +13,9 @@ use arq_document::{
     Revolved,
 };
 use arq_geometry::{
-    Arc, Circle, CrossingArea, Geometry2, GeometryError, Line, Point2, Point3, SelectionPolygon,
-    Tolerance, Transform2, Vector2, break_curve, cutting_points, extend, join_arcs, join_groups,
-    join_lines, trim,
+    Arc, Chain, Circle, CrossingArea, Geometry2, GeometryError, JoinPath, Line, Point2, Point3,
+    SelectionPolygon, Tolerance, Transform2, Vector2, break_curve, chain_paths, cutting_points,
+    extend, join_arcs, join_groups, join_lines, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -487,18 +487,23 @@ impl CadDocument {
         Some(self.query_entities(area))
     }
 
-    /// Joins lines or arcs as AutoCAD 2021's JOIN does. With `source`, a
-    /// line or an arc, the lines of `ids` collinear with a source line, or
-    /// the arcs on a source arc's circle, gaps filled, arcs
-    /// counterclockwise from the source, the circle when they go all the
-    /// way round. Without, `ids` are grouped (collinear lines, arcs of one
-    /// circle) and each group is joined from its first. A result keeps its
-    /// source's id and every property (an arc become a circle, the circle's
-    /// id); the curves joined to it are erased. Curves that join nothing,
-    /// of another kind, at another elevation or on a locked layer, are left
-    /// as they are and counted as discarded. When nothing joins, nothing
-    /// changes and no undo step is made. A source that is not a line or an
-    /// arc drawn in plan, or is on a locked layer, is refused.
+    /// Joins lines, arcs and open lightweight polylines as AutoCAD 2021's
+    /// JOIN does. With `source`: a source line takes the lines of `ids`
+    /// collinear with it, a source arc the arcs on its circle, gaps filled,
+    /// arcs counterclockwise from it, the circle when they go all the way
+    /// round; a source polyline the lines, arcs and open polylines whose
+    /// ends touch, chained on either end, turned round when needed, closed
+    /// when the chain comes back to its start. Without, `ids` are joined in
+    /// chains of touching ends, each from its first selected (only
+    /// collinear lines make a line, only arcs of one circle an arc, any
+    /// other chain a polyline), and what is left, lines and arcs, grouped
+    /// as with a source. A result keeps its source's id and every property;
+    /// a circle made from an arc, and a polyline made from a line or an
+    /// arc, get ids of their own. The curves joined to it are erased.
+    /// Curves that join nothing, of another kind, at another height or on a
+    /// locked layer, are left as they are and counted as discarded. When
+    /// nothing joins, nothing changes and no undo step is made. A source
+    /// that cannot join, or is on a locked layer, is refused.
     pub fn join_entities(
         &mut self,
         source: Option<EntityId>,
@@ -512,34 +517,30 @@ impl CadDocument {
             .copied()
             .filter(|&id| Some(id) != source && seen.insert(id))
             .collect();
-        let usable: Vec<(EntityId, PlanGeometry)> = ids
-            .iter()
-            .filter_map(|&id| joinable(doc, id).map(|plan| (id, plan)))
-            .collect();
+        let usable: Vec<Piece> = ids.iter().filter_map(|&id| piece(doc, id)).collect();
         let mut joins = Vec::new();
         match source {
             Some(source) => {
                 let e = doc.entity(source).ok_or(CadError::EntityNotFound(source))?;
                 check_unlocked(doc, &e)?;
-                let plan = joinable(doc, source).ok_or(DocumentError::NotEditable {
+                let first = piece(doc, source).ok_or(DocumentError::NotEditable {
                     id: source,
                     kind: e.kind(),
                 })?;
-                let others: Vec<(EntityId, PlanGeometry)> = usable
+                let others: Vec<Piece> = usable
                     .into_iter()
-                    .filter(|(_, p)| same_elevation(*p, plan, tol))
+                    .filter(|p| same_height(p, &first, tol))
                     .collect();
-                joins.extend(join_one(source, plan, &others, tol));
+                let join = if first.plan.is_some() {
+                    join_curves(&first, &others, tol)
+                } else {
+                    join_chain(&first, &others, tol)
+                };
+                joins.extend(join);
             }
             None => {
-                for level in by_elevation(&usable, tol) {
-                    let curves: Vec<Geometry2> = level.iter().map(|(_, p)| p.geometry()).collect();
-                    for group in join_groups(&curves, tol) {
-                        let (first, rest) = group.split_first().expect("a group has two");
-                        let (id, plan) = level[*first];
-                        let others: Vec<_> = rest.iter().map(|&i| level[i]).collect();
-                        joins.extend(join_one(id, plan, &others, tol));
-                    }
+                for level in by_height(&usable, tol) {
+                    joins.extend(join_many(&level, tol));
                 }
             }
         }
@@ -561,11 +562,21 @@ impl CadDocument {
                 for &id in &join.erased {
                     doc.delete_entity(id)?;
                 }
-                let made = match (join.plan.geometry(), join.result) {
-                    (Geometry2::Arc(_), Geometry2::Circle(_)) => doc.arc_to_circle(join.source)?,
-                    _ => {
-                        doc.set_plan_geometry(join.source, join.plan.with_geometry(join.result))?;
+                let made = match &join.made {
+                    Made::Curve(plan, Geometry2::Circle(_)) => {
+                        debug_assert!(matches!(plan.geometry(), Geometry2::Arc(_)));
+                        doc.arc_to_circle(join.source)?
+                    }
+                    Made::Curve(plan, result) => {
+                        doc.set_plan_geometry(join.source, plan.with_geometry(*result))?;
                         join.source
+                    }
+                    Made::Polyline(chain, height) => {
+                        let made = doc.write_joined_polyline(join.source, chain, *height)?;
+                        if made != join.source {
+                            doc.delete_entity(join.source)?;
+                        }
+                        made
                     }
                 };
                 results.push(made);
@@ -1117,34 +1128,56 @@ pub struct Joined {
 /// One source and what JOIN makes of it, worked out before any change.
 struct Join {
     source: EntityId,
-    plan: PlanGeometry,
-    result: Geometry2,
+    made: Made,
     erased: Vec<EntityId>,
 }
 
-/// A line or an arc drawn in plan, not on a locked layer: what can join.
-fn joinable(doc: &Document, id: EntityId) -> Option<PlanGeometry> {
-    let e = doc.entity(id)?;
-    if !matches!(e.kind(), "LINE" | "ARC") || check_unlocked(doc, &e).is_err() {
-        return None;
-    }
-    e.plan()
+/// What a source becomes: its line or arc, or the circle an arc closes
+/// into, in its plan; or a polyline at a height.
+enum Made {
+    Curve(PlanGeometry, Geometry2),
+    Polyline(Chain, f64),
 }
 
-/// `source` joined with whichever of `others` it takes; None when it takes
-/// none.
-fn join_one(
-    source: EntityId,
-    plan: PlanGeometry,
-    others: &[(EntityId, PlanGeometry)],
-    tol: Tolerance,
-) -> Option<Join> {
+/// A curve that can join: a line, an arc or an open lightweight polyline
+/// drawn in plan, not on a locked layer; its plan geometry when a line or an
+/// arc, its path and its height.
+#[derive(Clone)]
+struct Piece {
+    id: EntityId,
+    plan: Option<PlanGeometry>,
+    path: JoinPath,
+    height: f64,
+}
+
+fn piece(doc: &Document, id: EntityId) -> Option<Piece> {
+    let e = doc.entity(id)?;
+    if !matches!(e.kind(), "LINE" | "ARC" | "LWPOLYLINE") || check_unlocked(doc, &e).is_err() {
+        return None;
+    }
+    let (path, height) = doc.join_path(id).ok()?;
+    Some(Piece {
+        id,
+        plan: e.plan(),
+        path,
+        height,
+    })
+}
+
+/// A source line or arc joined with the lines, or the arcs, of `others` it
+/// takes; None when it takes none.
+fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
+    let plan = source.plan?;
+    let curves: Vec<(EntityId, Geometry2)> = others
+        .iter()
+        .filter_map(|p| p.plan.map(|plan| (p.id, plan.geometry())))
+        .collect();
     let (result, taken) = match plan.geometry() {
         Geometry2::Line(line) => {
-            let (ids, lines): (Vec<EntityId>, Vec<Line>) = others
+            let (ids, lines): (Vec<EntityId>, Vec<Line>) = curves
                 .iter()
-                .filter_map(|(id, p)| match p.geometry() {
-                    Geometry2::Line(l) => Some((*id, l)),
+                .filter_map(|&(id, g)| match g {
+                    Geometry2::Line(l) => Some((id, l)),
                     _ => None,
                 })
                 .unzip();
@@ -1153,10 +1186,10 @@ fn join_one(
             (Geometry2::Line(joined), taken)
         }
         Geometry2::Arc(arc) => {
-            let (ids, arcs): (Vec<EntityId>, Vec<Arc>) = others
+            let (ids, arcs): (Vec<EntityId>, Vec<Arc>) = curves
                 .iter()
-                .filter_map(|(id, p)| match p.geometry() {
-                    Geometry2::Arc(a) => Some((*id, a)),
+                .filter_map(|&(id, g)| match g {
+                    Geometry2::Arc(a) => Some((id, a)),
                     _ => None,
                 })
                 .unzip();
@@ -1166,31 +1199,90 @@ fn join_one(
         Geometry2::Circle(_) => return None,
     };
     (!taken.is_empty()).then_some(Join {
-        source,
-        plan,
-        result,
+        source: source.id,
+        made: Made::Curve(plan, result),
         erased: taken,
     })
 }
 
-/// Whether two curves lie at one elevation: only those join.
-fn same_elevation(a: PlanGeometry, b: PlanGeometry, tol: Tolerance) -> bool {
-    (a.elevation() - b.elevation()).abs() <= tol.linear()
+/// `first` with the curves of `others` whose ends touch chained on, as a
+/// polyline; None when none touches.
+fn join_chain(first: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
+    let paths: Vec<JoinPath> = others.iter().map(|p| p.path.clone()).collect();
+    let chain = chain_paths(&first.path, &paths, tol);
+    if chain.taken.is_empty() {
+        return None;
+    }
+    let erased = chain.taken.iter().map(|&i| others[i].id).collect();
+    Some(Join {
+        source: first.id,
+        made: Made::Polyline(chain, first.height),
+        erased,
+    })
 }
 
-/// `curves` split by elevation, each level in selection order.
-fn by_elevation(
-    curves: &[(EntityId, PlanGeometry)],
-    tol: Tolerance,
-) -> Vec<Vec<(EntityId, PlanGeometry)>> {
-    let mut levels: Vec<Vec<(EntityId, PlanGeometry)>> = Vec::new();
-    for &curve in curves {
+/// JOIN many at once on one level: chains of touching ends, in selection
+/// order, each from its first (collinear lines alone stay a line, arcs of
+/// one circle alone an arc); then the lines and arcs left grouped as with
+/// a source, gaps filled.
+fn join_many(level: &[Piece], tol: Tolerance) -> Vec<Join> {
+    let mut free = vec![true; level.len()];
+    let mut joins = Vec::new();
+    for seed in 0..level.len() {
+        if !free[seed] {
+            continue;
+        }
+        let rest: Vec<usize> = (0..level.len()).filter(|&i| i != seed && free[i]).collect();
+        let others: Vec<Piece> = rest.iter().map(|&i| level[i].clone()).collect();
+        let Some(chained) = join_chain(&level[seed], &others, tol) else {
+            continue;
+        };
+        let Made::Polyline(chain, _) = &chained.made else {
+            unreachable!("a chain")
+        };
+        let members: Vec<Piece> = chain.taken.iter().map(|&k| others[k].clone()).collect();
+        for &k in &chain.taken {
+            free[rest[k]] = false;
+        }
+        free[seed] = false;
+        // All collinear lines stay a line; all arcs of one circle an arc, or
+        // the circle when they close it.
+        let alike =
+            join_curves(&level[seed], &members, tol).filter(|j| j.erased.len() == members.len());
+        joins.push(alike.unwrap_or(chained));
+    }
+    let left: Vec<Piece> = (0..level.len())
+        .filter(|&i| free[i] && level[i].plan.is_some())
+        .map(|i| level[i].clone())
+        .collect();
+    let curves: Vec<Geometry2> = left
+        .iter()
+        .filter_map(|p| p.plan)
+        .map(|p| p.geometry())
+        .collect();
+    for group in join_groups(&curves, tol) {
+        let (first, rest) = group.split_first().expect("a group has two");
+        let others: Vec<Piece> = rest.iter().map(|&i| left[i].clone()).collect();
+        joins.extend(join_curves(&left[*first], &others, tol));
+    }
+    joins
+}
+
+/// Whether two curves lie at one height: only those join.
+fn same_height(a: &Piece, b: &Piece, tol: Tolerance) -> bool {
+    (a.height - b.height).abs() <= tol.linear()
+}
+
+/// `pieces` split by height, each level in selection order.
+fn by_height(pieces: &[Piece], tol: Tolerance) -> Vec<Vec<Piece>> {
+    let mut levels: Vec<Vec<Piece>> = Vec::new();
+    for piece in pieces {
         match levels
             .iter_mut()
-            .find(|level| same_elevation(level[0].1, curve.1, tol))
+            .find(|level| same_height(&level[0], piece, tol))
         {
-            Some(level) => level.push(curve),
-            None => levels.push(vec![curve]),
+            Some(level) => level.push(piece.clone()),
+            None => levels.push(vec![piece.clone()]),
         }
     }
     levels
