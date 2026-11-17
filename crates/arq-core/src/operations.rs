@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 
 use arq_document::{
     BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Combined, Currencies,
-    Document, DocumentError, Entity, EntityId, Extruded, LayerId, PlanGeometry, PolylineStyle,
-    Revolved,
+    Document, DocumentError, Entity, EntityId, Extruded, LayerId, MatchSettings, PlanGeometry,
+    PolylineStyle, Revolved,
 };
 use arq_geometry::{
     Arc, Chain, Circle, CrossingArea, Geometry2, GeometryError, JoinPath, Line, Point2, Point3,
@@ -591,6 +591,44 @@ impl CadDocument {
         Ok((outcome, changes))
     }
 
+    /// Gives the entities `targets` the properties of entity `source` that
+    /// `settings` names (MATCHPROP, as AutoCAD's), in one undo step:
+    /// color, layer, linetype, linetype scale, lineweight, transparency, the
+    /// thickness when both have one, a polyline's uniform width and its
+    /// linetype generation. Targets on a locked layer are left and counted;
+    /// the source may be on one. When nothing changes, no undo step is made.
+    pub fn match_properties(
+        &mut self,
+        source: EntityId,
+        targets: &[EntityId],
+        settings: MatchSettings,
+    ) -> CadResult<(Matched, ChangeSet)> {
+        let doc = self.document();
+        doc.entity(source).ok_or(CadError::EntityNotFound(source))?;
+        let mut seen = std::collections::HashSet::new();
+        let mut editable = Vec::new();
+        let mut locked = 0;
+        for &id in targets {
+            if id == source || !seen.insert(id) {
+                continue;
+            }
+            let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            if check_unlocked(doc, &e).is_err() {
+                locked += 1;
+            } else {
+                editable.push(id);
+            }
+        }
+        let (changed, changes) = self.transact("MATCHPROP", |doc| {
+            let mut changed = 0;
+            for &id in &editable {
+                changed += usize::from(doc.match_properties(source, id, settings)?);
+            }
+            Ok(changed)
+        })?;
+        Ok((Matched { changed, locked }, changes))
+    }
+
     /// Turns arc `id` into its full circle (JOIN's Close), every property
     /// kept; returns the circle's id. Refused for anything but an arc drawn
     /// in plan, and on a locked layer.
@@ -1111,6 +1149,15 @@ fn check_transformable(e: &Entity) -> CadResult<()> {
         e.id(),
         e.kind()
     )))
+}
+
+/// What MATCHPROP did ([`CadDocument::match_properties`]).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Matched {
+    /// How many targets changed.
+    pub changed: usize,
+    /// How many were on a locked layer, and left.
+    pub locked: usize,
 }
 
 /// What JOIN did ([`CadDocument::join_entities`]).

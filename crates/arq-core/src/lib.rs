@@ -78,8 +78,8 @@ pub use arq_document::ChangeSet as CadChangeSet;
 pub use arq_document::{
     BlockData, BlockDefinition, BlockInfo, BlockObjects, ClashChoice, Color, Currencies, Currency,
     Document, DrawItem, Entity, EntityId, FileFormat, Grip, GripKind, Layer, LayerId,
-    MassProperties, MeasureError, Money, PlanGeometry, PolylineStyle, Shape, SolidMeasures,
-    SpaceItem, TextData, Unmeasured,
+    MassProperties, MatchSettings, MeasureError, Money, PlanGeometry, PolylineStyle, Shape,
+    SolidMeasures, SpaceItem, TextData, Unmeasured,
 };
 pub use arq_document::{
     Combination, Combined, Extruded, KeptView, ProfileError, Revolved, Unextruded, Unrevolved,
@@ -88,7 +88,7 @@ pub use arq_document::{
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
 pub use error::{CadError, CadResult};
 pub use history::{CadDocument, Snapshot};
-pub use operations::Joined;
+pub use operations::{Joined, Matched};
 
 /// Version of the CAD core, taken from the workspace version.
 pub fn version() -> &'static str {

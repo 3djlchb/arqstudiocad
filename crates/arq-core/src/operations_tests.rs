@@ -1948,3 +1948,69 @@ fn join_many_at_once_closes_touching_arcs_of_one_circle_into_it() {
     };
     assert_eq!(cad.document().entity(circle).unwrap().kind(), "CIRCLE");
 }
+
+#[test]
+fn matchprop_gives_the_source_properties_in_one_step_and_skips_locked_targets() {
+    let mut cad = CadDocument::new();
+    let (walls, _) = cad.create_layer("A-WALLS").unwrap();
+    let (source, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    cad.set_entity_layer(&[source], walls).unwrap();
+    cad.set_entity_color(&[source], Color::Index(1)).unwrap();
+    let (a, _) = cad.add_circle(p(5.0, 5.0), 1.0).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 3.0), p(1.0, 3.0)).unwrap();
+    let (locked_layer, _) = cad.create_layer("LOCKED").unwrap();
+    let (c, _) = cad.add_line(p(0.0, 6.0), p(1.0, 6.0)).unwrap();
+    cad.set_entity_layer(&[c], locked_layer).unwrap();
+    cad.set_layer_locked(locked_layer, true).unwrap();
+    // The source may be locked too: it is only read.
+    cad.set_layer_locked(walls, true).unwrap();
+    let steps = cad.undo_names().len();
+
+    let (matched, changes) = cad
+        .match_properties(source, &[a, b, c, source, a], MatchSettings::ALL)
+        .unwrap();
+    assert_eq!(
+        matched,
+        Matched {
+            changed: 2,
+            locked: 1
+        }
+    );
+    let mut modified = changes.modified().to_vec();
+    modified.sort();
+    assert_eq!(modified, {
+        let mut m = vec![a, b];
+        m.sort();
+        m
+    });
+    for id in [a, b] {
+        let e = cad.document().entity(id).unwrap();
+        assert_eq!((e.layer(), e.color()), ("A-WALLS", Color::Index(1)));
+    }
+    assert_ne!(cad.document().entity(c).unwrap().layer(), "A-WALLS");
+    assert_eq!(cad.undo_names().len(), steps + 1);
+    assert_eq!(cad.undo_name(), Some("MATCHPROP"));
+
+    // Unlocked again, so that `a` and `b` are matched, not skipped.
+    cad.set_layer_locked(walls, false).unwrap();
+    let steps = cad.undo_names().len();
+    let (again, _) = cad
+        .match_properties(source, &[a, b], MatchSettings::ALL)
+        .unwrap();
+    assert_eq!(
+        again,
+        Matched {
+            changed: 0,
+            locked: 0
+        }
+    );
+    assert_eq!(cad.undo_names().len(), steps, "nothing changed: no step");
+
+    cad.undo().unwrap(); // the unlocking
+    cad.undo().unwrap();
+    assert_ne!(cad.document().entity(a).unwrap().layer(), "A-WALLS");
+    assert!(
+        cad.match_properties(999_999, &[a], MatchSettings::ALL)
+            .is_err()
+    );
+}
