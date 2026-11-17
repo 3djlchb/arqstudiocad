@@ -195,6 +195,7 @@ def test_ribbon_tabs_groups_and_buttons(qtbot: QtBot) -> None:
         "Modify",
         "History",
         "Layers",
+        "Properties",
         "Block",
         "Text",
         "Modeling",

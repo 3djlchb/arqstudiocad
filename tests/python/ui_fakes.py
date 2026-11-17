@@ -56,6 +56,7 @@ class QuietUi:
     accept_losses: bool = False
     #: What the multiline text window returns (None: cancelled).
     text_answer: str | None = None
+    match_settings_answer: frozenset[str] | None = None
     #: The block INSERT's window chooses (None: cancelled).
     block_answer: str | None = None
     #: The clash dialog's choices (None: cancelled); the clashes it was shown.
@@ -200,6 +201,10 @@ class QuietUi:
     def edit_text(self, title: str, text: str = "") -> str | None:
         self.asked.append(f"text {title}: {text}")
         return self.text_answer
+
+    def choose_match_settings(self, chosen: frozenset[str]) -> frozenset[str] | None:
+        self.asked.append(f"match settings {' '.join(sorted(chosen))}")
+        return self.match_settings_answer
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.zooms if self.view_for is None else self.view_for(document)

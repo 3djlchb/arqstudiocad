@@ -146,6 +146,7 @@ CAD = Discipline(
                 ),
                 RibbonGroup("history", lambda: tr("History"), ("UNDO", "REDO")),
                 RibbonGroup("layers", lambda: tr("Layers"), ("LAYER",)),
+                RibbonGroup("properties", lambda: tr("Properties"), ("MATCHPROP",)),
             ),
         ),
         # Blocks, as AutoCAD's Insert tab (ADR 0023 D4).
@@ -254,7 +255,7 @@ CAD = Discipline(
                 "EXPLODE",
             ),
         ),
-        Toolbar("layers", lambda: tr("Layers"), ("LAYER",)),
+        Toolbar("layers", lambda: tr("Layers"), ("LAYER", "MATCHPROP")),
     ),
 )
 

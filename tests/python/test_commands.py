@@ -197,6 +197,9 @@ class FakeUi:
     def edit_text(self, title: str, text: str = "") -> str | None:
         return None
 
+    def choose_match_settings(self, chosen: frozenset[str]) -> frozenset[str] | None:
+        return None
+
     def view(self, document: CadDocument) -> ViewControl | None:
         return self.the_view
 
