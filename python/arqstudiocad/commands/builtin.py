@@ -316,9 +316,9 @@ def zoom(ctx: CommandContext) -> CommandScript:
 def id_(ctx: CommandContext) -> CommandScript:
     """IDPOINT, AutoCAD's ID: the coordinates of a point, typed or picked."""
     ctx.document()
-    point = yield ctx.point(tr("Specify point"))
-    x, y = point
-    ctx.message(f"X = {x:.4f}     Y = {y:.4f}")
+    point = yield ctx.point(tr("Specify point"), spatial=True)
+    x, y, z = point
+    ctx.message(tr("X = {x:.4f}     Y = {y:.4f}     Z = {z:.4f}", x=x, y=y, z=z))
 
 
 def dist(ctx: CommandContext) -> CommandScript:

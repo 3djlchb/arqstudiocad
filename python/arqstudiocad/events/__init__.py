@@ -207,6 +207,7 @@ class CommandPrompt(Event):
     entity: bool = False
     multiple: bool = False
     polygon: tuple[tuple[float, float], ...] = ()
+    spatial: bool = False
 
 
 @dataclass(frozen=True, slots=True)

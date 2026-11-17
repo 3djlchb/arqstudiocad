@@ -1003,7 +1003,9 @@ class MainWindow(QMainWindow):
         for document_id, viewport in self.viewports.items():
             here = active is not None and document_id == active.id
             if event.point and here:
-                viewport.ask_point(event.base, event.drag, polygon=event.polygon)
+                viewport.ask_point(
+                    event.base, event.drag, polygon=event.polygon, spatial=event.spatial
+                )
             elif event.entity and here:
                 viewport.ask_entity(multiple=event.multiple)
             else:

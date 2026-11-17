@@ -164,3 +164,12 @@ Each choice marked *(maintainer)* was made by the maintainer on
   they lie in 3D; the plan shows them as now.
 - Selection and zoom gain a projection; snaps and grips keep their plan
   code until the user coordinate systems arrive.
+
+## Read-only ID XYZ exception (maintainer, 2026-11-17)
+
+The maintainer approved exact XYZ identification for IDPOINT, including
+isometric and edge-on views. Its dedicated spatial prompt can capture
+compatible exact model references (END/MID/CEN/QUA) without enabling 3D
+editing, editable UCS, or general object snaps in other commands. Free
+clicks keep D4's world-XY rule and edge-on refusal. Details and tests:
+[IDPOINT XYZ](../../design/id-point-xyz.md).
