@@ -62,3 +62,10 @@ Every case reads back the same from our DWG and from our DXF.
 **OFFSET of an open polyline (O5).** ProgeCAD leaves a bulge on the open polyline's last vertex, which no segment uses; ours writes 0. The geometry is the same.
 
 **The drawings are not committed:** the two tools reproduce them.
+
+## To run: JOIN on polylines (J3–J7)
+
+Added to both tools on 2026-11-17 with JOIN's second delivery: a constant
+width meeting a line, two widths, a rectangle of lines many at once, a
+branch, and a line with an arc. What ours gives, and what to confirm, is in
+[JOIN's design](../design/join-command.md#windows-comparison-of-the-polylines-to-run).

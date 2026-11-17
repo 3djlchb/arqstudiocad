@@ -4,8 +4,8 @@ use acadrust::entities::LwPolyline;
 use acadrust::types::{Transform, Vector2, Vector3};
 use acadrust::{EntityType, Handle};
 use arq_geometry::{
-    Bounds2, CornerCut, CrossingArea, Geometry2, GeometryError, Point2, Tolerance, Transform2,
-    break_polyline, cut_polyline_corners, extend_polyline, offset_polyline,
+    Bounds2, Chain, CornerCut, CrossingArea, Geometry2, GeometryError, JoinPath, Point2, Tolerance,
+    Transform2, break_polyline, cut_polyline_corners, extend_polyline, offset_polyline,
     offset_polyline_through, shared_vertex, trim_polyline,
 };
 
@@ -722,6 +722,136 @@ impl Document {
         let new = self.add_copy(EntityType::Circle(made), Handle::NULL)?;
         self.delete_entity(id)?;
         Ok(new)
+    }
+
+    /// A line, an arc or an open lightweight polyline drawn in plan, as
+    /// JOIN chains it: its path in world plan coordinates, each segment's
+    /// widths (a constant width on every segment), and its height in the
+    /// world. Refused for anything else, a closed polyline included.
+    pub fn join_path(&self, id: EntityId) -> DocumentResult<(JoinPath, f64)> {
+        let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        match (e.kind(), e.plan()) {
+            ("LINE", Some(plan)) | ("ARC", Some(plan)) => {
+                let path = match plan.geometry() {
+                    Geometry2::Line(line) => JoinPath::line(line),
+                    Geometry2::Arc(arc) => JoinPath::arc(arc),
+                    Geometry2::Circle(_) => unreachable!("a line or an arc"),
+                };
+                return Ok((path, plan.elevation()));
+            }
+            ("LWPOLYLINE", _) => {}
+            (kind, _) => return Err(DocumentError::NotEditable { id, kind }),
+        }
+        let WorldPolyline {
+            vertices,
+            closed,
+            normal,
+            elevation,
+        } = self.polyline_in_world(id)?;
+        let Some(EntityType::LwPolyline(polyline)) = self.cad().get_entity(handle(id)) else {
+            unreachable!("polyline_in_world read a polyline")
+        };
+        if closed || vertices.len() < 2 {
+            return Err(DocumentError::NotEditable {
+                id,
+                kind: "closed LWPOLYLINE",
+            });
+        }
+        let constant = polyline.constant_width;
+        let widths = polyline.vertices[..vertices.len() - 1]
+            .iter()
+            .map(|v| {
+                if constant > 0.0 {
+                    (constant, constant)
+                } else {
+                    (v.start_width, v.end_width)
+                }
+            })
+            .collect();
+        let mut vertices = vertices;
+        let last = vertices.len() - 1;
+        vertices[last].1 = 0.0;
+        let height = normal.map_point(0.0, 0.0, elevation).2;
+        Ok((JoinPath { vertices, widths }, height))
+    }
+
+    /// Writes `chain`, at world height `height`, as JOIN's polyline: into
+    /// lightweight polyline `like` itself, in its own plane, every property
+    /// kept; or, when `like` is a line or an arc, into a new polyline with
+    /// every common property and the thickness of `like`. Each segment
+    /// keeps its widths; a constant width stays only when every segment
+    /// still has it. Returns the polyline's id.
+    pub fn write_joined_polyline(
+        &mut self,
+        like: EntityId,
+        chain: &Chain,
+        height: f64,
+    ) -> DocumentResult<EntityId> {
+        let raw = self
+            .cad()
+            .get_entity(handle(like))
+            .ok_or(DocumentError::EntityNotFound(like))?;
+        let (id, normal) = match raw {
+            EntityType::LwPolyline(polyline) => {
+                let normal = plan_normal(polyline.normal.x, polyline.normal.y, polyline.normal.z)
+                    .ok_or(DocumentError::NotEditable {
+                    id: like,
+                    kind: "LWPOLYLINE",
+                })?;
+                (like, normal)
+            }
+            EntityType::Line(_) | EntityType::Arc(_) => {
+                let (common, thickness) = match raw {
+                    EntityType::Line(line) => (line.common.clone(), line.thickness),
+                    EntityType::Arc(arc) => (arc.common.clone(), arc.thickness),
+                    _ => unreachable!(),
+                };
+                let mut made = LwPolyline::new();
+                made.common = common;
+                made.thickness = thickness;
+                made.elevation = height;
+                made.normal = Vector3::new(0.0, 0.0, 1.0);
+                (
+                    self.add_copy(EntityType::LwPolyline(made), Handle::NULL)?,
+                    PlanNormal::Up,
+                )
+            }
+            other => {
+                return Err(DocumentError::NotEditable {
+                    id: like,
+                    kind: other.as_entity().entity_type(),
+                });
+            }
+        };
+        let turn = if normal == PlanNormal::Down {
+            -1.0
+        } else {
+            1.0
+        };
+        let elevation = normal.map_point(0.0, 0.0, height).2;
+        let widths = &chain.path.widths;
+        let Some(EntityType::LwPolyline(polyline)) = self.cad_mut().get_entity_mut(handle(id))
+        else {
+            unreachable!("a polyline")
+        };
+        let constant = polyline.constant_width;
+        let keep_constant = constant > 0.0 && widths.iter().all(|&w| w == (constant, constant));
+        polyline.constant_width = if keep_constant { constant } else { 0.0 };
+        polyline.elevation = elevation;
+        polyline.vertices.clear();
+        for (k, &(p, bulge)) in chain.path.vertices.iter().enumerate() {
+            let (x, y, _) = normal.map_point(p.x(), p.y(), elevation);
+            polyline.add_point_with_bulge(Vector2::new(x, y), bulge * turn);
+            let (start, end) = widths.get(k).copied().unwrap_or((0.0, 0.0));
+            if !keep_constant {
+                let vertex = polyline.vertices.last_mut().expect("just added");
+                vertex.start_width = start;
+                vertex.end_width = end;
+            }
+        }
+        polyline.is_closed = chain.closed;
+        self.sync_entity(id);
+        Ok(id)
     }
 
     /// Adds a copy of lightweight polyline `id` offset `distance` toward
@@ -1706,6 +1836,10 @@ mod stretch_tests;
 #[cfg(test)]
 #[path = "break_polyline_tests.rs"]
 mod break_polyline_tests;
+
+#[cfg(test)]
+#[path = "join_polyline_tests.rs"]
+mod join_polyline_tests;
 
 #[cfg(test)]
 #[path = "dxf_width_tests.rs"]

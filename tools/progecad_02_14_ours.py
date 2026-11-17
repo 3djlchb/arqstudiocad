@@ -158,6 +158,33 @@ def j2(doc: CadDocument) -> None:
     doc.join_entities(source, [other])
 
 
+def j3(doc: CadDocument) -> None:
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.5)[0]
+    doc.join_entities(source, [line(doc, (4, 0), (4, 3))])
+
+
+def j4(doc: CadDocument) -> None:
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.2)[0]
+    other = doc.add_polyline([((8.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.8)[0]
+    doc.join_entities(source, [other])
+
+
+def j5(doc: CadDocument) -> None:
+    sides = [((0, 0), (4, 0)), ((4, 0), (4, 3)), ((0, 3), (4, 3)), ((0, 0), (0, 3))]
+    doc.join_entities(None, [line(doc, a, b) for a, b in sides])
+
+
+def j6(doc: CadDocument) -> None:
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((1.0, 0.0), 0.0)])[0]
+    doc.join_entities(source, [line(doc, (1, 0), (2, 1)), line(doc, (1, 0), (2, -1))])
+
+
+def j7(doc: CadDocument) -> None:
+    first = line(doc, (0, 0), (4, 0))
+    other = doc.add_arc((4, 2), 2.0, math.radians(270), math.radians(90))[0]
+    doc.join_entities(None, [first, other])
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -181,6 +208,11 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("B4-break-open-polyline", b4),
     ("J1-join-collinear-lines", j1),
     ("J2-join-arcs", j2),
+    ("J3-join-polyline-width-line", j3),
+    ("J4-join-polylines-two-widths", j4),
+    ("J5-join-rectangle-at-once", j5),
+    ("J6-join-polyline-branch", j6),
+    ("J7-join-line-arc-at-once", j7),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),
