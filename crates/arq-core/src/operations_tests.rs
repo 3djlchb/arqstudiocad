@@ -2529,3 +2529,60 @@ fn stretch_moves_an_ellipse_whole_as_a_circle_or_an_arc() {
         "{a:?} {b:?}"
     );
 }
+
+#[test]
+fn stretch_partial_arc_is_atomic_indexed_and_undoable_with_matching_preview() {
+    use arq_geometry::{Bounds2, SelectionPolygon};
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, -10.0), p(2.0, -10.0)).unwrap();
+    let (arc, _) = cad.add_arc(p(0.0, 0.0), 5.0, 0.0, FRAC_PI_2).unwrap();
+    cad.set_entity_color(&[arc], Color::Index(4)).unwrap();
+    let before = geometry(&cad, arc);
+    let box_ = Bounds2::new(p(-1.0, 4.0), p(1.0, 6.0));
+    let poly = SelectionPolygon::new(
+        vec![p(-1.0, 4.0), p(1.0, 4.0), p(1.0, 6.0), p(-1.0, 6.0)],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    let n = cad.undo_names().len();
+    let preview = cad
+        .stretch_preview(&[arc], v(3.0, 2.0), &[(arc, box_)], &[(arc, poly.clone())])
+        .unwrap();
+    assert_eq!(cad.undo_names().len(), n);
+    assert_eq!(geometry(&cad, arc), before);
+    let changes = cad
+        .stretch_entities_with_polygons(
+            &[line, arc, arc],
+            v(3.0, 2.0),
+            &[(arc, box_)],
+            &[(arc, poly)],
+        )
+        .unwrap();
+    assert_eq!(changes.modified(), [line, arc]);
+    assert!(changes.created().is_empty() && changes.deleted().is_empty());
+    let Geometry2::Arc(after) = geometry(&cad, arc) else {
+        panic!()
+    };
+    assert!(after.end_point().approx_eq(p(3.0, 7.0), Tolerance::DEFAULT));
+    assert_eq!(preview, vec![arq_document::Shape::Arc(after)]);
+    assert!(
+        cad.query_entities(Bounds2::new(p(2.9, 6.9), p(3.1, 7.1)))
+            .contains(&arc)
+    );
+    assert_eq!(cad.undo_names().len(), n + 1);
+    cad.undo().unwrap();
+    assert_eq!(geometry(&cad, arc), before);
+    assert_eq!(line_ends(&cad, line), (p(0.0, -10.0), p(2.0, -10.0)));
+    cad.redo().unwrap();
+    assert_eq!(geometry(&cad, arc), Geometry2::Arc(after));
+    cad.undo().unwrap();
+    let n = cad.undo_names().len();
+    assert!(
+        cad.stretch_entities(&[line, arc], v(5.0, -5.0), &[(arc, box_)])
+            .is_err()
+    );
+    assert_eq!(geometry(&cad, arc), before);
+    assert_eq!(line_ends(&cad, line), (p(0.0, -10.0), p(2.0, -10.0)));
+    assert_eq!(cad.undo_names().len(), n);
+    assert!(cad.redo_name().is_some());
+}

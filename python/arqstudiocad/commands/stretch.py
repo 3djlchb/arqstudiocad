@@ -1,4 +1,4 @@
-"""STRETCH (AutoCAD 2021): crossing-window line and polyline editing.
+"""STRETCH (AutoCAD 2021): crossing-window line, arc and polyline editing.
 
 Geometry and atomic edits belong to Rust. Selection provenance belongs to
 Session so noun-verb and verb-noun use the same crossing windows.
@@ -12,6 +12,7 @@ from arqstudiocad.commands import (
     Option,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
+from arqstudiocad.core import InvalidGeometryError
 from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 
@@ -50,10 +51,16 @@ def stretch(ctx: CommandContext) -> CommandScript:
             drag=preview,
         )
         offset = base if second is None else (second[0] - base[0], second[1] - base[1])
-    ctx.session.report(
-        document,
-        document.stretch_entities(ids, offset, windows, polygons),
-    )
+    try:
+        changes = document.stretch_entities(ids, offset, windows, polygons)
+    except InvalidGeometryError:
+        raise CommandCancelledError(
+            tr(
+                "STRETCH cannot collapse endpoints or create invalid geometry. "
+                "No objects were changed."
+            )
+        ) from None
+    ctx.session.report(document, changes)
     ctx.remembered[DISPLACEMENT] = offset
     done_selecting(ctx, document, ids)
 

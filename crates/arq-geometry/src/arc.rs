@@ -159,6 +159,52 @@ impl Arc {
         Ok((Self::new(center, radius, from, to)?, backward))
     }
 
+    /// Replace the endpoints while retaining this arc's sagitta and its
+    /// counterclockwise direction (the approved partial STRETCH rule).
+    /// A chord within `tol.linear()` of zero is refused. Calculations use
+    /// a local frame and finite intermediates; unrepresentable endpoints
+    /// are refused rather than silently moving them.
+    pub fn with_endpoints_preserving_sagitta(
+        self,
+        start: Point2,
+        end: Point2,
+        tol: Tolerance,
+    ) -> GeometryResult<Self> {
+        let chord = Vector2::new(end.x() - start.x(), end.y() - start.y())?;
+        let length = chord.length();
+        if length <= tol.linear() {
+            return Err(GeometryError::ZeroLength);
+        }
+        if !length.is_finite() {
+            return Err(GeometryError::NonFinite { what: "arc chord" });
+        }
+        if start == self.start_point() && end == self.end_point() {
+            return Ok(self);
+        }
+        // 2 r sin²(theta/4) avoids cancellation for a shallow arc. The
+        // perpendicular offset changes sign when the result is a major arc.
+        let sine = (self.sweep() / 4.0).sin();
+        let height = (self.radius * sine) * (2.0 * sine);
+        if !(height.is_finite() && height > 0.0) {
+            return Err(GeometryError::InvalidRadius);
+        }
+        let half = length / 2.0;
+        let off = (half / 2.0) * (half / height) - height / 2.0;
+        let x = chord.x() / 2.0 - chord.y() / length * off;
+        let y = chord.y() / 2.0 + chord.x() / length * off;
+        let center = Point2::new(start.x() + x, start.y() + y)?;
+        let radius = half.hypot(off);
+        let first = (-y).atan2(-x);
+        let last = (chord.y() - y).atan2(chord.x() - x);
+        let result = Self::new(center, radius, first, last)?;
+        if !(result.start_point().approx_eq(start, tol) && result.end_point().approx_eq(end, tol)) {
+            return Err(GeometryError::OutOfRange {
+                what: "stretched arc endpoints",
+            });
+        }
+        Ok(result)
+    }
+
     /// Center point.
     pub fn center(self) -> Point2 {
         self.center
@@ -523,5 +569,165 @@ mod tests {
         let arc = Arc::from_three_points(a, b, c, TOL).unwrap();
         assert!(arc.center().distance_to(p(o.0, o.1)) < 1e-8);
         assert!((arc.radius() - 10.0).abs() < 1e-8);
+    }
+}
+
+#[cfg(test)]
+mod stretch_tests {
+    use super::*;
+    use std::f64::consts::PI;
+
+    fn p(x: f64, y: f64) -> Point2 {
+        Point2::new(x, y).unwrap()
+    }
+
+    #[test]
+    fn stretch_arc_matches_six_independent_native_measurements() {
+        // ProgeCAD 2026: docs/testing/stretch-arcs-windows.md, A1-A4b.
+        // Expected values are recorded measurements, not reconstructed here.
+        for (sweep, move_start, cx, cy, radius, first, last) in [
+            (
+                90.0_f64,
+                false,
+                0.3542858741,
+                2.4583673926,
+                5.2560660172,
+                332.1135992961_f64,
+                59.7771925057_f64,
+            ),
+            (
+                90.0,
+                true,
+                2.0692751777,
+                -1.6485995261,
+                6.9631727984,
+                31.5999528450,
+                107.2879567159,
+            ),
+            (
+                180.0,
+                false,
+                1.8227973253,
+                2.1297906385,
+                3.825,
+                326.1646634679,
+                181.9445447302,
+            ),
+            (
+                180.0,
+                true,
+                1.7775043613,
+                -0.8037783482,
+                6.825,
+                24.2557288003,
+                173.2365957248,
+            ),
+            (
+                270.0,
+                false,
+                0.6074094784,
+                0.7617270144,
+                4.4581475452,
+                350.1620716040,
+                302.4577933440,
+            ),
+            (
+                270.0,
+                true,
+                2.2793799644,
+                0.4664228978,
+                5.9226136393,
+                15.0069296776,
+                247.3649206538,
+            ),
+        ] {
+            let before = Arc::new(p(0.0, 0.0), 5.0, 0.0, sweep.to_radians()).unwrap();
+            let shift = Vector2::new(3.0, 2.0).unwrap();
+            let start = before.start_point() + if move_start { shift } else { Vector2::ZERO };
+            let end = before.end_point() + if move_start { Vector2::ZERO } else { shift };
+            let after = before
+                .with_endpoints_preserving_sagitta(start, end, Tolerance::DEFAULT)
+                .unwrap();
+            assert!(
+                after.center().distance_to(p(cx, cy)) < 1e-10,
+                "{sweep} {move_start}: {after:?}"
+            );
+            assert!((after.radius() - radius).abs() < 1e-10);
+            assert!((after.start_angle() - first.to_radians()).abs() < 2e-12);
+            assert!((after.end_angle() - last.to_radians()).abs() < 2e-12);
+            assert!(after.start_point().approx_eq(start, Tolerance::DEFAULT));
+            assert!(after.end_point().approx_eq(end, Tolerance::DEFAULT));
+        }
+    }
+
+    #[test]
+    fn stretch_arc_retains_sagitta_across_scales_and_survey_coordinates() {
+        for scale in [1e-4, 1.0, 1e4] {
+            for (x, y) in [(0.0, 0.0), (1e6, 2e6)] {
+                for sweep in [90.0_f64, 180.0, 270.0, 359.0] {
+                    let old = Arc::new(p(x, y), 5.0 * scale, 0.0, sweep.to_radians()).unwrap();
+                    let end = p(
+                        old.end_point().x() + 3.0 * scale,
+                        old.end_point().y() + 2.0 * scale,
+                    );
+                    let new = old
+                        .with_endpoints_preserving_sagitta(
+                            old.start_point(),
+                            end,
+                            Tolerance::DEFAULT,
+                        )
+                        .unwrap_or_else(|e| panic!("scale={scale} x={x} sweep={sweep}: {e}"));
+                    let height = |a: Arc| 2.0 * a.radius() * (a.sweep() / 4.0).sin().powi(2);
+                    assert!(
+                        (height(old) - height(new)).abs() < 1e-8 * scale.max(1.0),
+                        "{scale} {sweep}"
+                    );
+                    assert!(
+                        new.start_point()
+                            .approx_eq(old.start_point(), Tolerance::DEFAULT)
+                    );
+                    assert!(new.end_point().approx_eq(end, Tolerance::DEFAULT));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stretch_arc_refuses_collapsed_chords_and_nonfinite_intermediates() {
+        let old = Arc::new(p(0.0, 0.0), 5.0, 0.0, PI / 2.0).unwrap();
+        for end in [p(5.0, 0.0), p(5.0 + 1e-10, 0.0)] {
+            assert_eq!(
+                old.with_endpoints_preserving_sagitta(p(5.0, 0.0), end, Tolerance::DEFAULT),
+                Err(GeometryError::ZeroLength)
+            );
+        }
+        assert!(
+            old.with_endpoints_preserving_sagitta(
+                p(-1e308, 0.0),
+                p(1e308, 0.0),
+                Tolerance::DEFAULT
+            )
+            .is_err()
+        );
+        let shallow = Arc::new(p(0.0, 0.0), 5.0, 0.0, 1e-8).unwrap();
+        assert!(
+            shallow
+                .with_endpoints_preserving_sagitta(
+                    shallow.start_point(),
+                    p(3.0, 2.0),
+                    Tolerance::DEFAULT
+                )
+                .is_err(),
+            "do not accept endpoints that f64 cannot reproduce"
+        );
+        assert_eq!(
+            old.with_endpoints_preserving_sagitta(
+                old.start_point(),
+                old.end_point(),
+                Tolerance::DEFAULT
+            )
+            .unwrap(),
+            old
+        );
     }
 }
