@@ -188,3 +188,55 @@ fn a_point_at_a_distance_along_it_and_a_points_parameter() {
     assert!(near(arc.point_at(0.0), a) && near(arc.point_at(1.0), b));
     assert!(near(arc.point_at(0.5), arc.point_at_param(0.3 + 1.85)));
 }
+
+#[test]
+fn a_semi_axis_set_by_its_grip_keeps_the_other_and_swaps_when_longer() {
+    // Semi-axes 5 along x and 3 along y, about (1,2).
+    let e = Ellipse::new(p(1.0, 2.0), v(5.0, 0.0), 0.6, 0.0, 0.0).unwrap();
+    let longer = e.with_semi_axis(true, 8.0).unwrap();
+    assert_eq!(
+        (longer.major_axis(), longer.ratio()),
+        (v(8.0, 0.0), 3.0 / 8.0)
+    );
+    assert!(longer.is_full());
+    let rounder = e.with_semi_axis(false, 4.0).unwrap();
+    assert_eq!((rounder.major_axis(), rounder.ratio()), (v(5.0, 0.0), 0.8));
+    // The minor grown past the major: the major turns to y, 7 long, the
+    // other 5 along x.
+    let swapped = e.with_semi_axis(false, 7.0).unwrap();
+    assert!(near(p(1.0, 2.0) + swapped.major_axis(), p(1.0, 9.0)));
+    assert!((swapped.ratio() - 5.0 / 7.0).abs() < 1e-15);
+    // The major shrunk below the minor: the major is 3 along y now.
+    let shrunk = e.with_semi_axis(true, 2.0).unwrap();
+    assert!(near(p(1.0, 2.0) + shrunk.major_axis(), p(1.0, 5.0)));
+    assert!((shrunk.ratio() - 2.0 / 3.0).abs() < 1e-15);
+    assert!(e.with_semi_axis(true, 0.0).is_err());
+    assert!(e.with_semi_axis(true, f64::NAN).is_err());
+    // An arc keeps its place across a swap: its ends where they were, the
+    // new semi-axes taking them along.
+    let arc = Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.6, 0.3, 2.0).unwrap();
+    let swapped = arc.with_semi_axis(false, 7.0).unwrap();
+    let (a, b) = swapped.ends().unwrap();
+    let (x, y) = (0.3f64.cos() * 5.0, 0.3f64.sin() * 7.0);
+    assert!(near(a, p(x, y)), "{a:?}");
+    let (x, y) = (2.0f64.cos() * 5.0, 2.0f64.sin() * 7.0);
+    assert!(near(b, p(x, y)), "{b:?}");
+}
+
+#[test]
+fn an_arc_end_grip_slides_along_the_ellipse() {
+    let arc = Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.6, 0.0, FRAC_PI_2).unwrap();
+    // Toward (-10,0): the end at (-5,0), the start kept.
+    let longer = arc.with_end_at(false, p(-10.0, 0.0)).unwrap();
+    let (a, b) = longer.ends().unwrap();
+    assert!(near(a, p(5.0, 0.0)) && near(b, p(-5.0, 0.0)), "{a:?} {b:?}");
+    // The start toward (4,-1.8), a point on it: there.
+    let back = arc.with_end_at(true, p(4.0, -1.8)).unwrap();
+    let (a, b) = back.ends().unwrap();
+    assert!(near(a, p(4.0, -1.8)) && near(b, p(0.0, 3.0)), "{a:?} {b:?}");
+    // Onto the other end, from the center, or on a whole one: refused.
+    assert!(arc.with_end_at(false, p(10.0, 0.0)).is_err());
+    assert!(arc.with_end_at(false, p(0.0, 0.0)).is_err());
+    let whole = Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.6, 0.0, 0.0).unwrap();
+    assert!(whole.with_end_at(true, p(1.0, 1.0)).is_err());
+}

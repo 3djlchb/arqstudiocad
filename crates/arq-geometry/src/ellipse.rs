@@ -465,6 +465,61 @@ impl Ellipse {
         t
     }
 
+    /// This ellipse with one semi-axis, the major one when `major`, set to
+    /// `length` (its grip stretched): its direction, the other semi-axis
+    /// and the arc's ends where they were on it kept. When it grows longer
+    /// than the other it becomes the major one, the parameters turning a
+    /// quarter so the arc keeps its place.
+    pub fn with_semi_axis(self, major: bool, length: f64) -> GeometryResult<Self> {
+        if !length.is_finite() {
+            return Err(GeometryError::NonFinite { what: "Ellipse" });
+        }
+        if length <= 0.0 {
+            return Err(GeometryError::ZeroLength);
+        }
+        let (a, b) = (self.major.length(), self.major.length() * self.ratio);
+        let (u, w) = (self.major / a, self.minor_axis() / b);
+        let (along_u, along_w) = if major { (length, b) } else { (a, length) };
+        // A whole ellipse stays whole (equal parameters).
+        let (start, end) = if self.is_full() {
+            (0.0, 0.0)
+        } else {
+            (self.start, self.start + self.sweep)
+        };
+        if along_u >= along_w {
+            Self::new(self.center, u * along_u, along_w / along_u, start, end)
+        } else {
+            // The longer one now lies along w, a quarter on from u: a point
+            // at parameter t is at t - π/2 of the new frame.
+            let (start, end) = (start - FRAC_PI_2, end - FRAC_PI_2);
+            Self::new(self.center, w * along_w, along_u / along_w, start, end)
+        }
+    }
+
+    /// This elliptical arc with its start (when `start`) or its end moved
+    /// to the point of the ellipse seen from the center toward `p`, in the
+    /// ellipse's own frame (its end grip stretched); the ellipse kept.
+    /// Refused for the whole ellipse and when the arc would vanish.
+    pub fn with_end_at(self, start: bool, p: Point2) -> GeometryResult<Self> {
+        if self.is_full() {
+            return Err(GeometryError::OutOfRange { what: "arc end" });
+        }
+        let (x, y) = self.local(p);
+        if x == 0.0 && y == 0.0 {
+            return Err(GeometryError::ZeroVector);
+        }
+        let t = y.atan2(x);
+        let (from, to) = if start {
+            (t, self.start + self.sweep)
+        } else {
+            (self.start, t)
+        };
+        if angle::normalize(from) == angle::normalize(to) {
+            return Err(GeometryError::ZeroSweep);
+        }
+        Self::new(self.center, self.major, self.ratio, from, to)
+    }
+
     /// Its image by `t`, a similarity (a move, a turn, a uniform scale or a
     /// mirror): a mirror reverses its direction, so the parameters change
     /// sign to keep it counterclockwise.
