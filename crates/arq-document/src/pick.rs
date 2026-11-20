@@ -462,6 +462,15 @@ fn touches_polygon(shape: Shape, polygon: &SelectionPolygon) -> bool {
     if let Some(curve) = curve(shape) {
         return polygon.touches_curve(curve, TOL);
     }
+    if let Shape::Ellipse(e) = shape {
+        // Its chords, as a crossing window sees them (ADR 0040): one
+        // inside, or crossing an edge.
+        return e
+            .flatten()
+            .windows(2)
+            .filter_map(|w| Line::new(w[0], w[1]).ok())
+            .any(|chord| polygon.touches_curve(chord.into(), TOL));
+    }
     match shape {
         Shape::Point(point) => polygon.contains(point, TOL),
         Shape::Text(bounds) | Shape::Placeholder(bounds) => {
