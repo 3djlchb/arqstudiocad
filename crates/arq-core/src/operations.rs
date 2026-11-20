@@ -260,7 +260,10 @@ impl CadDocument {
             column_spacing,
             angle,
         )?;
-        let offsets: Vec<_> = grid.offsets().collect::<Result<_, _>>()?;
+        let mut offsets = Vec::with_capacity(grid.cells() - 1);
+        for offset in grid.offsets() {
+            offsets.push(offset?);
+        }
         self.transact("ARRAYRECT", |doc| {
             let mut copies = Vec::new();
             for offset in offsets {

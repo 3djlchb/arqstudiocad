@@ -109,7 +109,7 @@ still owns exactly one atomic transaction.
 returns copied contours plus explicit shown/total copied-cell counts.
 `arq-render` tessellates each source once per query, translates contours in
 native code and bounds both output and source tessellation. Diagnostic
-initial budgets are 1000 copied cells and 20000 output vertices. If one
+budgets are 1000 copied cells and 4000 output vertices. If one
 complete source cell cannot fit, no incomplete cell is displayed. The prefix
 is in row/column order; the ordinary selected originals remain visible.
 A single source shape may need its normal bounded tessellation before a
@@ -135,3 +135,30 @@ interaction on the i7-2600/GT 730 using `tools/reference_machine_report.sh`
 and `uv run python tools/gpu_viewport_check.py` before floor acceptance.
 No ProgeCAD behavior decision is needed for this read-only visualization of
 the existing operation.
+
+An initial 20000-vertex diagnostic displayed all 99 copied cells of the
+approved fixture (9900 paths, 19800 vertices), taking about 40 ms to build
+and paint on the development host. The vertex budget was reduced to 4000
+before final measurement; this is a work bound, not reference-floor
+acceptance. The edit retains its original preallocated offset buffer.
+
+Final local checks after rebasing onto main at
+`7487c3257a1b6d86280c5dc9f29628669cfc79cf`: Cargo format, workspace/all-target
+Clippy with warnings denied, 999 Rust tests (20 ignored), 1249 Python/Qt
+tests (5 skipped), Ruff lint/format, mypy, native stubtest, cargo-deny and
+all nine explicit public-codec cases passed. Own crate artifacts were
+invalidated and the extension rebuilt to exclude stale pre-rebase binaries;
+the new ellipse-curve Rust and Python snap tests ran in this verification.
+Rust used serial execution for the known NVIDIA parallel-test defect; Python
+used C.UTF-8 and Qt offscreen. This does not establish that the known es_EC
+locale or real-X11 Vulkan shutdown defects are fixed.
+
+Six new Rust and seven Python/Qt cases were sabotage-verified with behavioral
+failures for placement, unseen overflow, deduplication, cell/vertex budgets,
+incomplete source cells, wrong pixel translation, missing Top guard and
+missing overlay. Exact saved bytes were restored and touched; the native
+extension rebuilt after native mutations, including arq-python restoration,
+and affected Python bytecode caches removed. The final 4000-vertex budget
+was independently sabotage-verified after the rebase. Temporary scripts,
+logs and public fixtures stayed outside tracked source; no private drawing,
+real QSettings or system/desktop setting was changed.

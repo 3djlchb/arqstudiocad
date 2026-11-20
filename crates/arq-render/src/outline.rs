@@ -40,7 +40,7 @@ pub fn shapes_outline(shapes: &[Shape], camera: &Camera) -> Vec<Polyline> {
 /// Maximum work contributed by a rectangular array overlay. Whole copied
 /// cells are shown; a source cell exceeding the vertex budget is omitted.
 /// Diagnostic defaults, not a reference-machine performance guarantee.
-pub const ARRAY_PREVIEW_VERTICES: usize = 20_000;
+pub const ARRAY_PREVIEW_VERTICES: usize = 4_000;
 /// Maximum copied-cell locations displayed in one preview.
 pub const ARRAY_PREVIEW_CELLS: usize = 1_000;
 
@@ -377,7 +377,7 @@ mod tests {
         camera.zoom_at(200., 100., 10.);
         let curved = rectangular_array_outline(&scene, &camera, &[circle], grid).unwrap();
         assert!(curved.shown_cells > 0 && curved.shown_cells < 1000);
-        assert!(curved.paths.iter().map(Vec::len).sum::<usize>() <= 20_000);
+        assert!(curved.paths.iter().map(Vec::len).sum::<usize>() <= 4_000);
         assert_eq!(curved.paths.len(), curved.shown_cells);
     }
 
