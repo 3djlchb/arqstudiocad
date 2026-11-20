@@ -9,6 +9,14 @@ Pinning it again docks it back, open.
 
 While a panel is auto-hidden its contents live in an overlay next to the
 tab; the dock itself stays hidden.
+
+Before the pin, a mode button shows how the panel behaves and changes it
+(maintainer, 2026-11-19): an anchor while it is docked, a window while it
+floats, as AutoCAD's palettes. Clicking it floats the panel, or docks it
+back where it was; dragging and double-clicking the title still do too. A
+floating panel keeps its pin: unpinned, it rolls up to its title bar when
+the mouse leaves it and rolls down when the mouse comes back, as an
+AutoCAD palette set to auto-hide.
 """
 
 from collections.abc import Iterable
@@ -33,6 +41,8 @@ from PySide6.QtWidgets import (
 from arqstudiocad.i18n import tr
 
 AUTO_HIDE_SETTING = "panels/auto_hidden"
+#: The floating panels set to roll up to their title bar.
+ROLL_UP_SETTING = "panels/rolled_up"
 #: How long the mouse may be away before an open overlay slides back.
 LEAVE_DELAY_MS = 400
 
@@ -69,18 +79,41 @@ def pin_icon(pinned: bool, color: QColor) -> QIcon:
     return QIcon(pixmap)
 
 
+def mode_icon(floating: bool, color: QColor) -> QIcon:
+    """A drawn mode: an anchor for a docked panel, a window for a floating
+    one."""
+    pixmap = QPixmap(16, 16)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setPen(color)
+    if floating:
+        painter.drawRect(1, 3, 13, 11)  # the window
+        painter.fillRect(1, 3, 14, 3, color)  # its title bar
+    else:
+        painter.drawEllipse(6, 1, 4, 4)  # the ring
+        painter.drawLine(8, 5, 8, 14)  # the shank
+        painter.drawLine(5, 7, 11, 7)  # the stock
+        painter.drawArc(2, 6, 12, 9, 180 * 16, 180 * 16)  # the arms
+    painter.end()
+    return QIcon(pixmap)
+
+
 def is_vertical(side: Side) -> bool:
     return side in (Qt.DockWidgetArea.LeftDockWidgetArea, Qt.DockWidgetArea.RightDockWidgetArea)
 
 
 class PanelTitleBar(QWidget):
-    """A panel's title, as OpenCADStudio's: its name, the pin and close.
-    Dragging and double-clicking still move and float the panel (QDockWidget
-    handles the mouse events the bar leaves alone)."""
+    """A panel's title, as OpenCADStudio's: its name, the mode, the pin and
+    close. Dragging and double-clicking still move and float the panel
+    (QDockWidget handles the mouse events the bar leaves alone)."""
 
     def __init__(self, dock: QDockWidget, pinned: bool = True) -> None:
         super().__init__(dock)
         self.title = QLabel(dock.windowTitle())
+        self.mode = QToolButton()
+        self.mode.setAutoRaise(True)
+        self.floating = dock.isFloating()
         self.pin = QToolButton()
         self.pin.setAutoRaise(True)
         self.close_button = QToolButton()
@@ -91,12 +124,12 @@ class PanelTitleBar(QWidget):
         row.setContentsMargins(4, 1, 1, 1)
         row.setSpacing(0)
         row.addWidget(self.title, 1)
-        for button in (self.pin, self.close_button):
+        for button in (self.mode, self.pin, self.close_button):
             button.setIconSize(QSize(12, 12))
             row.addWidget(button)
         dock.windowTitleChanged.connect(self.title.setText)
         self.set_pinned(pinned)
-        self.retranslate()
+        self.set_floating(self.floating)
 
     def set_pinned(self, pinned: bool) -> None:
         self.pinned = pinned
@@ -104,7 +137,13 @@ class PanelTitleBar(QWidget):
         self.pin.setIcon(pin_icon(pinned, QApplication.palette(self).windowText().color()))
         self.retranslate()
 
+    def set_floating(self, floating: bool) -> None:
+        self.floating = floating
+        self.mode.setIcon(mode_icon(floating, QApplication.palette(self).windowText().color()))
+        self.retranslate()
+
     def retranslate(self) -> None:
+        self.mode.setToolTip(tr("Dock") if self.floating else tr("Float"))
         self.pin.setToolTip(tr("Auto-hide") if self.pinned else tr("Keep open"))
         self.close_button.setToolTip(tr("Close"))
 
@@ -199,6 +238,12 @@ class AutoHide(QObject):
         self.tabs: dict[QDockWidget, SideTab] = {}
         self.overlays: dict[QDockWidget, Overlay] = {}
         self._sizes: dict[QDockWidget, int] = {}
+        #: The floating panels set to roll up, and the height each had when
+        #: it was rolled up last.
+        self.rolling: set[QDockWidget] = set()
+        self.rolled: dict[QDockWidget, int] = {}
+        #: A rolled-up panel's own minimum width, held at its width meanwhile.
+        self._min_widths: dict[QDockWidget, int] = {}
         self.open: QDockWidget | None = None
         self._enabled = True
         self.bars: dict[Side, QToolBar] = {}
@@ -216,14 +261,20 @@ class AutoHide(QObject):
             self.bars[side] = bar
         for dock in self.panels:
             title = PanelTitleBar(dock)
-            title.pin.clicked.connect(lambda _checked=False, d=dock: self.unpin(d))
+            title.mode.clicked.connect(lambda _checked=False, d=dock: self.toggle_floating(d))
+            title.pin.clicked.connect(lambda _checked=False, d=dock: self._pin_clicked(d))
             title.close_button.clicked.connect(dock.close)
-            dock.topLevelChanged.connect(title.pin.setHidden)
+            dock.topLevelChanged.connect(
+                lambda floating, d=dock: self._top_level_changed(d, bool(floating))
+            )
             dock.setTitleBarWidget(title)
             self.title_bars[dock] = title
         self._leave_timer = QTimer(self)
         self._leave_timer.setInterval(LEAVE_DELAY_MS)
         self._leave_timer.timeout.connect(self._check_leave)
+        self._roll_timer = QTimer(self)
+        self._roll_timer.setInterval(LEAVE_DELAY_MS)
+        self._roll_timer.timeout.connect(self._check_rolling)
         app = QApplication.instance()
         if app is not None:
             app.installEventFilter(self)
@@ -246,6 +297,7 @@ class AutoHide(QObject):
         contents = dock.widget()
         overlay = Overlay(dock, self._window)
         overlay.title_bar.pin.clicked.connect(lambda _checked=False: self.pin(dock))
+        overlay.title_bar.mode.clicked.connect(lambda _checked=False: self.toggle_floating(dock))
         overlay.title_bar.close_button.clicked.connect(lambda _checked=False: self.close(dock))
         if contents is not None:
             overlay.hold(contents)
@@ -284,6 +336,78 @@ class AutoHide(QObject):
         self.pin(dock)
         dock.close()
 
+    # Docked or floating (maintainer, 2026-11-19)
+
+    def toggle_floating(self, dock: QDockWidget) -> None:
+        """The mode button: a docked panel floats, a floating one docks back
+        where it was. An unpinned panel is pinned first, docked, then floats."""
+        self.pin(dock)
+        dock.setFloating(not dock.isFloating())
+
+    def _pin_clicked(self, dock: QDockWidget) -> None:
+        if dock.isFloating():
+            self.set_rolling(dock, dock not in self.rolling)
+        else:
+            self.unpin(dock)
+
+    def _top_level_changed(self, dock: QDockWidget, floating: bool) -> None:
+        self.title_bars[dock].set_floating(floating)
+        if not floating:
+            # Docked again: it stays open, as a pinned panel.
+            self.set_rolling(dock, False)
+
+    def set_rolling(self, dock: QDockWidget, rolling: bool) -> None:
+        """Sets floating ``dock`` to roll up to its title bar when the mouse
+        leaves it, or to stay open; a docked panel never rolls."""
+        rolling = rolling and dock.isFloating()
+        if not rolling:
+            self.roll_down(dock)
+            self.rolling.discard(dock)
+        else:
+            self.rolling.add(dock)
+        self.title_bars[dock].set_pinned(not rolling)
+        if self.rolling:
+            self._roll_timer.start()
+        else:
+            self._roll_timer.stop()
+        self._save()
+
+    def roll_up(self, dock: QDockWidget) -> None:
+        """Only the title bar of a floating panel stays: its contents hide."""
+        contents = dock.widget()
+        if dock in self.rolled or contents is None or not dock.isFloating():
+            return
+        width, self.rolled[dock] = dock.width(), dock.height()
+        # Its width stays: only the height rolls up. Without its contents
+        # the window would shrink to its title's width.
+        self._min_widths[dock] = dock.minimumWidth()
+        dock.setMinimumWidth(width)
+        contents.hide()
+        dock.resize(width, self.title_bars[dock].sizeHint().height() + 2)
+
+    def roll_down(self, dock: QDockWidget) -> None:
+        """The floating panel's contents again, at the height it had."""
+        height = self.rolled.pop(dock, None)
+        contents = dock.widget()
+        if height is None or contents is None:
+            return
+        width = dock.width()
+        dock.setMinimumWidth(self._min_widths.pop(dock, 0))
+        contents.show()
+        dock.resize(width, height)
+
+    def _check_rolling(self) -> None:
+        """Rolls up each rolling panel the mouse has left, unless something
+        in it has the keyboard; rolls down the one it is over."""
+        focus = QApplication.focusWidget()
+        for dock in list(self.rolling):
+            if not dock.isVisible():
+                continue
+            if self._under_mouse(dock):
+                self.roll_down(dock)
+            elif focus is None or not dock.isAncestorOf(focus):
+                self.roll_up(dock)
+
     def pin_all(self) -> None:
         for dock in list(self.sides):
             self.pin(dock)
@@ -298,7 +422,14 @@ class AutoHide(QObject):
             bar.setVisible(any(tab.side == side for tab in self.tabs.values()))
 
     def restore(self) -> None:
-        """Unpins the panels that were unpinned last time."""
+        """Unpins the panels that were unpinned last time, and sets the
+        floating ones that rolled up to roll up again."""
+        rolling = None if self._settings is None else self._settings.value(ROLL_UP_SETTING)
+        if isinstance(rolling, str) and rolling:
+            for name in rolling.split(","):
+                dock = next((d for d in self.panels if d.objectName() == name), None)
+                if dock is not None and dock.isFloating():
+                    self.set_rolling(dock, True)
         saved = None if self._settings is None else self._settings.value(AUTO_HIDE_SETTING)
         if not isinstance(saved, str) or not saved:
             return
@@ -342,8 +473,10 @@ class AutoHide(QObject):
         """Redraws the pins in the theme's text color."""
         for bar in self.title_bars.values():
             bar.set_pinned(bar.pinned)
+            bar.set_floating(bar.floating)
         for overlay in self.overlays.values():
             overlay.title_bar.set_pinned(overlay.title_bar.pinned)
+            overlay.title_bar.set_floating(overlay.title_bar.floating)
 
     def retranslate(self) -> None:
         for bar in self.title_bars.values():
@@ -395,6 +528,10 @@ class AutoHide(QObject):
         kind = event.type()
         if kind == QEvent.Type.Enter and isinstance(watched, SideTab):
             self.expand(watched.dock)
+        elif kind == QEvent.Type.Enter and watched in self.rolled:
+            # Back over a rolled-up panel: it rolls down at once.
+            assert isinstance(watched, QDockWidget)
+            self.roll_down(watched)
         elif kind == QEvent.Type.Resize and watched is self._window and self.open is not None:
             # The window has not placed the drawing yet: follow it after.
             QTimer.singleShot(0, self._follow_window)
@@ -427,3 +564,5 @@ class AutoHide(QObject):
                 f"{dock.objectName()}:{SIDE_NAMES[side]}" for dock, side in self.sides.items()
             )
             self._settings.setValue(AUTO_HIDE_SETTING, value)
+            rolling = sorted(dock.objectName() for dock in self.rolling)
+            self._settings.setValue(ROLL_UP_SETTING, ",".join(rolling))

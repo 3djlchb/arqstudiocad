@@ -69,12 +69,19 @@ def test_panels_start_pinned_with_a_pin_in_the_title(qtbot: QtBot) -> None:
 
 def test_the_title_bar_floats_and_closes(qtbot: QtBot) -> None:
     window = make_window(qtbot)
-    assert not hasattr(title_bar(window), "float_button"), "pin and close, as OpenCADStudio"
-    QTest.mouseDClick(title_bar(window).title, Qt.MouseButton.LeftButton)
-    assert window.layers_panel.isFloating(), "double-clicking the title floats it"
-    assert title_bar(window).pin.isHidden(), "a floating panel has nothing to collapse to"
-    QTest.mouseDClick(title_bar(window).title, Qt.MouseButton.LeftButton)
-    assert not window.layers_panel.isFloating() and not title_bar(window).pin.isHidden()
+    bar = title_bar(window)
+    row = bar.layout()
+    assert row is not None
+    items = [row.itemAt(i) for i in range(row.count())]
+    order = [item.widget() for item in items if item is not None]
+    assert order == [bar.title, bar.mode, bar.pin, bar.close_button], "the mode before the pin"
+    QTest.mouseDClick(bar.title, Qt.MouseButton.LeftButton)
+    assert window.layers_panel.isFloating(), "double-clicking the title still floats it"
+    assert not bar.pin.isHidden(), "a floating panel keeps its pin: it rolls up"
+    assert bar.mode.toolTip() == "Dock"
+    QTest.mouseDClick(bar.title, Qt.MouseButton.LeftButton)
+    assert not window.layers_panel.isFloating() and not bar.pin.isHidden()
+    assert bar.mode.toolTip() == "Float"
     title_bar(window).close_button.click()
     assert not window.layers_panel.isVisible()
 
@@ -275,3 +282,86 @@ def test_hover_events_reach_only_tabs(qtbot: QtBot) -> None:
     window = make_window(qtbot)
     QApplication.sendEvent(window.layers_panel, QEvent(QEvent.Type.Enter))
     assert pins(window).open is None
+
+
+def test_the_mode_button_floats_a_panel_and_docks_it_back_where_it_was(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    panel, bar = window.layers_panel, title_bar(window)
+    assert window.dockWidgetArea(panel) == RIGHT
+    assert bar.mode.toolTip() == "Float", "an anchor: docked"
+    anchor = bar.mode.icon().cacheKey()
+    bar.mode.click()
+    assert panel.isFloating() and panel.isVisible()
+    assert bar.mode.toolTip() == "Dock", "a window: floating"
+    assert bar.mode.icon().cacheKey() != anchor
+    bar.mode.click()
+    assert not panel.isFloating()
+    assert window.dockWidgetArea(panel) == RIGHT
+    assert window.properties_panel in window.tabifiedDockWidgets(panel), "back in its tabs"
+
+
+def test_an_auto_hidden_panel_floats_from_its_mode_button(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    panel = window.layers_panel
+    title_bar(window).pin.click()
+    assert not pins(window).is_pinned(panel)
+    pins(window).overlays[panel].title_bar.mode.click()
+    assert pins(window).is_pinned(panel) and panel.isFloating() and panel.isVisible()
+    assert panel not in pins(window).tabs
+
+
+def test_an_unpinned_floating_panel_rolls_up_and_down_with_the_mouse(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = make_window(qtbot)
+    panel, bar, hide = window.layers_panel, title_bar(window), pins(window)
+    bar.mode.click()
+    panel.resize(260, 400)
+    height = panel.height()
+    bar.pin.click()
+    assert panel in hide.rolling and not bar.pinned
+    assert bar.pin.toolTip() == "Keep open"
+    away = {"over": False}
+    monkeypatch.setattr(AutoHide, "_under_mouse", staticmethod(lambda widget: away["over"]))
+    hide._check_rolling()
+    contents = panel.widget()
+    assert contents is not None and contents.isHidden(), "rolled up to its title bar"
+    assert panel.height() < 60
+    assert panel.width() == 260, "only its height rolls up"
+    away["over"] = True
+    hide._check_rolling()
+    assert not contents.isHidden() and panel.height() == height, "rolled down as it was"
+    away["over"] = False
+    hide._check_rolling()
+    QApplication.sendEvent(panel, QEnterEvent(QPointF(5, 5), QPointF(5, 5), QPointF(5, 5)))
+    assert not contents.isHidden(), "the mouse back over it rolls it down at once"
+    bar.pin.click()
+    assert panel not in hide.rolling and bar.pinned
+    hide._check_rolling()
+    assert not contents.isHidden(), "pinned again, it stays open"
+
+
+def test_docking_a_rolled_up_panel_opens_it(qtbot: QtBot, monkeypatch: pytest.MonkeyPatch) -> None:
+    window = make_window(qtbot)
+    panel, bar, hide = window.layers_panel, title_bar(window), pins(window)
+    bar.mode.click()
+    bar.pin.click()
+    monkeypatch.setattr(AutoHide, "_under_mouse", staticmethod(lambda widget: False))
+    hide._check_rolling()
+    contents = panel.widget()
+    assert contents is not None and contents.isHidden()
+    bar.mode.click()
+    assert not panel.isFloating() and not contents.isHidden()
+    assert panel not in hide.rolling and bar.pinned, "docked, it stays open"
+
+
+def test_a_rolling_floating_panel_rolls_again_after_a_restart(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    window = make_window(qtbot, settings)
+    title_bar(window).mode.click()
+    title_bar(window).pin.click()
+    window.close()
+    again = make_window(qtbot, settings)
+    assert again.layers_panel.isFloating()
+    assert again.layers_panel in pins(again).rolling
+    assert not title_bar(again).pinned and title_bar(again).mode.toolTip() == "Dock"
