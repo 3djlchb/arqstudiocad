@@ -193,6 +193,9 @@ before/after and time the new closed case separately, five warm-ups plus
 100 measured calls, excluding setup and undo. Exact commits and results
 belong in TESTING_AND_PERFORMANCE.md. Actual reference-floor interaction
 acceptance remains separate; no startup or renderer path is changed.
+Measured on the reference machine on 2026-11-19 at the same commits
+([reports](../testing/reference-machine/2026-11-19/)): open 0.706338 → 0.715927 ms (1.01358), the pairs
+overlapping; closed 0.709716 ms.
 
 ### Closed-path sabotage verification
 
