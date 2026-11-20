@@ -463,3 +463,17 @@ Of the fix's 8 ms, one validation is about 3 ms and the preview itself
 2.7 ms; the rest is converting the 100 copies of the polygon's points from
 Python and comparing them. Rectangles and single polygons cost what they
 did. The commit (`stretch_entities`) takes the same path.
+
+In the main window, as in #212's `stretch-cases.txt` (the 1366 × 740
+window, a 1098 × 347 viewport, synthetic cursor moves at the displacement
+prompt with that polygon over the 100 lines; harness SHA-256
+`d68e18a970f670d7d41fcf4fde00b2f03ba4610a7b4f93e73b2fc30e4c51ac49`), two
+alternating runs each, median (95th percentile) per cursor move:
+
+| Renderer | Base, ms | Fix, ms |
+|---|---|---|
+| CPU (safe mode) | 260.74 (270.14), 264.83 (286.90) | 15.63 (16.64), 16.28 (18.45) |
+| GPU (OpenGL ES on the GT 730) | 248.71 (257.77), 256.18 (266.98) | 11.11 (12.62), 11.08 (15.16) |
+
+From about four frames a second to the display's rate on the GPU and
+about one 60 Hz frame on the CPU.
