@@ -2133,6 +2133,28 @@ fn closed_break_updates_index_and_restores_identity_closure_and_style() {
 }
 
 #[test]
+fn an_ellipse_is_an_edge_trim_cuts_at() {
+    // A line through an ellipse about (10,0), semi-axes 4 and 2: cut at
+    // its crossings, (6,0) and (14,0), in both modes.
+    for edges in [None, Some(())] {
+        let mut cad = CadDocument::new();
+        let (line, _) = cad.add_line(p(0.0, 0.0), p(20.0, 0.0)).unwrap();
+        let e = Ellipse::from_axis(p(10.0, 0.0), p(14.0, 0.0), 2.0).unwrap();
+        let (ellipse, _) = cad.add_ellipse(e).unwrap();
+        let chosen = [ellipse];
+        let edges = edges.map(|()| &chosen[..]);
+        let (left, _) = cad.trim_entity(line, p(10.0, 0.5), edges, false).unwrap();
+        assert_eq!(left.len(), 2, "{edges:?}");
+        let (a, b) = (
+            curve_ends(curve_of(&cad, left[0])),
+            curve_ends(curve_of(&cad, left[1])),
+        );
+        assert!((a.1.0 - 6.0).abs() < 1e-9 && a.0 == (0.0, 0.0), "{a:?}");
+        assert!((b.0.0 - 14.0).abs() < 1e-9 && b.1 == (20.0, 0.0), "{b:?}");
+    }
+}
+
+#[test]
 fn polar_array_preserves_sources_styles_order_index_and_atomic_undo() {
     let mut cad = CadDocument::new();
     let (a, _) = cad.add_line(p(10., 0.), p(12., 0.)).unwrap();

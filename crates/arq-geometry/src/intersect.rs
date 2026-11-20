@@ -17,9 +17,11 @@ use std::f64::consts::TAU;
 use crate::angle;
 use crate::arc::Arc;
 use crate::circle::Circle;
+use crate::ellipse::Ellipse;
 use crate::geometry::Geometry2;
 use crate::line::Line;
 use crate::point::Point2;
+use crate::roots::{TrigPoly, Zero};
 use crate::tolerance::Tolerance;
 
 /// Where two curves meet: isolated points (crossings and tangencies) and
@@ -60,6 +62,11 @@ pub fn intersect(a: Geometry2, b: Geometry2, tol: Tolerance) -> Intersections {
     let mut out = Intersections::default();
     match (a, b) {
         (Geometry2::Line(l1), Geometry2::Line(l2)) => line_line(l1, l2, tol, &mut out),
+        (Geometry2::Line(l), Geometry2::Ellipse(e))
+        | (Geometry2::Ellipse(e), Geometry2::Line(l)) => line_ellipse(l, e, tol, &mut out),
+        (Geometry2::Ellipse(e), other) | (other, Geometry2::Ellipse(e)) => {
+            ellipse_ellipse(as_ellipse(other), e, tol, &mut out)
+        }
         (Geometry2::Line(l), round) | (round, Geometry2::Line(l)) => {
             line_round(l, Round::of(round), tol, &mut out)
         }
@@ -86,7 +93,9 @@ impl Round {
                 circle: a.circle(),
                 arc: Some(a),
             },
-            Geometry2::Line(_) => unreachable!("lines are handled separately"),
+            Geometry2::Line(_) | Geometry2::Ellipse(_) => {
+                unreachable!("lines and ellipses are handled separately")
+            }
         }
     }
 
@@ -225,6 +234,164 @@ fn arc_arc_overlap(x: Arc, y: Arc, tol: Tolerance, out: &mut Intersections) {
         }
     }
 }
+
+/// A circle or an arc as the ellipse it is, of ratio one; an ellipse as
+/// itself.
+fn as_ellipse(g: Geometry2) -> Ellipse {
+    let x = |r: f64| crate::vector::Vector2::new(r, 0.0).expect("a radius is finite");
+    match g {
+        Geometry2::Ellipse(e) => Ok(e),
+        Geometry2::Circle(c) => Ellipse::new(c.center(), x(c.radius()), 1.0, 0.0, 0.0),
+        Geometry2::Arc(a) => Ellipse::new(
+            a.center(),
+            x(a.radius()),
+            1.0,
+            a.start_angle(),
+            a.end_angle(),
+        ),
+        Geometry2::Line(_) => unreachable!("lines are handled separately"),
+    }
+    .expect("a circle's ellipse is valid")
+}
+
+/// A line and an ellipse: in the ellipse's own frame, where it is the unit
+/// circle and the line still a line, a quadratic. A line passing just
+/// outside it touches it when the ellipse's point nearest the line is
+/// within the tolerance of it, judged in the world.
+fn line_ellipse(l: Line, e: Ellipse, tol: Tolerance, out: &mut Intersections) {
+    let (x0, y0) = e.local(l.start());
+    let (x1, y1) = e.local(l.end());
+    let (dx, dy) = (x1 - x0, y1 - y0);
+    let dd = dx * dx + dy * dy;
+    // The line's point nearest the center, in the local frame.
+    let t0 = -(x0 * dx + y0 * dy) / dd;
+    let (fx, fy) = (x0 + dx * t0, y0 + dy * t0);
+    let h = fx.hypot(fy);
+    let slack = tol.linear() / l.length();
+    let mut on_line = |t: f64, p: Point2| {
+        if (-slack..=1.0 + slack).contains(&t) && e.admits(p, tol) {
+            out.push_point(p, tol);
+        }
+    };
+    if h >= 1.0 {
+        // Apart, or touching: the ellipse's point toward the line.
+        let touch = e.at_local(fx / h, fy / h);
+        let infinite_distance = (touch - l.start()).cross(l.vector()).abs() / l.length();
+        if infinite_distance <= tol.linear() {
+            let t = (touch - l.start()).dot(l.vector()) / l.vector().length_squared();
+            on_line(t, touch);
+        }
+        return;
+    }
+    // Half chord, written to avoid cancellation when h is close to one.
+    let half = ((1.0 - h) * (1.0 + h)).sqrt() / dd.sqrt();
+    for t in [t0 - half, t0 + half] {
+        on_line(t, l.start() + l.vector() * t);
+    }
+}
+
+/// Two ellipses, a circle being one of ratio one: where the first's
+/// points fall on the second's implicit equation, a trigonometric
+/// polynomial of degree two in the first's parameter, its zeros found by
+/// bracketing (ADR 0041). The same ellipse twice shares the arcs' common
+/// part.
+fn ellipse_ellipse(a: Ellipse, b: Ellipse, tol: Tolerance, out: &mut Intersections) {
+    let whole_b =
+        Ellipse::new(b.center(), b.major_axis(), b.ratio(), 0.0, 0.0).expect("b's own axes");
+    // A point whose implicit value is beyond this is farther than the
+    // tolerance: in b's frame, a distance d moves its radius by d / minor
+    // at most, and its implicit value by (d / minor)·(2 + d / minor).
+    let reach = tol.linear() / b.minor_axis().length();
+    let near_b = |p: Point2| {
+        let (x, y) = b.local(p);
+        (x * x + y * y - 1.0).abs() <= reach * (2.0 + reach) * (1.0 + 1e-9)
+    };
+    let on_whole_b = |p: Point2| near_b(p) && whole_b.distance_to(p) <= tol.linear();
+    let alike = |u: f64, w: f64| (u - w).abs() <= tol.linear();
+    if a.center().distance_to(b.center()) <= tol.linear()
+        && alike(a.major_axis().length(), b.major_axis().length())
+        && alike(a.minor_axis().length(), b.minor_axis().length())
+        && (0..8)
+            .map(|i| a.point_at_param(TAU * f64::from(i) / 8.0 + 0.1))
+            .all(on_whole_b)
+    {
+        same_ellipse(a, b, tol, out);
+        return;
+    }
+    // a's points in b's frame, L(t) = l0 + lu cos t + lw sin t, put into
+    // |L|² - 1: a trigonometric polynomial of degree two.
+    let l0 = b.local(a.center());
+    let lu = b.local_vector(a.major_axis());
+    let lw = b.local_vector(a.minor_axis());
+    let dot = |p: (f64, f64), q: (f64, f64)| p.0 * q.0 + p.1 * q.1;
+    let implicit = TrigPoly {
+        cos2: (dot(lu, lu) - dot(lw, lw)) / 2.0,
+        sin2: dot(lu, lw),
+        cos: 2.0 * dot(l0, lu),
+        sin: 2.0 * dot(l0, lw),
+        constant: dot(l0, l0) + (dot(lu, lu) + dot(lw, lw)) / 2.0 - 1.0,
+    };
+    let mut found = Vec::new();
+    for zero in crate::roots::periodic_zeros(implicit) {
+        match zero {
+            Zero::Crossing(t) => found.push(t),
+            Zero::Touch(t) if on_whole_b(a.point_at_param(t)) => found.push(t),
+            Zero::Touch(_) => {}
+            // A tangency the rounding split in two: one point.
+            Zero::Pair { turn, .. } if on_whole_b(a.point_at_param(turn)) => found.push(turn),
+            Zero::Pair { first, second, .. } => found.extend([first, second]),
+        }
+    }
+    for t in found {
+        let p = a.point_at_param(t);
+        if a.admits(p, tol) && b.admits(p, tol) {
+            out.push_point(p, tol);
+        }
+    }
+}
+
+/// Two arcs of one ellipse: the shared part of their sweeps, in the first's
+/// parameter, as two arcs of one circle share theirs.
+fn same_ellipse(a: Ellipse, b: Ellipse, tol: Tolerance, out: &mut Intersections) {
+    match (a.is_full(), b.is_full()) {
+        (true, true) => out.overlaps.push(a.into()),
+        (true, false) => out.overlaps.push(b.into()),
+        (false, true) => out.overlaps.push(a.into()),
+        (false, false) => {
+            let (b0, _) = b.ends().expect("an arc");
+            let slack = tol.linear() / a.derivative_at(a.start_param()).length().max(tol.linear());
+            let (sx, wx) = (a.start_param(), a.sweep());
+            // b's sweep in a's parameter: its ends' parameters on a.
+            let b_start = a.param_of(b0);
+            let b_sweep = {
+                let (_, b1) = b.ends().expect("an arc");
+                match angle::ccw_sweep(b_start, a.param_of(b1)) {
+                    0.0 => TAU,
+                    w => w,
+                }
+            };
+            let offset = angle::ccw_sweep(sx, b_start);
+            for shift in [0.0, -TAU] {
+                let (lo, hi) = (
+                    (offset + shift).max(0.0),
+                    (offset + shift + b_sweep).min(wx),
+                );
+                if hi - lo > slack {
+                    let piece =
+                        Ellipse::new(a.center(), a.major_axis(), a.ratio(), sx + lo, sx + hi)
+                            .expect("a non-zero sweep");
+                    out.overlaps.push(piece.into());
+                } else if hi - lo >= -slack {
+                    out.push_point(a.point_at_param(sx + lo.clamp(0.0, wx)), tol);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "intersect_ellipse_tests.rs"]
+mod ellipse_tests;
 
 #[cfg(test)]
 mod tests {

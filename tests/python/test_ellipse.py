@@ -146,3 +146,20 @@ def test_an_included_angle_counts_from_the_start() -> None:
     assert x0 == pytest.approx(5.0 + r * math.cos(at))
     assert x1 == 10.0
     assert (y0, y1) == (-3.0, 0.0)
+
+
+def test_an_ellipse_is_a_curve_to_snap_to_from_python() -> None:
+    # About (0,0), semi-axes 5 and 3; a line along y = 1.8 crosses it at
+    # x = ±4. From (10,0) the tangents touch at x = 2.5; from (0,7), the
+    # perpendicular falls on the top.
+    h = Harness()
+    h.run("ELLIPSE", "C", "0,0", "5,0", "3")
+    h.document.add_line((-9.0, 1.8), (9.0, 1.8))
+    found = h.document.snap((4.1, 1.85), 0.3, ["INT"])
+    assert found is not None and found.kind == "INT"
+    assert found.point == pytest.approx((4.0, 1.8))
+    touch = h.document.snap((2.6, 2.6), 0.3, ["TAN"], (10.0, 0.0))
+    assert touch is not None and touch.kind == "TAN"
+    assert touch.point == pytest.approx((2.5, 3.0 * math.sqrt(0.75)))
+    foot = h.document.snap((0.2, 2.98), 0.3, ["PER"], (0.0, 7.0))
+    assert foot is not None and foot.point == pytest.approx((0.0, 3.0))

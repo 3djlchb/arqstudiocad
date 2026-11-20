@@ -923,6 +923,13 @@ pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
             a.end_angle = g.end_angle();
             EntityType::Arc(a)
         }
+        Geometry2::Ellipse(g) => {
+            let mut el = acadrust::entities::Ellipse::new();
+            el.normal = Vector3::new(0.0, 0.0, 1.0);
+            el.center = Vector3::new(0.0, 0.0, z);
+            crate::drawing::write_plan_ellipse(&mut el, g);
+            EntityType::Ellipse(el)
+        }
     };
     e.common_mut().layer = layer.to_owned();
     e

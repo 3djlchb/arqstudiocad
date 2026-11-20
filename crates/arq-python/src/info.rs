@@ -11,7 +11,7 @@ use arq_geometry::{Geometry2, Point3};
 use pyo3::prelude::*;
 use pyo3::types::PyString;
 
-use crate::values::{CadArc, CadBounds2, CadCircle, CadColor, CadLine};
+use crate::values::{CadArc, CadBounds2, CadCircle, CadColor, CadEllipse, CadLine};
 
 /// One entity as it was when read.
 #[pyclass(frozen, eq, skip_from_py_object, module = "arqstudiocad._core")]
@@ -114,12 +114,14 @@ impl CadEntityInfo {
     }
 }
 
-/// The Python object for a curve: `CadLine`, `CadCircle` or `CadArc`.
+/// The Python object for a curve: `CadLine`, `CadCircle`, `CadArc` or
+/// `CadEllipse`.
 fn geometry_to_py(py: Python<'_>, g: Geometry2) -> PyResult<Bound<'_, PyAny>> {
     Ok(match g {
         Geometry2::Line(l) => Bound::new(py, CadLine(l))?.into_any(),
         Geometry2::Circle(c) => Bound::new(py, CadCircle(c))?.into_any(),
         Geometry2::Arc(a) => Bound::new(py, CadArc(a))?.into_any(),
+        Geometry2::Ellipse(e) => Bound::new(py, CadEllipse(e))?.into_any(),
     })
 }
 

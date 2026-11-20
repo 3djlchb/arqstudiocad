@@ -404,6 +404,7 @@ impl<'a> Painter<'a> {
                     arq_geometry::Geometry2::Circle(c) => Shape::Circle(c),
                     arq_geometry::Geometry2::Arc(a) => Shape::Arc(a),
                     arq_geometry::Geometry2::Line(l) => Shape::Line(l),
+                    arq_geometry::Geometry2::Ellipse(e) => Shape::Ellipse(e),
                 }),
                 None => self.placeholder(e, color, out), // on a tilted plane
             },

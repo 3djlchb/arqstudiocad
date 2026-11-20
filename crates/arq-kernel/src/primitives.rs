@@ -541,7 +541,7 @@ fn closed_profile(
     })
 }
 
-/// A segment's or an arc's two ends, as stored.
+/// A curve's two ends, as stored; a closed one's start twice.
 fn ends(curve: Geometry2) -> (Point2, Point2) {
     match curve {
         Geometry2::Line(l) => (l.start(), l.end()),
@@ -550,6 +550,10 @@ fn ends(curve: Geometry2) -> (Point2, Point2) {
             let p = c.point_at_angle(0.0);
             (p, p)
         }
+        Geometry2::Ellipse(e) => e.ends().unwrap_or_else(|| {
+            let p = e.point_at_param(0.0);
+            (p, p)
+        }),
     }
 }
 
