@@ -1419,6 +1419,20 @@ impl CadDocument {
         .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
+    /// N independent copies along an open 2D guide; sources stay unchanged.
+    #[pyo3(signature = (entity_ids, guide, base_point, count, align_items = true))]
+    fn path_array(
+        &self,
+        entity_ids: Vec<EntityId>,
+        guide: EntityId,
+        base_point: PyPoint,
+        count: usize,
+        align_items: bool,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.path_array(&entity_ids, guide, base_point.0, count, align_items))
+            .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
     /// Moves entities by `offset` (MOVE).
     fn move_entities(&self, entity_ids: Vec<EntityId>, offset: PyVector) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.move_entities(&entity_ids, offset.0))

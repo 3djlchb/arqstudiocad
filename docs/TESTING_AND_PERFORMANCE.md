@@ -54,6 +54,7 @@ and separation between tests, checking containment before writing.
 | ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
 | BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
 | Polar ARRAY, 100 lines × 100 positions over 360 degrees | Rotate: grouped COPY/ROTATE 50.053234 → atomic ARRAY 19.694723 ms (0.393476x); no rotation: grouped COPY 28.168532 → 19.834554 ms (0.704139x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; reference interaction pending |
+| Path ARRAY, 100 lines × 100 positions on a mixed open path | Align: grouped COPY/ROTATE 40.513941 → atomic ARRAY 18.280985 ms (0.451227x); no alignment: grouped COPY 26.347081 → 18.245295 ms (0.692498x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; reference interaction pending |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -609,3 +610,58 @@ interaction. Creating thousands of entities adds redraw work; measure actual
 interaction on the i7-2600/GT 730 with `tools/reference_machine_report.sh`
 and `uv run python tools/gpu_viewport_check.py`. No fixed cross-machine
 multiplier or independent ProgeCAD validation is claimed.
+
+### Path ARRAY diagnostic comparison (2026-11-20)
+
+Maintainer-approved scenario: 100 synthetic lines, 100 new groups along
+an open mixed straight/curved polyline, alignment on/off, two warmups and
+ten samples per case. Base `c953a782f8abe1dede9a59ad46794dbfa5574888`
+was extracted with `git archive` outside the repository and built with
+`uv sync`. Candidate `1b8e283fa3fb059e5a23b8ebd62b83e920c63f9d` uses
+the new atomic operation. Same lockfile and repository-default release PyO3
+profile, x86-64-v2 baseline, Python 3.13.5, LMDE 7, Linux
+6.12.117+deb13-amd64, Ryzen 9 5900X. No compiler CPU feature or system/
+desktop setting changed.
+
+Sources i=0..99 run from (100+i%10, 100+i//10) to
+(100.5+i%10, 100+i//10), with base (100,100). Let L=5*pi; the guide's
+vertices/bulges are ((0,0),0), ((L,0),1), ((L+10,0),0), open. The line
+and the counterclockwise lower semicircle each have length L. Stations
+j=0..99 are at distance 2*L*(j/99), including both endpoints. On the line,
+point=(distance,0), rotation=0. On the arc, fraction=(distance-L)/L,
+theta=pi+pi*fraction, point=(L+5+5*cos(theta),5*sin(theta)), rotation=theta+pi/2.
+The final position is the stored endpoint (L+10,0).
+
+The base precomputes these analytic placements outside timing, then uses
+`doc.group("ARRAYPATH")`: COPY by point-base, followed by ROTATE of those
+new IDs about point when alignment is enabled and rotation is nonzero.
+The candidate calls `path_array(ids, guide, (100,100), 100, align)` once,
+including native path analysis. Both retain sources and guide, produce
+10000 new IDs and 10101 entities, match checked first/middle/final-cell
+endpoints and undo in one step to 101 entities.
+
+`perf_counter_ns`; GC collected before and disabled during timing. Drawing
+creation, baseline analytic placement preparation, result inspection and
+undo excluded. Normal transaction/index/history work and Python call
+overhead included. This compares equivalent workflows, not isolated
+geometry arithmetic or whole command/viewport latency.
+
+| Mode | Base median | Candidate median | After / before |
+|---|---|---|---|
+| Align items | 40.513941 ms | 18.280985 ms | 0.451227 |
+| Keep orientation | 26.347081 ms | 18.245295 ms | 0.692498 |
+
+Temporary harness SHA-256:
+`87a18eb67211f21d85a2cf4a14f31b248c31e9c9ab70c060b097e8f2b7aee8ed`.
+Measurements waited for the other agent's tests/checks to finish. Process
+monitoring at 10 ms intervals throughout both runs found no concurrent
+compiler, test, lint or build process. Synthetic fixtures, scripts and raw
+samples stayed outside the repository; no private drawing or real QSettings
+was used.
+
+Same-machine diagnostic ratios do not establish reference-floor acceptance.
+Selection, dispatch, redraw and real cursor interaction remain excluded.
+Check the actual i7-2600/GT 730 with `tools/reference_machine_report.sh` and
+`uv run python tools/gpu_viewport_check.py` before accepting minimum
+interactive performance. No cross-machine timing multiplier or independent
+ProgeCAD validation is claimed.

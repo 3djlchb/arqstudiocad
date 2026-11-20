@@ -627,6 +627,14 @@ class CadDocument:
         rotate_items: bool = True,
         base_point: _PointLike | None = None,
     ) -> tuple[list[int], CadChangeSet]: ...
+    def path_array(
+        self,
+        entity_ids: _Ids,
+        guide: int,
+        base_point: _PointLike,
+        count: int,
+        align_items: bool = True,
+    ) -> tuple[list[int], CadChangeSet]: ...
     def move_entities(self, entity_ids: _Ids, offset: _PointLike) -> CadChangeSet: ...
     def rotate_entities(
         self, entity_ids: _Ids, center: _PointLike, angle: float

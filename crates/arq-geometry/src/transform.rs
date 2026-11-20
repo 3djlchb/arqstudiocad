@@ -68,6 +68,14 @@ impl Transform2 {
         Ok(Self::linear(cos, -sin, sin, cos, center))
     }
 
+    /// Places a source frame at a target origin, rotating by signed radians.
+    /// Local-frame translation is checked before constructing the transform.
+    pub fn placement(source: Point2, target: Point2, angle: f64) -> GeometryResult<Self> {
+        let mut transform = Self::rotation(source, angle)?;
+        transform.t = Vector2::new(target.x() - source.x(), target.y() - source.y())?;
+        Ok(transform)
+    }
+
     /// Scales by `factor` around `center` (SCALE). The factor must be finite
     /// and greater than zero.
     pub fn scaling(center: Point2, factor: f64) -> GeometryResult<Self> {
