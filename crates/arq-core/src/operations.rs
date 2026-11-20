@@ -1249,7 +1249,8 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
             let (joined, taken) = join_arcs(arc, &arcs, tol);
             (joined, taken.into_iter().map(|i| ids[i]).collect())
         }
-        Geometry2::Circle(_) => return None,
+        // Elliptical arcs join in a later delivery (ADR 0041).
+        Geometry2::Circle(_) | Geometry2::Ellipse(_) => return None,
     };
     (!taken.is_empty()).then_some(Join {
         source: source.id,
@@ -1361,7 +1362,7 @@ fn extension_query_area(
     padding: f64,
 ) -> Option<arq_geometry::Bounds2> {
     match curve {
-        Geometry2::Circle(_) => None,
+        Geometry2::Circle(_) | Geometry2::Ellipse(_) => None,
         Geometry2::Arc(arc) => {
             // A partial arc may have finite bounds even if its supporting
             // circle overflows. Refuse the broad phase, never panic here.
@@ -1413,9 +1414,10 @@ fn extension_query_area(
     }
 }
 
-/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs and circles
-/// `edges` draw (every entity drawn but `target` when None), those inside
-/// blocks and polylines included; texts never.
+/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs, circles
+/// and ellipses `edges` draw (every entity drawn but `target` when None),
+/// those inside blocks and polylines included; texts never. An ellipse
+/// bounds no EXTEND yet (ADR 0041).
 fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> Vec<Geometry2> {
     let ids: Vec<EntityId> = match edges {
         Some(edges) => edges.to_vec(),
@@ -1436,6 +1438,7 @@ fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> 
             arq_document::Shape::Line(l) => Some(Geometry2::Line(l)),
             arq_document::Shape::Arc(a) => Some(Geometry2::Arc(a)),
             arq_document::Shape::Circle(c) => Some(Geometry2::Circle(c)),
+            arq_document::Shape::Ellipse(e) => Some(Geometry2::Ellipse(e)),
             _ => None,
         })
         .collect()

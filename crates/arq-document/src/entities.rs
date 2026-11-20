@@ -88,6 +88,7 @@ impl Document {
             Geometry2::Line(line) => Shape::Line(line),
             Geometry2::Circle(circle) => Shape::Circle(circle),
             Geometry2::Arc(arc) => Shape::Arc(arc),
+            Geometry2::Ellipse(ellipse) => Shape::Ellipse(ellipse),
         };
         match self.stretch_plan(id, areas, offset)? {
             StretchPlan::Unchanged => Ok(Vec::new()),
@@ -200,6 +201,14 @@ impl Document {
                         return Ok(StretchPlan::Unchanged);
                     }
                     return Err(DocumentError::NotEditable { id, kind: "ARC" });
+                }
+                // A plan gives no ellipse yet: its grips and STRETCH come
+                // in a later delivery (ADR 0041).
+                Geometry2::Ellipse(_) => {
+                    return Err(DocumentError::NotEditable {
+                        id,
+                        kind: "ELLIPSE",
+                    });
                 }
             }
         }
@@ -750,7 +759,9 @@ impl Document {
                 let path = match plan.geometry() {
                     Geometry2::Line(line) => JoinPath::line(line),
                     Geometry2::Arc(arc) => JoinPath::arc(arc),
-                    Geometry2::Circle(_) => unreachable!("a line or an arc"),
+                    Geometry2::Circle(_) | Geometry2::Ellipse(_) => {
+                        unreachable!("a line or an arc")
+                    }
                 };
                 return Ok((path, plan.elevation()));
             }
@@ -1848,6 +1859,7 @@ mod tests {
                     Geometry2::Line(_) => EntityType::Line(acadrust::Line::from_coords(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
                     Geometry2::Circle(_) => { let mut c = acadrust::Circle::new(); c.radius = 1.0; c.normal = Vector3::new(0.0, 0.0, nz); EntityType::Circle(c) }
                     Geometry2::Arc(_) => codec_arc((0.0, 0.0, 0.0), 1.0, 0.0, 1.0, nz),
+                    Geometry2::Ellipse(_) => unreachable!("the strategy makes no ellipse"),
                 };
                 let id = add_raw(&mut doc, raw);
                 doc.set_plan_geometry(id, plan(g, z)).unwrap();
