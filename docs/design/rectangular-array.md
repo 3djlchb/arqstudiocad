@@ -87,3 +87,51 @@ touched, the extension rebuilt, and all fifteen passed again. Temporary
 sabotage/measurement scripts and logs stayed outside the repository.
 The approved diagnostic comparison is recorded in
 [testing and performance](../TESTING_AND_PERFORMANCE.md).
+
+## Live orientation preview (2026-11-20)
+
+The maintainer approved a first preview delivery at the Orientation prompt,
+after rows, columns and spacings are known. The remembered/default angle
+is shown before any mouse move; the cursor then chooses the angle using
+the existing world-origin reference. A click accepts that angle, typed
+degrees override it, and Enter accepts the remembered default. Grid axes
+turn; source objects keep their orientation. Earlier prompts are unchanged.
+
+`RectangularGrid` in arq-geometry owns signed offsets in row/column order,
+excluding the original cell. The commit and read-only preview plan share it.
+Finite corners are checked before lazy traversal, so unseen overflowing
+offsets are rejected without enumerating a large grid per cursor move.
+Existing public edit error categories and messages are retained. The core
+validates/deduplicates source IDs without beginning a transaction; commit
+still owns exactly one atomic transaction.
+
+`CadView.rectangular_array_outlines` reads the cached Top-view scene and
+returns copied contours plus explicit shown/total copied-cell counts.
+`arq-render` tessellates each source once per query, translates contours in
+native code and bounds both output and source tessellation. Diagnostic
+initial budgets are 1000 copied cells and 20000 output vertices. If one
+complete source cell cannot fit, no incomplete cell is displayed. The prefix
+is in row/column order; the ordinary selected originals remain visible.
+A single source shape may need its normal bounded tessellation before a
+vertex-budget rejection. ID validation is proportional to the selection.
+These limits bound multiplicative preview work, not all existing selection
+overlay costs or a universal cursor-frame duration.
+
+The overlay discloses partial results with translated shown/total counts.
+Confirmation creates every requested copy, independently of display budgets.
+Cancellation, completion and errors clear the transient display; a query does
+not create entities, update the spatial index, dirty the document or add undo
+steps. Physical native pixels become logical overlay pixels once, including
+high-DPI displays. The existing overlay description serves CPU and GPU; no
+GPU backend, dependency, serialization or CPU baseline changes.
+
+Approval includes a development-host diagnostic: 100 synthetic lines, a
+10×10 array, CPU viewport 800×600, five warmups and 100 samples. Compare
+commit cost against the exact base and measure native preview query, overlay
+construction and CPU painting separately. Use identical fixtures/settings,
+isolated configuration and a quiet window, recording exact commits and
+ratios. Results cannot establish minimum performance: run actual cursor
+interaction on the i7-2600/GT 730 using `tools/reference_machine_report.sh`
+and `uv run python tools/gpu_viewport_check.py` before floor acceptance.
+No ProgeCAD behavior decision is needed for this read-only visualization of
+the existing operation.
