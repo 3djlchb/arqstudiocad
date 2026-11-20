@@ -559,4 +559,6 @@ and the frames stay at the display's refresh (a repeated `repaint`
 refresh, not the work. `gpu_viewport_check.py`, twice each, alternating:
 the overlays 0 pixels apart; pan 17.2 and 15.8 ms on the base, 18.0 and
 16.1 ms with the fix, both with a 95th percentile near 32 ms that the base
-shows too in this session, after a reboot.
+shows too in this session, after a reboot. That percentile is the new
+monitor's 1920 × 1080: switched to 1368 × 768 it is the refresh again
+([resolution and startup](testing/reference-machine/2026-11-19/resolution-and-startup.txt)).
