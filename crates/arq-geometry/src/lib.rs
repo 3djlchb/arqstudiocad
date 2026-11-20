@@ -91,6 +91,7 @@ mod polyline_offset;
 mod polyline_trim;
 mod rectangle;
 mod region;
+mod roots;
 mod selection_polygon;
 pub mod snap;
 mod tolerance;

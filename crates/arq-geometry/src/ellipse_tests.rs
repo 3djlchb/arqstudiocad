@@ -123,3 +123,68 @@ fn a_turn_and_a_mirror_carry_every_point_with_them() {
         assert!((image.sweep() - arc.sweep()).abs() < 1e-12);
     }
 }
+
+#[test]
+fn its_length_is_the_integral_of_its_speed() {
+    // Semi-axes 5 and 3: against ten million chords, which fall short by
+    // about the length over the chords squared.
+    let e = Ellipse::new(p(1.0, 2.0), v(4.0, 3.0), 0.6, 0.0, 0.0).unwrap();
+    let n = 10_000_000;
+    let chords: f64 = (0..n)
+        .map(|i| {
+            let (a, b) = (TAU * i as f64 / n as f64, TAU * (i + 1) as f64 / n as f64);
+            e.point_at_param(a).distance_to(e.point_at_param(b))
+        })
+        .sum();
+    assert!(
+        (e.length() - chords).abs() < 1e-9,
+        "{} {chords}",
+        e.length()
+    );
+    // Ramanujan's second approximation is good to 1e-10 here.
+    let (a, b) = (5.0f64, 3.0f64);
+    let h = ((a - b) / (a + b)).powi(2);
+    let ramanujan = PI * (a + b) * (1.0 + 3.0 * h / (10.0 + (4.0 - 3.0 * h).sqrt()));
+    assert!((e.length() - ramanujan).abs() < 1e-8);
+    // A quarter is a quarter, by symmetry; a circle's is its arc.
+    let quarter = Ellipse::new(p(1.0, 2.0), v(4.0, 3.0), 0.6, 0.0, FRAC_PI_2).unwrap();
+    assert!((quarter.length() * 4.0 - e.length()).abs() < 1e-11);
+    let round = Ellipse::new(p(0.0, 0.0), v(2.0, 0.0), 1.0, 0.0, 1.0).unwrap();
+    assert!((round.length() - 2.0).abs() < 1e-13);
+    // A very narrow one, from a parameter where it turns sharply inside
+    // the quadrature's panels: four times its major axis, nearly.
+    let thin = Ellipse::new(p(0.0, 0.0), v(1.0, 0.0), 1e-6, 0.1, 0.1).unwrap();
+    assert!((thin.length() - 4.0).abs() < 1e-9, "{}", thin.length());
+}
+
+#[test]
+fn a_point_at_a_distance_along_it_and_a_points_parameter() {
+    let arc = Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.6, 0.3, 4.0).unwrap();
+    let length = arc.length();
+    for k in 0..=10 {
+        let d = length * f64::from(k) / 10.0;
+        let q = arc.point_at_distance(d).unwrap();
+        let t = arc.param_of(q);
+        let back = arc.length_between(
+            arc.start_param(),
+            arc.start_param() + angle::ccw_sweep(arc.start_param(), t),
+        );
+        assert!(
+            (back - d).abs() < 1e-9 || (k == 0 && back.abs() < 1e-9),
+            "{k}: {back} {d}"
+        );
+        assert!(arc.distance_to(q) < 1e-9);
+    }
+    assert!(arc.point_at_distance(length + 1e-6).is_err());
+    assert!(arc.point_at_distance(-1e-6).is_err());
+    assert!(arc.point_at_distance(f64::NAN).is_err());
+    // The parameter of a point is its own, turned or not.
+    let turned = Ellipse::new(p(3.0, -1.0), v(-2.0, 2.0), 0.4, 0.0, 0.0).unwrap();
+    for t in [0.0, 1.0, 2.5, 5.9] {
+        assert!((turned.param_of(turned.point_at_param(t)) - t).abs() < 1e-12);
+    }
+    // point_at counts along the parameter, its ends at 0 and 1.
+    let (a, b) = arc.ends().unwrap();
+    assert!(near(arc.point_at(0.0), a) && near(arc.point_at(1.0), b));
+    assert!(near(arc.point_at(0.5), arc.point_at_param(0.3 + 1.85)));
+}

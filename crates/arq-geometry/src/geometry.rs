@@ -3,6 +3,7 @@
 use crate::arc::Arc;
 use crate::bounds::Bounds2;
 use crate::circle::Circle;
+use crate::ellipse::Ellipse;
 use crate::error::GeometryResult;
 use crate::line::Line;
 use crate::point::Point2;
@@ -17,6 +18,8 @@ pub enum GeometryKind {
     Circle,
     /// A circular arc.
     Arc,
+    /// An ellipse or an elliptical arc (ADR 0041).
+    Ellipse,
 }
 
 impl GeometryKind {
@@ -26,6 +29,7 @@ impl GeometryKind {
             Self::Line => "LINE",
             Self::Circle => "CIRCLE",
             Self::Arc => "ARC",
+            Self::Ellipse => "ELLIPSE",
         }
     }
 }
@@ -40,6 +44,8 @@ pub enum Geometry2 {
     Circle(Circle),
     /// A circular arc.
     Arc(Arc),
+    /// An ellipse or an elliptical arc (ADR 0041).
+    Ellipse(Ellipse),
 }
 
 /// Calls the same method on whichever curve `self` holds.
@@ -49,6 +55,7 @@ macro_rules! each {
             Geometry2::Line($g) => $body,
             Geometry2::Circle($g) => $body,
             Geometry2::Arc($g) => $body,
+            Geometry2::Ellipse($g) => $body,
         }
     };
 }
@@ -60,28 +67,35 @@ impl Geometry2 {
             Self::Line(_) => GeometryKind::Line,
             Self::Circle(_) => GeometryKind::Circle,
             Self::Arc(_) => GeometryKind::Arc,
+            Self::Ellipse(_) => GeometryKind::Ellipse,
         }
     }
 
-    /// Whether the curve ends where it starts (a circle).
+    /// Whether the curve ends where it starts (a circle, a whole ellipse).
     pub fn is_closed(self) -> bool {
-        matches!(self, Self::Circle(_))
+        match self {
+            Self::Circle(_) => true,
+            Self::Ellipse(e) => e.is_full(),
+            Self::Line(_) | Self::Arc(_) => false,
+        }
     }
 
-    /// First point, for open curves; `None` for a circle.
+    /// First point, for open curves; `None` for a closed one.
     pub fn start_point(self) -> Option<Point2> {
         match self {
             Self::Line(l) => Some(l.start()),
             Self::Arc(a) => Some(a.start_point()),
+            Self::Ellipse(e) => e.ends().map(|(a, _)| a),
             Self::Circle(_) => None,
         }
     }
 
-    /// Last point, for open curves; `None` for a circle.
+    /// Last point, for open curves; `None` for a closed one.
     pub fn end_point(self) -> Option<Point2> {
         match self {
             Self::Line(l) => Some(l.end()),
             Self::Arc(a) => Some(a.end_point()),
+            Self::Ellipse(e) => e.ends().map(|(_, b)| b),
             Self::Circle(_) => None,
         }
     }
@@ -140,6 +154,12 @@ impl From<Arc> for Geometry2 {
     }
 }
 
+impl From<Ellipse> for Geometry2 {
+    fn from(e: Ellipse) -> Self {
+        Self::Ellipse(e)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +213,26 @@ mod tests {
         assert_eq!(c.distance_to(p(8.0, 0.0)), 3.0);
         assert!(l.point_at_distance(11.0).is_err());
         assert_eq!(l.point_at(0.5), p(5.0, 0.0));
+    }
+
+    #[test]
+    fn an_ellipse_is_a_curve_closed_when_whole() {
+        use crate::{Ellipse, Vector2};
+        let x = Vector2::new(5.0, 0.0).unwrap();
+        let whole: Geometry2 = Ellipse::new(p(0.0, 0.0), x, 0.6, 0.0, 0.0).unwrap().into();
+        let half: Geometry2 = Ellipse::new(p(0.0, 0.0), x, 0.6, 0.0, std::f64::consts::PI)
+            .unwrap()
+            .into();
+        assert_eq!(whole.kind().name(), "ELLIPSE");
+        assert!(whole.is_closed() && whole.start_point().is_none() && whole.end_point().is_none());
+        assert!(!half.is_closed());
+        assert!(half.start_point().unwrap().approx_eq(p(5.0, 0.0), TOL));
+        assert!(half.end_point().unwrap().approx_eq(p(-5.0, 0.0), TOL));
+        assert!((half.length() * 2.0 - whole.length()).abs() < 1e-11);
+        assert_eq!(half.bounds(), Bounds2::new(p(-5.0, 0.0), p(5.0, 3.0)));
+        assert!(half.point_at(0.5).approx_eq(p(0.0, 3.0), TOL));
+        assert!(half.contains_point(p(4.0, 1.8), TOL) && !half.contains_point(p(4.0, -1.8), TOL));
+        assert!((half.distance_to(p(0.0, 5.0)) - 2.0).abs() < 1e-9);
+        assert!(half.point_at_distance(half.length() + 1.0).is_err());
     }
 }

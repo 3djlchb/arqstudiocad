@@ -291,6 +291,171 @@ impl Ellipse {
             .collect()
     }
 
+    /// The derivative of its point by the parameter at `t`: the tangent,
+    /// counterclockwise, as long as the speed along it.
+    pub fn derivative_at(self, t: f64) -> Vector2 {
+        let (sin, cos) = t.sin_cos();
+        self.minor_axis() * cos - self.major * sin
+    }
+
+    /// `p` in the ellipse's own frame, where the ellipse is the unit
+    /// circle: its coordinates along the major and minor semi-axes, each in
+    /// their lengths.
+    pub(crate) fn local(self, p: Point2) -> (f64, f64) {
+        let d = p - self.center;
+        let (u, w) = (self.major, self.minor_axis());
+        (d.dot(u) / u.length_squared(), d.dot(w) / w.length_squared())
+    }
+
+    /// A vector's components in the ellipse's own frame.
+    pub(crate) fn local_vector(self, d: Vector2) -> (f64, f64) {
+        let (u, w) = (self.major, self.minor_axis());
+        (d.dot(u) / u.length_squared(), d.dot(w) / w.length_squared())
+    }
+
+    /// The point whose coordinates in the ellipse's own frame are `(x, y)`.
+    pub(crate) fn at_local(self, x: f64, y: f64) -> Point2 {
+        self.center + self.major * x + self.minor_axis() * y
+    }
+
+    /// The parameter of `p` seen from the center in the ellipse's own frame,
+    /// in `[0, 2π)`: for a point on the whole ellipse, its own parameter.
+    pub fn param_of(self, p: Point2) -> f64 {
+        let (x, y) = self.local(p);
+        angle::normalize(y.atan2(x))
+    }
+
+    /// Whether parameter `t` lies on the arc, or within `slack` (radians)
+    /// beyond either end.
+    pub(crate) fn admits_param(self, t: f64, slack: f64) -> bool {
+        if self.is_full() {
+            return true;
+        }
+        let offset = angle::ccw_sweep(self.start, t);
+        offset <= self.sweep + slack || offset >= TAU - slack
+    }
+
+    /// Whether `p`, a point of the whole ellipse, lies on the arc, within
+    /// `tol` beyond its ends.
+    pub(crate) fn admits(self, p: Point2, tol: Tolerance) -> bool {
+        let t = self.param_of(p);
+        let speed = self.derivative_at(t).length();
+        self.admits_param(t, tol.angular().max(tol.linear() / speed))
+    }
+
+    /// The parameter `fraction` of the way along the arc: 0 its start, 1
+    /// its end.
+    pub fn param_at(self, fraction: f64) -> f64 {
+        self.start + self.sweep * fraction
+    }
+
+    /// The point `fraction` of the way along its parameter, `[0, 1]`: 0 the
+    /// start, 1 the end (`Geometry2::point_at`).
+    pub fn point_at(self, fraction: f64) -> Point2 {
+        self.point_at_param(self.param_at(fraction))
+    }
+
+    /// The length along it from parameter `from` counterclockwise to `to`,
+    /// `to` no smaller than `from`: the integral of its speed, by adaptive
+    /// Gauss-Legendre quadrature to about 1e-12 of the length.
+    pub fn length_between(self, from: f64, to: f64) -> f64 {
+        let speed = |t: f64| self.derivative_at(t).length();
+        let gauss = |a: f64, b: f64| {
+            // Five-point Gauss-Legendre.
+            const X: [f64; 5] = [
+                0.0,
+                0.538_469_310_105_683_1,
+                -0.538_469_310_105_683_1,
+                0.906_179_845_938_664,
+                -0.906_179_845_938_664,
+            ];
+            const W: [f64; 5] = [
+                0.568_888_888_888_888_9,
+                0.478_628_670_499_366_5,
+                0.478_628_670_499_366_5,
+                0.236_926_885_056_189_1,
+                0.236_926_885_056_189_1,
+            ];
+            let (mid, half) = ((a + b) / 2.0, (b - a) / 2.0);
+            half * X
+                .iter()
+                .zip(W)
+                .map(|(x, w)| w * speed(mid + half * x))
+                .sum::<f64>()
+        };
+        fn refine(
+            gauss: &dyn Fn(f64, f64) -> f64,
+            a: f64,
+            b: f64,
+            whole: f64,
+            tol: f64,
+            depth: u32,
+        ) -> f64 {
+            let m = (a + b) / 2.0;
+            let (left, right) = (gauss(a, m), gauss(m, b));
+            if depth == 0 || (left + right - whole).abs() <= tol {
+                left + right
+            } else {
+                refine(gauss, a, m, left, tol / 2.0, depth - 1)
+                    + refine(gauss, m, b, right, tol / 2.0, depth - 1)
+            }
+        }
+        if to <= from {
+            return 0.0;
+        }
+        // Panels of an eighth of a turn at most, so the quadrature's
+        // estimate never misses a narrow end of the ellipse.
+        let panels = ((to - from) / (TAU / 8.0)).ceil().max(1.0);
+        let width = (to - from) / panels;
+        let tol = 1e-13 * self.major.length() * (to - from);
+        (0..panels as usize)
+            .map(|i| {
+                let a = from + width * i as f64;
+                let b = a + width;
+                refine(&gauss, a, b, gauss(a, b), tol / panels, 40)
+            })
+            .sum()
+    }
+
+    /// Its length.
+    pub fn length(self) -> f64 {
+        self.length_between(self.start, self.start + self.sweep)
+    }
+
+    /// The point `distance` along it from its start.
+    pub fn point_at_distance(self, distance: f64) -> GeometryResult<Point2> {
+        let length = self.length();
+        if !(distance.is_finite() && (0.0..=length).contains(&distance)) {
+            return Err(GeometryError::OutOfRange { what: "distance" });
+        }
+        Ok(self.point_at_param(self.param_at_distance(distance)))
+    }
+
+    /// The parameter `distance` along it from its start, `distance` within
+    /// its length: Newton's method on the length, kept in a bracket.
+    pub(crate) fn param_at_distance(self, distance: f64) -> f64 {
+        let (mut lo, mut hi) = (self.start, self.start + self.sweep);
+        let mut t = self.start + self.sweep * distance / self.length().max(f64::MIN_POSITIVE);
+        for _ in 0..60 {
+            let gone = self.length_between(self.start, t) - distance;
+            if gone.abs() <= 1e-12 * self.major.length() {
+                break;
+            }
+            if gone > 0.0 {
+                hi = t;
+            } else {
+                lo = t;
+            }
+            let next = t - gone / self.derivative_at(t).length();
+            t = if next > lo && next < hi {
+                next
+            } else {
+                (lo + hi) / 2.0
+            };
+        }
+        t
+    }
+
     /// Its image by `t`, a similarity (a move, a turn, a uniform scale or a
     /// mirror): a mirror reverses its direction, so the parameters change
     /// sign to keep it counterclockwise.
