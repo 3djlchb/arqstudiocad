@@ -53,6 +53,7 @@ and separation between tests, checking containment before writing.
 | World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
 | ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
 | BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
+| Polar ARRAY, 100 lines × 100 positions over 360 degrees | Rotate: grouped COPY/ROTATE 50.053234 → atomic ARRAY 19.694723 ms (0.393476x); no rotation: grouped COPY 28.168532 → 19.834554 ms (0.704139x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; reference interaction pending |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -562,3 +563,49 @@ the overlays 0 pixels apart; pan 17.2 and 15.8 ms on the base, 18.0 and
 shows too in this session, after a reboot. That percentile is the new
 monitor's 1920 × 1080: switched to 1368 × 768 it is the refresh again
 ([resolution and startup](testing/reference-machine/2026-11-19/resolution-and-startup.txt)).
+
+### Polar ARRAY diagnostic comparison (2026-11-20)
+
+Maintainer-approved scenario: 100 synthetic lines, 100 positions including
+the source, signed fill +360 degrees, rotation on and off. Base production
+commit `ded603746a7ba25ff4248d0365d6d69ec57cc740` was extracted with
+`git archive` into a temporary directory and built with `uv sync`. Candidate
+`49b89aa4cf92277c5b094c17641e00760acd09f4` uses the new atomic operation.
+Both use the same lockfile and repository-default release PyO3 profile,
+Python 3.13.5, LMDE 7, Linux 6.12.117+deb13-amd64, Ryzen 9 5900X,
+x86-64-v2 baseline. No compiler CPU feature or desktop/system setting changed.
+
+Each independent drawing has lines indexed i=0..99 from (10+i%10, i//10)
+to (10.5+i%10, i//10), center (0,0), and explicit base (10,0) when not
+rotating. Item j=1..99 uses angle `tau * (j/100)`. The base wraps calls in
+`doc.group("ARRAYPOLAR")`: with rotation, COPY at zero offset followed by
+ROTATE of the new IDs; without rotation, COPY at the base's orbital offset
+`(-20*sin(angle/2)**2, 10*sin(angle))`. The candidate calls
+`polar_array(ids, (0,0), 100, tau, rotate, base)` once.
+
+Two warmups followed by ten samples per case, baseline then candidate;
+`perf_counter_ns`, GC collected before and disabled during timing. Drawing
+creation, result inspection and undo are excluded; normal transaction/index/
+history work and Python call overhead are included. Both produced 9900 new
+IDs and 10000 entities, matched checked first/last-cell endpoints and undid
+in one step to the 100 originals. This compares equivalent workflows; it
+does not isolate geometry arithmetic from API/transaction overhead.
+
+| Mode | Base median | Candidate median | After / before |
+|---|---|---|---|
+| Rotate items | 50.053234 ms | 19.694723 ms | 0.393476 |
+| Keep orientation, explicit base | 28.168532 ms | 19.834554 ms | 0.704139 |
+
+The temporary harness SHA-256 was
+`2d42627a569c6424c926b8337703c8912206302d85eb1d1df17b1fc47c739685`.
+Measurements waited until the other agent's tests ended. Process monitoring
+at 10 ms intervals throughout both runs found no concurrent compiler, test,
+lint or build process. Synthetic fixtures, scripts and raw samples stayed
+outside the repository; no private drawing was used.
+
+These same-machine ratios are diagnostic, not reference-floor acceptance.
+The measurement excludes selection, command dispatch, redraw and cursor
+interaction. Creating thousands of entities adds redraw work; measure actual
+interaction on the i7-2600/GT 730 with `tools/reference_machine_report.sh`
+and `uv run python tools/gpu_viewport_check.py`. No fixed cross-machine
+multiplier or independent ProgeCAD validation is claimed.

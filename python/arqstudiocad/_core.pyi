@@ -618,6 +618,15 @@ class CadDocument:
         column_spacing: float,
         angle: float,
     ) -> tuple[list[int], CadChangeSet]: ...
+    def polar_array(
+        self,
+        entity_ids: _Ids,
+        center: _PointLike,
+        count: int,
+        fill_angle: float,
+        rotate_items: bool = True,
+        base_point: _PointLike | None = None,
+    ) -> tuple[list[int], CadChangeSet]: ...
     def move_entities(self, entity_ids: _Ids, offset: _PointLike) -> CadChangeSet: ...
     def rotate_entities(
         self, entity_ids: _Ids, center: _PointLike, angle: float

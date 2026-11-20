@@ -1394,6 +1394,31 @@ impl CadDocument {
         .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
+    /// Independent polar copies; fill_angle is signed radians. One undo step.
+    #[pyo3(signature = (entity_ids, center, count, fill_angle, rotate_items = true, base_point = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn polar_array(
+        &self,
+        entity_ids: Vec<EntityId>,
+        center: PyPoint,
+        count: usize,
+        fill_angle: f64,
+        rotate_items: bool,
+        base_point: Option<PyPoint>,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| {
+            cad.polar_array(
+                &entity_ids,
+                center.0,
+                count,
+                fill_angle,
+                rotate_items,
+                base_point.map(|p| p.0),
+            )
+        })
+        .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
     /// Moves entities by `offset` (MOVE).
     fn move_entities(&self, entity_ids: Vec<EntityId>, offset: PyVector) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.move_entities(&entity_ids, offset.0))

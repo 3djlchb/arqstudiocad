@@ -105,3 +105,12 @@ ProgeCAD 2026 (2026-11-15). Only observed behavior is a reference; no proprietar
 code, artwork or documentation passages are copied. Geometry, implementation
 and regression tests are original GPL-3.0-or-later project code, reusing the
 existing projection and subpath algorithms.
+
+## Polar ARRAY behavioral reference (2026-11-20)
+
+The independent `ARRAYPOLAR` workflow uses the documented polar behavior of
+[AutoCAD 2021 -ARRAY](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-8336B4CD-5375-4290-BD08-7D9E022741F6.htm)
+as an interoperability reference (signed fill, item rotation and group base).
+Implementation and hand-derived expected coordinates are original. No
+proprietary code, prose or artwork is incorporated; code remains
+GPL-3.0-or-later and project documentation CC BY-SA 4.0.

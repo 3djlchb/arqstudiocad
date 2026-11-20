@@ -410,6 +410,7 @@ class MainWindow(QMainWindow):
             "BREAK",
             "JOIN",
             "ARRAYRECT",
+            "ARRAYPOLAR",
             "FILLET",
             "CHAMFER",
             "EXPLODE",

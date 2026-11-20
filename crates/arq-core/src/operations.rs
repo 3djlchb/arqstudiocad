@@ -302,6 +302,54 @@ impl CadDocument {
         })
     }
 
+    /// Independent polar copies, ordered by item and distinct source ID order.
+    /// The original is item zero. Full turns omit a duplicate final position;
+    /// partial fills include the last angle. Angles are signed radians.
+    /// Without rotation, base_point is required: the selection translates as a
+    /// group so its base orbits center. One atomic ARRAYPOLAR undo step.
+    pub fn polar_array(
+        &mut self,
+        ids: &[EntityId],
+        center: Point2,
+        count: usize,
+        fill_angle: f64,
+        rotate_items: bool,
+        base_point: Option<Point2>,
+    ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let transforms = arq_geometry::polar_array_transforms(
+            center,
+            count,
+            fill_angle,
+            rotate_items,
+            base_point,
+        )?;
+        let ids = distinct(ids);
+        self.transact("ARRAYPOLAR", |doc| {
+            let mut sources = Vec::new();
+            for &id in &ids {
+                let entity = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &entity)?;
+                check_transformable(&entity)?;
+                let bounds = entity.bounds().ok_or_else(|| {
+                    CadError::InvalidGeometry("array sources need finite bounds".into())
+                })?;
+                sources.push((id, bounds));
+            }
+            let mut copies = Vec::new();
+            for transform in transforms {
+                for &(id, bounds) in &sources {
+                    for corner in bounds.corners() {
+                        transform.checked_apply_point(corner)?;
+                    }
+                    let copy = doc.copy_entity(id)?;
+                    doc.transform_entity(copy, transform)?;
+                    copies.push(copy);
+                }
+            }
+            Ok(copies)
+        })
+    }
+
     /// FILLET: `a` and `b` (two lines, or a line and an arc) met by an arc of
     /// `radius` tangent to both, each kept on the side it was picked (`pa`,
     /// `pb`) and, when `trim`, trimmed or extended to it; radius 0 makes a

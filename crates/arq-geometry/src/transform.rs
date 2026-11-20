@@ -158,6 +158,18 @@ impl Transform2 {
         self.pivot + self.mul(p - self.pivot) + self.t
     }
 
+    /// Checked point application for operations that must reject coordinate
+    /// overflow before mutation, including every local-frame intermediate.
+    pub fn checked_apply_point(self, p: Point2) -> GeometryResult<Point2> {
+        let d = Vector2::new(p.x() - self.pivot.x(), p.y() - self.pivot.y())?;
+        let v = Vector2::new(
+            self.a * d.x() + self.b * d.y(),
+            self.c * d.x() + self.d * d.y(),
+        )?;
+        let anchored = Point2::new(self.pivot.x() + v.x(), self.pivot.y() + v.y())?;
+        Point2::new(anchored.x() + self.t.x(), anchored.y() + self.t.y())
+    }
+
     /// Image of a displacement (translations do not affect vectors).
     pub fn apply_vector(self, v: Vector2) -> Vector2 {
         self.mul(v)
