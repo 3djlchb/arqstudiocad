@@ -12,7 +12,9 @@ with merge commit `c6d4ecd7c53ba8525af5704395f5455f793e7913`, retaining the
 ellipse restrictions and all existing main tests. Final acceptance incorporates
 main `a7c61065744071e3ea5604c95a48eb2bc22b72b3` through merge
 `0f3a84a03b23e33d9bc831f5717d96e035b88c5d`, including subsequent ellipse
-editing and rectangular-array preview work. No codec pin, dependency,
+editing and rectangular-array preview work. After PR #226 merged, the branch
+also incorporated main `e306b62` through merge `ef664d3`, retaining ellipse
+grips and Properties. No codec pin, dependency,
 CPU baseline, GPU backend or system/application preference is changed.
 Qt tests use the project's temporary QSettings isolation and offscreen plugin.
 
@@ -54,7 +56,7 @@ tests, one core test, ten Python partial-arc cases, and two command/Qt cases
 failed for the expected reasons. Exact-byte restoration and extension rebuilding
 were followed by all 15 focused Rust and 42 Python/Qt cases passing again.
 
-Final-base acceptance: formatting and Clippy pass; `cargo test` passes 1,021
+Acceptance before PR #226: formatting and Clippy pass; `cargo test` passes 1,021
 tests with 20 ignored. The explicit codec corpus run passes all nine selected
 tests (two unrelated tests filtered out). `uv run pytest -ra` passes 1,260
 tests; six X11-only GPU tests are skipped on Windows. Eleven deprecation
@@ -63,6 +65,13 @@ Ruff check and format, mypy (206 source files), stubtest and cargo deny all
 pass. Fixture verification and `uv sync` pass. Local documentation links and
 `git diff --check` pass. Ignored, skipped and unexecuted external/performance
 checks are not counted as passing.
+
+Final acceptance after PR #226: all required local checks pass again.
+`cargo test`: 1,024 passed, 20 ignored; explicit codec corpus: nine passed.
+Python: 1,264 passed, six X11-only skips, the same 11 existing Qt deprecation
+warnings. Formatting, Clippy, extension rebuild, Ruff check/format, mypy,
+stubtest and cargo deny pass. No STRETCH implementation or test was changed
+by this integration; the completed sabotage evidence remains applicable.
 
 ## Limits and follow-up
 
