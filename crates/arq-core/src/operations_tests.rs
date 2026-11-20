@@ -2339,3 +2339,117 @@ fn path_array_invalid_guides_locked_sources_and_late_overflow_are_atomic() {
             .is_err()
     );
 }
+
+/// An ellipse about (10,0), semi-axes 4 along x and 2, from parameter
+/// `start` to `end` (equal: whole), red.
+fn red_ellipse(cad: &mut CadDocument, start: f64, end: f64) -> EntityId {
+    let e = Ellipse::new(p(10.0, 0.0), v(4.0, 0.0), 0.5, start, end).unwrap();
+    let (id, _) = cad.add_ellipse(e).unwrap();
+    cad.set_entity_color(&[id], Color::Index(1)).unwrap();
+    id
+}
+
+fn ends_of(e: Ellipse) -> (Point2, Point2) {
+    e.ends().expect("an arc")
+}
+
+#[test]
+fn a_whole_ellipse_is_trimmed_to_the_arc_left_in_one_step() {
+    // x = 12 cuts it at (12, ±√3); Quick, picked on its right.
+    let mut cad = CadDocument::new();
+    let id = red_ellipse(&mut cad, 0.0, 0.0);
+    cad.add_line(p(12.0, -5.0), p(12.0, 5.0)).unwrap();
+    let (left, changes) = cad.trim_entity(id, p(14.0, 0.1), None, true).unwrap();
+    assert_eq!(left, [id], "the ellipse keeps its id");
+    assert_eq!(changes.modified(), [id]);
+    let (a, b) = ends_of(drawn_ellipse(&cad, id));
+    let h = 3f64.sqrt();
+    assert!(near(a, p(12.0, h)) && near(b, p(12.0, -h)), "{a:?} {b:?}");
+    assert_eq!(cad.document().entity(id).unwrap().kind(), "ELLIPSE");
+    assert_eq!(cad.document().entity(id).unwrap().color(), Color::Index(1));
+    assert_eq!(cad.undo_name(), Some("TRIM"));
+    cad.undo().unwrap();
+    assert!(drawn_ellipse(&cad, id).is_full());
+}
+
+#[test]
+fn an_elliptical_arc_trimmed_in_the_middle_becomes_two_alike() {
+    // The upper half, cut by x = 9 and x = 11, picked at its top.
+    let mut cad = CadDocument::new();
+    let id = red_ellipse(&mut cad, 0.0, PI);
+    let (a, _) = cad.add_line(p(9.0, -5.0), p(9.0, 5.0)).unwrap();
+    let (b, _) = cad.add_line(p(11.0, -5.0), p(11.0, 5.0)).unwrap();
+    let (left, changes) = cad
+        .trim_entity(id, p(10.0, 2.0), Some(&[a, b]), false)
+        .unwrap();
+    assert_eq!(left.len(), 2);
+    assert_eq!((left[0], changes.created()), (id, &[left[1]][..]));
+    let y = 2.0 * (1.0 - 1.0 / 16.0f64).sqrt();
+    let (s0, e0) = ends_of(drawn_ellipse(&cad, left[0]));
+    let (s1, e1) = ends_of(drawn_ellipse(&cad, left[1]));
+    assert!(
+        near(s0, p(14.0, 0.0)) && near(e0, p(11.0, y)),
+        "{s0:?} {e0:?}"
+    );
+    assert!(
+        near(s1, p(9.0, y)) && near(e1, p(6.0, 0.0)),
+        "{s1:?} {e1:?}"
+    );
+    assert_eq!(
+        cad.document().entity(left[1]).unwrap().color(),
+        Color::Index(1)
+    );
+    cad.undo().unwrap();
+    assert!(cad.document().entity(left[1]).is_none());
+    assert_eq!(ends_of(drawn_ellipse(&cad, id)).1.x().round(), 6.0);
+}
+
+#[test]
+fn an_elliptical_arc_extends_and_breaks_in_one_step_each() {
+    // The first quarter, (14,0) to (10,2), grown at its end to x = 7, in
+    // both modes: to (7, √(4·(1 - 9/16))).
+    for edges in [None, Some(())] {
+        let mut cad = CadDocument::new();
+        let id = red_ellipse(&mut cad, 0.0, FRAC_PI_2);
+        let (wall, _) = cad.add_line(p(7.0, -5.0), p(7.0, 5.0)).unwrap();
+        let chosen = [wall];
+        cad.extend_entity(id, p(10.1, 2.0), edges.map(|()| &chosen[..]))
+            .unwrap();
+        let (a, b) = ends_of(drawn_ellipse(&cad, id));
+        let y = 2.0 * (1.0 - 9.0 / 16.0f64).sqrt();
+        assert!(
+            near(a, p(14.0, 0.0)) && near(b, p(7.0, y)),
+            "{edges:?}: {b:?}"
+        );
+        assert_eq!(cad.undo_name(), Some("EXTEND"));
+    }
+    // A whole ellipse cannot grow; broken, it loses the span between the
+    // points, counterclockwise.
+    let mut cad = CadDocument::new();
+    let id = red_ellipse(&mut cad, 0.0, 0.0);
+    cad.add_line(p(0.0, 5.0), p(1.0, 5.0)).unwrap();
+    assert!(cad.extend_entity(id, p(14.0, 0.0), None).is_err());
+    let (left, _) = cad.break_entity(id, p(14.0, 0.0), p(10.0, 2.0)).unwrap();
+    assert_eq!(left, [id]);
+    let (a, b) = ends_of(drawn_ellipse(&cad, id));
+    assert!(
+        near(a, p(10.0, 2.0)) && near(b, p(14.0, 0.0)),
+        "{a:?} {b:?}"
+    );
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+}
+
+#[test]
+fn a_line_extends_to_an_ellipse_in_both_modes() {
+    for edges in [None, Some(())] {
+        let mut cad = CadDocument::new();
+        let ellipse = red_ellipse(&mut cad, 0.0, 0.0);
+        let (line, _) = cad.add_line(p(0.0, 1.0), p(3.0, 1.0)).unwrap();
+        let chosen = [ellipse];
+        cad.extend_entity(line, p(3.0, 1.0), edges.map(|()| &chosen[..]))
+            .unwrap();
+        let x = 10.0 - 4.0 * 0.75f64.sqrt();
+        let end = curve_of(&cad, line).end_point().unwrap();
+        assert!(near(end, p(x, 1.0)), "{edges:?}: {end:?}");
+    }
+}

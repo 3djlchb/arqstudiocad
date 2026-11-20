@@ -299,6 +299,27 @@ impl CadDocument {
             .py()
     }
 
+    /// The curve TRIM, EXTEND and BREAK edit for this entity, in world plan
+    /// coordinates: a line, circle or arc as `geometry`, or an ellipse lying
+    /// in the plan (`CadEllipse`); None for anything else (ADR 0041).
+    fn editable_curve<'py>(
+        &self,
+        py: Python<'py>,
+        entity_id: EntityId,
+    ) -> PyResult<Option<Bound<'py, PyAny>>> {
+        let found = self.read(|cad| {
+            let doc = cad.document();
+            doc.entity(entity_id)
+                .map(|_| doc.curve_plan(entity_id).map(|plan| plan.geometry()))
+        })?;
+        match found {
+            None => Err(CadError::EntityNotFound(entity_id)).py(),
+            Some(curve) => curve
+                .map(|g| crate::info::geometry_to_py(py, g))
+                .transpose(),
+        }
+    }
+
     /// The entities with these ids, in that order; without ids, every entity
     /// in model space, in drawing order. A missing id raises
     /// `EntityNotFoundError`.

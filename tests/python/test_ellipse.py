@@ -163,3 +163,58 @@ def test_an_ellipse_is_a_curve_to_snap_to_from_python() -> None:
     assert touch.point == pytest.approx((2.5, 3.0 * math.sqrt(0.75)))
     foot = h.document.snap((0.2, 2.98), 0.3, ["PER"], (0.0, 7.0))
     assert foot is not None and foot.point == pytest.approx((0.0, 3.0))
+
+
+def ellipse_ends(h: Harness) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The ends of the one elliptical arc drawn, rounded."""
+    found = [e for e in h.document.get_entities() if e.kind == "ELLIPSE"]
+    assert len(found) == 1, found
+    curve = h.document.editable_curve(found[0].id)
+    assert isinstance(curve, CadEllipse) and not curve.is_full
+    first, *_, last = curve.points()
+    r = round
+    return (r(first[0], 6), r(first[1], 6)), (r(last[0], 6), r(last[1], 6))
+
+
+def test_trim_extend_and_break_edit_an_ellipse() -> None:
+    # About (0,0), semi-axes 5 and 3; the upright x = 4 crosses it at
+    # (4, ±1.8). Quick TRIM picked on its right leaves the long arc.
+    h = Harness()
+    h.run("ELLIPSE", "C", "0,0", "5,0", "3")
+    (ellipse,) = [e.id for e in h.document.get_entities() if e.kind == "ELLIPSE"]
+    h.line((4.0, -9.0), (4.0, 9.0))
+    h.run("TRIM")
+    h.runner.answer_entity(ellipse, (5.0, 0.0))
+    h.run("")
+    assert ellipse_ends(h) == ((4.0, 1.8), (4.0, -1.8))
+    assert h.document.undo_history[-1] == "TRIM"
+    # EXTEND it back at (4,-1.8), to the line x = 4.5 below: to (4.5, -√(9·0.19)).
+    h.line((4.5, -9.0), (4.5, -1.0))
+    h.run("EXTEND")
+    h.runner.answer_entity(ellipse, (4.0, -1.8))
+    h.run("")
+    y = round(-3.0 * math.sqrt(1.0 - 0.81), 6)
+    assert ellipse_ends(h) == ((4.0, 1.8), (4.5, y))
+    # BREAK it at its top and at (-5,0): two arcs.
+    h.run("BREAK")
+    h.runner.answer_entity(ellipse, (0.0, 3.0))
+    h.run("-5,0")
+    arcs = [e for e in h.document.get_entities() if e.kind == "ELLIPSE"]
+    assert len(arcs) == 2
+    assert h.document.undo_history[-1] == "BREAK"
+
+
+def test_a_whole_ellipse_is_not_extended_and_a_fence_trims_it() -> None:
+    h = Harness()
+    h.run("ELLIPSE", "C", "0,0", "5,0", "3")
+    (ellipse,) = [e.id for e in h.document.get_entities() if e.kind == "ELLIPSE"]
+    before = h.document.undo_history
+    h.run("EXTEND")
+    h.runner.answer_entity(ellipse, (5.0, 0.0))
+    assert h.messages()[-1] == "Cannot extend that object."
+    h.run("")
+    assert h.document.undo_history == before
+    # A fence across its right side, the upright x = 4 cutting it.
+    h.line((4.0, -9.0), (4.0, 9.0))
+    h.run("TRIM", "F", "4.8,-2", "4.8,2", "")
+    assert ellipse_ends(h) == ((4.0, 1.8), (4.0, -1.8))
