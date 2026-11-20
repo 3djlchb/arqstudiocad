@@ -62,7 +62,8 @@ Linux checks are internal validation, not independent ProgeCAD acceptance.
 The approved development-host diagnostic compares 100 synthetic lines in
 100 positions over 360 degrees, with and without rotation, against equivalent
 grouped COPY/ROTATE: two warmups and ten samples per case. Exact commits,
-environment and ratios belong in [testing and performance](../TESTING_AND_PERFORMANCE.md).
+environment and measured ratios (0.393476 with rotation, 0.704139 without)
+are recorded in [testing and performance](../TESTING_AND_PERFORMANCE.md).
 Generating many copies also adds redraw work. Interactive floor acceptance
 belongs on the actual i7-2600/GT 730, using `tools/reference_machine_report.sh`
 and `uv run python tools/gpu_viewport_check.py`; development timings cannot
