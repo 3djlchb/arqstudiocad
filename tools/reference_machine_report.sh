@@ -33,6 +33,11 @@ date -Is
 grep -E '^(PRETTY_NAME|VERSION)=' /etc/os-release
 uname -srm
 echo "session: ${XDG_SESSION_TYPE:-unknown}  desktop: ${XDG_CURRENT_DESKTOP:-unknown}"
+if have xrandr && [ -n "${DISPLAY:-}" ]; then
+    # The screens the desktop composes, and the mode in use (*): a larger
+    # screen raises the GPU's frame times (reference-machine.md, 2026-11-19).
+    xrandr --current | grep -E ' connected|\*' | sed 's/^ */  /'
+fi
 echo "cores: $(nproc)"
 free -h | head -2
 grep -m1 'model name' /proc/cpuinfo
