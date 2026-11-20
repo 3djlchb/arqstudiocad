@@ -4,7 +4,7 @@
 //! point and a lightweight polyline each vertex (milestone 02.8); a TEXT or
 //! MTEXT its anchor (ADR 0022).
 
-use arq_geometry::{Geometry2, Point2};
+use arq_geometry::{Geometry2, Point2, Tolerance};
 
 use crate::document::Document;
 use crate::entity::EntityId;
@@ -90,8 +90,25 @@ impl Document {
                         add(GripKind::Quadrant, c.point_at_angle(angle), None);
                     }
                 }
-                // An ellipse's grips come in a later delivery (ADR 0041).
-                Some(Geometry2::Ellipse(_)) => {}
+                // Its center, the ends of its axes on it, an arc's ends
+                // (ADR 0041 D4, as AutoCAD).
+                // An axis end at an arc's end is that end's grip only.
+                Some(Geometry2::Ellipse(e)) => {
+                    add(GripKind::Center, e.center(), None);
+                    let ends = e.ends();
+                    let at_end = |q: Point2| {
+                        ends.is_some_and(|(a, b)| {
+                            q.approx_eq(a, Tolerance::DEFAULT) || q.approx_eq(b, Tolerance::DEFAULT)
+                        })
+                    };
+                    for q in e.quadrants().into_iter().filter(|&q| !at_end(q)) {
+                        add(GripKind::Quadrant, q, None);
+                    }
+                    if let Some((a, b)) = ends {
+                        add(GripKind::End, a, None);
+                        add(GripKind::End, b, None);
+                    }
+                }
                 Some(Geometry2::Arc(a)) => {
                     add(GripKind::End, a.start_point(), None);
                     add(GripKind::Mid, a.midpoint(), None);

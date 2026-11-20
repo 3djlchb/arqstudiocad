@@ -442,6 +442,26 @@ impl CadEllipse {
         self.0.is_full()
     }
 
+    /// Its length along the curve.
+    #[getter]
+    fn length(&self) -> f64 {
+        self.0.length()
+    }
+
+    /// This ellipse with one semi-axis, the major one when `major`, set to
+    /// `length` (a grip stretched): its direction and the other kept; the
+    /// longer becomes the major, an arc keeping its place.
+    fn with_semi_axis(&self, major: bool, length: f64) -> PyResult<Self> {
+        self.0.with_semi_axis(major, length).py().map(Self)
+    }
+
+    /// This arc with its start (when `start`) or its end moved to the point
+    /// of the ellipse toward `point`, seen from the center (a grip
+    /// stretched); refused for the whole ellipse.
+    fn with_end_at(&self, start: bool, point: PyPoint) -> PyResult<Self> {
+        self.0.with_end_at(start, point.0).py().map(Self)
+    }
+
     /// The points it is drawn by, its ends included.
     fn points(&self) -> Vec<(f64, f64)> {
         self.0.flatten().into_iter().map(xy).collect()

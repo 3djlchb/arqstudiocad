@@ -122,3 +122,13 @@ again: 23 cases, 67 files reopened.
 - **ProgeCAD** reshapes it into another ellipse: center (0.4378,−0.0950), major axis (5.5782,−0.2137), ratio 0.5538.
 - **Ours** refuses it, by its design, and changes nothing.
 - **Decision.** The maintainer chose to keep the refusal (2026-11-20). ProgeCAD's rule is not evident, and changes the whole ellipse.
+
+## To run by hand: ELLIPSE grips and Properties
+
+Added on 2026-11-20 with the ellipse's grips and Properties (ADR 0041). By
+hand, on an ellipse about (0,0) with semi-axes 5 and 3, and on its first
+quarter, compared with [ELLIPSE's design](../design/ellipse-command.md):
+which grips show; the center grip moved; the grip at (5,0) taken to (8,1);
+the grip at (0,3) taken to (0,7), past the major; the quarter's end at
+(0,3) taken toward (−10,0). And the Properties panel's Start and End angle
+of the quarter, against the dump's `start-angle` and `end-angle`.

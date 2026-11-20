@@ -1,5 +1,6 @@
 """The layers, properties and history panels (ADR 0013, D5.6)."""
 
+import math
 from functools import partial
 from pathlib import Path
 
@@ -10,7 +11,15 @@ from PySide6.QtWidgets import QComboBox, QTableWidgetItem, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
-from arqstudiocad.core import CadArc, CadChangeSet, CadCircle, CadColor, CadDocument, CadLine
+from arqstudiocad.core import (
+    CadArc,
+    CadChangeSet,
+    CadCircle,
+    CadColor,
+    CadDocument,
+    CadEllipse,
+    CadLine,
+)
 from arqstudiocad.events import WorkFinished, WorkStarted
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui import layers_panel
@@ -517,3 +526,51 @@ def test_choosing_a_row_undoes_and_redoes_to_it(window: MainWindow) -> None:
     window.history_panel.list.setCurrentRow(0)
     assert document.entity_count == 0 and not document.can_undo
     assert not window.viewports[document.id].document.is_modified
+
+
+def test_selected_ellipse_properties_show_and_edit_it_as_autocad(window: MainWindow) -> None:
+    # About (1,2), semi-axes 5 along x and 3, from parameter 0 to π/2.
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    ellipse_id, changes = document.add_ellipse(CadEllipse((1, 2), (5, 0), 0.6, 0.0, math.pi / 2))
+    window.session.report(document, changes)
+    window.session.select(document, [ellipse_id])
+    panel = window.properties_panel
+    assert panel.grid.caption.text() == "Ellipse"
+    rows = dict(panel.rows())
+    assert (rows["Center X"], rows["Center Y"]) == ("1", "2")
+    assert (rows["Major radius"], rows["Minor radius"], rows["Radius ratio"]) == ("5", "3", "0.6")
+    assert (rows["Major axis X"], rows["Major axis Y"]) == ("5", "0")
+    assert (rows["Start angle"], rows["End angle"]) == ("0", "90")
+    assert (rows["Start X"], rows["Start Y"], rows["End X"], rows["End Y"]) == ("6", "2", "1", "5")
+    assert float(rows["Area"]) == pytest.approx(0.25 * math.pi * 15)
+    quarter = CadEllipse((1, 2), (5, 0), 0.6, 0.0, math.pi / 2)
+    assert float(rows["Length"]) == pytest.approx(quarter.length)
+
+    def geometry() -> CadEllipse:
+        found = document.get_entity(ellipse_id).geometry
+        assert isinstance(found, CadEllipse)
+        return found
+
+    # The center moves it; the minor radius past the major swaps them.
+    property_item(window, "Center X").setText(1, "4")
+    assert geometry().center == (4.0, 2.0)
+    assert document.undo_history[-1] == "PROPERTIES"
+    property_item(window, "Minor radius").setText(1, "8")
+    assert geometry().major_axis == pytest.approx((0.0, 8.0))
+    assert geometry().ratio == pytest.approx(5 / 8)
+    window.runner.execute("UNDO")
+    assert geometry().major_axis == (5.0, 0.0)
+    # The ratio, and an end angle from the major axis: 45° on an ellipse
+    # 5 by 3 is the point where y = x, about the center.
+    property_item(window, "Radius ratio").setText(1, "0.5")
+    assert geometry().ratio == 0.5
+    property_item(window, "End angle").setText(1, "45")
+    (ex, ey) = geometry().points()[-1]
+    assert ex - 4.0 == pytest.approx(ey - 2.0)
+    assert float(dict(panel.rows())["End angle"]) == pytest.approx(45.0)
+    # A ratio above one is refused, nothing changed.
+    property_item(window, "Radius ratio").setText(1, "2")
+    assert geometry().ratio == 0.5
+    assert last_line(window).startswith("Error: ")
