@@ -470,6 +470,44 @@ impl CadView {
         arq_render::outline(&state.scene, &state.camera, &entity_ids)
     }
 
+    /// Bounded read-only ARRAYRECT outlines, shown/total copied cells.
+    #[allow(clippy::too_many_arguments, clippy::type_complexity)]
+    fn rectangular_array_outlines(
+        &self,
+        entity_ids: Vec<u64>,
+        rows: usize,
+        columns: usize,
+        row_spacing: f64,
+        column_spacing: f64,
+        angle: f64,
+    ) -> PyResult<(Vec<Vec<(f64, f64)>>, usize, usize)> {
+        if self.state().scene.view() != View::Top {
+            return Err(arq_core::CadError::InvalidOperation(
+                "ARRAYRECT preview requires the Top view".into(),
+            ))
+            .py();
+        }
+        let (grid, ids) = self
+            .document
+            .get()
+            .read(|cad| {
+                cad.rectangular_array_preview_plan(
+                    &entity_ids,
+                    rows,
+                    columns,
+                    row_spacing,
+                    column_spacing,
+                    angle,
+                )
+            })?
+            .py()?;
+        let state = self.state();
+        let result = arq_render::rectangular_array_outline(&state.scene, &state.camera, &ids, grid)
+            .map_err(arq_core::CadError::from)
+            .py()?;
+        Ok((result.paths, result.shown_cells, result.total_cells))
+    }
+
     /// Top-view read-only STRETCH outlines; errors leave document and view alone.
     fn stretch_outlines(
         &self,

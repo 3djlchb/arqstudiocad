@@ -392,7 +392,7 @@ class Viewport(QWidget):
         transform the point under the cursor would apply to them."""
         if self._dragged is None or self._base is None or self._target is None:
             return None
-        if self._dragged.kind in ("rectangle", "stretch", "ellipse"):
+        if self._dragged.kind in ("rectangle", "stretch", "ellipse", "array_rect"):
             return None  # drawn from candidate geometry, not a rigid transform
         (bx, by), (tx, ty) = self._base, self._target
         world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
@@ -971,6 +971,7 @@ class Viewport(QWidget):
         if self._asking:
             self._rectangle_items(out, text)
             self._ellipse_items(out, text)
+            self._array_rect_items(out, text)
             self._point_items(out, text)
         if self._drop_name is not None:
             highlight = rgba(self.palette().highlight().color())
@@ -1043,6 +1044,37 @@ class Viewport(QWidget):
             points = [transform.map(QPointF(x, y)) for x, y in polyline]
             out.items.append(
                 Stroke(tuple((p.x() / ratio, p.y() / ratio) for p in points), color, width)
+            )
+
+    def _array_rect_items(self, out: Overlay, color: RGBA) -> None:
+        dragged = self._dragged
+        if dragged is None or dragged.kind != "array_rect" or dragged.array is None:
+            return
+        angle = dragged.rotation
+        if self._target is not None and self._base is not None:
+            dx, dy = self._target[0] - self._base[0], self._target[1] - self._base[1]
+            if dx != 0 or dy != 0:
+                angle = math.atan2(dy, dx)
+        rows, columns, row_spacing, column_spacing = dragged.array
+        try:
+            paths, shown, total = self.view.rectangular_array_outlines(
+                dragged.entity_ids, rows, columns, row_spacing, column_spacing, angle
+            )
+        except CadError:
+            return
+        ratio = self.devicePixelRatioF()
+        out.items.extend(Stroke(_logical(path, ratio), color, 1.0) for path in paths)
+        if shown < total:
+            out.labels.append(
+                Label(
+                    (12.0, 22.0),
+                    tr(
+                        "Partial preview: {shown} of {total} copied cells.",
+                        shown=shown,
+                        total=total,
+                    ),
+                    color,
+                )
             )
 
     def _stretch_items(self, out: Overlay, color: RGBA) -> None:

@@ -92,6 +92,7 @@ mod polyline_corners;
 mod polyline_offset;
 mod polyline_trim;
 mod rectangle;
+mod rectangular_grid;
 mod region;
 mod roots;
 mod selection_polygon;
@@ -127,6 +128,7 @@ pub use polyline_trim::{
     extend_polyline, polyline_extension_target, polyline_trim_bounds, trim_polyline,
 };
 pub use rectangle::{Corners, Rectangle};
+pub use rectangular_grid::RectangularGrid;
 pub use region::{Containment, Region};
 pub use selection_polygon::{CrossingArea, SelectionPolygon, selection_polygons};
 pub use tolerance::Tolerance;

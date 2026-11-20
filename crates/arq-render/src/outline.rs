@@ -37,6 +37,76 @@ pub fn shapes_outline(shapes: &[Shape], camera: &Camera) -> Vec<Polyline> {
     outline_shapes(shapes.iter().copied(), camera)
 }
 
+/// Maximum work contributed by a rectangular array overlay. Whole copied
+/// cells are shown; a source cell exceeding the vertex budget is omitted.
+/// Diagnostic defaults, not a reference-machine performance guarantee.
+pub const ARRAY_PREVIEW_VERTICES: usize = 4_000;
+/// Maximum copied-cell locations displayed in one preview.
+pub const ARRAY_PREVIEW_CELLS: usize = 1_000;
+
+/// Partial status is explicit so the UI can disclose the bounded preview.
+pub struct ArrayOutline {
+    /// Copied contours in physical screen pixels.
+    pub paths: Vec<Polyline>,
+    /// Fully represented copied cells, excluding the original.
+    pub shown_cells: usize,
+    /// Requested copied cells, irrespective of preview budgets.
+    pub total_cells: usize,
+}
+
+/// Top-view copies translated in native code from the cached source scene.
+/// Source tessellation stops as soon as one complete cell cannot fit.
+pub fn rectangular_array_outline(
+    scene: &Scene,
+    camera: &Camera,
+    ids: &[EntityId],
+    grid: arq_geometry::RectangularGrid,
+) -> arq_geometry::GeometryResult<ArrayOutline> {
+    let mut result = ArrayOutline {
+        paths: Vec::new(),
+        shown_cells: 0,
+        total_cells: grid.cells() - 1,
+    };
+    let mut source = Vec::new();
+    let mut vertices = 0;
+    for &id in ids {
+        for item in scene.items(id).into_iter().flatten() {
+            for path in shapes_outline(&[item.shape], camera) {
+                if path.len() > ARRAY_PREVIEW_VERTICES - vertices {
+                    return Ok(result);
+                }
+                vertices += path.len();
+                source.push(path);
+            }
+        }
+    }
+    if vertices == 0 {
+        return Ok(result);
+    }
+    let limit = ARRAY_PREVIEW_CELLS.min(ARRAY_PREVIEW_VERTICES / vertices);
+    for offset in grid.offsets().take(limit) {
+        let offset = offset?;
+        let (dx, dy) = (offset.x() * camera.scale(), -offset.y() * camera.scale());
+        for path in &source {
+            let translated = path
+                .iter()
+                .map(|&(x, y)| {
+                    let (x, y) = (x + dx, y + dy);
+                    if !x.is_finite() || !y.is_finite() {
+                        return Err(arq_geometry::GeometryError::NonFinite {
+                            what: "array preview pixels",
+                        });
+                    }
+                    Ok((x, y))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            result.paths.push(translated);
+        }
+        result.shown_cells += 1;
+    }
+    Ok(result)
+}
+
 fn outline_shapes(shapes: impl Iterator<Item = Shape>, camera: &Camera) -> Vec<Polyline> {
     let screen = |p: arq_geometry::Point2| camera.to_screen(p.x(), p.y());
     let mut out = Vec::new();
@@ -270,5 +340,70 @@ mod tests {
         let (scene, camera, line, circle) = setup();
         assert!(outline(&scene, &camera, &[999_999]).is_empty());
         assert_eq!(outline(&scene, &camera, &[line, 999_999, circle]).len(), 2);
+    }
+
+    #[test]
+    fn array_preview_translates_cells_not_objects_and_keeps_scene_unchanged() {
+        let (scene, camera, line, circle) = setup();
+        let before = outline(&scene, &camera, &[line, circle]);
+        let revision = scene.revision();
+        let grid = arq_geometry::RectangularGrid::new(2, 3, -5., 10., std::f64::consts::FRAC_PI_2)
+            .unwrap();
+        let result = rectangular_array_outline(&scene, &camera, &[line], grid).unwrap();
+        assert_eq!((result.shown_cells, result.total_cells), (5, 5));
+        for (path, (x, y)) in
+            result
+                .paths
+                .iter()
+                .zip([(0., 10.), (0., 20.), (5., 0.), (5., 10.), (5., 20.)])
+        {
+            let want = [camera.to_screen(x, y), camera.to_screen(x + 10., y)];
+            for (got, want) in path.iter().zip(want) {
+                assert!((got.0 - want.0).abs() < 1e-9 && (got.1 - want.1).abs() < 1e-9);
+            }
+        }
+        assert_eq!(outline(&scene, &camera, &[line, circle]), before);
+        assert_eq!(scene.revision(), revision);
+    }
+
+    #[test]
+    fn array_preview_bounds_cell_count_and_reports_the_unshown_remainder() {
+        let (scene, mut camera, line, circle) = setup();
+        let grid = arq_geometry::RectangularGrid::new(1, 100_000, 0., 1., 0.).unwrap();
+        let result = rectangular_array_outline(&scene, &camera, &[line], grid).unwrap();
+        assert_eq!((result.shown_cells, result.total_cells), (1000, 99999));
+        assert_eq!(result.paths.len(), 1000);
+        assert_eq!(result.paths[0][0], camera.to_screen(1., 0.));
+        camera.zoom_at(200., 100., 10.);
+        let curved = rectangular_array_outline(&scene, &camera, &[circle], grid).unwrap();
+        assert!(curved.shown_cells > 0 && curved.shown_cells < 1000);
+        assert!(curved.paths.iter().map(Vec::len).sum::<usize>() <= 4_000);
+        assert_eq!(curved.paths.len(), curved.shown_cells);
+    }
+
+    #[test]
+    fn array_preview_never_draws_an_incomplete_source_cell() {
+        let mut doc = Document::new();
+        let layer = doc.current_layer().id();
+        let mut ids = Vec::new();
+        for i in 0..10001 {
+            ids.push(
+                doc.add_entity(
+                    PlanGeometry::at_elevation(
+                        Line::new(p(i as f64, 0.), p(i as f64, 1.)).unwrap().into(),
+                        0.,
+                    )
+                    .unwrap(),
+                    layer,
+                )
+                .unwrap(),
+            );
+        }
+        let scene = Scene::build(&doc);
+        let camera = Camera::new(800, 600);
+        let grid = arq_geometry::RectangularGrid::new(1, 2, 0., 1., 0.).unwrap();
+        let result = rectangular_array_outline(&scene, &camera, &ids, grid).unwrap();
+        assert!(result.paths.is_empty());
+        assert_eq!((result.shown_cells, result.total_cells), (0, 1));
     }
 }

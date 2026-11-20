@@ -175,7 +175,9 @@ class Drag:
     ``"rectangle"``, the rectangle RECTANG would draw from the base point
     to it."""
 
-    kind: Literal["move", "rotate", "scale", "mirror", "rectangle", "stretch", "ellipse"]
+    kind: Literal[
+        "move", "rotate", "scale", "mirror", "rectangle", "stretch", "ellipse", "array_rect"
+    ]
     entity_ids: tuple[int, ...] = ()
     #: Whether a rubber band joins the base point to the cursor.
     band: bool = True
@@ -195,6 +197,8 @@ class Drag:
     #: Selection provenance captured once, rather than queried per mouse move.
     crossing: tuple[tuple[int, CadBounds2], ...] = ()
     polygons: tuple[tuple[int, tuple[tuple[float, float], ...]], ...] = ()
+    #: ARRAYRECT's rows, columns and signed spacings, fixed before orientation.
+    array: tuple[int, int, float, float] | None = None
 
 
 @dataclass(frozen=True, slots=True)
