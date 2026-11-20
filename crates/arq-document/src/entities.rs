@@ -202,12 +202,26 @@ impl Document {
                     }
                     return Err(DocumentError::NotEditable { id, kind: "ARC" });
                 }
-                // A plan gives no ellipse yet: its grips and STRETCH come
-                // in a later delivery (ADR 0041).
-                Geometry2::Ellipse(_) => {
-                    return Err(DocumentError::NotEditable {
-                        id,
-                        kind: "ELLIPSE",
+                // As a circle when whole, as an arc otherwise: moved, or
+                // left, whole (ADR 0041 D4).
+                Geometry2::Ellipse(ellipse) => {
+                    let moved = match ellipse.ends() {
+                        None => inside(ellipse.center()),
+                        Some((a, b)) => match (inside(a), inside(b)) {
+                            (true, true) => true,
+                            (false, false) => false,
+                            _ => {
+                                return Err(DocumentError::NotEditable {
+                                    id,
+                                    kind: "ELLIPSE",
+                                });
+                            }
+                        },
+                    };
+                    return Ok(if moved {
+                        StretchPlan::Move
+                    } else {
+                        StretchPlan::Unchanged
                     });
                 }
             }
@@ -613,7 +627,7 @@ impl Document {
     pub fn trim_search_bounds(&self, id: EntityId) -> DocumentResult<Bounds2> {
         let entity = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         let tol = Tolerance::DEFAULT;
-        if let Some(plan) = self.curve_plan_for(&entity) {
+        if let Some(plan) = entity.plan() {
             let curve = plan.geometry();
             let margin = match curve {
                 Geometry2::Arc(a) => a.radius() * tol.angular(),
@@ -636,7 +650,7 @@ impl Document {
         at: Point2,
     ) -> DocumentResult<(Geometry2, Point2)> {
         let entity = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
-        if let Some(plan) = self.curve_plan_for(&entity) {
+        if let Some(plan) = entity.plan() {
             return Ok((plan.geometry(), at));
         }
         let path = self.polyline_in_world(id)?;
@@ -1012,59 +1026,6 @@ impl Document {
         let h = self.cad_mut().add_entity(new_entity(plan, &name))?;
         self.sync_entity(h.value());
         Ok(h.value())
-    }
-
-    /// The curve TRIM, EXTEND and BREAK edit, in world plan coordinates: a
-    /// line's, circle's or arc's plan geometry, or an ellipse lying in the
-    /// plan (ADR 0041 D4, its plan geometry kept apart until its grips and
-    /// Properties); None for anything else, a tilted ellipse included.
-    pub fn curve_plan(&self, id: EntityId) -> Option<PlanGeometry> {
-        self.curve_plan_for(&self.entity(id)?)
-    }
-
-    /// [`Document::curve_plan`] for an entity already read.
-    pub fn curve_plan_for(&self, entity: &Entity) -> Option<PlanGeometry> {
-        if let Some(plan) = entity.plan() {
-            return Some(plan);
-        }
-        if entity.kind() != "ELLIPSE" {
-            return None;
-        }
-        match self.cad().get_entity(handle(entity.id()))? {
-            EntityType::Ellipse(el) => {
-                PlanGeometry::at_elevation(crate::drawing::plan_ellipse(el)?.into(), el.center.z)
-                    .ok()
-            }
-            _ => None,
-        }
-    }
-
-    /// Writes `plan`, of the kind [`Document::curve_plan`] gives, into
-    /// entity `id`: a plan entity's geometry as
-    /// [`Document::set_plan_geometry`], an ellipse in its own sense (seen
-    /// from below, its parameters change sign), every property kept.
-    pub fn set_curve_plan(&mut self, id: EntityId, plan: PlanGeometry) -> DocumentResult<()> {
-        let Geometry2::Ellipse(g) = plan.geometry() else {
-            return self.set_plan_geometry(id, plan);
-        };
-        if self.curve_plan(id).is_none() {
-            let kind = self
-                .entity(id)
-                .ok_or(DocumentError::EntityNotFound(id))?
-                .kind();
-            return Err(DocumentError::NotEditable { id, kind });
-        }
-        let e = self
-            .cad_mut()
-            .get_entity_mut(handle(id))
-            .ok_or(DocumentError::EntityNotFound(id))?;
-        let EntityType::Ellipse(el) = e else {
-            let kind = e.as_entity().entity_type();
-            return Err(DocumentError::KindMismatch { id, kind });
-        };
-        crate::drawing::write_plan_ellipse(el, g);
-        self.sync_entity(id);
-        Ok(())
     }
 
     /// Replaces the plan geometry of an editable entity of the same kind,
@@ -1510,8 +1471,8 @@ impl Document {
 mod whole_tests;
 
 #[cfg(test)]
-#[path = "curve_plan_tests.rs"]
-mod curve_plan_tests;
+#[path = "plan_ellipse_tests.rs"]
+mod plan_ellipse_tests;
 
 #[cfg(test)]
 mod tests {

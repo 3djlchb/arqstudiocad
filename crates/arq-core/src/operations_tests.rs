@@ -2486,3 +2486,46 @@ fn array_preview_plan_is_read_only_deduplicated_and_matches_commit() {
             .is_err()
     );
 }
+
+#[test]
+fn stretch_moves_an_ellipse_whole_as_a_circle_or_an_arc() {
+    let bounds =
+        |x0: f64, y0: f64, x1: f64, y1: f64| arq_geometry::Bounds2::new(p(x0, y0), p(x1, y1));
+    // Whole, about (10,0): moved when its center is inside, left when not.
+    let mut cad = CadDocument::new();
+    let whole = red_ellipse(&mut cad, 0.0, 0.0);
+    cad.stretch_entities(
+        &[whole],
+        v(2.0, 3.0),
+        &[(whole, bounds(9.0, -1.0, 11.0, 1.0))],
+    )
+    .unwrap();
+    assert!(near(drawn_ellipse(&cad, whole).center(), p(12.0, 3.0)));
+    assert_eq!(cad.undo_name(), Some("STRETCH"));
+    let before = drawn_ellipse(&cad, whole);
+    cad.stretch_entities(
+        &[whole],
+        v(2.0, 3.0),
+        &[(whole, bounds(15.0, 2.0, 16.0, 4.0))],
+    )
+    .unwrap();
+    assert_eq!(drawn_ellipse(&cad, whole), before, "its center outside");
+    // An arc, the first quarter (14,0)-(10,2): moved with both ends inside,
+    // refused with one, nothing changed.
+    let mut cad = CadDocument::new();
+    let arc = red_ellipse(&mut cad, 0.0, FRAC_PI_2);
+    let before = drawn_ellipse(&cad, arc);
+    let one_end = bounds(13.0, -1.0, 15.0, 1.0);
+    assert!(
+        cad.stretch_entities(&[arc], v(1.0, 0.0), &[(arc, one_end)])
+            .is_err()
+    );
+    assert_eq!(drawn_ellipse(&cad, arc), before);
+    cad.stretch_entities(&[arc], v(1.0, 0.0), &[(arc, bounds(9.0, -1.0, 15.0, 3.0))])
+        .unwrap();
+    let (a, b) = ends_of(drawn_ellipse(&cad, arc));
+    assert!(
+        near(a, p(15.0, 0.0)) && near(b, p(11.0, 2.0)),
+        "{a:?} {b:?}"
+    );
+}

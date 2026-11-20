@@ -546,8 +546,8 @@ impl CadDocument {
                 let cutters = edge_curves(doc, id, edges);
                 return Ok(doc.trim_polyline(id, at, &cutters, erase_uncut)?);
             }
-            let plan = doc
-                .curve_plan_for(&e)
+            let plan = e
+                .plan()
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
             let curve = plan.geometry();
             let cutters = edge_curves(doc, id, edges);
@@ -771,12 +771,10 @@ impl CadDocument {
             if entity.kind() == "LWPOLYLINE" {
                 return Ok(doc.break_polyline(id, first, second)?);
             }
-            let plan = doc
-                .curve_plan_for(&entity)
-                .ok_or(DocumentError::NotEditable {
-                    id,
-                    kind: entity.kind(),
-                })?;
+            let plan = entity.plan().ok_or(DocumentError::NotEditable {
+                id,
+                kind: entity.kind(),
+            })?;
             let pieces = break_curve(plan.geometry(), first, second, Tolerance::DEFAULT)
                 .map_err(DocumentError::from)?;
             replace_curve_pieces(doc, id, plan, &pieces)
@@ -808,8 +806,8 @@ impl CadDocument {
                 let boundaries = edge_curves(doc, id, edges);
                 return Ok(doc.extend_polyline(id, at, &boundaries)?);
             }
-            let plan = doc
-                .curve_plan_for(&e)
+            let plan = e
+                .plan()
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
             let boundaries = edge_curves(doc, id, edges);
             let grown = extend(plan.geometry(), &boundaries, at, tol)
@@ -817,7 +815,7 @@ impl CadDocument {
                 .ok_or(DocumentError::from(GeometryError::OutOfRange {
                     what: "boundary edge",
                 }))?;
-            doc.set_curve_plan(id, plan.with_geometry(grown))?;
+            doc.set_plan_geometry(id, plan.with_geometry(grown))?;
             Ok(())
         })?;
         Ok(changes)
@@ -1576,11 +1574,11 @@ fn replace_curve_pieces(
             left.push(doc.circle_to_arc(id, *arc)?);
         }
         (_, [first, rest @ ..]) => {
-            doc.set_curve_plan(id, plan.with_geometry(*first))?;
+            doc.set_plan_geometry(id, plan.with_geometry(*first))?;
             left.push(id);
             for piece in rest {
                 let copy = doc.copy_entity(id)?;
-                doc.set_curve_plan(copy, plan.with_geometry(*piece))?;
+                doc.set_plan_geometry(copy, plan.with_geometry(*piece))?;
                 left.push(copy);
             }
         }
