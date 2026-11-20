@@ -1,8 +1,8 @@
 # Independent rectangular arrays
 
 Milestone 02.14; approved by the maintainer, 2026-11-15. First delivery:
-non-associative copies. Associative editing, polar/path arrays and 3D levels
-remain separate work.
+non-associative copies. Associative editing, path arrays and 3D levels remain separate work.
+Independent [polar arrays](polar-array.md) are delivered separately.
 
 ## Behavior
 

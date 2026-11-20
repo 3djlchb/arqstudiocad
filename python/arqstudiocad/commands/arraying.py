@@ -1,9 +1,10 @@
-"""Independent rectangular ARRAY copies; geometry and atomicity belong to Rust."""
+"""Independent rectangular and polar ARRAY copies; geometry and atomicity belong to Rust."""
 
+import math
 from collections.abc import Generator
 from typing import Any
 
-from arqstudiocad.commands import Background, Command, CommandContext, CommandScript, Prompt
+from arqstudiocad.commands import Background, Command, CommandContext, CommandScript, Option, Prompt
 from arqstudiocad.commands.modify import done_selecting, select_objects
 from arqstudiocad.core import CadError
 from arqstudiocad.i18n import tr
@@ -80,3 +81,52 @@ def rectangular_array(ctx: CommandContext) -> CommandScript:
 
 
 ARRAY_COMMAND = Command("ARRAYRECT", rectangular_array, ("ARRAY", "AR", "-ARRAY"))
+
+
+def polar_array(ctx: CommandContext) -> CommandScript:
+    """An independent polar array; all placement and mutation live in Rust."""
+    document = ctx.document()
+    view = None if ctx.ui is None else ctx.ui.view(document)
+    if view is not None and not view.in_plan:
+        ctx.message(tr("Use PLAN to switch to the Top view before using ARRAYPOLAR."))
+        return
+    ctx.message(tr("Polar array: independent copies (non-associative)."))
+    ids = yield from select_objects(ctx, document, windows=True)
+    if not ids:
+        return
+    center = yield ctx.point(tr("Specify center point of array"))
+    while True:
+        count = yield from _count(
+            ctx, tr("Enter number of items"), ctx.remembered.get("POLAR_COUNT", 4)
+        )
+        if count >= 2:
+            break
+        ctx.message(tr("A polar array must contain between 2 and 100000 items."))
+    while True:
+        fill = yield ctx.angle(
+            tr("Specify angle to fill"),
+            center,
+            default=ctx.remembered.get("POLAR_FILL_ANGLE", math.tau),
+        )
+        if fill != 0 and abs(fill) <= math.tau:
+            break
+        ctx.message(tr("Specify a nonzero fill angle between -360 and 360 degrees."))
+    rotate = yield ctx.choose(
+        tr("Rotate arrayed objects"),
+        [Option("Y", tr("Yes")), Option("N", tr("No"))],
+        default="Y" if ctx.remembered.get("POLAR_ROTATE_ITEMS", True) else "N",
+    )
+    rotate_items = rotate == "Y"
+    base = None if rotate_items else (yield ctx.point(tr("Specify array base point")))
+    try:
+        copies, changes = document.polar_array(ids, center, count, fill, rotate_items, base)
+    except CadError as error:
+        ctx.message(tr("Error: {message}", message=str(error)))
+        return
+    ctx.session.report(document, changes)
+    done_selecting(ctx, document, ids)
+    ctx.remembered.update(POLAR_COUNT=count, POLAR_FILL_ANGLE=fill, POLAR_ROTATE_ITEMS=rotate_items)
+    ctx.message(tr("Created {count} independent copies.", count=len(copies)))
+
+
+POLAR_ARRAY_COMMAND = Command("ARRAYPOLAR", polar_array)

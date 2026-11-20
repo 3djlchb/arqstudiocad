@@ -86,6 +86,7 @@ mod line;
 mod offset;
 mod point;
 mod point3;
+mod polar_array;
 mod polyline_corners;
 mod polyline_offset;
 mod polyline_trim;
@@ -115,6 +116,7 @@ pub use join::{Chain, JoinPath, chain_paths, join_arcs, join_groups, join_lines}
 pub use line::Line;
 pub use point::Point2;
 pub use point3::Point3;
+pub use polar_array::polar_array_transforms;
 pub use polyline_corners::{CornerCut, CutCorners, cut_polyline_corners, shared_vertex};
 pub use polyline_offset::{offset_polyline, offset_polyline_through};
 pub use polyline_trim::{
