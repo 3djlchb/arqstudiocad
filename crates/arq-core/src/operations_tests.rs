@@ -2153,3 +2153,94 @@ fn an_ellipse_is_an_edge_trim_cuts_at() {
         assert!((b.0.0 - 14.0).abs() < 1e-9 && b.1 == (20.0, 0.0), "{b:?}");
     }
 }
+
+#[test]
+fn polar_array_preserves_sources_styles_order_index_and_atomic_undo() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(10., 0.), p(12., 0.)).unwrap();
+    let (b, _) = cad.add_circle(p(10., 2.), 1.).unwrap();
+    cad.set_entity_color(&[a], Color::Index(3)).unwrap();
+    let (copies, changes) = cad
+        .polar_array(&[a, b, a], p(0., 0.), 4, std::f64::consts::TAU, true, None)
+        .unwrap();
+    assert_eq!(copies.len(), 6);
+    assert_eq!(changes.created(), copies);
+    assert!(changes.modified().is_empty() && changes.deleted().is_empty());
+    let Geometry2::Line(line) = geometry(&cad, copies[0]) else {
+        panic!()
+    };
+    assert!(line.start().approx_eq(p(0., 10.), Tolerance::DEFAULT));
+    assert!(line.end().approx_eq(p(0., 12.), Tolerance::DEFAULT));
+    let Geometry2::Circle(circle) = geometry(&cad, copies[1]) else {
+        panic!()
+    };
+    assert!(circle.center().approx_eq(p(-2., 10.), Tolerance::DEFAULT));
+    assert_eq!(
+        cad.document().entity(copies[0]).unwrap().color(),
+        Color::Index(3)
+    );
+    assert_eq!(line_ends(&cad, a), (p(10., 0.), p(12., 0.)));
+    let area = arq_geometry::Bounds2::new(p(-0.5, 9.5), p(0.5, 12.5));
+    assert!(cad.query_entities(area).contains(&copies[0]));
+    assert_eq!(cad.undo_name(), Some("ARRAYPOLAR"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), 2);
+    assert!(cad.query_entities(area).is_empty());
+    cad.redo().unwrap();
+    assert!(cad.document().entity(copies[0]).is_some());
+}
+
+#[test]
+fn polar_array_without_rotation_translates_a_selection_as_one_group() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(10., 0.), p(12., 0.)).unwrap();
+    let (b, _) = cad.add_line(p(10., 2.), p(11., 2.)).unwrap();
+    let (copies, _) = cad
+        .polar_array(&[a, b], p(0., 0.), 3, PI, false, Some(p(10., 0.)))
+        .unwrap();
+    assert_eq!(copies.len(), 4);
+    for (id, (start, end)) in copies.into_iter().zip([
+        (p(0., 10.), p(2., 10.)),
+        (p(0., 12.), p(1., 12.)),
+        (p(-10., 0.), p(-8., 0.)),
+        (p(-10., 2.), p(-9., 2.)),
+    ]) {
+        let (a, b) = line_ends(&cad, id);
+        assert!(a.approx_eq(start, Tolerance::DEFAULT) && b.approx_eq(end, Tolerance::DEFAULT));
+    }
+}
+
+#[test]
+fn polar_array_validates_all_sources_and_rolls_back_late_overflow() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0., 0.), p(1e306, 0.)).unwrap();
+    let (b, _) = cad.add_line(p(1e308, 0.), p(1.1e308, 0.)).unwrap();
+    let before = cad.undo_names().len();
+    assert!(
+        cad.polar_array(
+            &[a, u64::MAX],
+            p(0., 0.),
+            4,
+            std::f64::consts::TAU,
+            true,
+            None
+        )
+        .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(
+        cad.polar_array(&[a], p(0., 0.), 4, std::f64::consts::TAU, true, None)
+            .is_err()
+    );
+    cad.set_layer_locked(layer, false).unwrap();
+    let steps = cad.undo_names().len();
+    assert!(
+        cad.polar_array(&[a, b], p(0., 0.), 3, PI, false, Some(p(-5e307, 0.)))
+            .is_err()
+    );
+    assert_eq!(cad.document().entities().len(), 2);
+    assert_eq!(cad.undo_names().len(), steps);
+    assert!(steps >= before);
+    assert_eq!(line_ends(&cad, b), (p(1e308, 0.), p(1.1e308, 0.)));
+}

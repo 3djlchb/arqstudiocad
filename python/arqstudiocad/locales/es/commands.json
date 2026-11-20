@@ -17,6 +17,9 @@
   "ARC": [
     "ARCO"
   ],
+  "ARRAYPOLAR": [
+    "MATRIZPOLAR"
+  ],
   "ARRAYRECT": [
     "MATRIZRECTANG",
     "MATRIZ",
