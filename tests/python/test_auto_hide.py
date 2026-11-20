@@ -317,7 +317,8 @@ def test_an_unpinned_floating_panel_rolls_up_and_down_with_the_mouse(
     panel, bar, hide = window.layers_panel, title_bar(window), pins(window)
     bar.mode.click()
     panel.resize(260, 400)
-    height = panel.height()
+    # What the platform gave it: Windows keeps a wider minimum.
+    width, height = panel.width(), panel.height()
     bar.pin.click()
     assert panel in hide.rolling and not bar.pinned
     assert bar.pin.toolTip() == "Keep open"
@@ -327,7 +328,7 @@ def test_an_unpinned_floating_panel_rolls_up_and_down_with_the_mouse(
     contents = panel.widget()
     assert contents is not None and contents.isHidden(), "rolled up to its title bar"
     assert panel.height() < 60
-    assert panel.width() == 260, "only its height rolls up"
+    assert panel.width() == width, "only its height rolls up"
     away["over"] = True
     hide._check_rolling()
     assert not contents.isHidden() and panel.height() == height, "rolled down as it was"
