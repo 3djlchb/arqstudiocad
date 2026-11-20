@@ -44,8 +44,8 @@ enum StretchPlan {
 
 impl Document {
     /// STRETCH in plan: moves whole selections, or just line endpoints and
-    /// polyline vertices inside crossing windows. Solids remain unchanged.
-    /// Partial arcs are refused until their command semantics are supported.
+    /// polyline vertices inside crossing windows. Partial standalone arcs
+    /// retain their sagitta. Solids remain unchanged.
     pub fn stretch_entity(
         &mut self,
         id: EntityId,
@@ -200,7 +200,20 @@ impl Document {
                     if !a && !b {
                         return Ok(StretchPlan::Unchanged);
                     }
-                    return Err(DocumentError::NotEditable { id, kind: "ARC" });
+                    let moved =
+                        |point: Point2| Point2::new(point.x() + offset.x(), point.y() + offset.y());
+                    let start = if a {
+                        moved(arc.start_point())?
+                    } else {
+                        arc.start_point()
+                    };
+                    let end = if b {
+                        moved(arc.end_point())?
+                    } else {
+                        arc.end_point()
+                    };
+                    let stretched = arc.with_endpoints_preserving_sagitta(start, end, tol)?;
+                    return Ok(StretchPlan::Curve(plan.with_geometry(stretched.into())));
                 }
                 // As a circle when whole, as an arc otherwise: moved, or
                 // left, whole (ADR 0041 D4).

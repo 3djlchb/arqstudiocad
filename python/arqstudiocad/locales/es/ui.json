@@ -741,6 +741,7 @@
   "S&E Isometric": "Isométrica S&E",
   "SEiso": "isoSE",
   "SOLIDS": "SÓLIDOS",
+  "STRETCH cannot collapse endpoints or create invalid geometry. No objects were changed.": "ESTIRA no puede hacer coincidir extremos ni crear geometría inválida. No se modificó ningún objeto.",
   "STRETCH currently requires the Top view. Use PLAN first.": "ESTIRA requiere actualmente la vista Superior. Use PLAN primero.",
   "SWiso": "isoSO",
   "Saint Helena pound": "Libra de Santa Elena",

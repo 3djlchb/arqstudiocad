@@ -9,7 +9,7 @@ from test_modify_commands import Harness
 from test_selection import drag, plan
 from ui_fakes import QuietUi
 
-from arqstudiocad.core import CadBounds2, CadLine, InvalidGeometryError, InvalidOperationError
+from arqstudiocad.core import CadBounds2, CadLine, InvalidGeometryError
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui.main_window import MainWindow
 
@@ -119,16 +119,21 @@ def test_collapse_rolls_back_the_entire_edit() -> None:
     assert [g.point for g in h.document.grips([poly])] == [(0, 0), (10, 0)]
 
 
-def test_solid_is_unchanged_and_partial_arc_is_explicitly_refused() -> None:
+def test_solid_is_unchanged_and_partial_arc_keeps_its_sagitta() -> None:
     h = Harness()
     box, _ = h.document.add_box((0, 0, 0), (1, 1, 1))
     before = h.document.undo_history
     changes = h.document.stretch_entities([box], (2, 0), [])
     assert not changes.modified and h.document.undo_history == before
     arc, _ = h.document.add_arc((0, 0), 10, 0, math.pi / 2)
-    with pytest.raises(InvalidOperationError):
-        h.document.stretch_entities([h.b, arc], (1, 0), [(arc, area())])
-    assert h.line(h.b) == ((0, 5), (10, 5))
+    h.document.stretch_entities([h.b, arc], (1, 0), [(arc, area())])
+    from arqstudiocad.core import CadArc
+
+    result = h.document.get_entity(arc).geometry
+    assert isinstance(result, CadArc)
+    assert result.start_point == pytest.approx((11, 0))
+    assert result.end_point == pytest.approx((0, 10))
+    assert h.line(h.b) == ((1, 5), (11, 5))
 
 
 def test_spanish_and_forced_english_names() -> None:

@@ -124,7 +124,7 @@ fn stretch_preview_is_read_only_and_matches_committed_line_and_bulged_path() {
 }
 
 #[test]
-fn stretch_preview_preserves_whole_block_expansion_and_rejects_partial_arcs() {
+fn stretch_preview_preserves_whole_block_expansion_and_partial_arcs() {
     let mut doc = Document::new();
     let layer = doc.current_layer().id();
     let line = arq_geometry::Line::new(p(0.0, 0.0), p(2.0, 0.0)).unwrap();
@@ -153,6 +153,81 @@ fn stretch_preview_preserves_whole_block_expansion_and_rejects_partial_arcs() {
         .unwrap();
     let before = doc.drawing(id);
     let area = CrossingArea::Rectangle(Bounds2::new(p(4.0, -1.0), p(6.0, 1.0)));
-    assert!(doc.stretch_shapes(id, &[area], offset).is_err());
+    let preview = doc
+        .stretch_shapes(id, std::slice::from_ref(&area), offset)
+        .unwrap();
     assert_eq!(doc.drawing(id), before);
+    let Shape::Arc(shown) = preview[0] else {
+        panic!()
+    };
+    assert!(
+        shown
+            .start_point()
+            .approx_eq(p(8.0, 4.0), Tolerance::DEFAULT)
+    );
+    assert!(shown.end_point().approx_eq(p(0.0, 5.0), Tolerance::DEFAULT));
+    doc.stretch_entity_in_areas(id, &[area], offset).unwrap();
+    assert_eq!(
+        doc.entity(id).unwrap().plan().unwrap().geometry(),
+        shown.into()
+    );
+}
+
+#[test]
+fn stretch_arc_preserves_ocs_metadata_owned_model_and_preview() {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    for nz in [1.0, -1.0] {
+        let mut doc = Document::new();
+        let mut arc = acadrust::Arc::new();
+        // Both OCS orientations describe world-plan 0 -> 90 degrees.
+        arc.center = Vector3::new(0.0, 0.0, 7.0 * nz);
+        arc.radius = 5.0;
+        arc.normal = Vector3::new(0.0, 0.0, nz);
+        arc.thickness = 2.0;
+        arc.start_angle = if nz > 0.0 { 0.0 } else { FRAC_PI_2 };
+        arc.end_angle = if nz > 0.0 { FRAC_PI_2 } else { PI };
+        let id = doc
+            .cad_mut()
+            .add_entity(EntityType::Arc(arc))
+            .unwrap()
+            .value();
+        doc.rebuild_model();
+        doc.set_entity_color(id, Color::Index(3)).unwrap();
+        let original = doc.entity(id).unwrap();
+        let area = CrossingArea::Rectangle(Bounds2::new(p(-1.0, 4.0), p(1.0, 6.0)));
+        let offset = Offset::new(3.0, 2.0).unwrap();
+        let preview = doc
+            .stretch_shapes(id, std::slice::from_ref(&area), offset)
+            .unwrap();
+        assert_eq!(doc.entity(id).unwrap().plan(), original.plan());
+        doc.stretch_entity_in_areas(id, &[area], offset).unwrap();
+        let EntityType::Arc(back) = doc.cad().get_entity(handle(id)).unwrap() else {
+            panic!()
+        };
+        assert_eq!(back.normal.z, nz);
+        assert_eq!((back.center.z, back.thickness), (7.0 * nz, 2.0));
+        let info = doc.entity(id).unwrap();
+        assert_eq!(info.color(), Color::Index(3));
+        assert_eq!(info.layer(), original.layer());
+        let plan = info.plan().unwrap();
+        assert_eq!(plan.elevation(), 7.0);
+        let Geometry2::Arc(result) = plan.geometry() else {
+            panic!()
+        };
+        assert!(result.center().distance_to(p(0.3542858741, 2.4583673926)) < 1e-10);
+        assert_eq!(preview.len(), 1);
+        let Shape::Arc(shown) = preview[0] else {
+            panic!()
+        };
+        assert!(
+            shown
+                .center()
+                .approx_eq(result.center(), Tolerance::DEFAULT)
+        );
+        assert!((shown.radius() - result.radius()).abs() <= Tolerance::DEFAULT.linear());
+        // Mapping OCS angles to world and back can round the last bit.
+        assert!((shown.start_angle() - result.start_angle()).abs() <= Tolerance::DEFAULT.angular());
+        assert!((shown.end_angle() - result.end_angle()).abs() <= Tolerance::DEFAULT.angular());
+        assert!(doc.check_model().is_empty());
+    }
 }

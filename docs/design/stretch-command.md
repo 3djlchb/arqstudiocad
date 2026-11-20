@@ -36,9 +36,11 @@ newer behavior must be identified explicitly.
 ## Explicit limits
 
 Only the Top view is accepted; the command asks the user to use PLAN in
-other views. A live partial-geometry preview is implemented on `feature/stretch-live-preview` for the currently supported shapes. A partially selected standalone arc with just one endpoint
-inside is refused atomically, rather than given an unverified reshape;
-whole-object arc moves use the existing transformation. Tilted polylines
+other views. A live partial-geometry preview uses the shared Rust stretch plan.
+A standalone circular arc with one endpoint inside now keeps its sagitta,
+following the maintainer-approved native measurements; see the
+[partial-arc delivery](stretch-partial-arcs.md). Whole-object arc moves use
+the existing transformation. Tilted polylines
 and other unsupported entities are not given invented stretch behavior.
 These limits keep milestone 02.14's STRETCH entry in progress.
 
@@ -235,12 +237,12 @@ new dependency or compile-time CPU requirement is introduced. Cancellation
 clears the preview; invalid geometry shows no candidate and leaves history
 unchanged. Polyline width fills are not previewed, as with ordinary outlines.
 
-Partial standalone arcs remain refused in both paths until the approved
-rule is implemented. The agreed [Windows comparison](../testing/stretch-arcs-windows.md)
-was made in ProgeCAD on 2026-11-15: the arc keeps its sagitta. The maintainer
-approved that rule the same day, a zero chord refused with a message; the
-expected coordinates for its tests are there. The maintainer chose this order
-over inventing an arc rule.
+Partial standalone arcs were initially refused in both paths. The
+[partial-arc delivery](stretch-partial-arcs.md) implements the rule approved
+on 2026-11-15 from the [native comparison](../testing/stretch-arcs-windows.md):
+keep the sagitta, refuse a collapsed chord with a translated message, and
+share the exact reconstructed arc between preview and commit. New local
+Windows verification is distinct from those historical ProgeCAD observations.
 
 Pointer overlay work increases with selected geometry and polygon corner
 count. Actual interaction/CPU-floor acceptance remains on the i7-2600/GT 730

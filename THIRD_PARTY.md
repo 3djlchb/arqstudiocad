@@ -57,6 +57,11 @@ as a compatibility reference requested by the maintainer. All implementation
 and tests are original GPL-3.0-or-later code; no proprietary Autodesk source,
 artwork or documentation passages are incorporated. The supported subset
 and its limits are recorded in [the command brief](docs/design/stretch-command.md).
+Partial standalone arc reconstruction follows the maintainer-approved
+sagitta rule measured in ProgeCAD 2026 ([native observations](docs/testing/stretch-arcs-windows.md));
+its implementation and regression tests are original code. The recorded
+observations are behavioral references, not proprietary source code or a
+claim of complete AutoCAD compatibility.
 
 TRIM and EXTEND's multiple-object selection uses the publicly documented
 [AutoCAD 2021 TRIM behavior](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-B1A185EF-07C6-4C53-A76F-05ADE11F5C32.htm)
