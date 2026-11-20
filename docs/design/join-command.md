@@ -119,7 +119,7 @@ write_joined_polyline}`; the `join_entities` and `close_arc` bindings;
 Validation on LMDE 7 is internal: the results, a polyline's per-segment
 widths included, are written to DWG and DXF and read back by the own codec.
 
-## Windows comparison of the polylines (to run)
+## Windows comparison of the polylines
 
 Five cases are in both comparison tools, `tools/progecad_command_compare.lsp`
 (`arq:compare-commands`) and `tools/progecad_02_14_ours.py`, as the other
@@ -136,3 +136,8 @@ gives, read back from our DWG and DXF:
 
 Each difference found is the maintainer's to decide, as the earlier ones
 were.
+
+**Run on 2026-11-20** ([results](../testing/commands-02-14-windows.md#join-on-polylines-matchprop-and-ellipse-2026-11-20)): J4, J6 and J7 the same as
+ProgeCAD. J3 differs: ProgeCAD gives the joined line the polyline's width
+0.5, which the maintainer chose to match, in a pull request of its own. J5
+is the same rectangle starting at another vertex, kept.

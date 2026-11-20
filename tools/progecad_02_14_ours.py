@@ -289,7 +289,9 @@ def el9(doc: CadDocument) -> None:
 
 def el10(doc: CadDocument) -> None:
     target = ell(doc)
-    doc.stretch_entities([target], (2, 3), [(target, CadBounds2((-1, -1), (1, 1)))])
+    # The window crosses the ellipse and holds its center, as ProgeCAD's must
+    # to select it.
+    doc.stretch_entities([target], (2, 3), [(target, CadBounds2((-1, -1), (6, 1)))])
 
 
 def el11(doc: CadDocument) -> None:
