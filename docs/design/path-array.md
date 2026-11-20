@@ -120,3 +120,9 @@ action produced behavioral failures. A decimal-corner regression failed before
 the roundoff fix and when the fix was disabled. Exact bytes were restored,
 files touched, native code rebuilt and affected Python bytecode caches removed.
 All temporary scripts, backups and logs stayed outside the repository.
+
+The approved development diagnostic measured after/before ratios of 0.451227
+with alignment and 0.692498 without, with no monitored heavy-process overlap.
+Exact commits, fixture, environment and limits are recorded in
+[testing and performance](../TESTING_AND_PERFORMANCE.md). These operation-only
+results leave real reference-machine interaction acceptance pending.
