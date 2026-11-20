@@ -63,37 +63,39 @@ Every case reads back the same from our DWG and from our DXF.
 
 **The drawings are not committed:** the two tools reproduce them.
 
-## Reservation (2026-11-20)
+## JOIN on polylines, MATCHPROP and ELLIPSE (2026-11-20)
 
-Claude, Windows validation role, with the maintainer's go-ahead: the cases
-below (J3–J7, M1–M6, EL1–EL4) run in ProgeCAD 2026 on this laptop, every
-02.14 case run again with them. ProgeCAD is in use by this task until the
-pull request leaves draft. Base: `7487c3257a1b6d86280c5dc9f29628669cfc79cf`.
+The cases added with JOIN's second delivery, MATCHPROP and ELLIPSE, run in
+ProgeCAD 2026 on Windows with the maintainer's go-ahead, by the same method
+and tools as above. Every earlier case ran again with them.
 
-## To run: JOIN on polylines (J3–J7)
+**41 cases** (M6 in ProgeCAD only): ProgeCAD's 41 results and our 40, each
+in DWG and DXF, all 121 files reopened by ProgeCAD from its command line and
+described with `arq:dump-full`, layer, color, linetype, linetype scale,
+lineweight, thickness and transparency included.
 
-Added to both tools on 2026-11-17 with JOIN's second delivery: a constant
-width meeting a line, two widths, a rectangle of lines many at once, a
-branch, and a line with an arc. What ours gives, and what to confirm, is in
-[JOIN's design](../design/join-command.md#windows-comparison-of-the-polylines-to-run).
+**33 of the 41 are the same as ProgeCAD's**, entity for entity, and every
+case reads back the same from our DWG and from our DXF.
 
-## To run: MATCHPROP (M1–M3)
+| Commands | Cases | Result |
+|---|---|---|
+| The earlier 26 | O, T, E, S, F, C, B, J1–J2, R | as before: the same, but C2, J1 and O5 (above); R3 now the same, since the rule changed |
+| JOIN on polylines | J3 a width meeting a line, J4 two widths, J5 a rectangle many at once, J6 a branch, J7 a line and an arc | J4, J6, J7 the same; **J3** and J5 differ (below) |
+| MATCHPROP | M1 layer and color, M2 a width and thickness, M3 a varying width, M4 a text's height, M5 a text's height to an MTEXT | M1, M4, M5 the same; M2 and M3 differ (below) |
+| MATCHPROP, ProgeCAD only | M6 a text in style ROTULO, width factor 0.8, oblique 15°, rotated 30° | ProgeCAD gives all four (below) |
+| ELLIPSE | EL1 axis and distance, EL2 Center, EL3 Rotation, EL4 Arc | **all the same**, the arc's angles counted from the first axis point, as ours |
 
-Added on 2026-11-17: a line's layer and color given to a circle, a
-polyline's width and thickness, and a varying width that is not given. The
-dump now also writes each entity's linetype, linetype scale, lineweight,
-thickness and transparency. What ours gives is in
-[MATCHPROP's design](../design/matchprop-command.md#windows-comparison-to-run).
+**JOIN of a constant width and a line (J3).**
+- **The difference.** ProgeCAD gives the joined line the polyline's width: vertices (0,0), (4,0) and (4,3) with widths 0.5/0.5, 0.5/0.5 and 0/0. Ours keeps the line's 0.
+- **Decision.** The maintainer chose to match ProgeCAD (2026-11-20), in a pull request of its own.
 
-Text cases M4–M6 added the same day: a text's height given to a text and
-to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
-oblique angle and rotation, to see which ProgeCAD gives. The dump now
-describes texts and MTEXTs.
+**JOIN of four lines many at once (J5).** The same closed rectangle, counterclockwise in both; ProgeCAD starts at (0,3), ours at (0,0). The maintainer chose to keep ours (2026-11-20).
 
-## To run: ELLIPSE (EL1–EL4)
+**MATCHPROP of a constant width (M2).** The same widths drawn: ProgeCAD writes 0.5 at each vertex with no constant width, ours sets the constant width 0.5. The maintainer chose to keep ours (2026-11-20).
 
-Added on 2026-11-17: by an axis and a distance, by its Center, by a
-Rotation, and an elliptical Arc whose first axis points west. The dump now
-describes ellipses (center, major axis, ratio, parameters). What ours
-gives, and what to confirm, is in
-[ELLIPSE's design](../design/ellipse-command.md#windows-comparison-to-run).
+**MATCHPROP from a varying width (M3).**
+- **ProgeCAD** leaves the target's first segment tapering from 0.2 to 0.8, the first source segment's start and the second's width.
+- **Ours** gives no width, so the target keeps 0.25. AutoCAD's documentation says the same: a source polyline of varying width gives no width.
+- **Decision.** The maintainer chose to keep ours (2026-11-20).
+
+**MATCHPROP of a text's look (M6).** ProgeCAD gives the style, the width factor, the oblique angle and the rotation. Ours, by its design (option A), gives the first three and never the rotation. The maintainer chose to keep ours (2026-11-20): matching properties does not turn a drawing's texts. Our tool cannot build this source yet; the rule is covered by the Rust tests.

@@ -64,7 +64,7 @@ Tests:
 
 Each was verified by sabotage.
 
-## Windows comparison (to run)
+## Windows comparison
 
 Cases EL1–EL4 are in both comparison tools, as 02.14's others
 ([method](../testing/commands-02-14-windows.md)); the LISP dump describes
@@ -80,3 +80,7 @@ ellipses (center, major axis, ratio, parameters).
 To confirm: that angles count from the first axis drawn when it is not
 horizontal (EL4 draws one whose first end is (0,0), the axis pointing
 west), and what Parameter gives.
+
+**Run on 2026-11-20** ([results](../testing/commands-02-14-windows.md#join-on-polylines-matchprop-and-ellipse-2026-11-20)): EL1–EL4 the same as ProgeCAD,
+the major axis toward the first point and the arc's angles counted from
+it. Parameter was not among the cases.
