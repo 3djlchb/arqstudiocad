@@ -96,6 +96,15 @@ not see it yet (D4).
    - an arc cut in the middle becomes two arcs;
    - an arc grows round its ellipse;
    - the ellipse also bounds EXTEND and is seen by fences.
+
+   They reach the ellipse through a curve of its own, kept apart from the
+   entity's plan geometry: `Document::curve_plan` gives a line's, circle's
+   or arc's plan geometry, or an ellipse lying in the plan, and
+   `Document::set_curve_plan` writes it back, in the ellipse's own sense
+   seen from below (maintainer, 2026-11-20). `Entity::plan`, the own model
+   (ADR 0018), the check after saving, grips, STRETCH and Properties are
+   left as they were until delivery 3, which opens `Entity::plan` to
+   ellipses and folds the two together.
 3. Grips and the Properties panel: center, axes, ratio, and the start and
    end angles. To be compared with ProgeCAD.
 4. JOIN: a source elliptical arc takes the arcs of its own ellipse,
@@ -108,10 +117,10 @@ planned here.
 
 ## Consequences
 
-- Until delivery 2, TRIM, EXTEND, BREAK and OFFSET refuse an ellipse, as
-  before; the geometry says so (`OutOfRange { what: "curve" }`).
+- Until delivery 2, TRIM, EXTEND, BREAK and OFFSET refused an ellipse;
+  since it, only OFFSET does (`OutOfRange { what: "curve" }`).
 - The entity's plan geometry (`Entity::plan`) gives no ellipse yet, so
-  its grips and STRETCH are unchanged; deliveries 2 and 3 open it.
+  its grips and STRETCH are unchanged; delivery 3 opens it (D4).
 - `Geometry2` has one more variant. Every match on it takes the ellipse:
   as itself where the meaning is clear, and refused where its delivery is
   still to come.

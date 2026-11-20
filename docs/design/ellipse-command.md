@@ -41,7 +41,19 @@ The ellipse snaps to its center, its arc's ends and middle, its quadrants
 and its nearest point, and is moved, copied, turned, scaled and mirrored
 as a whole (ADR 0040). Since ADR 0041 it is a curve: it gives the
 Intersection, Perpendicular and Tangent snaps, a crossing meets its curve,
-and TRIM cuts at it.
+and TRIM cuts at it. Since its second delivery it is trimmed, extended and
+broken as AutoCAD does:
+
+- **TRIM:** a whole ellipse cut twice becomes the arc left; an arc cut in
+  the middle becomes two, the second a copy with every property.
+- **EXTEND:** an arc grows round its ellipse, never round onto itself; a
+  whole ellipse cannot ("Cannot extend that object.").
+- **BREAK:** a whole ellipse loses the counterclockwise span from the
+  first point to the second, as a circle; an arc, the span between them.
+- **As an edge:** it bounds lines, arcs and polylines extended to it, and
+  a fence meets it.
+
+Each is one undo step, and an ellipse seen from below keeps its normal.
 
 ## Reference and validation
 
@@ -66,7 +78,7 @@ Each was verified by sabotage.
 
 ## Windows comparison (to run)
 
-Cases EL1–EL4 are in both comparison tools, as 02.14's others
+Cases EL1–EL9 are in both comparison tools, as 02.14's others
 ([method](../testing/commands-02-14-windows.md)); the LISP dump describes
 ellipses (center, major axis, ratio, parameters).
 
@@ -76,6 +88,16 @@ ellipses (center, major axis, ratio, parameters).
 | EL2 | Center (5,0), axis end (7,0), distance 4 | major (0,4), ratio 0.5 |
 | EL3 | axis (0,0)–(10,0), Rotation 60° | ratio 0.5 |
 | EL4 | Arc: axis (0,0)–(10,0), distance 3, start 30°, end 120° | from the first axis toward (0,0): to confirm |
+
+Cases EL5–EL9 are about (0,0), with semi-axes 5 and 3:
+
+| Case | Command | Ours |
+|---|---|---|
+| EL5 | TRIM (Quick) a whole ellipse at (5,0), cut by x = 4 | the arc from (4,1.8) round to (4,−1.8) |
+| EL6 | TRIM (Quick) the upper half at its top-left, cut by x = 0 and x = −4 | two arcs: (5,0)–(0,3) and (−4,1.8)–(−5,0) |
+| EL7 | EXTEND the first quarter at (0,3) to x = −4 | the arc from (5,0) to (−4,1.8) |
+| EL8 | BREAK a whole ellipse, First (5,0), second (0,3) | the arc from (0,3) round to (5,0) |
+| EL9 | EXTEND a line along y = 1.8 from x = −10 to the ellipse | to (−4,1.8) |
 
 To confirm: that angles count from the first axis drawn when it is not
 horizontal (EL4 draws one whose first end is (0,0), the axis pointing
