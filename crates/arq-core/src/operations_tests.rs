@@ -2339,3 +2339,36 @@ fn path_array_invalid_guides_locked_sources_and_late_overflow_are_atomic() {
             .is_err()
     );
 }
+
+#[test]
+fn array_preview_plan_is_read_only_deduplicated_and_matches_commit() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(1e6, 2e6), p(1e6 + 2., 2e6)).unwrap();
+    let before = cad.undo_names().len();
+    let (grid, ids) = cad
+        .rectangular_array_preview_plan(&[source, source], 2, 2, -5., 10., FRAC_PI_2)
+        .unwrap();
+    assert_eq!(ids, [source]);
+    assert_eq!(grid.cells(), 4);
+    assert_eq!(cad.undo_names().len(), before);
+    assert_eq!(cad.document().entities().len(), 1);
+    let offsets: Vec<_> = grid.offsets().collect::<Result<_, _>>().unwrap();
+    let (copies, _) = cad
+        .rectangular_array(&[source], 2, 2, -5., 10., FRAC_PI_2)
+        .unwrap();
+    for (id, offset) in copies.into_iter().zip(offsets) {
+        let (start, end) = line_ends(&cad, id);
+        assert!(near(start, p(1e6 + offset.x(), 2e6 + offset.y())));
+        assert!(near(end, p(1e6 + offset.x() + 2., 2e6 + offset.y())));
+    }
+    assert!(
+        cad.rectangular_array_preview_plan(&[u64::MAX], 1, 2, 0., 1., 0.)
+            .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(
+        cad.rectangular_array_preview_plan(&[source], 1, 2, 0., 1., 0.)
+            .is_err()
+    );
+}

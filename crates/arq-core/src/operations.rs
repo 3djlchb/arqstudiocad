@@ -252,6 +252,43 @@ impl CadDocument {
         column_spacing: f64,
         angle: f64,
     ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let (grid, ids) = self.rectangular_array_preview_plan(
+            ids,
+            rows,
+            columns,
+            row_spacing,
+            column_spacing,
+            angle,
+        )?;
+        let mut offsets = Vec::with_capacity(grid.cells() - 1);
+        for offset in grid.offsets() {
+            offsets.push(offset?);
+        }
+        self.transact("ARRAYRECT", |doc| {
+            let mut copies = Vec::new();
+            for offset in offsets {
+                let transform = Transform2::translation(offset);
+                for id in &ids {
+                    let copy = doc.copy_entity(*id)?;
+                    doc.transform_entity(copy, transform)?;
+                    copies.push(copy);
+                }
+            }
+            Ok(copies)
+        })
+    }
+
+    /// Read-only placement and validated IDs shared by preview and commit.
+    #[allow(clippy::too_many_arguments)]
+    pub fn rectangular_array_preview_plan(
+        &self,
+        ids: &[EntityId],
+        rows: usize,
+        columns: usize,
+        row_spacing: f64,
+        column_spacing: f64,
+        angle: f64,
+    ) -> CadResult<(arq_geometry::RectangularGrid, Vec<EntityId>)> {
         let cells = rows
             .checked_mul(columns)
             .filter(|n| (2..=100_000).contains(n));
@@ -270,36 +307,18 @@ impl CadDocument {
                 "array spacing and angle must be finite; repeated axes need nonzero spacing".into(),
             ));
         }
+        let grid =
+            arq_geometry::RectangularGrid::new(rows, columns, row_spacing, column_spacing, angle)?;
         let ids = distinct(ids);
-        let (sin, cos) = angle.sin_cos();
-        let mut offsets = Vec::with_capacity(cells.unwrap() - 1);
-        for row in 0..rows {
-            for column in 0..columns {
-                if row == 0 && column == 0 {
-                    continue;
-                }
-                let x = column as f64 * column_spacing;
-                let y = row as f64 * row_spacing;
-                offsets.push(Vector2::new(x * cos - y * sin, x * sin + y * cos)?);
-            }
+        for &id in &ids {
+            let entity = self
+                .document()
+                .entity(id)
+                .ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(self.document(), &entity)?;
+            check_transformable(&entity)?;
         }
-        self.transact("ARRAYRECT", |doc| {
-            for id in &ids {
-                let e = doc.entity(*id).ok_or(CadError::EntityNotFound(*id))?;
-                check_unlocked(doc, &e)?;
-                check_transformable(&e)?;
-            }
-            let mut copies = Vec::new();
-            for offset in offsets {
-                let transform = Transform2::translation(offset);
-                for id in &ids {
-                    let copy = doc.copy_entity(*id)?;
-                    doc.transform_entity(copy, transform)?;
-                    copies.push(copy);
-                }
-            }
-            Ok(copies)
-        })
+        Ok((grid, ids))
     }
 
     /// Independent polar copies, ordered by item and distinct source ID order.
