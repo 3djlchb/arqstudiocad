@@ -12,6 +12,7 @@ copied.
 | Path in this repo | Origin | License | Notes |
 |---|---|---|---|
 | `crates/arq-document/src/ocs.rs` | Approach of IngeCAD's `core/ocs.py` (plan view of OCS entities, normal `(0,0,-1)`), reimplemented in Rust | GPL-3.0-or-later | Idea and rules ported, no code copied |
+| `python/arqstudiocad/ui/overlay.py` (`_polygon_by_copy`) | Technique of [pyqtgraph](https://github.com/pyqtgraph/pyqtgraph) `functions.py` under PySide6: a `QPolygonF` resized, then filled through `shiboken6.VoidPtr` over its storage | MIT | Idea only, reimplemented with the standard library's `array`; no code copied |
 | `crates/arq-document/fonts/standard.lff` | [LibreCAD](https://github.com/LibreCAD/LibreCAD) `librecad/support/fonts/standard.lff` ("ISO 3098-2", by Rallaz, based on a public-domain Wikimedia drawing of ISO 3098) | GPL-2.0-or-later | Copied unchanged (master, 2026-10-18); the built-in stroke font texts are drawn in until phase 04 (ADR 0022). The LFF reader in `text_layout.rs` is our own |
 
 ## Dependencies
@@ -85,3 +86,41 @@ The non-associative rectangular command uses the public behavior described in
 as a compatibility reference. The implementation and tests are original
 GPL-3.0-or-later code. No Autodesk source, artwork or manual passages are
 copied or distributed; proprietary product behavior is a reference only.
+
+## World-coordinate indicator visual reference
+
+The colored XYZ tripod uses [OpenCADStudio's UCS indicator](https://github.com/HakanSeven12/OpenCADStudio/blob/6949482b719b56b1f6f0ea641928593bcb90a63b/src/ui/overlay.rs#L4778)
+(GPL-3.0) as a visual/behavioral reference: red X, green Y (darker on a light
+background), blue Z, projected arms with screen-sized labels and arrows.
+No upstream source or artwork is copied. Implementation and tests are
+original GPL-3.0-or-later project code, reusing this project's Rust view basis
+and shared overlay representation. The maintainer requested world-origin
+anchoring; editable UCS and upstream interactive controls are outside scope.
+
+## Closed BREAK behavior
+
+Closed lightweight polyline traversal follows the maintainer's approved
+[Windows observations](docs/testing/break-closed-polylines-windows.md) from
+ProgeCAD 2026 (2026-11-15). Only observed behavior is a reference; no proprietary
+code, artwork or documentation passages are copied. Geometry, implementation
+and regression tests are original GPL-3.0-or-later project code, reusing the
+existing projection and subpath algorithms.
+
+## Polar ARRAY behavioral reference (2026-11-20)
+
+The independent `ARRAYPOLAR` workflow uses the documented polar behavior of
+[AutoCAD 2021 -ARRAY](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-8336B4CD-5375-4290-BD08-7D9E022741F6.htm)
+as an interoperability reference (signed fill, item rotation and group base).
+Implementation and hand-derived expected coordinates are original. No
+proprietary code, prose or artwork is incorporated; code remains
+GPL-3.0-or-later and project documentation CC BY-SA 4.0.
+
+## Path ARRAY behavioral reference (2026-11-20)
+
+The independent `ARRAYPATH` / `MATRIZCAMINO` workflow refers to
+[AutoCAD 2021 ARRAYPATH](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-D36C46CD-4E17-4A16-A387-C0B158EA5A9E.htm)
+for Divide, base points, independent items and relative alignment. Source
+retention and outgoing corner tangents are explicit maintainer decisions;
+no full parity is claimed. Original implementation and hand-derived expected
+coordinates; no proprietary source, manual prose or artwork incorporated.
+Code remains GPL-3.0-or-later; documentation CC BY-SA 4.0.

@@ -18,9 +18,9 @@ use std::sync::Arc;
 use arq_core::{
     BlockData, BlockDefinition, BlockObjects, CadApplication as CoreApplication,
     CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
-    DocumentId, EntityId, LayerId, Money,
+    DocumentId, EntityId, LayerId, MatchSettings, Money,
 };
-use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance};
+use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance, selection_polygons};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -30,8 +30,8 @@ use crate::info::{
     CadBlockData, CadBlockInfo, CadCurrency, CadEntityInfo, CadLayerInfo, CadSolidMeasures,
 };
 use crate::values::{
-    CadArc, CadBounds2, CadCircle, CadColor, CadGrip, CadLine, CadSnap, PyPoint, PyVector,
-    snap_kinds,
+    CadArc, CadBounds2, CadCircle, CadColor, CadEllipse, CadGrip, CadLine, CadSnap, PyPoint,
+    PyVector, snap_kinds,
 };
 
 /// The open documents of one application.
@@ -1059,6 +1059,11 @@ impl CadDocument {
         self.create(|cad| cad.add_circle(center.0, radius))
     }
 
+    /// Draws `ellipse` on the current layer (ELLIPSE, ADR 0040).
+    fn add_ellipse(&self, ellipse: CadEllipse) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.add_ellipse(ellipse.0))
+    }
+
     /// Draws an arc on the current layer, counterclockwise from
     /// `start_angle` to `end_angle` (radians).
     fn add_arc(
@@ -1102,18 +1107,15 @@ impl CadDocument {
             .into_iter()
             .map(|(id, area)| (id, area.0))
             .collect();
-        let polygons: Vec<_> = polygons
-            .into_iter()
-            .map(|(id, points)| {
-                SelectionPolygon::new(
-                    points.into_iter().map(|p| p.0).collect(),
-                    Tolerance::DEFAULT,
-                )
-                .map(|polygon| (id, polygon))
-            })
-            .collect::<Result<_, _>>()
-            .map_err(CadError::from)
-            .py()?;
+        // One validation per distinct polygon, shared by its entities.
+        let polygons = selection_polygons(
+            polygons
+                .into_iter()
+                .map(|(id, points)| (id, points.into_iter().map(|p| p.0).collect())),
+            Tolerance::DEFAULT,
+        )
+        .map_err(CadError::from)
+        .py()?;
         self.change(|cad| {
             cad.stretch_entities_with_polygons(&entity_ids, offset.0, &areas, &polygons)
         })
@@ -1288,6 +1290,41 @@ impl CadDocument {
             })
     }
 
+    /// MATCHPROP: gives `targets` the properties of `source` named in
+    /// `settings` (any of "color", "layer", "linetype", "ltscale",
+    /// "lineweight", "transparency", "thickness", "text", "polyline"), in one undo
+    /// step. Returns how many targets changed, how many were on a locked
+    /// layer and left, and what changed. An unknown name raises.
+    fn match_properties(
+        &self,
+        source: EntityId,
+        targets: Vec<EntityId>,
+        settings: Vec<String>,
+    ) -> PyResult<(usize, usize, CadChangeSet)> {
+        let mut chosen = MatchSettings::NONE;
+        for name in &settings {
+            let flag = match name.as_str() {
+                "color" => &mut chosen.color,
+                "layer" => &mut chosen.layer,
+                "linetype" => &mut chosen.linetype,
+                "ltscale" => &mut chosen.linetype_scale,
+                "lineweight" => &mut chosen.lineweight,
+                "transparency" => &mut chosen.transparency,
+                "thickness" => &mut chosen.thickness,
+                "polyline" => &mut chosen.polyline,
+                "text" => &mut chosen.text,
+                other => {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown MATCHPROP setting: {other}"
+                    )));
+                }
+            };
+            *flag = true;
+        }
+        self.edit(|cad| cad.match_properties(source, &targets, chosen))
+            .map(|(m, changes)| (m.changed, m.locked, CadChangeSet(changes)))
+    }
+
     /// JOIN's Close: arc `entity_id` becomes its full circle, every
     /// property kept. Returns the circle's id and what changed.
     fn close_arc(&self, entity_id: EntityId) -> PyResult<(EntityId, CadChangeSet)> {
@@ -1355,6 +1392,45 @@ impl CadDocument {
             )
         })
         .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
+    /// Independent polar copies; fill_angle is signed radians. One undo step.
+    #[pyo3(signature = (entity_ids, center, count, fill_angle, rotate_items = true, base_point = None))]
+    #[allow(clippy::too_many_arguments)]
+    fn polar_array(
+        &self,
+        entity_ids: Vec<EntityId>,
+        center: PyPoint,
+        count: usize,
+        fill_angle: f64,
+        rotate_items: bool,
+        base_point: Option<PyPoint>,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| {
+            cad.polar_array(
+                &entity_ids,
+                center.0,
+                count,
+                fill_angle,
+                rotate_items,
+                base_point.map(|p| p.0),
+            )
+        })
+        .map(|(ids, changes)| (ids, CadChangeSet(changes)))
+    }
+
+    /// N independent copies along an open 2D guide; sources stay unchanged.
+    #[pyo3(signature = (entity_ids, guide, base_point, count, align_items = true))]
+    fn path_array(
+        &self,
+        entity_ids: Vec<EntityId>,
+        guide: EntityId,
+        base_point: PyPoint,
+        count: usize,
+        align_items: bool,
+    ) -> PyResult<(Vec<EntityId>, CadChangeSet)> {
+        self.edit(|cad| cad.path_array(&entity_ids, guide, base_point.0, count, align_items))
+            .map(|(ids, changes)| (ids, CadChangeSet(changes)))
     }
 
     /// Moves entities by `offset` (MOVE).

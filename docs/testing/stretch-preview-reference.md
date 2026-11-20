@@ -5,6 +5,19 @@ candidate/base edit ratios above one: initial 1.06330; five alternating
 batches pooled 1.00521, overlapping batch ranges. The preview query itself
 was 0.061386 ms on the Ryzen host. These are not reference-floor results.
 
+**Measured 2026-11-19** on the reference machine, at `66c0125` → `5ac83f4`,
+with the method below ([operations](reference-machine/2026-11-19/operations.txt),
+[cursor frames](reference-machine/2026-11-19/cursor-frames.txt)): edit pooled
+0.361476 → 0.360268 ms (0.99666), preview query 0.117402 ms, CPU cursor
+frames 4.18 → 6.88 ms with 100 lines stretched (95th percentile 10.02 ms),
+GPU frames at the display's 16.4-16.7 ms. The cursor was synthetic Qt mouse
+events. The cases left out were measured the same day
+([stretch cases](reference-machine/2026-11-19/stretch-cases.txt)): zoom or pan during the prompt adds about
+3 ms on the CPU and nothing on the GPU; 100 two-arc polylines take the CPU
+frame to 24 ms (8.8 ms before), over one 60 Hz frame (12 ms since the
+overlay is painted without a QPointF a point); and a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity
+(4 ms before) (fixed by #213, which validates it once: 16 ms on the CPU and 11 ms on the GPU). Acceptance of the floor is the maintainer's.
+
 ## Scope and revisions
 
 Use the actual i7-2600/GT 730, 16 GB, LMDE 7 Cinnamon/X11 reference machine.

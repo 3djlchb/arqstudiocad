@@ -68,6 +68,14 @@ fn outline_shapes(shapes: impl Iterator<Item = Shape>, camera: &Camera) -> Vec<P
             }
             // A band is highlighted by its curves, which come as shapes too.
             Shape::Triangle(_) => {}
+            // Chord by chord, as ellipses have always been drawn (ADR 0040).
+            Shape::Ellipse(e) => {
+                for w in e.flatten().windows(2) {
+                    if w[0] != w[1] {
+                        out.push(vec![screen(w[0]), screen(w[1])]);
+                    }
+                }
+            }
         }
     }
     out

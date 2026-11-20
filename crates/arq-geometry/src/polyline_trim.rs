@@ -241,6 +241,38 @@ pub fn break_polyline(
     Ok(pieces)
 }
 
+/// BREAK a closed path using its stored vertex parameters. Keep the span
+/// from the larger parameter through vertex zero to the smaller parameter,
+/// independent of pick order. Equal parameters open the complete path there.
+/// Width provenance always refers to the original, not unrolled, segments.
+pub fn break_closed_polyline(
+    vertices: &[(Point2, f64)],
+    first: Point2,
+    second: Point2,
+    tol: Tolerance,
+) -> GeometryResult<BrokenPolyline> {
+    let path = segments(vertices, true)?;
+    let n = path.len() as f64;
+    let a = nearest(&path, first)?.rem_euclid(n);
+    let b = nearest(&path, second)?.rem_euclid(n);
+    if !a.is_finite() || !b.is_finite() {
+        return Err(GeometryError::NonFinite {
+            what: "break parameter",
+        });
+    }
+    let unrolled: Vec<Segment> = path.iter().chain(&path).copied().collect();
+    let mut spans = Vec::new();
+    let vertices = slice_path(&unrolled, a.max(b), a.min(b) + n, tol, Some(&mut spans)).ok_or(
+        GeometryError::OutOfRange {
+            what: "break points",
+        },
+    )?;
+    for span in &mut spans {
+        span.segment %= path.len();
+    }
+    Ok(BrokenPolyline { vertices, spans })
+}
+
 /// The polyline trimmed at its crossings with `edges` around `pick`, as
 /// AutoCAD's TRIM: the part between the crossings nearest either side of
 /// the picked point is taken away. An open polyline is left as none, one
@@ -350,7 +382,8 @@ pub fn extend_polyline(
             }
             out[index].1 = s.bulge.signum() * (a.sweep() / 4.0).tan();
         }
-        Geometry2::Circle(_) => return Ok(None),
+        // A segment grows as a line or an arc.
+        Geometry2::Circle(_) | Geometry2::Ellipse(_) => return Ok(None),
     }
     Ok(Some(out))
 }
@@ -406,3 +439,7 @@ pub fn polyline_trim_bounds(
 #[cfg(test)]
 #[path = "polyline_trim_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "polyline_break_closed_tests.rs"]
+mod closed_break_tests;

@@ -68,6 +68,14 @@ impl Transform2 {
         Ok(Self::linear(cos, -sin, sin, cos, center))
     }
 
+    /// Places a source frame at a target origin, rotating by signed radians.
+    /// Local-frame translation is checked before constructing the transform.
+    pub fn placement(source: Point2, target: Point2, angle: f64) -> GeometryResult<Self> {
+        let mut transform = Self::rotation(source, angle)?;
+        transform.t = Vector2::new(target.x() - source.x(), target.y() - source.y())?;
+        Ok(transform)
+    }
+
     /// Scales by `factor` around `center` (SCALE). The factor must be finite
     /// and greater than zero.
     pub fn scaling(center: Point2, factor: f64) -> GeometryResult<Self> {
@@ -158,6 +166,18 @@ impl Transform2 {
         self.pivot + self.mul(p - self.pivot) + self.t
     }
 
+    /// Checked point application for operations that must reject coordinate
+    /// overflow before mutation, including every local-frame intermediate.
+    pub fn checked_apply_point(self, p: Point2) -> GeometryResult<Point2> {
+        let d = Vector2::new(p.x() - self.pivot.x(), p.y() - self.pivot.y())?;
+        let v = Vector2::new(
+            self.a * d.x() + self.b * d.y(),
+            self.c * d.x() + self.d * d.y(),
+        )?;
+        let anchored = Point2::new(self.pivot.x() + v.x(), self.pivot.y() + v.y())?;
+        Point2::new(anchored.x() + self.t.x(), anchored.y() + self.t.y())
+    }
+
     /// Image of a displacement (translations do not affect vectors).
     pub fn apply_vector(self, v: Vector2) -> Vector2 {
         self.mul(v)
@@ -206,6 +226,7 @@ impl Transform2 {
             Geometry2::Line(l) => self.apply_line(l)?.into(),
             Geometry2::Circle(c) => self.apply_circle(c)?.into(),
             Geometry2::Arc(a) => self.apply_arc(a)?.into(),
+            Geometry2::Ellipse(e) => e.transformed(self)?.into(),
         })
     }
 
@@ -390,5 +411,16 @@ mod tests {
             r.then(r.inverse())
                 .approx_eq_at(Transform2::IDENTITY, &[q, c], TOL)
         );
+    }
+
+    #[test]
+    fn an_ellipse_is_carried_as_a_whole() {
+        let e = crate::Ellipse::new(p(1.0, 2.0), v(3.0, 1.0), 0.5, 0.4, 2.6).unwrap();
+        let t = Transform2::rotation(p(0.0, 0.0), 0.7).unwrap();
+        let Geometry2::Ellipse(moved) = t.apply(e.into()).unwrap() else {
+            panic!()
+        };
+        assert_eq!(moved, e.transformed(t).unwrap());
+        assert!(moved.center().approx_eq(t.apply_point(e.center()), TOL));
     }
 }

@@ -64,7 +64,7 @@ delivery is done, and refuse the rest as they do now:
 | Delivery | Solids combined | Architecture |
 |---|---|---|
 | **1. Planar** *(done)* | Flat faces, straight edges | Walls, slabs, openings, boxes, wedges, extruded polylines |
-| **2. Planes with cylinders and cones** | Any of them with flat-faced solids, and with each other where their axes are parallel | Round columns through slabs, circular openings, drilled holes, extruded circles and arcs, cones |
+| **2. Planes with cylinders and cones** *(done; cones with cylinders or cones went to delivery 4)* | Any of them with flat-faced solids, and with each other where their axes are parallel | Round columns through slabs, circular openings, drilled holes, extruded circles and arcs, cones |
 | **3. Spheres and tori** | With flat-faced solids, cylinders and cones on a common axis | Domes, vaults, rounded ends, rings |
 | **4. Curved with curved** | Cylinders, cones, spheres and tori in any position | Pipes and ducts meeting, a round column through a vault, handrails |
 | **5. NURBS** | Faces of NURBS surfaces, read from drawings or made by later commands | Free forms (ADR 0031) |
@@ -225,6 +225,30 @@ As ADR 0032 D4, for the new kinds:
     back. With NURBS edges written, 57 of ATMOS's 58 AutoCAD solids are
     written again and read back measuring the same (the other holds an
     elliptic cylinder).
+- **2.3c (done, 2026-11-16):** cylinders on parallel axes.
+  - **Section:** their sides cross in 0 or 2 exact lines along the axes;
+    coaxial cylinders, or circles touching or one inside the other, have
+    none, and the faces round them bound the other solid's section.
+  - **Merged faces:** only flat parts that overlap or share a stretch of
+    edge, so columns touching along a line unite as two lumps, as boxes
+    touching along an edge do.
+  - **Not yet:** coincident cylindrical faces are not merged (columns
+    stacked on one axis keep a circle on their side); cones with cylinders
+    or cones, and axes at an angle, are delivery 4.
+- **2.4 (done, 2026-11-16):** UNION, SUBTRACT and INTERSECT take
+  cylinders and cones (ADR 0032 D5).
+  - **Refused:** a selection holding a sphere, a torus or a free-form face
+    before combining; curved faces meeting as the kernel does not combine
+    yet (`BooleanError::Curved`) after trying. Both name the solids, say
+    why, and change nothing.
+  - **Evidence:**
+    - [ProgeCAD](../../testing/progecad-curved-booleans.md): twelve
+      results, columns side by side, a tube, a cube bored and a conical
+      hole among them, reopened in DWG 2000, 2018 and DXF with AUDIT 0
+      errors; ours exact to 2.1e-11, ProgeCAD's own integration within
+      2.5e-6.
+    - [Truck](../../testing/truck-boolean-comparison.md): parallel
+      columns and columns with turned boxes.
 
 ## Consequences
 

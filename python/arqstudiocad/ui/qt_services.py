@@ -25,6 +25,7 @@ from arqstudiocad.ui import (
     block_definition_dialog,
     currencies_dialog,
     edit_block_dialog,
+    match_settings_dialog,
     purge_dialog,
     rename_block_dialog,
     text_dialog,
@@ -279,6 +280,9 @@ class QtUiServices:
 
     def edit_text(self, title: str, text: str = "") -> str | None:
         return text_dialog.ask_text(self._parent, title, text)
+
+    def choose_match_settings(self, chosen: frozenset[str]) -> frozenset[str] | None:
+        return match_settings_dialog.ask_match_settings(self._parent, chosen)
 
     def view(self, document: CadDocument) -> ViewControl | None:
         return None if self._views is None else self._views(document)

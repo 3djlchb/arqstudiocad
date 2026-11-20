@@ -76,6 +76,7 @@ mod bounds3;
 mod circle;
 mod crossings;
 mod curved_region;
+mod ellipse;
 mod error;
 mod fillet;
 mod geometry;
@@ -83,13 +84,16 @@ mod intersect;
 mod join;
 mod line;
 mod offset;
+mod path_array;
 mod point;
 mod point3;
+mod polar_array;
 mod polyline_corners;
 mod polyline_offset;
 mod polyline_trim;
 mod rectangle;
 mod region;
+mod roots;
 mod selection_polygon;
 pub mod snap;
 mod tolerance;
@@ -105,23 +109,26 @@ pub use bounds::Bounds2;
 pub use bounds3::Bounds3;
 pub use circle::Circle;
 pub use curved_region::{CurvedRegion, Trim};
+pub use ellipse::{Ellipse, MAX_ROTATION};
 pub use error::{GeometryError, GeometryResult};
 pub use fillet::{Corner, chamfer, chamfer_second_distance, fillet};
 pub use geometry::{Geometry2, GeometryKind};
 pub use intersect::{Intersections, intersect};
-pub use join::{join_arcs, join_groups, join_lines};
+pub use join::{Chain, JoinPath, chain_paths, join_arcs, join_groups, join_lines};
 pub use line::Line;
+pub use path_array::path_array_transforms;
 pub use point::Point2;
 pub use point3::Point3;
+pub use polar_array::polar_array_transforms;
 pub use polyline_corners::{CornerCut, CutCorners, cut_polyline_corners, shared_vertex};
 pub use polyline_offset::{offset_polyline, offset_polyline_through};
 pub use polyline_trim::{
-    BrokenPolyline, PolylinePath, PolylineSpan, break_polyline, extend_polyline,
-    polyline_extension_target, polyline_trim_bounds, trim_polyline,
+    BrokenPolyline, PolylinePath, PolylineSpan, break_closed_polyline, break_polyline,
+    extend_polyline, polyline_extension_target, polyline_trim_bounds, trim_polyline,
 };
 pub use rectangle::{Corners, Rectangle};
 pub use region::{Containment, Region};
-pub use selection_polygon::{CrossingArea, SelectionPolygon};
+pub use selection_polygon::{CrossingArea, SelectionPolygon, selection_polygons};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
 pub use transform3::Transform3;

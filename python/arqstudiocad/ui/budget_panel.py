@@ -2,7 +2,8 @@
 grouped by category, each group ending with its subtotal per currency
 (maintainer, 2026-10-29), then the blocks placed without a cost, then the
 totals per currency. It follows the drawing as it changes; with Selection
-only, it follows the selection too. Export… writes what it shows to Excel
+only, it follows the selection too. A palette among the others, a tab
+beside Layers, Properties and Blocks (maintainer, 2026-11-19). Export… writes what it shows to Excel
 or CSV through BUDGETEXPORT (D6).
 """
 
@@ -37,7 +38,7 @@ from arqstudiocad.ui.panel_style import apply_data_view_style
 ITEM, MATERIAL, SUPPLIER, UNIT, QUANTITY, COST, AMOUNT = range(7)
 #: Columns of numbers, aligned right.
 NUMBERS = (QUANTITY, COST, AMOUNT)
-#: Its height when first opened docked: about ten rows.
+#: Its height when first opened docked alone: about ten rows.
 FIRST_HEIGHT = 340
 
 
@@ -273,8 +274,14 @@ class BudgetPanel(QDockWidget):
         # Opened again: catch up with what changed while it was closed.
         super().showEvent(event)
         window = self.parentWidget()
-        if not self._sized and isinstance(window, QMainWindow) and not self.isFloating():
-            # Docked while closed, it would open a few pixels high.
+        if (
+            not self._sized
+            and isinstance(window, QMainWindow)
+            and not self.isFloating()
+            and not window.tabifiedDockWidgets(self)
+        ):
+            # Docked alone while closed, it would open a few pixels high; as
+            # a tab it takes its group's size.
             self._sized = True
             window.resizeDocks([self], [FIRST_HEIGHT], Qt.Orientation.Vertical)
         if self._stale:

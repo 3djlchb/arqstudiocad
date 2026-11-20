@@ -220,6 +220,14 @@ impl<S: Sink> Tracer<'_, S> {
                 self.segment(p2, p3);
                 self.segment(p3, p0);
             }
+            // Chord by chord, as ellipses have always been drawn (ADR 0040).
+            Shape::Ellipse(e) => {
+                for w in e.flatten().windows(2) {
+                    if w[0] != w[1] {
+                        self.segment(screen(w[0]), screen(w[1]));
+                    }
+                }
+            }
             Shape::Triangle(t) => {
                 let pad = PAD_PX;
                 let corners = t.map(screen);

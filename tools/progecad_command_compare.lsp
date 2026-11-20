@@ -78,6 +78,21 @@
     ((= k "AcDbCircle")
      (strcat "CIRCLE h=" (vla-get-Handle obj) " center=" (arq:pt (vla-get-Center obj))
              " radius=" (arq:num (vla-get-Radius obj))))
+    ((= k "AcDbText")
+     (strcat "TEXT h=" (vla-get-Handle obj) " at=" (arq:pt (vla-get-InsertionPoint obj))
+             " value=" (vla-get-TextString obj) " height=" (arq:num (vla-get-Height obj))
+             " style=" (vla-get-StyleName obj) " width=" (arq:num (vla-get-ScaleFactor obj))
+             " oblique=" (arq:deg (vla-get-ObliqueAngle obj))
+             " rotation=" (arq:deg (vla-get-Rotation obj))))
+    ((= k "AcDbEllipse")
+     (strcat "ELLIPSE h=" (vla-get-Handle obj) " center=" (arq:pt (vla-get-Center obj))
+             " major=" (arq:pt (vla-get-MajorAxis obj)) " ratio=" (arq:num (vla-get-RadiusRatio obj))
+             " start=" (arq:num (vla-get-StartParameter obj))
+             " end=" (arq:num (vla-get-EndParameter obj))))
+    ((= k "AcDbMText")
+     (strcat "MTEXT h=" (vla-get-Handle obj) " at=" (arq:pt (vla-get-InsertionPoint obj))
+             " value=" (vla-get-TextString obj) " height=" (arq:num (vla-get-Height obj))
+             " style=" (vla-get-StyleName obj)))
     (t (strcat k " h=" (vla-get-Handle obj)))))
 
 (defun arq:dump (doc label log / ms n d)
@@ -198,7 +213,19 @@
 
 (defun arq:full (obj / d)
   (setq d (arq:describe obj))
-  (strcat d " layer=" (vla-get-Layer obj) " color=" (itoa (vla-get-Color obj))))
+  (strcat d " layer=" (vla-get-Layer obj) " color=" (itoa (vla-get-Color obj)) (arq:extra obj)))
+
+;;; The properties MATCHPROP gives, those the object has (added 2026-11-17).
+(defun arq:extra (obj / s v)
+  (setq s "")
+  (foreach pair (list (cons " ltype=" 'vla-get-Linetype) (cons " ltscale=" 'vla-get-LinetypeScale)
+                      (cons " lweight=" 'vla-get-Lineweight) (cons " thickness=" 'vla-get-Thickness)
+                      (cons " transparency=" 'vla-get-EntityTransparency))
+    (setq v (vl-catch-all-apply (cdr pair) (list obj)))
+    (if (not (vl-catch-all-error-p v))
+      (setq s (strcat s (car pair)
+                      (cond ((= (type v) 'STR) v) ((= (type v) 'INT) (itoa v)) (T (arq:num v)))))))
+  s)
 
 (defun arq:dump-full (doc label log / ms n d)
   (setq ms (vla-get-ModelSpace doc) n 0)
@@ -286,6 +313,33 @@
 (defun arq:circ (doc c r) (vla-AddCircle (vla-get-ModelSpace doc) (arq:v c) r))
 (defun arq:en (o) (vlax-vla-object->ename o))
 
+;;; POLYLINE with a constant width, returned.
+(defun arq:wide (pl width) (vla-put-ConstantWidth pl width) pl)
+
+;;; An object's thickness, color 1 (red) or layer set (made when missing), returned.
+(defun arq:thick (o th) (vla-put-Thickness o th) o)
+(defun arq:red (o) (vla-put-Color o 1) o)
+(defun arq:on-layer (o doc name)
+  (vl-catch-all-apply 'vla-Add (list (vla-get-Layers doc) name))
+  (vla-put-Layer o name) o)
+
+;;; A text, an MTEXT 10 wide, or a text given style ROTULO (made when
+;;; missing), width factor 0.8, oblique 15 and rotation 30, returned.
+(defun arq:txt (doc s p h) (vla-AddText (vla-get-ModelSpace doc) s (arq:v p) h))
+(defun arq:mtxt (doc s p h / m)
+  (setq m (vla-AddMText (vla-get-ModelSpace doc) (arq:v p) 10.0 s))
+  (vla-put-Height m h) m)
+(defun arq:look (o doc)
+  (vl-catch-all-apply 'vla-Add (list (vla-get-TextStyles doc) "ROTULO"))
+  (vla-put-StyleName o "ROTULO") (vla-put-ScaleFactor o 0.8)
+  (vla-put-ObliqueAngle o (* pi (/ 15.0 180.0))) (vla-put-Rotation o (* pi (/ 30.0 180.0))) o)
+
+;;; A polyline with each segment's start and end widths, returned.
+(defun arq:widths (pl pairs / i)
+  (setq i 0)
+  (foreach w pairs (vla-SetWidth pl i (car w) (cadr w)) (setq i (1+ i)))
+  pl)
+
 ;;; An open LWPOLYLINE through 2D points, with bulges.
 (defun arq:open (doc pts bulges / arr pl i)
   (setq arr (vlax-make-safearray vlax-vbDouble (cons 0 (1- (* 2 (length pts))))))
@@ -369,6 +423,40 @@
   ;; JOIN
   (arq:command-case "J1-join-collinear-lines" '(list (arq:ln doc '(0 0) '(4 0)) (arq:ln doc '(6 0) '(10 0))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   (arq:command-case "J2-join-arcs" '(list (arq:arc doc '(0 0 0) 5.0 0.0 90.0) (arq:arc doc '(0 0 0) 5.0 180.0 270.0)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; JOIN on polylines (second delivery): what to confirm against ours,
+  ;; see docs/design/join-command.md
+  ;; J3: a polyline with a constant width 0.5 and a line: the joined segment's width.
+  (arq:command-case "J3-join-polyline-width-line" '(list (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.5) (arq:ln doc '(4 0) '(4 3))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; J4: widths 0.2 and 0.8, the second polyline running the other way.
+  (arq:command-case "J4-join-polylines-two-widths" '(list (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.2) (arq:wide (arq:open doc '((8 0) (4 0)) '(0)) 0.8)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; J5: four lines of a rectangle, many at once: a closed polyline?
+  (arq:command-case "J5-join-rectangle-at-once" '(list (arq:ln doc '(0 0) '(4 0)) (arq:ln doc '(4 0) '(4 3)) (arq:ln doc '(0 3) '(4 3)) (arq:ln doc '(0 0) '(0 3))) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
+  ;; J6: a branch at the source's end: which line joins?
+  (arq:command-case "J6-join-polyline-branch" '(list (arq:open doc '((0 0) (1 0)) '(0)) (arq:ln doc '(1 0) '(2 1)) (arq:ln doc '(1 0) '(2 -1))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) (arq:en (caddr arq:o)) "") dir log)
+  ;; J7: a line and an arc touching, many at once: a polyline with the line's properties.
+  (arq:command-case "J7-join-line-arc-at-once" '(list (arq:ln doc '(0 0) '(4 0)) (arq:arc doc '(4 2 0) 2.0 270.0 90.0)) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
+  ;; MATCHPROP, every setting on (docs/design/matchprop-command.md)
+  ;; M1: a line on A-WALLS, red, gives them to a circle.
+  (arq:command-case "M1-matchprop-line-to-circle" '(list (arq:on-layer (arq:red (arq:ln doc '(0 0) '(4 0))) doc "A-WALLS") (arq:circ doc '(8 0) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M2: a polyline with width 0.5 and thickness 2 gives them to a plain one.
+  (arq:command-case "M2-matchprop-polyline-width" '(list (arq:thick (arq:wide (arq:open doc '((0 0) (4 0)) '(0)) 0.5) 2.0) (arq:open doc '((0 2) (4 2)) '(0))) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M3: a varying width (0.2 then 0.8) is not given: the target keeps 0.25.
+  (arq:command-case "M3-matchprop-varying-width" '(list (arq:widths (arq:open doc '((0 0) (4 0) (8 0)) '(0 0)) '((0.2 0.2) (0.8 0.8))) (arq:wide (arq:open doc '((0 2) (4 2)) '(0)) 0.25)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; MATCHPROP's Text: what ProgeCAD gives besides the style (to confirm).
+  ;; M4: a text 2.5 high gives its height to one 1.0 high?
+  (arq:command-case "M4-matchprop-text-height" '(list (arq:txt doc "A-101" '(0 0) 2.5) (arq:txt doc "B-202" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M5: a text gives its height to an MTEXT?
+  (arq:command-case "M5-matchprop-text-to-mtext" '(list (arq:txt doc "A-101" '(0 0) 2.5) (arq:mtxt doc "Notes" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; M6 (ProgeCAD only: ours cannot make this source yet): a text in style
+  ;; ROTULO, width factor 0.8, oblique 15 degrees, rotated 30 degrees.
+  ;; Which of style, width, oblique (and not rotation) does it give?
+  (arq:command-case "M6-matchprop-text-look" '(list (arq:look (arq:txt doc "A-101" '(0 0) 2.5) doc) (arq:txt doc "B-202" '(0 5) 1.0)) '(command "_.MATCHPROP" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  ;; ELLIPSE (docs/design/ellipse-command.md)
+  (arq:command-case "EL1-ellipse-axis-distance" 'nil '(command "_.ELLIPSE" '(0 0) '(10 0) 3) dir log)
+  (arq:command-case "EL2-ellipse-center" 'nil '(command "_.ELLIPSE" "_C" '(5 0) '(7 0) 4) dir log)
+  (arq:command-case "EL3-ellipse-rotation" 'nil '(command "_.ELLIPSE" '(0 0) '(10 0) "_R" 60) dir log)
+  ;; EL4: angles from the first axis drawn, which points west from (5,0).
+  (arq:command-case "EL4-ellipse-arc" 'nil '(command "_.ELLIPSE" "_A" '(0 0) '(10 0) 3 30 120) dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)

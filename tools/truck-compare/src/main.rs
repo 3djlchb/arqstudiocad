@@ -1,13 +1,16 @@
-//! Compares arq-kernel's booleans of planar solids with Truck's, on random
-//! boxes in general position, where Truck works (ADR 0032 D4): the same
-//! volume and the same bounds. Run by hand:
+//! Compares arq-kernel's booleans with Truck's, where Truck works. Run by
+//! hand:
 //!
 //! ```sh
-//! cd tools/truck-compare && cargo run --release -- [pairs]
+//! cd tools/truck-compare && cargo run --release -- [pairs] [tolerance] [columns]
 //! ```
 //!
-//! Prints one line per disagreement and a summary; exits non-zero if the
-//! two kernels disagree on a pair where both gave a result.
+//! - Planar solids (ADR 0032 D4): random boxes in general position, the same
+//!   volume and the same bounds. Prints one line per disagreement and a
+//!   summary; exits non-zero if the two kernels disagree on a pair where
+//!   both gave a result.
+//! - `columns`: cylinders (ADR 0033 delivery 2, D4), in [`columns`]; exits
+//!   non-zero if ours fails or misses an exact volume.
 
 use std::f64::consts::PI;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -16,6 +19,8 @@ use arq_geometry::{Point3 as P3, Transform3, Vector3 as V3};
 use arq_kernel::Body;
 use truck_meshalgo::prelude::*;
 use truck_modeling::{Point3, Rad, Solid, Vector3, builder};
+
+mod columns;
 
 /// The same small generator as the kernel's tests: repeatable pairs.
 struct Lcg(u64);
@@ -185,6 +190,9 @@ fn main() {
         .nth(2)
         .and_then(|a| a.parse().ok())
         .unwrap_or(1e-6);
+    if std::env::args().nth(3).as_deref() == Some("columns") {
+        std::process::exit(if columns::run(pairs, tol) { 0 } else { 1 });
+    }
     let names = ["union", "intersection", "difference"];
     let mut rng = Lcg(20_261_107);
     let (mut agreed, mut empty, mut truck_none, mut differed) = (0, 0, 0, 0);

@@ -1,5 +1,7 @@
 //! Validated straight crossing polygons, over the existing Region predicates.
 
+use std::collections::HashMap;
+
 use crate::error::GeometryResult;
 use crate::{
     Bounds2, Containment, Geometry2, GeometryError, Line, Point2, Region, Tolerance, intersect,
@@ -81,6 +83,34 @@ impl SelectionPolygon {
     }
 }
 
+/// Validates the crossing polygon of each `(key, corners)` pair, in order,
+/// building each distinct contour once: the pairs that repeat it share a
+/// copy. STRETCH gives one polygon per selected entity, often the same one,
+/// and [`SelectionPolygon::new`] compares every edge with every other.
+/// The first invalid contour's error is returned, as validating each pair
+/// in turn would.
+pub fn selection_polygons<K>(
+    pairs: impl IntoIterator<Item = (K, Vec<Point2>)>,
+    tol: Tolerance,
+) -> GeometryResult<Vec<(K, SelectionPolygon)>> {
+    let mut built: HashMap<Vec<(u64, u64)>, SelectionPolygon> = HashMap::new();
+    pairs
+        .into_iter()
+        .map(|(key, points)| {
+            let contour: Vec<_> = points
+                .iter()
+                .map(|q| (q.x().to_bits(), q.y().to_bits()))
+                .collect();
+            if let Some(polygon) = built.get(&contour) {
+                return Ok((key, polygon.clone()));
+            }
+            let polygon = SelectionPolygon::new(points, tol)?;
+            built.insert(contour, polygon.clone());
+            Ok((key, polygon))
+        })
+        .collect()
+}
+
 /// Selection provenance used by STRETCH's shared endpoint/vertex writer.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CrossingArea {
@@ -156,6 +186,61 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn shared_crossing_polygons_match_one_validation_per_pair_in_order() {
+        let square = vec![p(0., 0.), p(4., 0.), p(4., 4.), p(0., 4.)];
+        let ell = vec![
+            p(0., 0.),
+            p(4., 0.),
+            p(4., 1.),
+            p(1., 1.),
+            p(1., 4.),
+            p(0., 4.),
+        ];
+        let moved: Vec<_> = square.iter().map(|q| p(q.x() + 1e-9, q.y())).collect();
+        let pairs = vec![
+            (7_u64, square.clone()),
+            (3, ell.clone()),
+            (7, square.clone()),
+            (9, moved.clone()),
+            (5, square.clone()),
+        ];
+        let shared = selection_polygons(pairs.clone(), TOL).unwrap();
+        let one_by_one: Vec<_> = pairs
+            .into_iter()
+            .map(|(key, points)| (key, SelectionPolygon::new(points, TOL).unwrap()))
+            .collect();
+        assert_eq!(shared, one_by_one, "same keys, order and polygons");
+        assert_ne!(
+            shared[0].1, shared[3].1,
+            "a contour moved by 1e-9 is its own"
+        );
+        assert!(shared[1].1.contains(p(0.5, 3.), TOL));
+        assert!(
+            !shared[1].1.contains(p(2., 2.), TOL),
+            "the ell, not the square"
+        );
+        assert!(
+            selection_polygons(Vec::<(u64, Vec<Point2>)>::new(), TOL)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn shared_crossing_polygons_report_the_first_invalid_contour() {
+        let square = vec![p(0., 0.), p(4., 0.), p(4., 4.), p(0., 4.)];
+        let crossed = vec![p(0., 0.), p(2., 2.), p(0., 2.), p(2., 0.)];
+        let short = vec![p(0., 0.), p(1., 0.)];
+        let first = SelectionPolygon::new(crossed.clone(), TOL).unwrap_err();
+        let error = selection_polygons(
+            vec![(1, square.clone()), (2, crossed), (3, short), (4, square)],
+            TOL,
+        )
+        .unwrap_err();
+        assert_eq!(error, first, "the crossed contour, before the short one");
     }
 
     #[test]

@@ -11,12 +11,13 @@ import os
 import subprocess
 import sys
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 import shiboken6
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, Qt, qInstallMessageHandler
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
 from pytestqt.qtbot import QtBot
@@ -60,8 +61,17 @@ def test_attaching_needs_a_known_backend_and_a_real_window() -> None:
     assert len(v.render()) == 200 * 100 * 4, "the CPU keeps rendering"
 
 
+@pytest.fixture
+def qt_messages() -> Iterator[list[str]]:
+    """Qt's messages while the test runs."""
+    messages: list[str] = []
+    previous = qInstallMessageHandler(lambda _kind, _where, text: messages.append(text))
+    yield messages
+    qInstallMessageHandler(previous)
+
+
 def test_without_x11_the_viewport_draws_on_the_cpu(
-    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, qt_messages: list[str]
 ) -> None:
     monkeypatch.setenv(GPU_VIEWPORT_ENV, "opengl")
     document = CadApplication().create_document("Plano")
@@ -75,6 +85,11 @@ def test_without_x11_the_viewport_draws_on_the_cpu(
 
     assert viewport.gpu is None, "offscreen Qt has no X11 window"
     assert not viewport.testAttribute(Qt.WidgetAttribute.WA_PaintOnScreen), "Qt paints it again"
+    # Qt paints it through its backing store: the widget gives no engine of
+    # its own, and never QWidget's, which warns and, on Windows, drops
+    # WA_PaintOnScreen when asked while it is being set.
+    assert viewport.paintEngine() is None
+    assert not [m for m in qt_messages if "paintEngine" in m]
     image = viewport.grab().toImage()
     background = viewport.view.background
     drawn = 0
@@ -309,7 +324,13 @@ def test_the_gpu_draws_the_overlays_the_cpu_paints(tmp_path: Path) -> None:
             for x in range(0, image.width())
         )
 
-    for color, what in (((30, 144, 255), "selection"), ((230, 40, 40), "hot grip")):
+    for color, what in (
+        ((30, 144, 255), "selection"),
+        ((230, 40, 40), "hot grip"),
+        ((230, 56, 56), "world X"),
+        ((56, 217, 56), "world Y"),
+        ((56, 115, 230), "world Z"),
+    ):
         assert has(cpu, color) and has(gpu, color), what
 
 

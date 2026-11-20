@@ -64,7 +64,7 @@ def test_id_shows_a_typed_point() -> None:
     prompt = h.prompts()[-1]
     assert (prompt.text, prompt.point, prompt.base) == ("Specify point:", True, None)
     h.runner.execute("3,4")
-    assert h.messages()[-1] == "X = 3.0000     Y = 4.0000"
+    assert h.messages()[-1] == "X = 3.0000     Y = 4.0000     Z = 0.0000"
     assert h.runner.active is None
 
 
@@ -106,7 +106,7 @@ def test_id_and_dist_in_spanish() -> None:
     h = Harness()
     h.runner.execute("IDPUNTO")
     h.runner.execute("3,4")
-    assert h.messages()[-1] == "X = 3.0000     Y = 4.0000"
+    assert h.messages()[-1] == "X = 3.0000     Y = 4.0000     Z = 0.0000"
     h.runner.execute("DISTANCIA")
     h.runner.execute("0,0")
     h.runner.execute("3,4")
@@ -122,7 +122,7 @@ def test_a_wrong_point_says_why_and_asks_again() -> None:
     assert h.messages()[-1] == "There is no last point."
     assert h.runner.active == "IDPOINT" and h.prompts()[-1].text == "Specify point:"
     h.runner.execute("5,6")
-    assert h.messages()[-1] == "X = 5.0000     Y = 6.0000"
+    assert h.messages()[-1] == "X = 5.0000     Y = 6.0000     Z = 0.0000"
 
 
 def test_relative_points_and_direct_distance_use_the_base() -> None:
@@ -164,7 +164,7 @@ def test_a_typed_snap_applies_to_the_next_point_only() -> None:
     assert drafting.override == "END" and drafting.active_snaps() == ("END",)
     assert h.prompts()[-1].text == "Specify point:", "asked again"
     h.runner.answer_point((1.0, 2.0))
-    assert h.messages()[-1] == "X = 1.0000     Y = 2.0000"
+    assert h.messages()[-1] == "X = 1.0000     Y = 2.0000     Z = 0.0000"
     assert drafting.override is None and drafting.active_snaps() == ()
     h.runner.execute("ID")
     h.runner.execute("MID")
@@ -268,7 +268,7 @@ def test_a_click_answers_a_point_prompt_at_the_snap(window: MainWindow, tmp_path
     assert viewport.snap is not None and viewport.snap.kind == "END"
     assert viewport.target == (100.0, 0.0)
     mouse(viewport, QEvent.Type.MouseButtonPress, (99.0, 1.0))
-    assert history(window)[-1] == "X = 100.0000     Y = 0.0000"
+    assert history(window)[-1] == "X = 100.0000     Y = 0.0000     Z = 0.0000"
     assert viewport.target is None, "no point asked for any more"
     assert window.session.selection(window.session.active) == (), "not a selection click"
 

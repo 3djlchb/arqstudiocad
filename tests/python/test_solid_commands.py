@@ -823,16 +823,27 @@ def test_intersect_of_solids_apart_changes_nothing() -> None:
     assert solid_ids(document) == ids
 
 
-def test_a_curved_solid_changes_nothing() -> None:
+def test_a_column_unites_with_a_box() -> None:
+    # Cylinders and cones combine since ADR 0033 delivery 2.
     h, document, ids = boxes(((0, 0, 0), (2, 2, 2)))
-    column, _ = document.add_cone((1, 1, -1), 0.5, 0.5, 4)
+    column, _ = document.add_cylinder((1, 1, -1), 0.5, 4)
     h.session.select(document, [*ids, column])
     h.run("UNION")
+    assert solid_ids(document) == ids
+    assert volume_of(document, ids[0]) == pytest.approx(8.0 + math.pi * 0.25 * 2.0)
+
+
+def test_a_sphere_changes_nothing() -> None:
+    h, document, ids = boxes(((0, 0, 0), (2, 2, 2)))
+    ball, _ = document.add_sphere((1, 1, 1), 0.5)
+    h.session.select(document, [*ids, ball])
+    h.run("UNION")
     assert h.messages()[-2:] == [
-        "1 solids have curved faces: only flat ones combine yet.",
+        "1 solids have faces that cannot be combined yet: spheres, tori, free-form surfaces, "
+        "or curved faces crossing each other (only cylinders with parallel axes do).",
         "Nothing changed.",
     ]
-    assert solid_ids(document) == [*ids, column]
+    assert solid_ids(document) == [*ids, ball]
 
 
 def test_combining_in_spanish() -> None:

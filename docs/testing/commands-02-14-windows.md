@@ -62,3 +62,31 @@ Every case reads back the same from our DWG and from our DXF.
 **OFFSET of an open polyline (O5).** ProgeCAD leaves a bulge on the open polyline's last vertex, which no segment uses; ours writes 0. The geometry is the same.
 
 **The drawings are not committed:** the two tools reproduce them.
+
+## To run: JOIN on polylines (J3–J7)
+
+Added to both tools on 2026-11-17 with JOIN's second delivery: a constant
+width meeting a line, two widths, a rectangle of lines many at once, a
+branch, and a line with an arc. What ours gives, and what to confirm, is in
+[JOIN's design](../design/join-command.md#windows-comparison-of-the-polylines-to-run).
+
+## To run: MATCHPROP (M1–M3)
+
+Added on 2026-11-17: a line's layer and color given to a circle, a
+polyline's width and thickness, and a varying width that is not given. The
+dump now also writes each entity's linetype, linetype scale, lineweight,
+thickness and transparency. What ours gives is in
+[MATCHPROP's design](../design/matchprop-command.md#windows-comparison-to-run).
+
+Text cases M4–M6 added the same day: a text's height given to a text and
+to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
+oblique angle and rotation, to see which ProgeCAD gives. The dump now
+describes texts and MTEXTs.
+
+## To run: ELLIPSE (EL1–EL4)
+
+Added on 2026-11-17: by an axis and a distance, by its Center, by a
+Rotation, and an elliptical Arc whose first axis points west. The dump now
+describes ellipses (center, major axis, ratio, parameters). What ours
+gives, and what to confirm, is in
+[ELLIPSE's design](../design/ellipse-command.md#windows-comparison-to-run).

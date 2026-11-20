@@ -16,7 +16,9 @@ from arqstudiocad._core import (
     CadArc,
     CadBounds2,
     CadCircle,
+    CadColor,
     CadDocument,
+    CadEllipse,
     CadLine,
     CadRectangle,
 )
@@ -158,6 +160,99 @@ def j2(doc: CadDocument) -> None:
     doc.join_entities(source, [other])
 
 
+def j3(doc: CadDocument) -> None:
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.5)[0]
+    doc.join_entities(source, [line(doc, (4, 0), (4, 3))])
+
+
+def j4(doc: CadDocument) -> None:
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.2)[0]
+    other = doc.add_polyline([((8.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.8)[0]
+    doc.join_entities(source, [other])
+
+
+def j5(doc: CadDocument) -> None:
+    sides = [((0, 0), (4, 0)), ((4, 0), (4, 3)), ((0, 3), (4, 3)), ((0, 0), (0, 3))]
+    doc.join_entities(None, [line(doc, a, b) for a, b in sides])
+
+
+def j6(doc: CadDocument) -> None:
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((1.0, 0.0), 0.0)])[0]
+    doc.join_entities(source, [line(doc, (1, 0), (2, 1)), line(doc, (1, 0), (2, -1))])
+
+
+def j7(doc: CadDocument) -> None:
+    first = line(doc, (0, 0), (4, 0))
+    other = doc.add_arc((4, 2), 2.0, math.radians(270), math.radians(90))[0]
+    doc.join_entities(None, [first, other])
+
+
+EVERY = [
+    "color",
+    "layer",
+    "linetype",
+    "ltscale",
+    "lineweight",
+    "transparency",
+    "thickness",
+    "text",
+    "polyline",
+]
+
+
+def m1(doc: CadDocument) -> None:
+    layer = doc.create_layer("A-WALLS")[0]
+    source = line(doc, (0, 0), (4, 0))
+    doc.set_entity_layer([source], layer)
+    doc.set_entity_color([source], CadColor.from_index(1))
+    target = doc.add_circle((8, 0), 1.0)[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def m2(doc: CadDocument) -> None:
+    path = [((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)]
+    source = doc.add_polyline(path, width=0.5, thickness=2.0)[0]
+    target = doc.add_polyline([((0.0, 2.0), 0.0), ((4.0, 2.0), 0.0)])[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def m3(doc: CadDocument) -> None:
+    # A varying width, as JOIN leaves two widths: 0.2 then 0.8.
+    source = doc.add_polyline([((0.0, 0.0), 0.0), ((4.0, 0.0), 0.0)], width=0.2)[0]
+    other = doc.add_polyline([((4.0, 0.0), 0.0), ((8.0, 0.0), 0.0)], width=0.8)[0]
+    doc.join_entities(source, [other])
+    target = doc.add_polyline([((0.0, 2.0), 0.0), ((4.0, 2.0), 0.0)], width=0.25)[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def m4(doc: CadDocument) -> None:
+    source = doc.add_text("A-101", (0, 0), 2.5, 0.0)[0]
+    doc.match_properties(source, [doc.add_text("B-202", (0, 5), 1.0, 0.0)[0]], EVERY)
+
+
+def m5(doc: CadDocument) -> None:
+    source = doc.add_text("A-101", (0, 0), 2.5, 0.0)[0]
+    target = doc.add_mtext("Notes", (0, 5), 1.0, 0.0, 10.0, "TopLeft")[0]
+    doc.match_properties(source, [target], EVERY)
+
+
+def el1(doc: CadDocument) -> None:
+    doc.add_ellipse(CadEllipse.from_axis((5, 0), (0, 0), 3.0))
+
+
+def el2(doc: CadDocument) -> None:
+    doc.add_ellipse(CadEllipse.from_axis((5, 0), (7, 0), 4.0))
+
+
+def el3(doc: CadDocument) -> None:
+    doc.add_ellipse(CadEllipse.from_rotation((5, 0), (0, 0), math.radians(60)))
+
+
+def el4(doc: CadDocument) -> None:
+    whole = CadEllipse.from_axis((5, 0), (0, 0), 3.0)
+    doc.add_ellipse(whole.arc((0, 0), math.radians(30), math.radians(120)))
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -181,6 +276,20 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("B4-break-open-polyline", b4),
     ("J1-join-collinear-lines", j1),
     ("J2-join-arcs", j2),
+    ("J3-join-polyline-width-line", j3),
+    ("J4-join-polylines-two-widths", j4),
+    ("J5-join-rectangle-at-once", j5),
+    ("J6-join-polyline-branch", j6),
+    ("J7-join-line-arc-at-once", j7),
+    ("M1-matchprop-line-to-circle", m1),
+    ("M2-matchprop-polyline-width", m2),
+    ("M3-matchprop-varying-width", m3),
+    ("M4-matchprop-text-height", m4),
+    ("M5-matchprop-text-to-mtext", m5),
+    ("EL1-ellipse-axis-distance", el1),
+    ("EL2-ellipse-center", el2),
+    ("EL3-ellipse-rotation", el3),
+    ("EL4-ellipse-arc", el4),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),

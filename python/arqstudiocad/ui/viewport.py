@@ -55,7 +55,7 @@ import math
 import os
 import time
 from collections.abc import Callable
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -84,10 +84,12 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from arqstudiocad import ellipses
 from arqstudiocad.core import (
     CadBounds2,
     CadChangeSet,
     CadDocument,
+    CadEllipse,
     CadError,
     CadGrip,
     CadRectangle,
@@ -113,6 +115,7 @@ from arqstudiocad.ui.overlay import (
     to_core,
 )
 from arqstudiocad.ui.overlay import paint as paint_overlay
+from arqstudiocad.ui.world_axes import world_axes_overlay
 
 #: How much one wheel notch (120 eighths of a degree) zooms, in percent:
 #: the default of Options > User preferences > Zoom, and its bounds.
@@ -185,6 +188,14 @@ MODEL_SPACE_BACKGROUND = (33, 40, 48)
 BLOCK_EDITOR_BACKGROUND = (96, 96, 96)
 
 
+class SpatialSnap(NamedTuple):
+    """Exact XYZ capture and its projected marker position, exclusively for ID."""
+
+    kind: str
+    point: tuple[float, float, float]
+    screen: Point
+
+
 class Viewport(QWidget):
     """Shows one document; also the :class:`~arqstudiocad.commands.ViewControl`
     the ZOOM command acts on."""
@@ -199,7 +210,7 @@ class Viewport(QWidget):
     #: Esc: the running command should be cancelled and the selection
     #: emptied, as Esc does on the command line.
     escape_pressed = Signal()
-    #: A point picked at a point prompt, snapped: ``(x, y)`` in the world.
+    #: A snapped world point: XY normally, XYZ for ID's spatial prompt.
     point_picked = Signal(object)
     #: An object picked at an entity prompt: ``(entity_id, (x, y), shift)``,
     #: the world point clicked and whether Shift was held.
@@ -260,6 +271,9 @@ class Viewport(QWidget):
         self._band: QPointF | None = None  # the other corner while dragging a window
         # A point prompt: whether one is open, its last point, and where a
         # click would put the point now (snapped or ORTHO) with its snap.
+        self._spatial = False
+        self._target3: tuple[float, float, float] | None = None
+        self._snap3: SpatialSnap | None = None
         self._asking = False
         self._picking_entity = False  # an entity prompt: a click picks one object
         self._multiple_entities = False
@@ -368,9 +382,9 @@ class Viewport(QWidget):
         return self._target
 
     @property
-    def snap(self) -> CadSnap | None:
+    def snap(self) -> CadSnap | SpatialSnap | None:
         """The object snap under the cursor, at a point prompt."""
-        return self._snap
+        return self._snap3 if self._spatial else self._snap
 
     @property
     def preview(self) -> QTransform | None:
@@ -378,7 +392,7 @@ class Viewport(QWidget):
         transform the point under the cursor would apply to them."""
         if self._dragged is None or self._base is None or self._target is None:
             return None
-        if self._dragged.kind in ("rectangle", "stretch"):
+        if self._dragged.kind in ("rectangle", "stretch", "ellipse"):
             return None  # drawn from candidate geometry, not a rigid transform
         (bx, by), (tx, ty) = self._base, self._target
         world = _world_transform(self._dragged.kind, (0.0, 0.0), (tx - bx, ty - by))
@@ -393,12 +407,18 @@ class Viewport(QWidget):
         return to_plane * world * plane if invertible else None
 
     def ask_point(
-        self, base: Point | None, drag: Drag | None = None, *, polygon: tuple[Point, ...] = ()
+        self,
+        base: Point | None,
+        drag: Drag | None = None,
+        *,
+        polygon: tuple[Point, ...] = (),
+        spatial: bool = False,
     ) -> None:
         """A command asks for a point, from ``base`` if it has one; ``drag``
         follows the cursor from it."""
         self.end_point()
         self._asking, self._base, self._dragged = True, base, drag
+        self._spatial = spatial
         self._polygon_points = polygon
         self._target = self._snap = None
         self._set_hover(None)
@@ -410,6 +430,7 @@ class Viewport(QWidget):
             bool(self._entity_path) or self._fence_anchor is not None or bool(self._polygon_points)
         )
         self._polygon_points = ()
+        self._spatial, self._target3, self._snap3 = False, None, None
         self._picking_entity = False
         self._multiple_entities = False
         self._entity_path = []
@@ -466,8 +487,12 @@ class Viewport(QWidget):
     # Qt documents returning no engine for WA_PaintOnScreen; PySide6's stub
     # says the engine is never None.
     def paintEngine(self) -> QPaintEngine | None:  # type: ignore[override]  # noqa: N802
-        # None while the GPU paints: Qt must not paint over its window.
-        return None if self._gpu else super().paintEngine()
+        # None, always: Qt must not paint over the GPU's window, and paints
+        # the CPU's image through its backing store, never asking a widget
+        # for an engine. QWidget's own only warns "Should no longer be
+        # called", and on Windows, asked while WA_PaintOnScreen is being set
+        # (_set_native, before the GPU attaches), drops that attribute.
+        return None
 
     def showEvent(self, event: QShowEvent) -> None:  # noqa: N802 (Qt API)
         super().showEvent(event)
@@ -502,6 +527,10 @@ class Viewport(QWidget):
             if not self._presented:
                 self._presented = True
                 self.gpu_presented.emit()
+            return
+        if self.testAttribute(Qt.WidgetAttribute.WA_PaintOnScreen):
+            # The GPU's window, between letting go of it and taking the
+            # next one (_surface_going): nothing to paint it with.
             return
         if self._dirty or self._image is None:
             self._render()
@@ -541,7 +570,7 @@ class Viewport(QWidget):
             if self._asking:
                 self._aim(event.position())
                 if self._target is not None:
-                    self.point_picked.emit(self._target)
+                    self.point_picked.emit(self._target3 if self._spatial else self._target)
                 elif not self.in_plan:
                     self.point_refused.emit()
                 event.accept()
@@ -865,6 +894,25 @@ class Viewport(QWidget):
         there, else the cursor kept by ORTHO, else the cursor. In another
         view, the point of the XY plane under the cursor, without snaps or
         ORTHO for now; none where the plane is seen edge on."""
+        if self._spatial:
+            modes = list(self.drafting.active_snaps()) if self.drafting is not None else []
+            found3 = self.view.snap_point3(
+                *self._physical(position), SNAP_PIXELS * self.devicePixelRatioF(), modes
+            )
+            plane = self.view.plane_point(*self._physical(position)) if found3 is None else None
+            target3 = (
+                found3[1] if found3 is not None else ((*plane, 0.0) if plane is not None else None)
+            )
+            target = target3[:2] if target3 is not None else None
+            if (target3, found3) != (self._target3, self._snap3):
+                self._target3, self._snap3, self._target, self._snap = (
+                    target3,
+                    (SpatialSnap(*found3) if found3 is not None else None),
+                    target,
+                    None,
+                )
+                self.update()
+            return
         if not self.in_plan:
             point = self.view.plane_point(*self._physical(position))
             if (point, None) != (self._target, self._snap):
@@ -896,11 +944,19 @@ class Viewport(QWidget):
 
     def overlay(self) -> Overlay:
         """What is drawn over the drawing now, in logical pixels and in the
-        order it is painted (ADR 0034 D4): the selection, the highlight, the
+        order it is painted (ADR 0034 D4): world axes, selection, highlight, the
         dragged outlines, the grips, the rubber band and the snap, the drop
         frame, the window, and the crosshair. Painted by ``QPainter`` over
         the CPU image, or drawn by the GPU."""
-        out = Overlay()
+        origin, axes = self.view.world_axes
+        ratio = self.devicePixelRatioF()
+        out = world_axes_overlay(
+            (origin[0] / ratio, origin[1] / ratio),
+            axes,
+            self.width(),
+            self.height(),
+            self.view.background,
+        )
         text = rgba(self.palette().text().color())
         if self._selected:
             self._outline_strokes(out, self._selected, rgba(SELECTED), 2.0)
@@ -914,6 +970,7 @@ class Viewport(QWidget):
         self._grip_items(out)
         if self._asking:
             self._rectangle_items(out, text)
+            self._ellipse_items(out, text)
             self._point_items(out, text)
         if self._drop_name is not None:
             highlight = rgba(self.palette().highlight().color())
@@ -980,9 +1037,10 @@ class Viewport(QWidget):
         ``transform`` when they are being dragged."""
         ratio = self.devicePixelRatioF()
         for polyline in self.view.outlines(entity_ids):
-            points = [QPointF(x, y) for x, y in polyline]
-            if transform is not None:
-                points = [transform.map(p) for p in points]
+            if transform is None:
+                out.items.append(Stroke(_logical(polyline, ratio), color, width))
+                continue
+            points = [transform.map(QPointF(x, y)) for x, y in polyline]
             out.items.append(
                 Stroke(tuple((p.x() / ratio, p.y() / ratio) for p in points), color, width)
             )
@@ -1002,8 +1060,7 @@ class Viewport(QWidget):
             # Invalid geometry has no valid preview and remains uncommitted.
             return
         ratio = self.devicePixelRatioF()
-        for path in paths:
-            out.items.append(Stroke(tuple((x / ratio, y / ratio) for x, y in path), color, 1.0))
+        out.items.extend(Stroke(_logical(path, ratio), color, 1.0) for path in paths)
 
     def _grip_items(self, out: Overlay) -> None:
         """Grips as filled squares, the hot one red, edged in the base color."""
@@ -1046,8 +1103,42 @@ class Viewport(QWidget):
         points = self.view.path_outline(path, True)
         out.items.append(Stroke(tuple((x / ratio, y / ratio) for x, y in points), text, 1.0))
 
+    def ellipse_preview(self) -> CadEllipse | None:
+        """The ellipse ELLIPSE would draw with the point under the cursor
+        (ADR 0040); none while there is no such ellipse."""
+        dragged, target = self._dragged, self._target
+        if dragged is None or dragged.kind != "ellipse" or dragged.ellipse is None:
+            return None
+        if target is None:
+            return None
+        center, first, other, start, parameters = dragged.ellipse
+        return ellipses.candidate(center, first, other, start, parameters, target)
+
+    def _ellipse_items(self, out: Overlay, text: RGBA) -> None:
+        """The ellipse being drawn, following the cursor."""
+        shape = self.ellipse_preview()
+        if shape is None:
+            return
+        pixels = tuple((q.x(), q.y()) for q in map(self.screen_point, shape.points()))
+        out.items.append(Stroke(pixels, text, 1.0))
+
     def _point_items(self, out: Overlay, text: RGBA) -> None:
         """The rubber band from the last point and the snap marker."""
+        if self._spatial:
+            if self._snap3 is not None:
+                kind, _, screen = self._snap3
+                ratio = self.devicePixelRatioF()
+                to = (screen[0] / ratio, screen[1] / ratio)
+                color = rgba(self._marker)
+                out.items.extend(marker(kind, to, MARKER_PIXELS, color, 2.0))
+                out.labels.append(
+                    Label(
+                        (to[0] + MARKER_PIXELS + 4, to[1] - MARKER_PIXELS - 4),
+                        snap_name(kind),
+                        color,
+                    )
+                )
+            return
         if self._target is None:
             return
         at = self.screen_point(self._target)
@@ -1261,6 +1352,14 @@ def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None
 
 def _distance(a: QPointF, b: QPointF) -> float:
     return float(((a.x() - b.x()) ** 2 + (a.y() - b.y()) ** 2) ** 0.5)
+
+
+def _logical(path: list[tuple[float, float]], ratio: float) -> tuple[tuple[float, float], ...]:
+    """A path in physical pixels, as the view gives it, in logical pixels.
+    At a ratio of one the points are those already: no copy point by point."""
+    if ratio == 1.0:
+        return tuple(path)
+    return tuple((x / ratio, y / ratio) for x, y in path)
 
 
 #: The window systems the GPU presents to, by Qt's platform name (ADR 0034

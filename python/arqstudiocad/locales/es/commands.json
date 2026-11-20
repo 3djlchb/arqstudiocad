@@ -17,6 +17,12 @@
   "ARC": [
     "ARCO"
   ],
+  "ARRAYPATH": [
+    "MATRIZCAMINO"
+  ],
+  "ARRAYPOLAR": [
+    "MATRIZPOLAR"
+  ],
   "ARRAYRECT": [
     "MATRIZRECTANG",
     "MATRIZ",
@@ -79,6 +85,9 @@
   "DISTANCE": [
     "DISTANCIA"
   ],
+  "ELLIPSE": [
+    "ELIPSE"
+  ],
   "ERASE": [
     "BORRA"
   ],
@@ -115,6 +124,9 @@
   ],
   "MASSPROP": [
     "PROPFIS"
+  ],
+  "MATCHPROP": [
+    "IGUALARPROP"
   ],
   "MIRROR": [
     "SIMETRIA",

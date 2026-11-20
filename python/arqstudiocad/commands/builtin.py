@@ -23,13 +23,15 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.commands.arraying import ARRAY_COMMAND
+from arqstudiocad.commands.arraying import ARRAY_COMMAND, PATH_ARRAY_COMMAND, POLAR_ARRAY_COMMAND
 from arqstudiocad.commands.blocks import BLOCK_COMMANDS, close_block_editor, save_block
 from arqstudiocad.commands.breaking import BREAK_COMMAND
 from arqstudiocad.commands.budget import BUDGET_COMMANDS
 from arqstudiocad.commands.corners import CORNER_COMMANDS
 from arqstudiocad.commands.draw import DRAW_COMMANDS
+from arqstudiocad.commands.ellipse import ELLIPSE_COMMAND
 from arqstudiocad.commands.joining import JOIN_COMMAND
+from arqstudiocad.commands.matchprop import MATCHPROP_COMMAND
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.commands.solids import SOLID_COMMANDS
 from arqstudiocad.commands.stretch import STRETCH_COMMAND
@@ -315,9 +317,9 @@ def zoom(ctx: CommandContext) -> CommandScript:
 def id_(ctx: CommandContext) -> CommandScript:
     """IDPOINT, AutoCAD's ID: the coordinates of a point, typed or picked."""
     ctx.document()
-    point = yield ctx.point(tr("Specify point"))
-    x, y = point
-    ctx.message(f"X = {x:.4f}     Y = {y:.4f}")
+    point = yield ctx.point(tr("Specify point"), spatial=True)
+    x, y, z = point
+    ctx.message(tr("X = {x:.4f}     Y = {y:.4f}     Z = {z:.4f}", x=x, y=y, z=z))
 
 
 def dist(ctx: CommandContext) -> CommandScript:
@@ -398,11 +400,15 @@ def builtin_registry() -> CommandRegistry:
         (
             *BUILTIN_COMMANDS,
             *DRAW_COMMANDS,
+            ELLIPSE_COMMAND,
             *MODIFY_COMMANDS,
             STRETCH_COMMAND,
             BREAK_COMMAND,
             JOIN_COMMAND,
+            MATCHPROP_COMMAND,
             ARRAY_COMMAND,
+            POLAR_ARRAY_COMMAND,
+            PATH_ARRAY_COMMAND,
             *TRIM_COMMANDS,
             *CORNER_COMMANDS,
             *BLOCK_COMMANDS,

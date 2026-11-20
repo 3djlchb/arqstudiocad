@@ -90,6 +90,8 @@ impl Document {
                         add(GripKind::Quadrant, c.point_at_angle(angle), None);
                     }
                 }
+                // An ellipse's grips come in a later delivery (ADR 0041).
+                Some(Geometry2::Ellipse(_)) => {}
                 Some(Geometry2::Arc(a)) => {
                     add(GripKind::End, a.start_point(), None);
                     add(GripKind::Mid, a.midpoint(), None);

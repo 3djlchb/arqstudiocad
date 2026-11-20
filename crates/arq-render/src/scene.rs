@@ -70,6 +70,19 @@ impl Scene {
         scene
     }
 
+    /// Pick only among an already selected broad phase, in caller order.
+    pub fn pick_candidates(&self, ids: &[EntityId], at: Point2, aperture: f64) -> Option<EntityId> {
+        pick_among(
+            ids.iter().filter_map(|id| {
+                self.index
+                    .get(id)
+                    .map(|&i| (*id, self.entries[i].items.as_slice()))
+            }),
+            at,
+            aperture,
+        )
+    }
+
     /// The view it is seen from.
     pub fn view(&self) -> View {
         self.view
@@ -254,7 +267,7 @@ pub(crate) fn shape_bounds(shape: Shape) -> Bounds2 {
         Shape::Arc(a) => a.bounds(),
         Shape::Point(p) => Bounds2::from_point(p),
         Shape::Text(b) | Shape::Placeholder(b) => b,
-        Shape::Triangle(_) => shape.bounds(),
+        Shape::Triangle(_) | Shape::Ellipse(_) => shape.bounds(),
     }
 }
 

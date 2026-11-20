@@ -3,9 +3,9 @@
 //! Expected geometry is worked out by hand, not with `Transform2`, so a bug
 //! shared by the transform and its use here cannot hide.
 
-use std::f64::consts::FRAC_PI_2;
+use std::f64::consts::{FRAC_PI_2, PI};
 
-use arq_geometry::{Geometry2, Tolerance};
+use arq_geometry::{Ellipse, Geometry2, Tolerance};
 
 use super::*;
 
@@ -1813,4 +1813,529 @@ fn break_open_polyline_updates_index_preserves_style_and_undoes_atomically() {
     cad.set_layer_locked(layer, true).unwrap();
     assert!(cad.break_entity(id, p(1.0, 0.0), p(2.0, 0.0)).is_err());
     assert_eq!(cad.document().entities().len(), 2);
+}
+
+fn path_points(cad: &CadDocument, id: EntityId) -> Vec<Point2> {
+    let (path, _) = cad.document().join_path(id).unwrap();
+    path.vertices.iter().map(|v| v.0).collect()
+}
+
+#[test]
+fn join_from_a_polyline_chains_what_touches_its_ends() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad
+        .add_polyline(&[(p(0.0, 0.0), 0.0), (p(2.0, 0.0), 0.0)], false)
+        .unwrap();
+    cad.set_entity_color(&[source], Color::Index(2)).unwrap();
+    let (after, _) = cad.add_line(p(2.0, 0.0), p(2.0, 2.0)).unwrap();
+    // From (0,0) round to (-1,1): it starts where the source starts.
+    let (before, _) = cad.add_arc(p(-1.0, 0.0), 1.0, 0.0, FRAC_PI_2).unwrap();
+    let (more, _) = cad
+        .add_polyline(&[(p(3.0, 2.0), 0.0), (p(2.0, 2.0), 0.0)], false)
+        .unwrap();
+    let (away, _) = cad.add_line(p(9.0, 9.0), p(8.0, 8.0)).unwrap();
+    let (joined, changes) = cad
+        .join_entities(Some(source), &[after, before, more, away])
+        .unwrap();
+    assert_eq!(joined.results, [source], "the polyline, its id kept");
+    assert_eq!((joined.joined, joined.discarded), (3, 1));
+    let expected = [
+        p(-1.0, 1.0),
+        p(0.0, 0.0),
+        p(2.0, 0.0),
+        p(2.0, 2.0),
+        p(3.0, 2.0),
+    ];
+    let got = path_points(&cad, source);
+    assert!(
+        got.len() == expected.len() && got.iter().zip(expected).all(|(&a, b)| near(a, b)),
+        "{got:?}"
+    );
+    assert_eq!(
+        cad.document().entity(source).unwrap().color(),
+        Color::Index(2)
+    );
+    for gone in [after, before, more] {
+        assert!(cad.document().entity(gone).is_none());
+    }
+    assert_eq!(changes.modified(), [source]);
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    cad.undo().unwrap();
+    assert_eq!(path_points(&cad, source), [p(0.0, 0.0), p(2.0, 0.0)]);
+    assert!(cad.document().entity(more).is_some());
+}
+
+#[test]
+fn join_many_at_once_makes_polylines_of_touching_lines_and_arcs() {
+    let mut cad = CadDocument::new();
+    // An L of two lines: a polyline with the first line's properties.
+    let (first, _) = cad.add_line(p(0.0, 0.0), p(4.0, 0.0)).unwrap();
+    cad.set_entity_color(&[first], Color::Index(6)).unwrap();
+    let (up, _) = cad.add_line(p(4.0, 0.0), p(4.0, 3.0)).unwrap();
+    // Two collinear lines touching: still a line.
+    let (a, _) = cad.add_line(p(0.0, 10.0), p(1.0, 10.0)).unwrap();
+    let (b, _) = cad.add_line(p(1.0, 10.0), p(2.0, 10.0)).unwrap();
+    // Four sides: a closed polyline.
+    let sides = [
+        ((10.0, 0.0), (12.0, 0.0)),
+        ((12.0, 0.0), (12.0, 2.0)),
+        ((10.0, 2.0), (12.0, 2.0)),
+        ((10.0, 0.0), (10.0, 2.0)),
+    ];
+    let sides: Vec<EntityId> = sides
+        .iter()
+        .map(|&(s, e)| cad.add_line(p(s.0, s.1), p(e.0, e.1)).unwrap().0)
+        .collect();
+    let mut ids = vec![first, up, a, b];
+    ids.extend(&sides);
+    let (joined, _) = cad.join_entities(None, &ids).unwrap();
+    assert_eq!((joined.joined, joined.discarded), (5, 0));
+    let [l, line, square] = joined.results[..] else {
+        panic!("{joined:?}")
+    };
+    assert_eq!(cad.document().entity(l).unwrap().kind(), "LWPOLYLINE");
+    assert_eq!(cad.document().entity(l).unwrap().color(), Color::Index(6));
+    assert_eq!(
+        path_points(&cad, l),
+        [p(0.0, 0.0), p(4.0, 0.0), p(4.0, 3.0)]
+    );
+    assert!(
+        cad.document().entity(first).is_none(),
+        "the line became the polyline"
+    );
+    assert_eq!(line, a);
+    assert_eq!(line_ends(&cad, a), (p(0.0, 10.0), p(2.0, 10.0)));
+    assert_eq!(cad.document().entity(square).unwrap().kind(), "LWPOLYLINE");
+    assert_eq!(detail(&cad, square, "Closed"), "true");
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entity(first).unwrap().kind(), "LINE");
+    assert!(cad.document().entity(l).is_none());
+}
+
+#[test]
+fn join_leaves_closed_polylines_and_other_heights_out() {
+    let mut cad = CadDocument::new();
+    let square = [(p(0.0, 0.0), 0.0), (p(1.0, 0.0), 0.0), (p(1.0, 1.0), 0.0)];
+    let (closed, _) = cad.add_polyline(&square, true).unwrap();
+    let (source, _) = cad
+        .add_polyline(&[(p(1.0, 0.0), 0.0), (p(3.0, 0.0), 0.0)], false)
+        .unwrap();
+    let style = PolylineStyle {
+        elevation: 4.0,
+        ..PolylineStyle::default()
+    };
+    let (high, _) = cad
+        .add_polyline_with(&[(p(3.0, 0.0), 0.0), (p(5.0, 0.0), 0.0)], false, style)
+        .unwrap();
+    let steps = cad.undo_names().len();
+    let (joined, _) = cad.join_entities(Some(source), &[closed, high]).unwrap();
+    assert_eq!((joined.joined, joined.discarded), (0, 2));
+    assert_eq!(cad.undo_names().len(), steps);
+    assert!(
+        cad.join_entities(Some(closed), &[source]).is_err(),
+        "closed: no source"
+    );
+}
+
+#[test]
+fn join_many_at_once_closes_touching_arcs_of_one_circle_into_it() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_arc(p(0.0, 0.0), 2.0, 0.0, PI).unwrap();
+    let (b, _) = cad.add_arc(p(0.0, 0.0), 2.0, PI, 0.0).unwrap();
+    let (joined, _) = cad.join_entities(None, &[a, b]).unwrap();
+    let [circle] = joined.results[..] else {
+        panic!("{joined:?}")
+    };
+    assert_eq!(cad.document().entity(circle).unwrap().kind(), "CIRCLE");
+}
+
+#[test]
+fn matchprop_gives_the_source_properties_in_one_step_and_skips_locked_targets() {
+    let mut cad = CadDocument::new();
+    let (walls, _) = cad.create_layer("A-WALLS").unwrap();
+    let (source, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    cad.set_entity_layer(&[source], walls).unwrap();
+    cad.set_entity_color(&[source], Color::Index(1)).unwrap();
+    let (a, _) = cad.add_circle(p(5.0, 5.0), 1.0).unwrap();
+    let (b, _) = cad.add_line(p(0.0, 3.0), p(1.0, 3.0)).unwrap();
+    let (locked_layer, _) = cad.create_layer("LOCKED").unwrap();
+    let (c, _) = cad.add_line(p(0.0, 6.0), p(1.0, 6.0)).unwrap();
+    cad.set_entity_layer(&[c], locked_layer).unwrap();
+    cad.set_layer_locked(locked_layer, true).unwrap();
+    // The source may be locked too: it is only read.
+    cad.set_layer_locked(walls, true).unwrap();
+    let steps = cad.undo_names().len();
+
+    let (matched, changes) = cad
+        .match_properties(source, &[a, b, c, source, a], MatchSettings::ALL)
+        .unwrap();
+    assert_eq!(
+        matched,
+        Matched {
+            changed: 2,
+            locked: 1
+        }
+    );
+    let mut modified = changes.modified().to_vec();
+    modified.sort();
+    assert_eq!(modified, {
+        let mut m = vec![a, b];
+        m.sort();
+        m
+    });
+    for id in [a, b] {
+        let e = cad.document().entity(id).unwrap();
+        assert_eq!((e.layer(), e.color()), ("A-WALLS", Color::Index(1)));
+    }
+    assert_ne!(cad.document().entity(c).unwrap().layer(), "A-WALLS");
+    assert_eq!(cad.undo_names().len(), steps + 1);
+    assert_eq!(cad.undo_name(), Some("MATCHPROP"));
+
+    // Unlocked again, so that `a` and `b` are matched, not skipped.
+    cad.set_layer_locked(walls, false).unwrap();
+    let steps = cad.undo_names().len();
+    let (again, _) = cad
+        .match_properties(source, &[a, b], MatchSettings::ALL)
+        .unwrap();
+    assert_eq!(
+        again,
+        Matched {
+            changed: 0,
+            locked: 0
+        }
+    );
+    assert_eq!(cad.undo_names().len(), steps, "nothing changed: no step");
+
+    cad.undo().unwrap(); // the unlocking
+    cad.undo().unwrap();
+    assert_ne!(cad.document().entity(a).unwrap().layer(), "A-WALLS");
+    assert!(
+        cad.match_properties(999_999, &[a], MatchSettings::ALL)
+            .is_err()
+    );
+}
+
+fn drawn_ellipse(cad: &CadDocument, id: EntityId) -> Ellipse {
+    let items = cad.document().drawing(id).unwrap();
+    let [item] = items[..] else {
+        panic!("{items:?}")
+    };
+    let arq_document::Shape::Ellipse(e) = item.shape else {
+        panic!("{item:?}")
+    };
+    e
+}
+
+#[test]
+fn an_ellipse_is_drawn_and_undone_as_one_step() {
+    let mut cad = CadDocument::new();
+    let e = Ellipse::from_axis(p(5.0, 1.0), p(10.0, 1.0), 3.0)
+        .unwrap()
+        .arc_from(v(5.0, 0.0), 0.2, 2.5, false)
+        .unwrap();
+    let (id, changes) = cad.add_ellipse(e).unwrap();
+    assert_eq!(changes.created(), [id]);
+    assert_eq!(cad.undo_name(), Some("ELLIPSE"));
+    let drawn = drawn_ellipse(&cad, id);
+    let (a, b) = (e.ends().unwrap(), drawn.ends().unwrap());
+    assert!(near(a.0, b.0) && near(a.1, b.1));
+    assert_eq!(cad.document().entity(id).unwrap().kind(), "ELLIPSE");
+    cad.undo().unwrap();
+    assert!(cad.document().entity(id).is_none());
+}
+
+#[test]
+fn an_ellipse_moves_turns_scales_and_mirrors_as_a_whole() {
+    let arc = Ellipse::new(p(2.0, 1.0), v(3.0, 1.0), 0.5, 0.4, 2.6).unwrap();
+    let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
+    type Op = fn(&mut CadDocument, EntityId);
+    let ops: [(Op, Transform2); 4] = [
+        (
+            |cad, id| drop(cad.move_entities(&[id], v(4.0, -1.0)).unwrap()),
+            Transform2::translation(v(4.0, -1.0)),
+        ),
+        (
+            |cad, id| drop(cad.rotate_entities(&[id], p(1.0, 1.0), 0.7).unwrap()),
+            Transform2::rotation(p(1.0, 1.0), 0.7).unwrap(),
+        ),
+        (
+            |cad, id| drop(cad.scale_entities(&[id], p(0.0, 0.0), 2.5).unwrap()),
+            Transform2::scaling(p(0.0, 0.0), 2.5).unwrap(),
+        ),
+        (
+            |cad, id| {
+                let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
+                drop(cad.mirror_entities(&[id], axis).unwrap())
+            },
+            Transform2::mirror(axis),
+        ),
+    ];
+    for (op, t) in ops {
+        let mut cad = CadDocument::new();
+        let (id, _) = cad.add_ellipse(arc).unwrap();
+        op(&mut cad, id);
+        let moved = drawn_ellipse(&cad, id);
+        for i in 0..=8 {
+            let q = t.apply_point(arc.point_at_param(0.4 + 2.2 * f64::from(i) / 8.0));
+            assert!(moved.distance_to(q) < 1e-9, "{t:?}: {q:?} off {moved:?}");
+        }
+        let (a, b) = arc.ends().unwrap();
+        let ends = moved.ends().unwrap();
+        let expected = if t.is_reflection() {
+            (t.apply_point(b), t.apply_point(a))
+        } else {
+            (t.apply_point(a), t.apply_point(b))
+        };
+        assert!(
+            near(ends.0, expected.0) && near(ends.1, expected.1),
+            "{t:?}"
+        );
+    }
+}
+
+#[test]
+fn closed_break_updates_index_and_restores_identity_closure_and_style() {
+    let mut cad = CadDocument::new();
+    let square = [
+        (p(0., 0.), 0.),
+        (p(10., 0.), 0.),
+        (p(10., 10.), 0.),
+        (p(0., 10.), 0.),
+    ];
+    let (id, _) = cad.add_polyline(&square, true).unwrap();
+    cad.set_entity_color(&[id], Color::Index(3)).unwrap();
+    let original = cad.grips(&[id]);
+    assert!(cad.document().join_path(id).is_err());
+    let (ids, changes) = cad.break_entity(id, p(0., 5.), p(5., 0.)).unwrap();
+    assert_eq!(ids, [id]);
+    assert_eq!(changes.modified(), [id]);
+    assert!(changes.created().is_empty() && changes.deleted().is_empty());
+    let opened = cad.document().join_path(id).unwrap().0;
+    assert_eq!(
+        opened.vertices,
+        vec![(p(0., 5.), 0.), (p(0., 0.), 0.), (p(5., 0.), 0.)]
+    );
+    assert_eq!(cad.document().entity(id).unwrap().color(), Color::Index(3));
+    let removed = arq_geometry::Bounds2::new(p(9., 9.), p(11., 11.));
+    assert!(cad.query_entities(removed).is_empty());
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+    let undone = cad.undo().unwrap();
+    assert_eq!(undone.modified(), [id]);
+    assert_eq!(cad.grips(&[id]), original);
+    assert!(cad.document().join_path(id).is_err());
+    assert_eq!(cad.query_entities(removed), [id]);
+    cad.redo().unwrap();
+    assert_eq!(cad.document().join_path(id).unwrap().0, opened);
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(cad.break_entity(id, p(1., 0.), p(2., 0.)).is_err());
+    assert_eq!(cad.document().join_path(id).unwrap().0, opened);
+}
+
+#[test]
+fn an_ellipse_is_an_edge_trim_cuts_at() {
+    // A line through an ellipse about (10,0), semi-axes 4 and 2: cut at
+    // its crossings, (6,0) and (14,0), in both modes.
+    for edges in [None, Some(())] {
+        let mut cad = CadDocument::new();
+        let (line, _) = cad.add_line(p(0.0, 0.0), p(20.0, 0.0)).unwrap();
+        let e = Ellipse::from_axis(p(10.0, 0.0), p(14.0, 0.0), 2.0).unwrap();
+        let (ellipse, _) = cad.add_ellipse(e).unwrap();
+        let chosen = [ellipse];
+        let edges = edges.map(|()| &chosen[..]);
+        let (left, _) = cad.trim_entity(line, p(10.0, 0.5), edges, false).unwrap();
+        assert_eq!(left.len(), 2, "{edges:?}");
+        let (a, b) = (
+            curve_ends(curve_of(&cad, left[0])),
+            curve_ends(curve_of(&cad, left[1])),
+        );
+        assert!((a.1.0 - 6.0).abs() < 1e-9 && a.0 == (0.0, 0.0), "{a:?}");
+        assert!((b.0.0 - 14.0).abs() < 1e-9 && b.1 == (20.0, 0.0), "{b:?}");
+    }
+}
+
+#[test]
+fn polar_array_preserves_sources_styles_order_index_and_atomic_undo() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(10., 0.), p(12., 0.)).unwrap();
+    let (b, _) = cad.add_circle(p(10., 2.), 1.).unwrap();
+    cad.set_entity_color(&[a], Color::Index(3)).unwrap();
+    let (copies, changes) = cad
+        .polar_array(&[a, b, a], p(0., 0.), 4, std::f64::consts::TAU, true, None)
+        .unwrap();
+    assert_eq!(copies.len(), 6);
+    assert_eq!(changes.created(), copies);
+    assert!(changes.modified().is_empty() && changes.deleted().is_empty());
+    let Geometry2::Line(line) = geometry(&cad, copies[0]) else {
+        panic!()
+    };
+    assert!(line.start().approx_eq(p(0., 10.), Tolerance::DEFAULT));
+    assert!(line.end().approx_eq(p(0., 12.), Tolerance::DEFAULT));
+    let Geometry2::Circle(circle) = geometry(&cad, copies[1]) else {
+        panic!()
+    };
+    assert!(circle.center().approx_eq(p(-2., 10.), Tolerance::DEFAULT));
+    assert_eq!(
+        cad.document().entity(copies[0]).unwrap().color(),
+        Color::Index(3)
+    );
+    assert_eq!(line_ends(&cad, a), (p(10., 0.), p(12., 0.)));
+    let area = arq_geometry::Bounds2::new(p(-0.5, 9.5), p(0.5, 12.5));
+    assert!(cad.query_entities(area).contains(&copies[0]));
+    assert_eq!(cad.undo_name(), Some("ARRAYPOLAR"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), 2);
+    assert!(cad.query_entities(area).is_empty());
+    cad.redo().unwrap();
+    assert!(cad.document().entity(copies[0]).is_some());
+}
+
+#[test]
+fn polar_array_without_rotation_translates_a_selection_as_one_group() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(10., 0.), p(12., 0.)).unwrap();
+    let (b, _) = cad.add_line(p(10., 2.), p(11., 2.)).unwrap();
+    let (copies, _) = cad
+        .polar_array(&[a, b], p(0., 0.), 3, PI, false, Some(p(10., 0.)))
+        .unwrap();
+    assert_eq!(copies.len(), 4);
+    for (id, (start, end)) in copies.into_iter().zip([
+        (p(0., 10.), p(2., 10.)),
+        (p(0., 12.), p(1., 12.)),
+        (p(-10., 0.), p(-8., 0.)),
+        (p(-10., 2.), p(-9., 2.)),
+    ]) {
+        let (a, b) = line_ends(&cad, id);
+        assert!(a.approx_eq(start, Tolerance::DEFAULT) && b.approx_eq(end, Tolerance::DEFAULT));
+    }
+}
+
+#[test]
+fn polar_array_validates_all_sources_and_rolls_back_late_overflow() {
+    let mut cad = CadDocument::new();
+    let (a, _) = cad.add_line(p(0., 0.), p(1e306, 0.)).unwrap();
+    let (b, _) = cad.add_line(p(1e308, 0.), p(1.1e308, 0.)).unwrap();
+    let before = cad.undo_names().len();
+    assert!(
+        cad.polar_array(
+            &[a, u64::MAX],
+            p(0., 0.),
+            4,
+            std::f64::consts::TAU,
+            true,
+            None
+        )
+        .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(
+        cad.polar_array(&[a], p(0., 0.), 4, std::f64::consts::TAU, true, None)
+            .is_err()
+    );
+    cad.set_layer_locked(layer, false).unwrap();
+    let steps = cad.undo_names().len();
+    assert!(
+        cad.polar_array(&[a, b], p(0., 0.), 3, PI, false, Some(p(-5e307, 0.)))
+            .is_err()
+    );
+    assert_eq!(cad.document().entities().len(), 2);
+    assert_eq!(cad.undo_names().len(), steps);
+    assert!(steps >= before);
+    assert_eq!(line_ends(&cad, b), (p(1e308, 0.), p(1.1e308, 0.)));
+}
+
+#[test]
+fn path_array_copies_sources_in_order_keeps_guide_styles_index_and_history() {
+    let mut cad = CadDocument::new();
+    let (guide, _) = cad.add_line(p(10., 10.), p(30., 10.)).unwrap();
+    let (a, _) = cad.add_line(p(0., 0.), p(2., 0.)).unwrap();
+    let (b, _) = cad.add_circle(p(0., 3.), 1.).unwrap();
+    cad.set_entity_color(&[a], Color::Index(3)).unwrap();
+    let (copies, changes) = cad
+        .path_array(&[a, b, a], guide, p(0., 0.), 3, true)
+        .unwrap();
+    assert_eq!(copies.len(), 6);
+    assert_eq!(changes.created(), copies);
+    assert!(changes.modified().is_empty() && changes.deleted().is_empty());
+    for (index, x) in [10., 20., 30.].into_iter().enumerate() {
+        assert_eq!(
+            line_ends(&cad, copies[index * 2]),
+            (p(x, 10.), p(x + 2., 10.))
+        );
+        assert_eq!(
+            cad.document().entity(copies[index * 2]).unwrap().color(),
+            Color::Index(3)
+        );
+        let Geometry2::Circle(circle) = geometry(&cad, copies[index * 2 + 1]) else {
+            panic!()
+        };
+        assert!(near(circle.center(), p(x, 13.)));
+    }
+    assert_eq!(line_ends(&cad, a), (p(0., 0.), p(2., 0.)));
+    assert_eq!(line_ends(&cad, guide), (p(10., 10.), p(30., 10.)));
+    let area = arq_geometry::Bounds2::new(p(29., 9.), p(33., 11.));
+    assert!(cad.query_entities(area).contains(&copies[4]));
+    assert_eq!(cad.undo_name(), Some("ARRAYPATH"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), 3);
+    assert!(!cad.query_entities(area).contains(&copies[4]));
+    cad.redo().unwrap();
+    assert_eq!(line_ends(&cad, copies[4]), (p(30., 10.), p(32., 10.)));
+}
+
+#[test]
+fn path_array_bulged_guide_aligns_relative_to_the_first_item() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(20., 20.), p(22., 20.)).unwrap();
+    let (guide, _) = cad
+        .add_polyline(&[(p(0., 0.), -1.), (p(10., 0.), 0.)], false)
+        .unwrap();
+    let (copies, _) = cad
+        .path_array(&[source], guide, p(20., 20.), 3, true)
+        .unwrap();
+    for (id, (start, end)) in copies.into_iter().zip([
+        (p(0., 0.), p(2., 0.)),
+        (p(5., 5.), p(5., 3.)),
+        (p(10., 0.), p(8., 0.)),
+    ]) {
+        let (a, b) = line_ends(&cad, id);
+        assert!(near(a, start) && near(b, end));
+    }
+    assert_eq!(line_ends(&cad, source), (p(20., 20.), p(22., 20.)));
+}
+
+#[test]
+fn path_array_invalid_guides_locked_sources_and_late_overflow_are_atomic() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(1e308, 0.), p(1.1e308, 0.)).unwrap();
+    let (guide, _) = cad.add_line(p(0., 0.), p(1e308, 0.)).unwrap();
+    let steps = cad.undo_names().len();
+    assert!(
+        cad.path_array(&[source], u64::MAX, p(0., 0.), 3, false)
+            .is_err()
+    );
+    assert!(
+        cad.path_array(&[source, u64::MAX], guide, p(0., 0.), 3, false)
+            .is_err()
+    );
+    assert!(
+        cad.path_array(&[source], guide, p(0., 0.), 3, false)
+            .is_err()
+    );
+    assert_eq!(cad.document().entities().len(), 2);
+    assert_eq!(cad.undo_names().len(), steps);
+    let (closed, _) = cad
+        .add_polyline(&[(p(0., 0.), 0.), (p(5., 0.), 0.), (p(5., 5.), 0.)], true)
+        .unwrap();
+    assert!(
+        cad.path_array(&[source], closed, p(0., 0.), 3, false)
+            .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(
+        cad.path_array(&[source], guide, p(1e308, 0.), 2, false)
+            .is_err()
+    );
 }

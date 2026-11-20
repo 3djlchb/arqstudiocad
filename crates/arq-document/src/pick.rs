@@ -195,11 +195,15 @@ impl Document {
         from: Option<Point2>,
     ) -> Option<SnapPoint> {
         let on = |kind: SnapKind| modes.contains(&kind);
-        // The curves the cursor rests on, closest first.
-        let mut near: Vec<(Geometry2, f64)> = drawings
+        let shapes: Vec<Shape> = drawings
             .into_iter()
             .flat_map(|(_, items)| items)
-            .filter_map(|item| curve(item.shape))
+            .map(|item| item.shape)
+            .collect();
+        // The curves the cursor rests on, closest first.
+        let mut near: Vec<(Geometry2, f64)> = shapes
+            .iter()
+            .filter_map(|&shape| curve(shape))
             .map(|g| (g, g.distance_to(cursor)))
             .filter(|(_, d)| *d <= aperture)
             .collect();
@@ -316,6 +320,7 @@ fn curve(shape: Shape) -> Option<Geometry2> {
         Shape::Line(l) => Some(l.into()),
         Shape::Circle(c) => Some(c.into()),
         Shape::Arc(a) => Some(a.into()),
+        Shape::Ellipse(e) => Some(e.into()),
         Shape::Point(_) | Shape::Text(_) | Shape::Placeholder(_) | Shape::Triangle(_) => None,
     }
 }

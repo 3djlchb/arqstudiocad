@@ -269,7 +269,15 @@ in 100000 lines, before/after edit cost and separate preview cost. The pooled
 edit ratio is 1.00521 with overlapping batch ranges. Reference-machine
 measurement and real cursor interaction remain pending. The maintainer
 merged implementation PR #192 on 2026-11-15; floor acceptance still requires
-the separate reference-machine follow-up.
+the separate reference-machine follow-up. That follow-up was measured on
+2026-11-19 at `66c0125` → `5ac83f4` ([reports](../testing/reference-machine/2026-11-19/)): the edit pooled
+0.361476 → 0.360268 ms (0.99666), the preview query 0.117402 ms, and CPU
+cursor frames at the displacement prompt 4.2 → 6.9 ms with 100 lines
+stretched, the GPU's at the display's 16.4-16.7 ms. The same day
+([stretch cases](../testing/reference-machine/2026-11-19/stretch-cases.txt)): zoom or pan during the prompt adds
+about 3 ms on the CPU; bulged polylines took the CPU frame to 24 ms, 12 ms since the overlay is
+painted without a QPointF a point; and
+a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity, 80,000 edge tests each time (fixed by #213, which validates it once: 16 ms on the CPU and 11 ms on the GPU).
 
 The public contour query also refuses non-Top views, rather than returning
 XY contours through a camera for another plane. Removing that guard caused

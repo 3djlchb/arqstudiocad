@@ -1,5 +1,7 @@
 //! Tests of picking, window selection and snaps (a submodule of `pick`).
 
+use std::f64::consts::PI;
+
 use arq_geometry::snap::SnapKind::{self, *};
 use arq_geometry::{Bounds2, Point2};
 
@@ -460,4 +462,217 @@ fn crossing_polygon_selects_exact_drawings_instead_of_their_enclosing_box() {
         doc.select_polygon_candidates(&inside_band, &[a, b, circle, wide]),
         vec![wide]
     );
+}
+
+/// An elliptical arc about (10,0), semi-axes 4 along x and 2, parameters 0
+/// to 3π/2: from (14,0) round through (10,2) and (6,0) to (10,-2).
+fn ellipse_arc() -> Document {
+    dxf(
+        LAYERS,
+        &[],
+        &[&[
+            "0",
+            "ELLIPSE",
+            "8",
+            "0",
+            "10",
+            "10",
+            "20",
+            "0",
+            "30",
+            "0",
+            "11",
+            "4",
+            "21",
+            "0",
+            "31",
+            "0",
+            "210",
+            "0",
+            "220",
+            "0",
+            "230",
+            "1",
+            "40",
+            "0.5",
+            "41",
+            "0",
+            "42",
+            "4.71238898038469",
+        ]],
+    )
+}
+
+#[test]
+fn an_ellipse_snaps_to_its_own_points_not_to_its_chords() {
+    let doc = ellipse_arc();
+    let at = |cursor: Point2, modes: &[SnapKind]| doc.snap(cursor, 0.3, modes, None);
+    // Ends, quadrants and the arc's middle (parameter 3π/4).
+    let end = at(p(10.1, -2.1), &[Endpoint]).unwrap();
+    assert!(near(end.point, p(10.0, -2.0)));
+    let top = at(p(10.1, 2.1), &[Quadrant]).unwrap();
+    assert!(near(top.point, p(10.0, 2.0)));
+    let middle = (10.0 + 4.0 * (0.75 * PI).cos(), 2.0 * (0.75 * PI).sin());
+    let mid = at(p(middle.0 + 0.05, middle.1), &[Midpoint]).unwrap();
+    assert!(near(mid.point, p(middle.0, middle.1)), "{mid:?}");
+    // No endpoint between chords, where segments used to end.
+    let along = (10.0 + 4.0 * 0.3f64.cos(), 2.0 * 0.3f64.sin());
+    assert!(at(p(along.0, along.1), &[Endpoint, Midpoint]).is_none());
+    // Its center from anywhere on it; the nearest point exactly on it.
+    let center = at(p(along.0, along.1), &[Center]).unwrap();
+    assert!(near(center.point, p(10.0, 0.0)));
+    let nearest = at(p(along.0 + 0.1, along.1 + 0.05), &[Nearest]).unwrap();
+    let off = ((nearest.point.x() - 10.0) / 4.0).powi(2) + (nearest.point.y() / 2.0).powi(2);
+    assert!((off - 1.0).abs() < 1e-9, "on the ellipse: {nearest:?}");
+}
+
+#[test]
+fn an_ellipse_is_picked_and_selected_by_its_curve() {
+    let doc = ellipse_arc();
+    let id = doc.entities()[0].id();
+    assert_eq!(doc.pick(p(14.05, 0.0), 0.1), Some(id));
+    // Its missing quarter, between (10,-2) and (14,0), is not it.
+    assert_eq!(doc.pick(p(12.9, -1.4), 0.1), None);
+    assert_eq!(doc.select_window(area(5.9, -2.1, 14.1, 2.1), false), [id]);
+    assert_eq!(doc.select_window(area(13.5, -0.5, 15.0, 0.5), true), [id]);
+    assert!(
+        doc.select_window(area(11.0, -1.0, 13.0, 1.0), true)
+            .is_empty(),
+        "inside, untouched"
+    );
+}
+
+#[test]
+fn an_ellipse_meets_lines_circles_and_ellipses_at_intersection_snaps() {
+    use arq_geometry::{Circle, Ellipse, Line, Vector2};
+    let mut doc = ellipse_arc();
+    let zero = doc.current_layer().id();
+    // y = 1: x = 10 ± 4·√(1 - 1/4) on the arc about (10,0), 4 by 2.
+    let dx = 4.0 * 0.75f64.sqrt();
+    let line = Line::new(p(4.0, 1.0), p(16.0, 1.0)).unwrap();
+    doc.add_entity(crate::PlanGeometry::new(line.into()), zero)
+        .unwrap();
+    let at = |doc: &Document, cursor: Point2| doc.snap(cursor, 0.3, &[Intersection], None);
+    let found = at(&doc, p(10.0 + dx + 0.1, 1.05)).unwrap();
+    assert!(near(found.point, p(10.0 + dx, 1.0)), "{found:?}");
+    let found = at(&doc, p(10.0 - dx - 0.1, 0.95)).unwrap();
+    assert!(near(found.point, p(10.0 - dx, 1.0)), "{found:?}");
+    // A circle about (14,0), radius 1, meets it once on the arc, at y > 0;
+    // its lower crossing lies on the missing quarter.
+    let circle = Circle::new(p(14.0, 0.0), 1.0).unwrap();
+    doc.add_entity(crate::PlanGeometry::new(circle.into()), zero)
+        .unwrap();
+    let upper = at(&doc, p(13.5, 0.85)).unwrap();
+    let (x, y) = (upper.point.x(), upper.point.y());
+    assert!(((x - 10.0) / 4.0).powi(2) + (y / 2.0).powi(2) - 1.0 < 1e-9 && y > 0.0);
+    assert!(((x - 14.0).powi(2) + y * y - 1.0).abs() < 1e-9, "{upper:?}");
+    assert!(at(&doc, p(upper.point.x(), -upper.point.y())).is_none());
+    // A second ellipse through it, its major axis upright.
+    let upright =
+        Ellipse::new(p(10.0, 0.0), Vector2::new(0.0, 4.0).unwrap(), 0.5, 0.0, 0.0).unwrap();
+    doc.add_ellipse(upright, 0.0).unwrap();
+    // By symmetry they cross where |x - 10| = |y|: (x-10)²·(1/16 + 1/4) = 1.
+    let c = (1.0 / (1.0 / 16.0 + 0.25f64)).sqrt();
+    let crossing = at(&doc, p(10.0 - c - 0.05, c + 0.05)).unwrap();
+    assert!(near(crossing.point, p(10.0 - c, c)), "{crossing:?}");
+}
+
+#[test]
+fn perpendicular_and_tangent_snaps_reach_an_ellipse() {
+    let doc = ellipse_arc();
+    let at =
+        |cursor: Point2, kind: SnapKind, from: Point2| doc.snap(cursor, 0.3, &[kind], Some(from));
+    // From (10,5), square onto its top.
+    let foot = at(p(10.3, 1.98), Perpendicular, p(10.0, 5.0)).unwrap();
+    assert!(near(foot.point, p(10.0, 2.0)), "{foot:?}");
+    // From (20,0), the tangents touch where (x-10)·10/16 = 1: x = 11.6,
+    // the one above on the arc.
+    let touch = at(p(11.7, 1.6), Tangent, p(20.0, 0.0)).unwrap();
+    let y = 2.0 * (1.0 - 0.16f64).sqrt();
+    assert!(near(touch.point, p(11.6, y)), "{touch:?}");
+    // The one below lies on the missing quarter: no tangent there.
+    assert!(at(p(11.7, -1.6), Tangent, p(20.0, 0.0)).is_none());
+}
+
+#[test]
+fn an_ellipse_is_crossed_by_its_curve_not_by_its_chords() {
+    use arq_geometry::{SelectionPolygon, Tolerance};
+    // Its top, (10,2), falls between two of its drawn points, the nearest
+    // at about y = 1.99958: a window from y = 1.9998 meets only the curve.
+    let doc = ellipse_arc();
+    let id = doc.entities()[0].id();
+    assert_eq!(doc.select_window(area(9.9, 1.9998, 10.1, 2.1), true), [id]);
+    let polygon = SelectionPolygon::new(
+        vec![p(9.9, 1.9998), p(10.1, 1.9998), p(10.0, 2.1)],
+        Tolerance::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(doc.select_polygon_candidates(&polygon, &[id]), [id]);
+    // Just above its top, nothing.
+    assert!(
+        doc.select_window(area(9.9, 2.0001, 10.1, 2.1), true)
+            .is_empty()
+    );
+}
+
+#[test]
+fn an_ellipse_written_as_plan_geometry_is_the_ellipse_drawn() {
+    use arq_geometry::{Ellipse, Vector2};
+    let mut doc = Document::new();
+    let zero = doc.current_layer().id();
+    let e = Ellipse::new(p(3.0, 4.0), Vector2::new(2.0, 1.0).unwrap(), 0.4, 0.5, 4.0).unwrap();
+    let id = doc
+        .add_entity(crate::PlanGeometry::new(e.into()), zero)
+        .unwrap();
+    assert_eq!(doc.entity(id).unwrap().kind(), "ELLIPSE");
+    let [item] = &doc.drawing(id).unwrap()[..] else {
+        panic!()
+    };
+    let crate::Shape::Ellipse(drawn) = item.shape else {
+        panic!("{item:?}")
+    };
+    let (a, b) = (e.ends().unwrap(), drawn.ends().unwrap());
+    assert!(near(a.0, b.0) && near(a.1, b.1) && near(drawn.center(), e.center()));
+    assert!((drawn.ratio() - 0.4).abs() < 1e-12);
+}
+
+#[test]
+fn a_crossing_polygon_selects_an_ellipse_it_crosses_and_not_one_it_misses() {
+    use arq_geometry::{SelectionPolygon, Tolerance};
+    let doc = ellipse_arc();
+    let id = doc.entities()[0].id();
+    let polygon =
+        |corners: Vec<Point2>| SelectionPolygon::new(corners, Tolerance::DEFAULT).unwrap();
+    // An L across its end at (14,0).
+    let across = polygon(vec![
+        p(13.5, -0.5),
+        p(15.0, -0.5),
+        p(15.0, 0.5),
+        p(14.2, 0.5),
+        p(14.2, 3.0),
+        p(13.5, 3.0),
+    ]);
+    assert_eq!(doc.select_polygon_candidates(&across, &[id]), [id]);
+    // A thin band across it between two of its drawn points, (14,0) and
+    // the next at about (14.0,0.12): only a chord crosses it.
+    let thin = polygon(vec![
+        p(13.0, 0.04),
+        p(15.0, 0.04),
+        p(15.0, 0.08),
+        p(13.0, 0.08),
+    ]);
+    assert_eq!(doc.select_polygon_candidates(&thin, &[id]), [id]);
+    // Wholly around it.
+    let around = polygon(vec![p(5.0, -3.0), p(15.0, -3.0), p(15.0, 3.0), p(5.0, 3.0)]);
+    assert_eq!(doc.select_polygon_candidates(&around, &[id]), [id]);
+    // Inside it, untouched, and across its missing quarter, about (12.83,-1.41).
+    let inside = polygon(vec![p(9.0, -0.5), p(11.0, -0.5), p(11.0, 0.5), p(9.0, 0.5)]);
+    let missing = polygon(vec![
+        p(12.5, -1.7),
+        p(13.1, -1.7),
+        p(13.1, -1.1),
+        p(12.5, -1.1),
+    ]);
+    assert!(doc.select_polygon_candidates(&inside, &[id]).is_empty());
+    assert!(doc.select_polygon_candidates(&missing, &[id]).is_empty());
 }

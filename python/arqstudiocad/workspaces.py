@@ -120,7 +120,9 @@ CAD = Discipline(
             (
                 RibbonGroup("file", lambda: tr("File"), ("NEW", "OPEN", "SAVE", "SAVEAS", "CLOSE")),
                 RibbonGroup(
-                    "draw", lambda: tr("Draw"), ("LINE", "PLINE", "RECTANG", "CIRCLE", "ARC")
+                    "draw",
+                    lambda: tr("Draw"),
+                    ("LINE", "PLINE", "RECTANG", "CIRCLE", "ARC", "ELLIPSE"),
                 ),
                 RibbonGroup(
                     "modify",
@@ -138,6 +140,8 @@ CAD = Discipline(
                         "BREAK",
                         "JOIN",
                         "ARRAYRECT",
+                        "ARRAYPOLAR",
+                        "ARRAYPATH",
                         "FILLET",
                         "CHAMFER",
                         "ERASE",
@@ -146,6 +150,7 @@ CAD = Discipline(
                 ),
                 RibbonGroup("history", lambda: tr("History"), ("UNDO", "REDO")),
                 RibbonGroup("layers", lambda: tr("Layers"), ("LAYER",)),
+                RibbonGroup("properties", lambda: tr("Properties"), ("MATCHPROP",)),
             ),
         ),
         # Blocks, as AutoCAD's Insert tab (ADR 0023 D4).
@@ -221,6 +226,7 @@ CAD = Discipline(
                 "RECTANG",
                 "CIRCLE",
                 "ARC",
+                "ELLIPSE",
                 None,
                 "INSERT",
                 "BLOCK",
@@ -243,6 +249,8 @@ CAD = Discipline(
                 "BREAK",
                 "JOIN",
                 "ARRAYRECT",
+                "ARRAYPOLAR",
+                "ARRAYPATH",
                 "FILLET",
                 "CHAMFER",
                 None,
@@ -254,7 +262,7 @@ CAD = Discipline(
                 "EXPLODE",
             ),
         ),
-        Toolbar("layers", lambda: tr("Layers"), ("LAYER",)),
+        Toolbar("layers", lambda: tr("Layers"), ("LAYER", "MATCHPROP")),
     ),
 )
 

@@ -230,9 +230,9 @@ def test_layers_and_properties_share_tabs_with_history_below(window: MainWindow)
     assert window.tabifiedDockWidgets(window.history_panel) == []
     area = Qt.DockWidgetArea.RightDockWidgetArea
     sides = {name: window.dockWidgetArea(panel) for name, panel in window.panels.items()}
-    # The Budget panel is wide: across the bottom (ADR 0028 D1).
-    assert sides.pop("budget") == Qt.DockWidgetArea.BottomDockWidgetArea
-    assert all(side == area for side in sides.values())
+    # Every palette on the right, the Budget panel too (maintainer,
+    # 2026-11-19; across the bottom until then, ADR 0028).
+    assert all(side == area for side in sides.values()), sides
 
 
 def test_the_view_menu_toggles_the_panels(window: MainWindow) -> None:

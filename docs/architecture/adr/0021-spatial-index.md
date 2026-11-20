@@ -55,7 +55,8 @@ drawn-geometry checks and visibility rules to those candidates; the index
 does not change query results or drawing order. GPU viewport rendering remains
 open. An isolated wgpu adapter/pipeline/offscreen readback probe is now
 implemented under ADR 0007; it has passed locally on Windows with DX12, while
-Linux reference-machine validation remains open.
+Linux reference-machine validation remains open. (It closed on 2026-11-10,
+when the reference machine passed ADR 0007's release gate: milestone 02.7.)
 
 ## Upgrade to rstar 0.14.0 (2026-11-08)
 
@@ -74,4 +75,3 @@ breaking change to `RTreeNum` does not affect `f64`.
 On the reference machine (i7-2600, Criterion 20-sample estimate), 0.13.0
 and then 0.14.0: `query 1% window` 37.2 µs and 42.2 µs, `query everything`
 7.24 ms and 7.34 ms.
-

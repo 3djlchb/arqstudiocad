@@ -175,7 +175,7 @@ class Drag:
     ``"rectangle"``, the rectangle RECTANG would draw from the base point
     to it."""
 
-    kind: Literal["move", "rotate", "scale", "mirror", "rectangle", "stretch"]
+    kind: Literal["move", "rotate", "scale", "mirror", "rectangle", "stretch", "ellipse"]
     entity_ids: tuple[int, ...] = ()
     #: Whether a rubber band joins the base point to the cursor.
     band: bool = True
@@ -186,6 +186,12 @@ class Drag:
     size: tuple[float, float] | None = None
     fillet: float = 0.0
     chamfer: tuple[float, float] = (0.0, 0.0)
+    #: ELLIPSE's (ADR 0040): its center, the end of the first axis drawn,
+    #: the other semi-axis once known, and the arc's start, from the first
+    #: axis, once known, and whether as a parameter; the cursor gives the rest.
+    ellipse: (
+        tuple[tuple[float, float], tuple[float, float], float | None, float | None, bool] | None
+    ) = None
     #: Selection provenance captured once, rather than queried per mouse move.
     crossing: tuple[tuple[int, CadBounds2], ...] = ()
     polygons: tuple[tuple[int, tuple[tuple[float, float], ...]], ...] = ()
@@ -207,6 +213,7 @@ class CommandPrompt(Event):
     entity: bool = False
     multiple: bool = False
     polygon: tuple[tuple[float, float], ...] = ()
+    spatial: bool = False
 
 
 @dataclass(frozen=True, slots=True)

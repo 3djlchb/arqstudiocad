@@ -60,6 +60,10 @@ pub enum Shape {
     /// polyline's band (ADR 0038). Drawn under the strokes; the entity's
     /// curves still come as their own shapes, which snap and highlight.
     Triangle([Point2; 3]),
+    /// An ellipse or elliptical arc lying in the plan (ADR 0040): picked
+    /// and snapped to exactly; drawn by [`arq_geometry::Ellipse::flatten`]'s
+    /// points, as ellipses have always been.
+    Ellipse(arq_geometry::Ellipse),
 }
 
 impl Shape {
@@ -72,6 +76,7 @@ impl Shape {
             Shape::Point(p) => Bounds2::from_point(p),
             Shape::Text(b) | Shape::Placeholder(b) => b,
             Shape::Triangle([a, b, c]) => Bounds2::new(a, b).including(c),
+            Shape::Ellipse(e) => e.bounds(),
         }
     }
 }
@@ -119,6 +124,7 @@ struct Painter<'a> {
     every_layer: bool,
     /// Where what is drawn goes placed in space, when it is wanted there.
     space: Option<RefCell<Vec<SpaceItem>>>,
+    references: Option<RefCell<Vec<(arq_geometry::snap::SnapKind, Point3)>>>,
 }
 
 /// Where an entity sits: inside which inserts.
@@ -138,6 +144,25 @@ struct Context {
 }
 
 impl Document {
+    /// Exact visible XYZ reference points of candidate entities, in caller order.
+    /// Blocks use their full placements and effective layers; unsupported
+    /// entities contribute no invented or tessellated reference points.
+    pub fn reference_points3(
+        &self,
+        ids: &[EntityId],
+    ) -> Vec<(arq_geometry::snap::SnapKind, Point3)> {
+        let painter = Painter {
+            references: Some(RefCell::default()),
+            ..Painter::new(self)
+        };
+        for &id in ids {
+            if let Some(entity) = self.cad().get_entity(handle(id)) {
+                painter.emit(entity, &Context::top(), &mut Vec::new());
+            }
+        }
+        painter.references.unwrap().into_inner()
+    }
+
     /// What to draw for one entity, visible parts only; `None` if no entity
     /// has this id. Empty when it is hidden (off or frozen layer, invisible
     /// flag) or has nothing to draw (a viewport, an infinite line).
@@ -261,6 +286,7 @@ impl<'a> Painter<'a> {
             layers,
             every_layer: false,
             space: None,
+            references: None,
         }
     }
 
@@ -335,6 +361,19 @@ impl<'a> Painter<'a> {
         if style.frozen || (!style.shown && !block_reference) {
             return;
         }
+        if let Some(references) = &self.references
+            && !matches!(e, EntityType::Insert(_))
+        {
+            let points = crate::references::points(e)
+                .into_iter()
+                .filter_map(|(kind, p)| {
+                    let v = Vector3::new(p.x(), p.y(), p.z());
+                    let q = ctx.placement.map_or(v, |t| t.apply(v));
+                    point3(q).map(|p| (kind, p))
+                });
+            references.borrow_mut().extend(points);
+            return;
+        }
         let color = self.resolve_color(color_from_codec(e.as_entity().color()), &layer, ctx);
         if let Some(space) = &self.space
             && let Some(paths) = self.own_points(e, ctx)
@@ -365,6 +404,7 @@ impl<'a> Painter<'a> {
                     arq_geometry::Geometry2::Circle(c) => Shape::Circle(c),
                     arq_geometry::Geometry2::Arc(a) => Shape::Arc(a),
                     arq_geometry::Geometry2::Line(l) => Shape::Line(l),
+                    arq_geometry::Geometry2::Ellipse(e) => Shape::Ellipse(e),
                 }),
                 None => self.placeholder(e, color, out), // on a tilted plane
             },
@@ -529,6 +569,17 @@ impl<'a> Painter<'a> {
                     line.common = h.common.clone();
                     parts.push(EntityType::Line(line));
                 }
+                // A whole turn, as AutoCAD stores a circular boundary (0° to
+                // 360°): a circle, which an arc cannot be.
+                BoundaryEdge::CircularArc(a)
+                    if (a.end_angle - a.start_angle).abs() >= TAU - 1e-9 =>
+                {
+                    let mut circle = acadrust::entities::Circle::new();
+                    circle.common = h.common.clone();
+                    circle.center = world(a.center);
+                    circle.radius = a.radius;
+                    parts.push(EntityType::Circle(circle));
+                }
                 BoundaryEdge::CircularArc(a) => {
                     let (start, end) = ccw_range(a.start_angle, a.end_angle, a.counter_clockwise);
                     let (start, end) = n.map_arc(start, end);
@@ -645,6 +696,11 @@ impl<'a> Painter<'a> {
         };
         let base = record.base_point;
         for t in insert_copies(ins, base) {
+            let t = if self.references.is_some() {
+                ctx.placement.map_or(t, |outer| t.then(&outer))
+            } else {
+                t
+            };
             if is_xref(record) {
                 if self.style(layer).shown {
                     let label = record
@@ -696,7 +752,7 @@ impl<'a> Painter<'a> {
             if matches!(child, EntityType::AttributeDefinition(_)) {
                 continue; // definitions are drawn through the insert's values
             }
-            if identity || crate::acis::is_body(child) {
+            if identity || crate::acis::is_body(child) || self.references.is_some() {
                 self.emit(child, &inner, out);
             } else {
                 let mut moved = child.clone();
@@ -804,13 +860,65 @@ fn segment(a: (f64, f64), b: (f64, f64)) -> Option<Shape> {
     })
 }
 
-/// An ellipse as segments between points on it, seen in plan.
+/// An ellipse seen in plan: itself when it lies in the plan, else segments
+/// between points on it.
 fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
+    if let Some(ellipse) = plan_ellipse(el) {
+        out.push(DrawItem {
+            shape: Shape::Ellipse(ellipse),
+            color,
+        });
+        return;
+    }
     for pair in ellipse_points(el).windows(2) {
         if let Some(shape) = segment((pair[0].x, pair[0].y), (pair[1].x, pair[1].y)) {
             out.push(DrawItem { shape, color });
         }
     }
+}
+
+/// An ellipse whose normal is along ±Z, in world plan coordinates (DWG
+/// keeps its center and major axis in the world); counterclockwise seen from
+/// above, so one seen from below has its parameters' signs changed. None
+/// when it is tilted or not finite.
+pub(crate) fn plan_ellipse(el: &Ellipse) -> Option<arq_geometry::Ellipse> {
+    let normal = plan_normal(el.normal.x, el.normal.y, el.normal.z)?;
+    let center = Point2::new(el.center.x, el.center.y).ok()?;
+    let major = arq_geometry::Vector2::new(el.major_axis.x, el.major_axis.y).ok()?;
+    let (start, end) = if el.is_full() {
+        (0.0, TAU)
+    } else {
+        (el.start_parameter, el.end_parameter)
+    };
+    let (start, end) = match normal {
+        crate::ocs::PlanNormal::Up => (start, end),
+        crate::ocs::PlanNormal::Down => (-end, -start),
+    };
+    arq_geometry::Ellipse::new(center, major, el.minor_axis_ratio, start, end).ok()
+}
+
+/// Writes `g`, an ellipse in world plan coordinates, into ellipse `el`
+/// lying in the plan, in its own sense (seen from below, parameters change
+/// sign): center (its height kept), major axis, ratio and parameters, a
+/// whole one as DWG's 0 to 2π.
+pub(crate) fn write_plan_ellipse(el: &mut Ellipse, g: arq_geometry::Ellipse) {
+    let down = el.normal.z < 0.0;
+    el.center = Vector3::new(g.center().x(), g.center().y(), el.center.z);
+    el.major_axis = Vector3::new(g.major_axis().x(), g.major_axis().y(), 0.0);
+    el.minor_axis_ratio = g.ratio();
+    let (start, end) = if g.is_full() {
+        (0.0, TAU)
+    } else if down {
+        (-g.end_param(), -g.start_param())
+    } else {
+        (g.start_param(), g.end_param())
+    };
+    let wrap = |a: f64| a.rem_euclid(TAU);
+    (el.start_parameter, el.end_parameter) = if g.is_full() {
+        (start, end)
+    } else {
+        (wrap(start), wrap(end))
+    };
 }
 
 /// Points along an ellipse, in world coordinates (the codec would
@@ -973,6 +1081,11 @@ fn raised(item: DrawItem, z: f64) -> Option<SpaceItem> {
             .filter_map(|p| at(p.x(), p.y()))
             .collect(),
         Shape::Point(p) => at(p.x(), p.y()).into_iter().collect(),
+        Shape::Ellipse(e) => e
+            .flatten()
+            .into_iter()
+            .filter_map(|p| at(p.x(), p.y()))
+            .collect(),
         Shape::Circle(c) => {
             let center = Vector3::new(c.center().x(), c.center().y(), z);
             ocs_arc(up, center, c.radius(), 0.0, TAU)
@@ -1043,7 +1156,7 @@ fn ccw_range(start: f64, end: f64, counter_clockwise: bool) -> (f64, f64) {
 }
 
 /// The OCS of `normal` to world: AutoCAD's arbitrary axis algorithm.
-fn ocs_to_world(normal: Vector3) -> Transform {
+pub(crate) fn ocs_to_world(normal: Vector3) -> Transform {
     let len = (normal.x * normal.x + normal.y * normal.y + normal.z * normal.z).sqrt();
     if !(len.is_finite() && len > 0.0) {
         return Transform::identity();

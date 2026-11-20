@@ -1,0 +1,63 @@
+Rectangular ARRAY on the reference machine, 2026-11-19
+
+Machine and method as in operations.txt (same session, after #211):
+copies of their own built by `uv sync`, generated drawings only, fresh
+XDG folders, QSettings in a temporary INI directory, a monitor for heavy
+processes every 10 ms during every run (no hit). Series 19:57-20:01.
+
+Harnesses (SHA-256):
+  array_timing.py   15fcde5f2393a39d2b632ba5d9f178c5033ba527e4e19bf1ecb217d90b7a789a
+  array_frames.py   8b9303ac3e260d9cb0ab0798fe20fb932e1cc13bfbb1b0508dd5c3c3fa358755
+
+== The development diagnostic, repeated (#191)
+
+TESTING_AND_PERFORMANCE.md, "Rectangular ARRAY diagnostic comparison":
+base 755c67c9ec6ddf11bb421f9026119a0b1c7e2a94, 99 copy_entities calls in
+one doc.group("ARRAYRECT"); candidate
+7e76d2d90f9e685bc8edfa357904f2de103f0521, one
+rectangular_array(ids, 10, 10, 20, 20, 0). 100 lines, line i from
+(i % 10, i // 10) to (+0.5, 0), arrayed into 10,000 entities. Each call is
+checked for 10,000 entities, the last copy at (189,189)-(189.5,189) and the
+ARRAYRECT history entry, then undone to 100 entities. Garbage collection off
+during the loop; 2 warm-ups and 10 samples a run; five runs alternating
+B/C, C/B, ...
+
+  Run     Grouped COPY, ms   ARRAY, ms
+  1       60.8370            40.7091
+  2       56.0168            40.6519
+  3       57.2082            40.2229
+  4       55.6042            41.0754
+  5       54.2654            40.3257
+  Pooled  56.1196            40.5945    ARRAY / COPY 0.7234
+
+The development host gave 0.718: the same improvement on the floor.
+
+== ARRAY in the main window, on main ab94cc8
+
+The real MainWindow, 1366 x 740 on the X11 desktop (a 1098 x 347
+physical-pixel viewport with the default panels, scaling 1). The renderer
+the application chooses (OpenGL ES on the GT 730, "gpu") or the CPU through
+MainWindow's safe mode, as --safe-mode ("cpu"). A generated drawing of N
+lines (line i from (i mod s, i div s), s = ceil(sqrt N), half a unit long)
+is opened, all of it selected, and ARRAY typed with its answers: 10 rows,
+10 columns, spacing s+10 both ways, angle 0. Times from the command typed:
+the copies made and reported ("command"); the events handled and the first
+frame painted ("frame"). Then zoom to extents and 57 pan or zoom frames
+(each a redraw and a repaint), and undo to its frame. Three runs each,
+medians; pan and zoom are median / 95th percentile of each run.
+
+  Renderer  Result entities  Command  Frame   Undo frame  Pan (3 runs)                         Zoom (3 runs)
+  cpu       10,000           89.0     98.1    8.0         6.45/8.70  5.88/7.98  6.15/8.17      4.46/5.81  4.34/5.06  4.55/6.05
+  cpu       100,000          597.2    608.8   64.8        33.40/42.26 32.81/42.68 34.69/42.88  18.50/22.16 19.30/22.51 19.11/22.76
+  gpu       10,000           82.0     91.1    16.7        16.63/16.73 16.61/16.72 16.62/16.76  16.63/16.73 16.64/16.72 16.63/16.76
+  gpu       100,000          624.3    657.8   72.4        16.62/16.74 16.62/16.72 16.63/16.74  16.63/16.76 16.63/16.72 16.63/16.73
+
+Every run checked N x 100 entities, one ARRAYRECT undo step, and the
+original N after undo.
+
+Reading: an array of 10,000 entities shows in about a tenth of a second;
+the largest allowed, 100,000, in about 0.6 s, which is the ceiling's own
+cost (the copies, their index and their scene) and is one command, not a
+frame. Afterwards the GPU draws the 100,000 entities at the display's
+refresh, and the CPU at 33 ms panning in this viewport, as for any drawing
+of that size (gpu-viewport-report.txt: 46 ms at 1200 x 650).

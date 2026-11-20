@@ -248,6 +248,43 @@ fn a_hatch_is_drawn_by_its_boundary() {
     assert!(items.iter().all(|i| i.color == Color::Index(1)));
 }
 
+#[test]
+fn a_hatch_bounded_by_whole_circles_draws_them() {
+    // AutoCAD stores a circular boundary as one ARC edge from 0° to 360°:
+    // here around (3,4), radius 2, counterclockwise, and around (10,0),
+    // radius 1, clockwise. Each is a circle, never the hatch's box (trees
+    // in real drawings, blocks of circles and a solid fill).
+    // Mirrored (normal -Z), world x is -x.
+    for (normal_z, sign) in [("1", 1.0), ("-1", -1.0)] {
+        let doc = hatch(
+            normal_z,
+            &[
+                "91", "2", //
+                "92", "1", "93", "1", "72", "2", "10", "3", "20", "4", "40", "2", "50", "0", "51",
+                "360", "73", "1", "97", "0", //
+                "92", "1", "93", "1", "72", "2", "10", "10", "20", "0", "40", "1", "50", "0", "51",
+                "360", "73", "0", "97", "0",
+            ],
+        );
+        let items = shapes(&doc);
+        let circles: Vec<(Point2, f64)> = items
+            .iter()
+            .filter_map(|i| match i.shape {
+                Shape::Circle(c) => Some((c.center(), c.radius())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!((circles.len(), items.len()), (2, 2), "{items:?}");
+        let wanted = [(p(3.0 * sign, 4.0), 2.0), (p(10.0 * sign, 0.0), 1.0)];
+        for ((center, radius), (at, r)) in circles.iter().zip(wanted) {
+            assert!(
+                near(*center, at) && (radius - r).abs() < 1e-12,
+                "{center:?} {radius}"
+            );
+        }
+    }
+}
+
 /// The box of everything drawn.
 fn extent(items: &[DrawItem]) -> Bounds2 {
     items
@@ -1262,4 +1299,111 @@ fn a_thick_polyline_rises_in_space_and_its_band_stays_in_plan() {
         v3(0.0, 0.0, 1.0),
     )]);
     assert_eq!(in_space(&doc).len(), 4);
+}
+
+#[test]
+fn an_ellipse_in_the_plan_draws_the_chords_it_always_drew() {
+    // Upward and downward normals, a whole ellipse, a half, and an arc
+    // past 2π: the exact shape's chords are those of the old segments,
+    // which tilted ellipses still draw (ADR 0040).
+    let ellipse = |normal_z: &'static str, start: &'static str, end: &'static str| {
+        dxf(
+            LAYERS,
+            &[],
+            &[&[
+                "0", "ELLIPSE", "8", "0", "10", "3", "20", "-1", "30", "0", "11", "2", "21", "1",
+                "31", "0", "210", "0", "220", "0", "230", normal_z, "40", "0.4", "41", start, "42",
+                end,
+            ]],
+        )
+    };
+    let chords = |points: Vec<Point2>| {
+        let mut c: Vec<[(f64, f64); 2]> = points
+            .windows(2)
+            .map(|w| {
+                let r = |p: Point2| ((p.x() * 1e9).round() / 1e9, (p.y() * 1e9).round() / 1e9);
+                let mut pair = [r(w[0]), r(w[1])];
+                pair.sort_by(|a, b| a.partial_cmp(b).unwrap());
+                pair
+            })
+            .collect();
+        c.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        c
+    };
+    for normal in ["1", "-1"] {
+        for (start, end) in [
+            ("0", "6.283185307179586"),
+            ("0", "3.141592653589793"),
+            ("4.5", "1.2"),
+        ] {
+            let doc = ellipse(normal, start, end);
+            let items = shapes(&doc);
+            let [
+                DrawItem {
+                    shape: Shape::Ellipse(e),
+                    ..
+                },
+            ] = items[..]
+            else {
+                panic!("one exact ellipse: {items:?}")
+            };
+            let raw = doc
+                .cad()
+                .entities()
+                .find_map(|e| match e {
+                    EntityType::Ellipse(el) => Some(el.clone()),
+                    _ => None,
+                })
+                .unwrap();
+            let old: Vec<Point2> = ellipse_points(&raw)
+                .into_iter()
+                .map(|v| Point2::new(v.x, v.y).unwrap())
+                .collect();
+            assert_eq!(
+                chords(e.flatten()),
+                chords(old),
+                "normal {normal}, {start}..{end}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_ellipse_seen_from_below_turns_and_mirrors_where_it_is_drawn() {
+    // Normal (0,0,-1), parameters 0.5 to 2: drawn clockwise from above.
+    let doc_of = || {
+        dxf(
+            LAYERS,
+            &[],
+            &[&[
+                "0", "ELLIPSE", "8", "0", "10", "3", "20", "-1", "30", "0", "11", "2", "21", "1",
+                "31", "0", "210", "0", "220", "0", "230", "-1", "40", "0.4", "41", "0.5", "42",
+                "2",
+            ]],
+        )
+    };
+    let only = |doc: &Document| -> (EntityId, arq_geometry::Ellipse) {
+        let (id, items) = doc.drawing_all().into_iter().next().unwrap();
+        let Shape::Ellipse(e) = items[0].shape else {
+            panic!("{items:?}")
+        };
+        (id, e)
+    };
+    let axis = Line::new(p(0.0, 0.0), p(1.0, 2.0)).unwrap();
+    for t in [
+        arq_geometry::Transform2::rotation(p(1.0, 1.0), 0.9).unwrap(),
+        arq_geometry::Transform2::mirror(axis),
+    ] {
+        let mut doc = doc_of();
+        let (id, before) = only(&doc);
+        let raw = doc.cad_mut().get_entity_mut(handle(id)).unwrap();
+        crate::translate::transform_whole(raw, t);
+        let (_, after) = only(&doc);
+        for i in 0..=6 {
+            let q =
+                before.point_at_param(before.start_param() + before.sweep() * f64::from(i) / 6.0);
+            assert!(after.distance_to(t.apply_point(q)) < 1e-9, "{t:?}");
+        }
+        assert!((after.sweep() - before.sweep()).abs() < 1e-12);
+    }
 }

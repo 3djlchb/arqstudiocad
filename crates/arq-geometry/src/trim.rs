@@ -5,6 +5,7 @@ use std::f64::consts::TAU;
 
 use crate::arc::Arc;
 use crate::crossings::{circle_circle, line_circle, line_line};
+use crate::ellipse::Ellipse;
 use crate::error::{GeometryError, GeometryResult};
 use crate::geometry::Geometry2;
 use crate::intersect::intersect;
@@ -26,6 +27,8 @@ fn parameter(curve: Geometry2, p: Point2) -> f64 {
         }
         Geometry2::Arc(a) => ((p - a.center()).angle() - a.start_angle()).rem_euclid(TAU),
         Geometry2::Circle(c) => (p - c.center()).angle().rem_euclid(TAU),
+        Geometry2::Ellipse(e) if e.is_full() => e.param_of(p),
+        Geometry2::Ellipse(e) => crate::angle::ccw_sweep(e.start_param(), e.param_of(p)),
     }
 }
 
@@ -35,6 +38,7 @@ fn span(curve: Geometry2) -> f64 {
         Geometry2::Line(_) => 1.0,
         Geometry2::Arc(a) => a.sweep(),
         Geometry2::Circle(_) => TAU,
+        Geometry2::Ellipse(e) => e.sweep(),
     }
 }
 
@@ -57,6 +61,19 @@ fn piece(curve: Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometr
             .ok()
             .filter(|n| n.length() > tol.linear())
             .map(Geometry2::Arc),
+        Geometry2::Ellipse(e) => {
+            let start = if e.is_full() { 0.0 } else { e.start_param() };
+            Ellipse::new(
+                e.center(),
+                e.major_axis(),
+                e.ratio(),
+                start + from,
+                start + to,
+            )
+            .ok()
+            .filter(|n| n.length() > tol.linear())
+            .map(Geometry2::Ellipse)
+        }
     }
 }
 
@@ -81,6 +98,7 @@ pub fn trim(
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Vec<Geometry2>>> {
+    refuse_ellipse(curve)?;
     let total = span(curve);
     let at = parameter(curve, curve.closest_point(pick));
     let end_slack = tol.linear() / curve.length().max(tol.linear()) * total;
@@ -145,6 +163,7 @@ pub fn break_curve(
     second: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Vec<Geometry2>> {
+    refuse_ellipse(curve)?;
     let a = parameter(curve, curve.closest_point(first));
     let b = parameter(curve, curve.closest_point(second));
     if !a.is_finite() || !b.is_finite() {
@@ -193,6 +212,7 @@ pub fn extend(
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Geometry2>> {
+    refuse_ellipse(curve)?;
     let at_end = extends_at_end(curve, pick);
     // Where the curve's line or circle meets each edge, on the edge.
     let reach: Vec<Point2> = edges
@@ -219,7 +239,10 @@ pub fn extend(
                 (Geometry2::Arc(a), Geometry2::Arc(b)) => {
                     circle_circle(a.center(), a.radius(), b.center(), b.radius(), tol)
                 }
-                (Geometry2::Circle(_), _) => Vec::new(),
+                // An ellipse bounds EXTEND in the next delivery (ADR 0041).
+                (_, Geometry2::Ellipse(_)) | (Geometry2::Circle(_) | Geometry2::Ellipse(_), _) => {
+                    Vec::new()
+                }
             };
             found
                 .into_iter()
@@ -228,7 +251,9 @@ pub fn extend(
         })
         .collect();
     match curve {
-        Geometry2::Circle(_) => Err(GeometryError::OutOfRange { what: "curve" }),
+        Geometry2::Circle(_) | Geometry2::Ellipse(_) => {
+            Err(GeometryError::OutOfRange { what: "curve" })
+        }
         Geometry2::Line(l) => {
             // Beyond the end picked, the nearest.
             let beyond = |t: f64| if at_end { t - 1.0 } else { -t };
@@ -277,6 +302,15 @@ pub fn extend(
                 .transpose()?
                 .map(Geometry2::Arc))
         }
+    }
+}
+
+/// An ellipse is trimmed, extended and broken in the next delivery (ADR
+/// 0041); until then refused, nothing changed.
+fn refuse_ellipse(curve: Geometry2) -> GeometryResult<()> {
+    match curve {
+        Geometry2::Ellipse(_) => Err(GeometryError::OutOfRange { what: "curve" }),
+        _ => Ok(()),
     }
 }
 

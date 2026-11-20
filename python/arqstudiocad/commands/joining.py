@@ -1,8 +1,9 @@
-"""JOIN, following AutoCAD 2021's: lines and arcs for now
-(``docs/design/join-command.md``).
+"""JOIN, following AutoCAD 2021's (``docs/design/join-command.md``).
 
-One object selected is the source, and the lines or arcs selected next are
-joined to it; several selected at once are grouped and joined together.
+One object selected is the source: a line takes collinear lines, an arc the
+arcs of its circle, an open polyline the lines, arcs and polylines whose
+ends touch it. Several selected at once are joined together: chains of
+touching ends, and lines and arcs of one line or circle.
 """
 
 from collections.abc import Generator
@@ -20,8 +21,8 @@ from arqstudiocad.commands.modify import Ids, done_selecting
 from arqstudiocad.core import CadDocument, CadError
 from arqstudiocad.i18n import tr
 
-#: What can join in this version, and be a source.
-JOINABLE = ("LINE", "ARC")
+#: What can join, and be a source; a polyline when it is open.
+JOINABLE = ("LINE", "ARC", "LWPOLYLINE")
 
 
 def join(ctx: CommandContext) -> CommandScript:
@@ -41,15 +42,21 @@ def join(ctx: CommandContext) -> CommandScript:
         return
     source = chosen[0]
     entity = document.get_entity(source)
-    if entity.kind not in JOINABLE or entity.geometry is None:
-        ctx.message(tr("JOIN currently joins lines and arcs only."))
+    in_plan = entity.kind == "LWPOLYLINE" or entity.geometry is not None
+    if entity.kind not in JOINABLE or not in_plan:
+        ctx.message(tr("JOIN joins lines, arcs and open polylines."))
         return
+    if entity.kind == "LWPOLYLINE" and dict(entity.details).get("Closed") == "true":
+        ctx.message(tr("A closed polyline cannot be joined."))
+        return
+    options: list[Option] = []
     if entity.kind == "ARC":
         message = tr("Select arcs to join to source")
         options = [Option("L", tr("Close"))]
-    else:
+    elif entity.kind == "LINE":
         message = tr("Select lines to join to source")
-        options = []
+    else:
+        message = tr("Select objects to join to source")
     others = yield from _selected(ctx, document, message, options)
     if others == "L":
         try:

@@ -200,3 +200,28 @@ fn break_circle_removes_the_directed_counterclockwise_gap() {
     assert!(break_curve(circle, p(5.0, 0.0), p(5.0, 0.0), TOL).is_err());
     assert!(break_curve(circle, p(5.0, 0.0), p(5.0, 1e-12), TOL).is_err());
 }
+
+#[test]
+fn an_ellipse_is_not_trimmed_extended_broken_or_offset_yet() {
+    // Its edits come in the next delivery, OFFSET with SPLINE (ADR 0041):
+    // refused, nothing made.
+    use crate::{Ellipse, Vector2};
+    let e: Geometry2 = Ellipse::new(p(0.0, 0.0), Vector2::new(5.0, 0.0).unwrap(), 0.6, 0.0, PI)
+        .unwrap()
+        .into();
+    let edge = line((0.0, -1.0), (0.0, 9.0));
+    let tol = Tolerance::DEFAULT;
+    assert!(trim(e, &cutting_points(e, &[edge], tol), p(3.0, 2.0), tol).is_err());
+    assert!(extend(e, &[edge], p(5.0, 0.0), tol).is_err());
+    assert!(break_curve(e, p(4.0, 1.8), p(-4.0, 1.8), tol).is_err());
+    assert!(e.offset(1.0, p(0.0, 9.0), tol).is_err());
+    assert!(e.offset_through(p(0.0, 9.0), tol).is_err());
+    // As an edge it cuts a line it crosses, and bounds no EXTEND yet.
+    let cut = line((-9.0, 1.8), (9.0, 1.8));
+    assert_eq!(cutting_points(cut, &[e], tol).len(), 2);
+    assert!(
+        extend(line((-9.0, 1.8), (-6.0, 1.8)), &[e], p(-6.0, 1.8), tol)
+            .unwrap()
+            .is_none()
+    );
+}

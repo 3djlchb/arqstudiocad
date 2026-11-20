@@ -118,3 +118,98 @@ fn many_at_once_groups_collinear_lines_and_arcs_of_one_circle() {
     ];
     assert_eq!(join_groups(&curves, TOL), vec![vec![0, 3], vec![1, 4]]);
 }
+
+fn path(points: &[(f64, f64)]) -> JoinPath {
+    JoinPath {
+        vertices: points.iter().map(|&(x, y)| (p(x, y), 0.0)).collect(),
+        widths: vec![(0.0, 0.0); points.len() - 1],
+    }
+}
+
+fn points(path: &JoinPath) -> Vec<(f64, f64)> {
+    path.vertices.iter().map(|(q, _)| (q.x(), q.y())).collect()
+}
+
+#[test]
+fn paths_chain_at_either_end_turned_round_when_needed() {
+    let first = path(&[(0.0, 0.0), (1.0, 0.0)]);
+    let others = [
+        path(&[(1.0, 0.0), (1.0, 1.0)]),    // starts at its end
+        path(&[(-1.0, 0.0), (0.0, 0.0)]),   // ends at its start
+        path(&[(2.0, 1.0), (1.0, 1.0)]),    // ends at the new end: turned round
+        path(&[(-1.0, -1.0), (-1.0, 0.0)]), // ends at the new start
+        path(&[(9.0, 9.0), (8.0, 8.0)]),    // touches nothing
+    ];
+    let chain = chain_paths(&first, &others, TOL);
+    assert_eq!(chain.taken, vec![0, 1, 2, 3]);
+    assert!(!chain.closed);
+    assert_eq!(
+        points(&chain.path),
+        [
+            (-1.0, -1.0),
+            (-1.0, 0.0),
+            (0.0, 0.0),
+            (1.0, 0.0),
+            (1.0, 1.0),
+            (2.0, 1.0)
+        ]
+    );
+    assert_eq!(chain.path.widths.len(), 5);
+}
+
+#[test]
+fn a_path_turned_round_turns_its_arcs_and_widths_too() {
+    let arc_path = JoinPath::arc(arc(0.0, FRAC_PI_2));
+    let bulge = arc_path.vertices[0].1;
+    assert!((bulge - (FRAC_PI_2 / 4.0).tan()).abs() < 1e-15);
+    let mut wide = path(&[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
+    wide.vertices[1].1 = 0.5;
+    wide.widths = vec![(0.1, 0.2), (0.3, 0.4)];
+    let back = wide.reversed();
+    assert_eq!(points(&back), [(2.0, 0.0), (1.0, 0.0), (0.0, 0.0)]);
+    assert_eq!(
+        back.vertices.iter().map(|v| v.1).collect::<Vec<_>>(),
+        [-0.5, 0.0, 0.0]
+    );
+    assert_eq!(back.widths, [(0.4, 0.3), (0.2, 0.1)]);
+    assert_eq!(back.reversed(), wide, "twice is the same path");
+}
+
+#[test]
+fn a_chain_that_comes_back_to_its_start_closes() {
+    let first = path(&[(0.0, 0.0), (4.0, 0.0)]);
+    let others = [
+        path(&[(4.0, 3.0), (4.0, 0.0)]),
+        path(&[(0.0, 3.0), (4.0, 3.0)]),
+        path(&[(0.0, 0.0), (0.0, 3.0)]),
+        path(&[(0.0, 0.0), (-5.0, 0.0)]), // once closed, nothing more joins
+    ];
+    let chain = chain_paths(&first, &others, TOL);
+    assert!(chain.closed);
+    assert_eq!(chain.taken, vec![0, 1, 2]);
+    assert_eq!(
+        points(&chain.path),
+        [(0.0, 0.0), (4.0, 0.0), (4.0, 3.0), (0.0, 3.0)]
+    );
+    assert_eq!(chain.path.widths.len(), 4, "the closing segment kept");
+}
+
+#[test]
+fn at_a_branch_only_the_first_path_selected_joins() {
+    let first = path(&[(0.0, 0.0), (1.0, 0.0)]);
+    let others = [
+        path(&[(1.0, 0.0), (2.0, 1.0)]),
+        path(&[(1.0, 0.0), (2.0, -1.0)]),
+    ];
+    let chain = chain_paths(&first, &others, TOL);
+    assert_eq!(chain.taken, vec![0]);
+    assert_eq!(chain.path.end(), p(2.0, 1.0));
+}
+
+#[test]
+fn nothing_touching_leaves_the_path_as_it_was() {
+    let first = path(&[(0.0, 0.0), (1.0, 0.0)]);
+    let chain = chain_paths(&first, &[path(&[(1.1, 0.0), (2.0, 0.0)])], TOL);
+    assert!(chain.taken.is_empty() && !chain.closed);
+    assert_eq!(chain.path, first);
+}
