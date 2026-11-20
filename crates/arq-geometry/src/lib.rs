@@ -123,7 +123,7 @@ pub use polyline_trim::{
 };
 pub use rectangle::{Corners, Rectangle};
 pub use region::{Containment, Region};
-pub use selection_polygon::{CrossingArea, SelectionPolygon};
+pub use selection_polygon::{CrossingArea, SelectionPolygon, selection_polygons};
 pub use tolerance::Tolerance;
 pub use transform::Transform2;
 pub use transform3::Transform3;

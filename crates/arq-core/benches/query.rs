@@ -192,5 +192,74 @@ fn quick_edits(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, queries, quick_edits);
+/// A crossing polygon of 402 corners: a tooth around each line end
+/// `(3k+1, 0)`, rising from a base below the row.
+fn comb() -> Vec<Point2> {
+    let mut points = Vec::new();
+    for k in 0..100 {
+        let e = f64::from(k) * 3.0 + 1.0;
+        points.extend([
+            p(e - 0.1, -0.2),
+            p(e - 0.1, 0.2),
+            p(e + 0.1, 0.2),
+            p(e + 0.1, -0.2),
+        ]);
+    }
+    points.extend([p(298.2, -0.4), p(0.8, -0.4)]);
+    points
+}
+
+/// STRETCH with one crossing polygon over 100 selected lines, given once
+/// per entity as the viewport gives it: validating the polygon for every
+/// pair against once for all (`selection_polygons`), and the preview.
+fn stretch_polygon(c: &mut Criterion) {
+    use arq_geometry::{SelectionPolygon, Tolerance, Vector2, selection_polygons};
+    use std::time::Duration;
+    let mut doc = Document::new();
+    let layer = doc.current_layer().id();
+    let mut ids = Vec::new();
+    for i in 0..100_000_u32 {
+        let (x, y) = (f64::from(i % 1000) * 3.0, f64::from(i / 1000) * 3.0);
+        let line = Line::new(p(x, y), p(x + 1.0, y)).expect("line");
+        let id = doc
+            .add_entity(PlanGeometry::new(line.into()), layer)
+            .expect("add");
+        if i < 100 {
+            ids.push(id);
+        }
+    }
+    let cad = CadDocument::from_document(doc);
+    let pairs: Vec<_> = ids.iter().map(|&id| (id, comb())).collect();
+    let tol = Tolerance::DEFAULT;
+    let offset = Vector2::new(2.0, 3.0).expect("finite");
+    let polygons = selection_polygons(pairs.clone(), tol).expect("valid");
+    let shapes = cad
+        .stretch_preview(&ids, offset, &[], &polygons)
+        .expect("preview");
+    assert_eq!(shapes.len(), 100);
+
+    let mut group = c.benchmark_group("STRETCH crossing polygon");
+    group
+        .sample_size(20)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(5));
+    group.bench_function("validate per pair (402 corners x 100)", |b| {
+        b.iter(|| {
+            let each: Vec<_> = pairs
+                .iter()
+                .map(|(id, points)| (*id, SelectionPolygon::new(points.clone(), tol).unwrap()))
+                .collect();
+            black_box(each)
+        });
+    });
+    group.bench_function("validate shared (402 corners x 100)", |b| {
+        b.iter(|| black_box(selection_polygons(pairs.clone(), tol).unwrap()));
+    });
+    group.bench_function("preview, polygons validated", |b| {
+        b.iter(|| black_box(cad.stretch_preview(&ids, offset, &[], &polygons).unwrap()));
+    });
+    group.finish();
+}
+
+criterion_group!(benches, queries, quick_edits, stretch_polygon);
 criterion_main!(benches);
