@@ -25,6 +25,12 @@ def state_setting(discipline: str, layout: Layout) -> str:
     return f"workspace/{discipline}/{layout}/state"
 
 
+def budget_moved_setting(discipline: str, layout: Layout) -> str:
+    """Whether this workspace's saved arrangement has had its Budget panel
+    moved to the palettes (maintainer, 2026-11-19), which happens once."""
+    return f"workspace/{discipline}/{layout}/budget_in_palettes"
+
+
 def as_layout(value: object) -> Layout | None:
     """A layout read back from the settings; None if it is not one."""
     return next((layout for layout in LAYOUTS if layout == value), None)
