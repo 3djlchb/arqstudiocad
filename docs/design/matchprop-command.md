@@ -79,7 +79,7 @@ Each was verified by sabotage.
 
 Validation on LMDE 7 is internal.
 
-## Windows comparison (to run)
+## Windows comparison
 
 Three cases are in both comparison tools, as 02.14's others
 ([method](../testing/commands-02-14-windows.md)). The LISP dump now also
@@ -99,3 +99,9 @@ properties are left to the Rust tests.
 
 The LISP dump also describes texts and MTEXTs (insertion point, words,
 height, style, and a text's width factor, oblique angle and rotation).
+
+**Run on 2026-11-20** ([results](../testing/commands-02-14-windows.md#join-on-polylines-matchprop-and-ellipse-2026-11-20)): M1, M4 and M5 the same as
+ProgeCAD. Kept by the maintainer's choice: M2, the same widths written per
+vertex by ProgeCAD; M3, where ProgeCAD tapers the target's first segment
+and ours, as AutoCAD documents, gives no varying width; M6, where ProgeCAD
+also gives the rotation and ours never does.

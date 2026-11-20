@@ -63,42 +63,72 @@ Every case reads back the same from our DWG and from our DXF.
 
 **The drawings are not committed:** the two tools reproduce them.
 
-## To run: JOIN on polylines (J3–J7)
+## JOIN on polylines, MATCHPROP and ELLIPSE (2026-11-20)
 
-Added to both tools on 2026-11-17 with JOIN's second delivery: a constant
-width meeting a line, two widths, a rectangle of lines many at once, a
-branch, and a line with an arc. What ours gives, and what to confirm, is in
-[JOIN's design](../design/join-command.md#windows-comparison-of-the-polylines-to-run).
+The cases added with JOIN's second delivery, MATCHPROP and ELLIPSE, run in
+ProgeCAD 2026 on Windows with the maintainer's go-ahead, by the same method
+and tools as above. Every earlier case ran again with them.
 
-## To run: MATCHPROP (M1–M3)
+**41 cases** (M6 in ProgeCAD only): ProgeCAD's 41 results and our 40, each
+in DWG and DXF, all 121 files reopened by ProgeCAD from its command line and
+described with `arq:dump-full`, layer, color, linetype, linetype scale,
+lineweight, thickness and transparency included.
 
-Added on 2026-11-17: a line's layer and color given to a circle, a
-polyline's width and thickness, and a varying width that is not given. The
-dump now also writes each entity's linetype, linetype scale, lineweight,
-thickness and transparency. What ours gives is in
-[MATCHPROP's design](../design/matchprop-command.md#windows-comparison-to-run).
+**33 of the 41 are the same as ProgeCAD's**, entity for entity, and every
+case reads back the same from our DWG and from our DXF.
 
-Text cases M4–M6 added the same day: a text's height given to a text and
-to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
-oblique angle and rotation, to see which ProgeCAD gives. The dump now
-describes texts and MTEXTs.
+| Commands | Cases | Result |
+|---|---|---|
+| The earlier 26 | O, T, E, S, F, C, B, J1–J2, R | as before: the same, but C2, J1 and O5 (above); R3 now the same, since the rule changed |
+| JOIN on polylines | J3 a width meeting a line, J4 two widths, J5 a rectangle many at once, J6 a branch, J7 a line and an arc | J4, J6, J7 the same; **J3** and J5 differ (below) |
+| MATCHPROP | M1 layer and color, M2 a width and thickness, M3 a varying width, M4 a text's height, M5 a text's height to an MTEXT | M1, M4, M5 the same; M2 and M3 differ (below) |
+| MATCHPROP, ProgeCAD only | M6 a text in style ROTULO, width factor 0.8, oblique 15°, rotated 30° | ProgeCAD gives all four (below) |
+| ELLIPSE | EL1 axis and distance, EL2 Center, EL3 Rotation, EL4 Arc | **all the same**, the arc's angles counted from the first axis point, as ours |
 
-## To run: ELLIPSE (EL1–EL12, and its grips by hand)
+**JOIN of a constant width and a line (J3).**
+- **The difference.** ProgeCAD gives the joined line the polyline's width: vertices (0,0), (4,0) and (4,3) with widths 0.5/0.5, 0.5/0.5 and 0/0. Ours keeps the line's 0.
+- **Decision.** The maintainer chose to match ProgeCAD (2026-11-20), in a pull request of its own.
 
-By hand, on an ellipse about (0,0) with semi-axes 5 and 3, and on its
-first quarter, compared with
-[ELLIPSE's design](../design/ellipse-command.md): which grips show; the
-center grip moved; the grip at (5,0) taken to (8,1); the grip at (0,3)
-taken to (0,7), past the major; the quarter's end at (0,3) taken toward
-(−10,0). And the Properties panel's Start and End angle of the quarter,
-against the dump's `start-angle` and `end-angle`.
+**JOIN of four lines many at once (J5).** The same closed rectangle, counterclockwise in both; ProgeCAD starts at (0,3), ours at (0,0). The maintainer chose to keep ours (2026-11-20).
 
-Added on 2026-11-20: EL5–EL9, an ellipse trimmed, extended and broken,
-and a line extended to an ellipse; EL10–EL12, ellipses stretched (ADR
-0041).
+**MATCHPROP of a constant width (M2).** The same widths drawn: ProgeCAD writes 0.5 at each vertex with no constant width, ours sets the constant width 0.5. The maintainer chose to keep ours (2026-11-20).
 
-Added on 2026-11-17: by an axis and a distance, by its Center, by a
-Rotation, and an elliptical Arc whose first axis points west. The dump now
-describes ellipses (center, major axis, ratio, parameters). What ours
-gives, and what to confirm, is in
-[ELLIPSE's design](../design/ellipse-command.md#windows-comparison-to-run).
+**MATCHPROP from a varying width (M3).**
+- **ProgeCAD** leaves the target's first segment tapering from 0.2 to 0.8, the first source segment's start and the second's width.
+- **Ours** gives no width, so the target keeps 0.25. AutoCAD's documentation says the same: a source polyline of varying width gives no width.
+- **Decision.** The maintainer chose to keep ours (2026-11-20).
+
+**MATCHPROP of a text's look (M6).** ProgeCAD gives the style, the width factor, the oblique angle and the rotation. Ours, by its design (option A), gives the first three and never the rotation. The maintainer chose to keep ours (2026-11-20): matching properties does not turn a drawing's texts. Our tool cannot build this source yet; the rule is covered by the Rust tests.
+
+## ELLIPSE edits (2026-11-20)
+
+The cases added with the ellipse as a curve (ADR 0041), run the same day
+after merging them, with TRIM, EXTEND, BREAK and STRETCH's earlier cases
+again: 23 cases, 67 files reopened.
+
+| Commands | Cases | Result |
+|---|---|---|
+| TRIM, EXTEND, BREAK | EL5 a whole ellipse trimmed, EL6 an arc cut in the middle, EL7 an arc extended, EL8 a whole ellipse broken, EL9 a line extended to an ellipse | **all the same** |
+| STRETCH | EL10 a whole ellipse, EL11 an arc with both ends in the window | the same |
+| STRETCH | EL12 an arc with one end in the window | differs (below) |
+| The earlier TRIM, EXTEND, BREAK, STRETCH | T1–T3, E1–E2, B1–B4, S1–S2 | the same, as before |
+
+**A whole ellipse stretched (EL10).**
+- **The case was wrong at first.** Its crossing window lay round the center and touched no part of the ellipse, so ProgeCAD selected nothing. Ours, given the ellipse directly, moved it.
+- **Probed again,** with a window crossing the ellipse: ProgeCAD moves a whole ellipse when the window holds its center, and leaves it when it does not. Ours does the same in both.
+- **The case** now uses the crossing window, in both tools.
+
+**An arc stretched by one end (EL12).**
+- **ProgeCAD** reshapes it into another ellipse: center (0.4378,−0.0950), major axis (5.5782,−0.2137), ratio 0.5538.
+- **Ours** refuses it, by its design, and changes nothing.
+- **Decision.** The maintainer chose to keep the refusal (2026-11-20). ProgeCAD's rule is not evident, and changes the whole ellipse.
+
+## To run by hand: ELLIPSE grips and Properties
+
+Added on 2026-11-20 with the ellipse's grips and Properties (ADR 0041). By
+hand, on an ellipse about (0,0) with semi-axes 5 and 3, and on its first
+quarter, compared with [ELLIPSE's design](../design/ellipse-command.md):
+which grips show; the center grip moved; the grip at (5,0) taken to (8,1);
+the grip at (0,3) taken to (0,7), past the major; the quarter's end at
+(0,3) taken toward (−10,0). And the Properties panel's Start and End angle
+of the quarter, against the dump's `start-angle` and `end-angle`.

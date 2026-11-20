@@ -472,7 +472,9 @@
   (arq:command-case "EL6-trim-ellipse-arc-middle" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 pi) (arq:ln doc '(0 0) '(0 9)) (arq:ln doc '(-4 0) '(-4 9))) '(command "_.TRIM" '(-2.5 2.598076211) "") dir log)
   (arq:command-case "EL7-extend-ellipse-arc" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2)) (arq:ln doc '(-4 -9) '(-4 9))) '(arq:extend (cadr arq:o) '(0.2 2.997599)) dir log)
   (arq:command-case "EL8-break-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(5 0) '(0 3)) dir log)
-  (arq:command-case "EL10-stretch-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.STRETCH" "_C" '(1 1) '(-1 -1) "" '(0 0) '(2 3)) dir log)
+  ;; EL10: the window crosses the ellipse and holds its center (a window
+  ;; round the center alone selects nothing: crossing selects what it touches).
+  (arq:command-case "EL10-stretch-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.STRETCH" "_C" '(6 1) '(-1 -1) "" '(0 0) '(2 3)) dir log)
   (arq:command-case "EL11-stretch-ellipse-arc-both-ends" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 4) '(-1 -1) "" '(0 0) '(1 0)) dir log)
   (arq:command-case "EL12-stretch-ellipse-arc-one-end" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 1) '(4 -1) "" '(0 0) '(1 0)) dir log)
   (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
