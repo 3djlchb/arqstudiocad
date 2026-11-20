@@ -83,7 +83,15 @@ to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
 oblique angle and rotation, to see which ProgeCAD gives. The dump now
 describes texts and MTEXTs.
 
-## To run: ELLIPSE (EL1–EL12)
+## To run: ELLIPSE (EL1–EL12, and its grips by hand)
+
+By hand, on an ellipse about (0,0) with semi-axes 5 and 3, and on its
+first quarter, compared with
+[ELLIPSE's design](../design/ellipse-command.md): which grips show; the
+center grip moved; the grip at (5,0) taken to (8,1); the grip at (0,3)
+taken to (0,7), past the major; the quarter's end at (0,3) taken toward
+(−10,0). And the Properties panel's Start and End angle of the quarter,
+against the dump's `start-angle` and `end-angle`.
 
 Added on 2026-11-20: EL5–EL9, an ellipse trimmed, extended and broken,
 and a line extended to an ellipse; EL10–EL12, ellipses stretched (ADR

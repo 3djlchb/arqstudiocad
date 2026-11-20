@@ -59,6 +59,27 @@ STRETCH moves a whole ellipse when its center is inside the crossing
 area, as a circle, and an elliptical arc when both its ends are, as an
 arc; an arc with one end inside is refused, nothing changed.
 
+**Grips,** as AutoCAD (maintainer, 2026-11-20):
+
+- the center moves it;
+- an axis end sets that semi-axis to its distance from the center, its
+  direction and the other semi-axis kept; the longer becomes the major,
+  an arc keeping its place;
+- an elliptical arc's ends slide along the ellipse toward the cursor;
+- an arc shows only the axis ends on it, and none at its own ends.
+
+**Properties,** as AutoCAD:
+
+- editable: Center X and Y, Major radius, Minor radius (past the major,
+  they swap), Radius ratio (up to 1), and an arc's Start and End angle, in
+  degrees about the center from the major axis;
+- shown: the major axis's X and Y, an arc's start and end points, its
+  length and its area (an arc's, the sector from the center).
+
+To confirm in ProgeCAD: the angles (the LISP dump now writes its
+`StartAngle` and `EndAngle`), and the grips, by hand (see the Windows
+comparison).
+
 ## Reference and validation
 
 Behavioral reference: AutoCAD 2021 Help, "ELLIPSE (Command)". The
