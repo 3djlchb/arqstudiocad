@@ -3,7 +3,11 @@ by category with subtotals per currency, blocks without a cost apart, the
 whole drawing or the selection; and the Budget panel showing it, opened by
 BUDGET (PRESUPUESTO) or its button in the Palettes group."""
 
+from pathlib import Path
+
 import pytest
+from PySide6.QtCore import QSettings, Qt
+from PySide6.QtWidgets import QTabBar
 from pytestqt.qtbot import QtBot
 from test_blocks_palette import palette_button
 from ui_fakes import QuietUi
@@ -138,22 +142,87 @@ def opened(window: MainWindow) -> CadDocument:
     return document
 
 
-def test_budget_opens_the_panel_across_the_bottom(window: MainWindow, qtbot: QtBot) -> None:
+def test_budget_opens_the_panel_as_a_tab_among_the_palettes(window: MainWindow) -> None:
     panel = window.budget_panel
     assert panel.isHidden(), "closed at first"
     assert not palette_button(window, "BUDGET").isChecked()
+    # A palette beside Layers, Properties and Blocks (maintainer, 2026-11-19),
+    # no longer across the bottom by the command window. Qt lists only open
+    # docks as tabified.
+    assert window.dockWidgetArea(panel) == Qt.DockWidgetArea.RightDockWidgetArea
+    assert window.dockWidgetArea(window.command_window) == Qt.DockWidgetArea.BottomDockWidgetArea
     window.runner.execute("BUDGET")
     assert panel.isVisible()
-    assert window.dockWidgetArea(panel) == window.dockWidgetArea(window.command_window)
-    assert panel.geometry().bottom() < window.command_window.geometry().top(), "above it"
-    # Room for its rows on the first opening, once the layout settles.
-    qtbot.waitUntil(lambda: panel.height() > 250)
+    (bar,) = [
+        bar
+        for bar in window.findChildren(QTabBar)
+        if panel.windowTitle() in [bar.tabText(i) for i in range(bar.count())]
+    ]
+    assert bar.tabText(bar.currentIndex()) == panel.windowTitle(), "its tab in front"
+    assert window.layers_panel.windowTitle() in [bar.tabText(i) for i in range(bar.count())]
+    assert panel in window.tabifiedDockWidgets(window.layers_panel)
     assert palette_button(window, "BUDGET").isChecked()
     assert panel.footer.text() == "No drawing is open."
     assert not panel.table.isEnabled()
     window.runner.execute("NEW")
     assert panel.table.isEnabled()
     assert panel.footer.text() == "No block is placed in model space."
+
+
+def _window_with(qtbot: QtBot, settings: QSettings) -> MainWindow:
+    ui = QuietUi()
+    w = MainWindow(settings, ui=ui)
+    ui.panel_for = w.show_panel
+    qtbot.addWidget(w)
+    w.resize(1100, 700)
+    w.show()
+    qtbot.waitExposed(w)
+    return w
+
+
+def _to_the_bottom(window: MainWindow) -> None:
+    """The Budget panel where it was until 2026-11-19: across the bottom,
+    above the command window, open."""
+    panel = window.budget_panel
+    window.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, panel)
+    window.splitDockWidget(panel, window.command_window, Qt.Orientation.Vertical)
+    panel.show()
+    assert window.dockWidgetArea(panel) == Qt.DockWidgetArea.BottomDockWidgetArea
+
+
+def test_an_arrangement_saved_with_the_panel_at_the_bottom_moves_it_once(
+    qtbot: QtBot, tmp_path: Path
+) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    first = _window_with(qtbot, settings)
+    _to_the_bottom(first)
+    first.close()
+    second = _window_with(qtbot, settings)
+    panel = second.budget_panel
+    assert second.dockWidgetArea(panel) == Qt.DockWidgetArea.RightDockWidgetArea
+    assert panel in second.tabifiedDockWidgets(second.layers_panel)
+    assert not panel.isHidden(), "open as it was"
+    assert second.dockWidgetArea(second.command_window) == Qt.DockWidgetArea.BottomDockWidgetArea
+    # Put back at the bottom by hand, it stays there.
+    _to_the_bottom(second)
+    second.close()
+    third = _window_with(qtbot, settings)
+    assert third.dockWidgetArea(third.budget_panel) == Qt.DockWidgetArea.BottomDockWidgetArea
+    third.close()
+
+
+def test_a_closed_panel_at_the_bottom_moves_closed(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    first = _window_with(qtbot, settings)
+    _to_the_bottom(first)
+    first.budget_panel.hide()
+    first.close()
+    second = _window_with(qtbot, settings)
+    assert second.dockWidgetArea(second.budget_panel) == Qt.DockWidgetArea.RightDockWidgetArea
+    assert second.budget_panel.isHidden(), "closed as it was"
+    second.runner.execute("BUDGET")
+    assert second.budget_panel.isVisible()
+    assert second.budget_panel in second.tabifiedDockWidgets(second.layers_panel)
 
 
 def test_the_panel_shows_groups_subtotals_and_totals(window: MainWindow) -> None:

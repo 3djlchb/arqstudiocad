@@ -106,7 +106,7 @@ from arqstudiocad.ui.qt_translations import QtTranslations
 from arqstudiocad.ui.recent_menu import RecentFilesMenu
 from arqstudiocad.ui.theme import THEME_SETTING, THEMES, Theme, apply_theme, as_theme, theme_title
 from arqstudiocad.ui.viewport import GPU_VIEWPORT_ENV, Viewport, window_system
-from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher
+from arqstudiocad.ui.workspace_switcher import WorkspaceSwitcher, budget_moved_setting
 from arqstudiocad.workspaces import BLOCK_EDITOR, WorkspaceRegistry, builtin_workspaces
 
 LANGUAGE_SETTING = "language"
@@ -209,12 +209,11 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(self.layers_panel, self.history_panel, Qt.Orientation.Vertical)
         self.tabifyDockWidget(self.layers_panel, self.properties_panel)
         self.tabifyDockWidget(self.layers_panel, self.blocks_panel)
+        # The Budget panel, a palette among the others, closed at first
+        # (maintainer, 2026-11-19; across the bottom until then, ADR 0028).
+        self.tabifyDockWidget(self.layers_panel, self.budget_panel)
         # The Blocks palette starts closed, as AutoCAD's (ADR 0025 D2).
         self.blocks_panel.hide()
-        # The Budget panel, wide for its columns: across the bottom, above
-        # the command window, closed at first (maintainer, 2026-10-29).
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.budget_panel)
-        self.splitDockWidget(self.budget_panel, self.command_window, Qt.Orientation.Vertical)
         self.budget_panel.hide()
         self.layers_panel.raise_()
         #: The pins: a panel stays open, or collapses to a tab on its side.
@@ -427,6 +426,7 @@ class MainWindow(QMainWindow):
 
         self.resize(1024, 700)
         self.retranslate()
+        self.workspaces.after_restore.append(self._budget_in_palettes)
         self.workspaces.after_restore.append(self.auto_hide.keep_hidden)
         self.workspaces.after_restore.append(self._keep_tabs_strip_last)
         self.workspaces.before_reset.append(self.auto_hide.pin_all)
@@ -885,6 +885,27 @@ class MainWindow(QMainWindow):
             self.tabs.removeTab(self.tabs.indexOf(viewport))
             self._show_tabs_strip()
             viewport.deleteLater()
+
+    def _budget_in_palettes(self) -> None:
+        """An arrangement saved before the Budget panel became a palette
+        (maintainer, 2026-11-19) has it across the bottom, by the command
+        window: it becomes a tab beside Layers, Properties and Blocks, open
+        or closed as it was. Once for each workspace: put back at the bottom
+        afterwards, it stays there."""
+        workspace = self.workspaces
+        if workspace.discipline is None or workspace.layout is None:
+            return
+        key = budget_moved_setting(workspace.discipline.name, workspace.layout)
+        if self._settings is not None and self._settings.value(key, False, type=bool):
+            return
+        panel = self.budget_panel
+        bottom = self.dockWidgetArea(panel) == Qt.DockWidgetArea.BottomDockWidgetArea
+        if bottom and not panel.isFloating():
+            hidden = panel.isHidden()
+            self.tabifyDockWidget(self.layers_panel, panel)
+            panel.setHidden(hidden)
+        if self._settings is not None:
+            self._settings.setValue(key, True)
 
     def _keep_tabs_strip_last(self) -> None:
         """A restored arrangement may put the tab strip beside the ribbon

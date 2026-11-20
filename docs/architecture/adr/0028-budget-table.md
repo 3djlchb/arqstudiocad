@@ -172,6 +172,12 @@ Each step is its own pull request with tests:
      bottom, above the command window, closed at first, and to end each
      category with a Subtotal row per currency, as the export will write
      it.
+   - Moved (maintainer, 2026-11-19): the panel is a palette among the
+     others, a tab beside Layers, Properties and Blocks on the right,
+     still closed at first; it no longer sits by the command window. An
+     arrangement saved with it across the bottom moves it there once for
+     each workspace, open or closed as it was; put back at the bottom by
+     hand afterwards, it stays.
    - The budget itself is built apart from the panel,
      `arqstudiocad.budget.budget_of`, for the export to reuse.
    - Categories that differ only in case are one group, spelled as its
