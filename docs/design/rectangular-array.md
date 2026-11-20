@@ -66,7 +66,10 @@ comparison. The [Windows comparison](../testing/array-rectangular-windows.md) wa
 2026-11-15: the same copies in DWG and DXF; zero spacing and more than 100,000
 cells refused here as designed, made by ProgeCAD. Large generated drawings
 may incur redraw costs; reference-floor interactive acceptance belongs on
-the actual i7-2600/GT 730 machine, not this development host.
+the actual i7-2600/GT 730 machine, not this development host. Measured there
+on 2026-11-19 ([report](../testing/reference-machine/2026-11-19/array.txt)): the diagnostic's ratio 0.723,
+10,000 copies on screen in about 0.1 s and the 100,000 ceiling in about
+0.6 s, then panned at the display's refresh on the GPU.
 
 ## Local verification (2026-11-15)
 

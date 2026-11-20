@@ -145,6 +145,14 @@ i7-2600/GT 730 host with `tools/reference_machine_report.sh` and
 Do not convert these timings using a CPU multiplier. ProgeCAD is unnecessary
 for this diagnostic; external behavioral validation remains pending.
 
+**On the reference machine (2026-11-19, the same commits):** five
+alternating runs, pooled 56.1196 → 40.5945 ms (0.7234). In the main window
+on `ab94cc8`, ARRAY 10 × 10 of 100 lines shows its 10,000 entities 98 ms
+after the command is typed on the CPU (91 ms on the GPU); of 1,000 lines,
+100,000 entities, 609 ms (658 ms). Then the GPU pans and zooms them at the
+display's 16.6 ms, the CPU at 33 and 19 ms in a 1098 × 347 viewport.
+Details in [the array report](testing/reference-machine/2026-11-19/array.txt).
+
 ### STRETCH preview diagnostic (2026-11-15)
 
 Maintainer-approved scenario: 100 selected lines in 100000 synthetic lines;
@@ -214,9 +222,15 @@ synthetic cursor moves at the displacement prompt with 100 lines stretched
 cost 4.18 → 6.88 ms a CPU frame (95th percentile 10.02 ms) in a
 1098 × 347 viewport and 4.39 → 7.84 ms at 800 × 600; on the GPU every
 frame stays at the display's 16.4-16.7 ms. Cancelling leaves the history
-unchanged and the committed stretch is one undo step. Not covered there:
-bulged polylines, crossing polygons, zoom and pan during the prompt, and a
-hand on a real mouse. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
+unchanged and the committed stretch is one undo step. The cases left out
+at first, measured the same day ([stretch cases](testing/reference-machine/2026-11-19/stretch-cases.txt)): zoom
+and pan during the prompt, CPU 6.07 → 8.98 ms, GPU unchanged; 100 two-arc
+polylines, CPU 8.83 → 24.06 ms (95th percentile 27.05 ms), GPU 9.29 ms;
+a 402-corner crossing polygon, 4.00 → 252.35 ms on the CPU and 241.79 ms
+on the GPU. The polygon's cost is its validation, repeated for each of the
+100 entities: `stretch_outlines` takes 248.741 ms with the polygon given
+per entity, 0.114 ms with rectangles, and one validation plus a selection
+query 4.122 ms. Not covered: a hand on a real mouse. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
 
 ## Metrics to keep
 
