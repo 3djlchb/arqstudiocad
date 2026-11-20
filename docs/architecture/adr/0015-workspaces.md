@@ -70,6 +70,14 @@ override this data, not a second mechanism.
   default) it stays open; unpinned it collapses to a tab with its name on
   the side it was docked, and resting the mouse on the tab slides it out
   over the drawing until the mouse leaves or the drawing is clicked.
+- Before the pin, a **mode** button (maintainer, 2026-11-19), as AutoCAD's
+  palettes: an anchor while the panel is docked, a window while it floats.
+  Clicking it floats the panel, or docks it back where it was; dragging and
+  double-clicking the title still float and dock it, on any side. A
+  floating panel keeps its pin: unpinned, it rolls up to its title bar when
+  the mouse leaves it and rolls down when the mouse comes back, as an
+  AutoCAD palette set to auto-hide; docked again, it is open. Which floating
+  panels roll up is remembered.
 - The drawings' **tabs run the full width** of the window, under the ribbon
   or the toolbars, and the panels start below them, as AutoCAD's file tabs.
 - Panels and the command window are shared. Their arrangement (dock and
@@ -80,8 +88,9 @@ override this data, not a second mechanism.
 
 The maintainer chose the references (2026-10-13):
 
-- **Panels after OpenCADStudio's**: a title with only the pin and close
-  (double-clicking it floats the panel), and Properties as a property grid —
+- **Panels after OpenCADStudio's**: a title with the pin and close, the
+  mode button before them since 2026-11-19 (double-clicking it floats the
+  panel), and Properties as a property grid —
   a caption naming what is shown, then foldable sections of name and value
   rows. Properties follows its reference palette: muted labels, bordered value
   fields and full-width foldable section bands, with the active theme's accent
