@@ -116,7 +116,7 @@ impl CadEntityInfo {
 
 /// The Python object for a curve: `CadLine`, `CadCircle`, `CadArc` or
 /// `CadEllipse`.
-fn geometry_to_py(py: Python<'_>, g: Geometry2) -> PyResult<Bound<'_, PyAny>> {
+pub(crate) fn geometry_to_py(py: Python<'_>, g: Geometry2) -> PyResult<Bound<'_, PyAny>> {
     Ok(match g {
         Geometry2::Line(l) => Bound::new(py, CadLine(l))?.into_any(),
         Geometry2::Circle(c) => Bound::new(py, CadCircle(c))?.into_any(),

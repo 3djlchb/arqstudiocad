@@ -120,7 +120,7 @@ impl Document {
             let Some(entity) = self.entity(id) else {
                 continue;
             };
-            if entity.plan().is_none() && entity.kind() != "LWPOLYLINE" {
+            if self.curve_plan_for(&entity).is_none() && entity.kind() != "LWPOLYLINE" {
                 continue;
             }
             let point = items

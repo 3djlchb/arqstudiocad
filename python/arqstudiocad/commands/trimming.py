@@ -29,7 +29,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
-from arqstudiocad.core import CadDocument, CadError, InvalidGeometryError
+from arqstudiocad.core import CadDocument, CadEllipse, CadError, InvalidGeometryError
 from arqstudiocad.i18n import tr
 
 #: Quick ("Q") or Standard ("S"), shared by TRIM and EXTEND as AutoCAD's
@@ -179,7 +179,7 @@ def _trim_one(
 ) -> int:
     """Trims the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
-    if entity.geometry is None and entity.kind != "LWPOLYLINE":
+    if document.editable_curve(picked.entity_id) is None and entity.kind != "LWPOLYLINE":
         ctx.message(tr("Cannot trim that object."))
         return 0
     try:
@@ -200,8 +200,11 @@ def _extend_one(ctx: CommandContext, document: CadDocument, picked: Picked, edge
     """Extends the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
     polyline = entity.kind == "LWPOLYLINE"
-    closed = polyline and dict(entity.details).get("Closed") == "true"
-    if (entity.geometry is None and not polyline) or entity.kind == "CIRCLE" or closed:
+    curve = document.editable_curve(picked.entity_id)
+    closed = (polyline and dict(entity.details).get("Closed") == "true") or (
+        isinstance(curve, CadEllipse) and curve.is_full
+    )
+    if (curve is None and not polyline) or entity.kind == "CIRCLE" or closed:
         ctx.message(tr("Cannot extend that object."))
         return 0
     try:
