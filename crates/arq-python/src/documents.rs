@@ -1648,9 +1648,11 @@ fn geometry_arg(geometry: &Bound<'_, PyAny>) -> PyResult<Geometry2> {
         Ok(c.get().0.into())
     } else if let Ok(a) = geometry.cast::<CadArc>() {
         Ok(a.get().0.into())
+    } else if let Ok(e) = geometry.cast::<CadEllipse>() {
+        Ok(e.get().0.into())
     } else {
         Err(PyTypeError::new_err(
-            "geometry must be a CadLine, CadCircle or CadArc",
+            "geometry must be a CadLine, CadCircle, CadArc or CadEllipse",
         ))
     }
 }

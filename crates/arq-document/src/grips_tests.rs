@@ -129,3 +129,43 @@ fn grips_follow_the_order_given_without_repeats() {
     assert_eq!(entities, [ids[3], ids[0], ids[0], ids[0]]);
     assert_eq!(GripKind::Quadrant.name(), "QUA");
 }
+
+#[test]
+fn an_ellipse_shows_its_center_axis_ends_and_arc_ends() {
+    use GripKind::*;
+    use arq_geometry::{Ellipse, Point2, Vector2};
+    let mut doc = Document::new();
+    let e = |start: f64, end: f64| {
+        Ellipse::new(
+            Point2::ORIGIN,
+            Vector2::new(5.0, 0.0).unwrap(),
+            0.6,
+            start,
+            end,
+        )
+        .unwrap()
+    };
+    let whole = doc.add_ellipse(e(0.0, 0.0), 0.0).unwrap();
+    assert_eq!(
+        of(&doc.grips(&[whole]), whole),
+        [
+            (Center, (0.0, 0.0)),
+            (Quadrant, (5.0, 0.0)),
+            (Quadrant, (0.0, 3.0)),
+            (Quadrant, (-5.0, 0.0)),
+            (Quadrant, (0.0, -3.0)),
+        ]
+    );
+    // The upper half: the axis ends on it but those at its own ends, which
+    // are its end grips.
+    let half = doc.add_ellipse(e(0.0, std::f64::consts::PI), 0.0).unwrap();
+    assert_eq!(
+        of(&doc.grips(&[half]), half),
+        [
+            (Center, (0.0, 0.0)),
+            (Quadrant, (0.0, 3.0)),
+            (End, (5.0, 0.0)),
+            (End, (-5.0, 0.0)),
+        ]
+    );
+}

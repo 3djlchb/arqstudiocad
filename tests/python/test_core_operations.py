@@ -64,7 +64,7 @@ def test_invalid_input_changes_nothing(doc: CadDocument) -> None:
         doc.add_circle((0, 0), 0.0)
     with pytest.raises(InvalidGeometryError):
         doc.add_line((0, 0), (math.nan, 1))
-    with pytest.raises(TypeError, match="CadLine, CadCircle or CadArc"):
+    with pytest.raises(TypeError, match="CadLine, CadCircle, CadArc or CadEllipse"):
         doc.add_geometry((0, 0))  # type: ignore[arg-type]
     assert doc.get_entities() == []
     assert not doc.can_undo and not doc.is_modified

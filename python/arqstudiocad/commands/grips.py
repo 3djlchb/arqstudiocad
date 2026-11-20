@@ -7,8 +7,10 @@ or Space cycles Stretch → Move → Rotate → Scale → Mirror around the hot
 grip. Base point picks another base, Copy makes each pick a copy (Enter
 then ends), Undo takes back the last copy, eXit ends. Stretch moves a
 line's end, changes a circle's radius by a quadrant, reshapes an arc by an
-end (through its midpoint and other end), moves an entity by its midpoint,
-center or insertion point, and moves one polyline vertex at a time. Move,
+end (through its midpoint and other end), sets an ellipse's semi-axis by
+the end of its axis and slides an elliptical arc's end along it (ADR 0041),
+moves an entity by its midpoint, center or insertion point, and moves one
+polyline vertex at a time. Move,
 Rotate, Scale and Mirror apply to every selected entity that can be transformed.
 A grip edit is one
 undo step and keeps the selection.
@@ -28,6 +30,7 @@ from arqstudiocad.core import (
     CadArc,
     CadCircle,
     CadDocument,
+    CadEllipse,
     CadGrip,
     CadLine,
     InvalidGeometryError,
@@ -201,9 +204,19 @@ def _stretch(
 
 def _reshaped(
     geometry: Any, grip: CadGrip, target: Point, mid: Point
-) -> CadLine | CadCircle | CadArc:
+) -> CadLine | CadCircle | CadArc | CadEllipse:
     """A line's end, a circle's quadrant or an arc's end moved to
-    ``target``; an arc goes on through its midpoint ``mid``."""
+    ``target``; an arc goes on through its midpoint ``mid``. An ellipse's
+    axis end sets that semi-axis to the distance from its center; an
+    elliptical arc's end slides along the ellipse toward ``target``."""
+    if isinstance(geometry, CadEllipse):
+        if grip.kind == "END":
+            first = geometry.points()[0]
+            return geometry.with_end_at(_same(first, grip.point), target)
+        cx, cy = geometry.center
+        mx, my = geometry.major_axis
+        on_major = _same(grip.point, (cx + mx, cy + my)) or _same(grip.point, (cx - mx, cy - my))
+        return geometry.with_semi_axis(on_major, math.dist(geometry.center, target))
     if isinstance(geometry, CadLine):
         start_moves = _same(geometry.start, grip.point)
         other = geometry.end if start_moves else geometry.start
