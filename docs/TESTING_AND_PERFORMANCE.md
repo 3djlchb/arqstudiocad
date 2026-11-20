@@ -207,6 +207,17 @@ cursor-frame time; curved/dense selections and long crossing polygons are
 not represented. Do not convert these development timings with a fixed
 CPU multiplier.
 
+**On the reference machine (2026-11-19, the integrated pair `66c0125` →
+`5ac83f4`):** the same edit, five alternating batches, pooled 0.361476 →
+0.360268 ms (0.99666); the preview query 0.117402 ms. In the main window,
+synthetic cursor moves at the displacement prompt with 100 lines stretched
+cost 4.18 → 6.88 ms a CPU frame (95th percentile 10.02 ms) in a
+1098 × 347 viewport and 4.39 → 7.84 ms at 800 × 600; on the GPU every
+frame stays at the display's 16.4-16.7 ms. Cancelling leaves the history
+unchanged and the committed stretch is one undo step. Not covered there:
+bulged polylines, crossing polygons, zoom and pan during the prompt, and a
+hand on a real mouse. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
+
 ## Metrics to keep
 
 Opening and saving time by file size and entity count; peak memory and its
@@ -278,6 +289,12 @@ floor acceptance. Functional CPU/GPU overlay equivalence passed locally on
 Vulkan, but that is not minimum-machine performance acceptance. No ProgeCAD
 is needed.
 
+**On the reference machine (2026-11-19, the same commits):** Top 0.045464
+→ 0.323360 ms (7.11), SW isometric 0.035770 → 0.298076 ms (8.33), about
+0.28 ms added a frame. The GPU viewport check on `main` at `992acf8`, with
+the axes, pans at 16.7 ms and zooms at 16.6 ms on the GT 730, its overlays
+0 pixels apart from the CPU's. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
+
 ### ID XYZ capture diagnostic (2026-11-17)
 
 Maintainer-approved scenario: 100 captures in Top and SW isometric over the
@@ -332,6 +349,13 @@ GPU, at 800 x 600 and the reference report's normal viewport size. Also run
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`
 for redraw checks. Do not turn these development timings into reference-host
 times using a CPU multiplier. No ProgeCAD is required.
+
+**On the reference machine (2026-11-19, the same commits):** Top 0.004282
+→ 0.003193 ms; SW isometric 0.000653 → 0.142791 ms, the added 3D reference
+search. Synthetic cursor moves at ID's prompt in the main window cost the
+same before and after: about 1.3-2.2 ms a CPU frame and the display's
+16.4-16.7 ms on the GPU, in Top and SW isometric, at 800 × 600 and
+1098 × 347. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
 
 ### Closed BREAK diagnostic (2026-11-17)
 
@@ -391,3 +415,7 @@ and exercise the resulting paths interactively with
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`.
 No time conversion using a CPU multiplier, minimum-machine claim or new
 ProgeCAD execution is implied.
+
+**On the reference machine (2026-11-19, the same commits):** five
+alternating pairs, open pooled 0.706338 → 0.715927 ms (1.01358), the pair
+medians overlapping; closed 0.709716 ms. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).

@@ -1,0 +1,66 @@
+Cursor frames in the main window, STRETCH and ID, reference machine,
+2026-11-19
+
+Machine and builds as in operations.txt; the same base and candidate
+commits (STRETCH 66c0125 / 5ac83f4, ID 6f9379d / ced90ba). Harness
+cursor_frames.py, SHA-256
+4b01c469cba2dc10246c8066ae1e5d30d039e27a8eb2d9d7acbcfc51679b2482.
+
+Method: the real MainWindow on the X11 desktop, with QSettings redirected
+to a temporary INI directory and fresh XDG folders. Renderer: the one the
+application chooses by itself (OpenGL ES on the GT 730, "gpu"), or the CPU
+through MainWindow's safe mode, as --safe-mode ("cpu"). The window was
+1366 x 740 ("normal", a 1098 x 347 physical-pixel viewport with the
+default panels) or resized until the viewport was 800 x 600 ("small"),
+display scaling 1. A generated drawing of 100000 LINEs on a 3-unit grid
+(Z 0 for STRETCH, Z 7 for ID) at 20 pixels a unit, centred on (150.5, 150).
+
+The cursor is synthetic: QMouseEvent moves sent through Qt to the
+viewport, on a 60 x 40 pixel loop around the centre, 63 moves of which the
+first 3 are warm-ups. Each sample is one move plus viewport.repaint(),
+which paints the overlay and, on the GPU, presents the frame, so GPU
+samples include waiting for the display's 60 Hz refresh. No hand on a
+mouse was measured. "idle" is the same loop with no command; "command" is
+the loop at STRETCH's displacement prompt (the 100 lines of row 50 picked
+with a crossing box around each end, base point 0,0) or at ID's point
+prompt. Medians and 95th percentiles, ms:
+
+  Command  View   Viewport  Renderer  Base idle    Base command   Cand. idle   Cand. command
+  STRETCH  Top    normal    cpu       1.45 / 2.39  4.18 / 6.36    1.52 / 2.31  6.88 / 10.02
+  STRETCH  Top    small     cpu       2.05 / 3.01  4.39 / 4.97    2.31 / 3.45  7.84 / 10.93
+  STRETCH  Top    normal    gpu       16.43/17.85  15.66 / 15.98  16.48/16.56  14.55 / 15.46
+  STRETCH  Top    small     gpu       16.43/16.48  15.89 / 16.09  16.43/16.52  15.54 / 15.62
+  ID       Top    normal    cpu       1.45 / 2.28  1.29 / 1.95    1.77 / 2.30  1.37 / 2.11
+  ID       Top    small     cpu       1.60 / 1.88  1.56 / 2.11    3.53 / 5.72  2.02 / 2.39
+  ID       SWiso  normal    cpu       7.12 / 8.12  1.39 / 1.99    6.78 / 10.32 1.76 / 2.04
+  ID       SWiso  small     cpu       7.25 / 8.06  1.89 / 2.21    6.93 / 8.29  2.16 / 2.60
+  ID       Top    normal    gpu       16.54/16.60  16.54 / 16.59  16.54/16.63  16.41 / 16.58
+  ID       Top    small     gpu       16.42/16.56  16.40 / 16.58  16.40/16.48  16.40 / 16.55
+  ID       SWiso  normal    gpu       16.45/16.58  16.43 / 16.55  16.46/16.60  16.40 / 16.52
+  ID       SWiso  small     gpu       16.53/16.58  16.53 / 16.66  16.50/16.60  16.43 / 16.59
+
+Checked on every run:
+- STRETCH: the candidate's overlay held 109 one-pixel strokes during the
+  displacement prompt (the 100 stretched outlines among them), the base's
+  9 (no outlines). Cancelling left the history unchanged; the same
+  selection with displacement 2,3 typed in moved the first line's end by
+  exactly (2, 3) as one undo step, and undo restored it.
+- ID: cancelling left the history unchanged. At the loop's last position
+  the candidate in SW isometric held an END snap; the base, which cannot
+  snap there, none.
+
+Reading:
+- With the GPU, every frame is the display's refresh (16.4-16.7 ms
+  medians) before and after both changes: the added work fits inside the
+  frame.
+- On the CPU, STRETCH's live preview adds about 2.7-3.5 ms to a cursor
+  frame with 100 stretched lines (4.2 -> 6.9 ms normal, 4.4 -> 7.8 ms
+  small), its 95th percentile 10-11 ms: still within one 60 Hz frame.
+  The base shows no outlines, so this is the cost of a new feature, not a
+  slowdown of an old one.
+- ID costs the same before and after on the CPU and the GPU. The CPU's
+  idle loop in SW isometric (about 7 ms against 1.5 ms in Top) is the same
+  in both revisions; why was not looked into in this session. One idle
+  CPU run, ID Top small on the candidate (3.53 ms against the base's
+  1.60), stands apart from the other idle Top runs (1.45-1.77 ms); it ran
+  with no command active and was not repeated.

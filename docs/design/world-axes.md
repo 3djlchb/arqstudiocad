@@ -46,7 +46,9 @@ exact base/candidate commits, equal fixtures/settings and environment.
 Reference-machine acceptance remains separate; run
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`
 on the i7-2600/GT 730 before asserting minimum-machine frame performance.
-ProgeCAD is not required.
+ProgeCAD is not required. Measured there on 2026-11-19 at the same commits
+([reports](../testing/reference-machine/2026-11-19/)): about 0.28 ms added to a CPU overlay frame, and the GPU
+viewport with the axes at 16.7 ms panning, 0 pixels apart from the CPU.
 
 ## Local delivery checks
 

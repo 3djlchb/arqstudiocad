@@ -84,5 +84,7 @@ were skipped for platform availability (two PowerShell cases and a Windows
 OpenGL card-selection case). Formatting, workspace clippy with warnings
 denied, Ruff lint/format, strict mypy, stubtest and cargo-deny passed.
 [Diagnostic measurements](../TESTING_AND_PERFORMANCE.md#id-xyz-capture-diagnostic-2026-11-17)
-record the exact base/candidate commits; actual reference-host acceptance
-remains pending. The supported command behavior needs no ProgeCAD validation.
+record the exact base/candidate commits. The reference host measured them
+on 2026-11-19 ([reports](../testing/reference-machine/2026-11-19/)): SW isometric capture +0.14 ms, Top
+unchanged, and cursor frames at ID's prompt the same before and after on
+the CPU and the GPU. The supported command behavior needs no ProgeCAD validation.

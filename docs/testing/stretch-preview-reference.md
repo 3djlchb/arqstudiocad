@@ -5,6 +5,15 @@ candidate/base edit ratios above one: initial 1.06330; five alternating
 batches pooled 1.00521, overlapping batch ranges. The preview query itself
 was 0.061386 ms on the Ryzen host. These are not reference-floor results.
 
+**Measured 2026-11-19** on the reference machine, at `66c0125` → `5ac83f4`,
+with the method below ([operations](reference-machine/2026-11-19/operations.txt),
+[cursor frames](reference-machine/2026-11-19/cursor-frames.txt)): edit pooled
+0.361476 → 0.360268 ms (0.99666), preview query 0.117402 ms, CPU cursor
+frames 4.18 → 6.88 ms with 100 lines stretched (95th percentile 10.02 ms),
+GPU frames at the display's 16.4-16.7 ms. The cursor was synthetic Qt mouse
+events; bulged polylines, crossing polygons and zoom or pan during the
+prompt were not covered. Acceptance of the floor is the maintainer's.
+
 ## Scope and revisions
 
 Use the actual i7-2600/GT 730, 16 GB, LMDE 7 Cinnamon/X11 reference machine.
