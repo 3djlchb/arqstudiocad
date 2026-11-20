@@ -541,3 +541,44 @@ fn an_ellipse_is_picked_and_selected_by_its_curve() {
         "inside, untouched"
     );
 }
+
+#[test]
+fn a_crossing_polygon_selects_an_ellipse_it_crosses_and_not_one_it_misses() {
+    use arq_geometry::{SelectionPolygon, Tolerance};
+    let doc = ellipse_arc();
+    let id = doc.entities()[0].id();
+    let polygon =
+        |corners: Vec<Point2>| SelectionPolygon::new(corners, Tolerance::DEFAULT).unwrap();
+    // An L across its end at (14,0).
+    let across = polygon(vec![
+        p(13.5, -0.5),
+        p(15.0, -0.5),
+        p(15.0, 0.5),
+        p(14.2, 0.5),
+        p(14.2, 3.0),
+        p(13.5, 3.0),
+    ]);
+    assert_eq!(doc.select_polygon_candidates(&across, &[id]), [id]);
+    // A thin band across it between two of its drawn points, (14,0) and
+    // the next at about (14.0,0.12): only a chord crosses it.
+    let thin = polygon(vec![
+        p(13.0, 0.04),
+        p(15.0, 0.04),
+        p(15.0, 0.08),
+        p(13.0, 0.08),
+    ]);
+    assert_eq!(doc.select_polygon_candidates(&thin, &[id]), [id]);
+    // Wholly around it.
+    let around = polygon(vec![p(5.0, -3.0), p(15.0, -3.0), p(15.0, 3.0), p(5.0, 3.0)]);
+    assert_eq!(doc.select_polygon_candidates(&around, &[id]), [id]);
+    // Inside it, untouched, and across its missing quarter, about (12.83,-1.41).
+    let inside = polygon(vec![p(9.0, -0.5), p(11.0, -0.5), p(11.0, 0.5), p(9.0, 0.5)]);
+    let missing = polygon(vec![
+        p(12.5, -1.7),
+        p(13.1, -1.7),
+        p(13.1, -1.1),
+        p(12.5, -1.1),
+    ]);
+    assert!(doc.select_polygon_candidates(&inside, &[id]).is_empty());
+    assert!(doc.select_polygon_candidates(&missing, &[id]).is_empty());
+}
