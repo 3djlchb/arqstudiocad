@@ -1,6 +1,7 @@
 //! Where the lines and circles curves lie on meet, unbounded: shared by
 //! OFFSET (joining offset segments) and EXTEND (reaching a boundary).
 
+use crate::ellipse::Ellipse;
 use crate::point::Point2;
 use crate::tolerance::Tolerance;
 use crate::vector::Vector2;
@@ -36,6 +37,29 @@ pub(crate) fn line_circle(p: Point2, d: Vector2, c: Point2, r: f64) -> Vec<Point
         .collect()
 }
 
+/// Where the line through `p` along `d` meets the whole of ellipse `e`:
+/// in the ellipse's own frame, where it is the unit circle, a quadratic;
+/// none, one (touching) or two points.
+pub(crate) fn line_ellipse(p: Point2, d: Vector2, e: Ellipse) -> Vec<Point2> {
+    let (x0, y0) = e.local(p);
+    let (dx, dy) = e.local_vector(d);
+    let a = dx * dx + dy * dy;
+    if a == 0.0 {
+        return Vec::new();
+    }
+    let b = x0 * dx + y0 * dy;
+    let c = x0 * x0 + y0 * y0 - 1.0;
+    let disc = b * b - a * c;
+    if disc < 0.0 {
+        return Vec::new();
+    }
+    let h = disc.sqrt();
+    [(-b - h) / a, (-b + h) / a]
+        .into_iter()
+        .filter_map(|s| Point2::new(p.x() + d.x() * s, p.y() + d.y() * s).ok())
+        .collect()
+}
+
 /// Where two circles meet: none, one or two points.
 pub(crate) fn circle_circle(
     c1: Point2,
@@ -57,4 +81,33 @@ pub(crate) fn circle_circle(
         .into_iter()
         .filter_map(|s| Point2::new(base.x() + n.x() * s, base.y() + n.y() * s).ok())
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_meets_a_whole_ellipse_twice_once_or_never() {
+        // About (0,0), semi-axes 5 and 3, an arc of it: its whole counts.
+        let e = Ellipse::new(
+            Point2::ORIGIN,
+            Vector2::new(5.0, 0.0).unwrap(),
+            0.6,
+            0.0,
+            1.0,
+        )
+        .unwrap();
+        let p = |x: f64, y: f64| Point2::new(x, y).unwrap();
+        let x = Vector2::new(1.0, 0.0).unwrap();
+        let found = line_ellipse(p(-20.0, -1.8), x, e);
+        assert_eq!(found.len(), 2);
+        assert!(found.iter().any(|q| q.distance_to(p(-4.0, -1.8)) < 1e-9));
+        assert!(found.iter().any(|q| q.distance_to(p(4.0, -1.8)) < 1e-9));
+        assert!(line_ellipse(p(-20.0, 3.5), x, e).is_empty(), "above it");
+        assert!(
+            line_ellipse(p(-20.0, 0.0), Vector2::ZERO, e).is_empty(),
+            "no direction"
+        );
+    }
 }
