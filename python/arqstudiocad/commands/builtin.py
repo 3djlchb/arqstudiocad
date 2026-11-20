@@ -23,7 +23,7 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.commands.arraying import ARRAY_COMMAND, POLAR_ARRAY_COMMAND
+from arqstudiocad.commands.arraying import ARRAY_COMMAND, PATH_ARRAY_COMMAND, POLAR_ARRAY_COMMAND
 from arqstudiocad.commands.blocks import BLOCK_COMMANDS, close_block_editor, save_block
 from arqstudiocad.commands.breaking import BREAK_COMMAND
 from arqstudiocad.commands.budget import BUDGET_COMMANDS
@@ -408,6 +408,7 @@ def builtin_registry() -> CommandRegistry:
             MATCHPROP_COMMAND,
             ARRAY_COMMAND,
             POLAR_ARRAY_COMMAND,
+            PATH_ARRAY_COMMAND,
             *TRIM_COMMANDS,
             *CORNER_COMMANDS,
             *BLOCK_COMMANDS,

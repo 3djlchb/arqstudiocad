@@ -411,6 +411,7 @@ class MainWindow(QMainWindow):
             "JOIN",
             "ARRAYRECT",
             "ARRAYPOLAR",
+            "ARRAYPATH",
             "FILLET",
             "CHAMFER",
             "EXPLODE",

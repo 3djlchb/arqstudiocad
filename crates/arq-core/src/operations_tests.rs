@@ -2244,3 +2244,98 @@ fn polar_array_validates_all_sources_and_rolls_back_late_overflow() {
     assert!(steps >= before);
     assert_eq!(line_ends(&cad, b), (p(1e308, 0.), p(1.1e308, 0.)));
 }
+
+#[test]
+fn path_array_copies_sources_in_order_keeps_guide_styles_index_and_history() {
+    let mut cad = CadDocument::new();
+    let (guide, _) = cad.add_line(p(10., 10.), p(30., 10.)).unwrap();
+    let (a, _) = cad.add_line(p(0., 0.), p(2., 0.)).unwrap();
+    let (b, _) = cad.add_circle(p(0., 3.), 1.).unwrap();
+    cad.set_entity_color(&[a], Color::Index(3)).unwrap();
+    let (copies, changes) = cad
+        .path_array(&[a, b, a], guide, p(0., 0.), 3, true)
+        .unwrap();
+    assert_eq!(copies.len(), 6);
+    assert_eq!(changes.created(), copies);
+    assert!(changes.modified().is_empty() && changes.deleted().is_empty());
+    for (index, x) in [10., 20., 30.].into_iter().enumerate() {
+        assert_eq!(
+            line_ends(&cad, copies[index * 2]),
+            (p(x, 10.), p(x + 2., 10.))
+        );
+        assert_eq!(
+            cad.document().entity(copies[index * 2]).unwrap().color(),
+            Color::Index(3)
+        );
+        let Geometry2::Circle(circle) = geometry(&cad, copies[index * 2 + 1]) else {
+            panic!()
+        };
+        assert!(near(circle.center(), p(x, 13.)));
+    }
+    assert_eq!(line_ends(&cad, a), (p(0., 0.), p(2., 0.)));
+    assert_eq!(line_ends(&cad, guide), (p(10., 10.), p(30., 10.)));
+    let area = arq_geometry::Bounds2::new(p(29., 9.), p(33., 11.));
+    assert!(cad.query_entities(area).contains(&copies[4]));
+    assert_eq!(cad.undo_name(), Some("ARRAYPATH"));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entities().len(), 3);
+    assert!(!cad.query_entities(area).contains(&copies[4]));
+    cad.redo().unwrap();
+    assert_eq!(line_ends(&cad, copies[4]), (p(30., 10.), p(32., 10.)));
+}
+
+#[test]
+fn path_array_bulged_guide_aligns_relative_to_the_first_item() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(20., 20.), p(22., 20.)).unwrap();
+    let (guide, _) = cad
+        .add_polyline(&[(p(0., 0.), -1.), (p(10., 0.), 0.)], false)
+        .unwrap();
+    let (copies, _) = cad
+        .path_array(&[source], guide, p(20., 20.), 3, true)
+        .unwrap();
+    for (id, (start, end)) in copies.into_iter().zip([
+        (p(0., 0.), p(2., 0.)),
+        (p(5., 5.), p(5., 3.)),
+        (p(10., 0.), p(8., 0.)),
+    ]) {
+        let (a, b) = line_ends(&cad, id);
+        assert!(near(a, start) && near(b, end));
+    }
+    assert_eq!(line_ends(&cad, source), (p(20., 20.), p(22., 20.)));
+}
+
+#[test]
+fn path_array_invalid_guides_locked_sources_and_late_overflow_are_atomic() {
+    let mut cad = CadDocument::new();
+    let (source, _) = cad.add_line(p(1e308, 0.), p(1.1e308, 0.)).unwrap();
+    let (guide, _) = cad.add_line(p(0., 0.), p(1e308, 0.)).unwrap();
+    let steps = cad.undo_names().len();
+    assert!(
+        cad.path_array(&[source], u64::MAX, p(0., 0.), 3, false)
+            .is_err()
+    );
+    assert!(
+        cad.path_array(&[source, u64::MAX], guide, p(0., 0.), 3, false)
+            .is_err()
+    );
+    assert!(
+        cad.path_array(&[source], guide, p(0., 0.), 3, false)
+            .is_err()
+    );
+    assert_eq!(cad.document().entities().len(), 2);
+    assert_eq!(cad.undo_names().len(), steps);
+    let (closed, _) = cad
+        .add_polyline(&[(p(0., 0.), 0.), (p(5., 0.), 0.), (p(5., 5.), 0.)], true)
+        .unwrap();
+    assert!(
+        cad.path_array(&[source], closed, p(0., 0.), 3, false)
+            .is_err()
+    );
+    let layer = cad.document().current_layer().id();
+    cad.set_layer_locked(layer, true).unwrap();
+    assert!(
+        cad.path_array(&[source], guide, p(1e308, 0.), 2, false)
+            .is_err()
+    );
+}

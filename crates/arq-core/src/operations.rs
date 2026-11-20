@@ -350,6 +350,46 @@ impl CadDocument {
         })
     }
 
+    /// N independent copies along an open planar guide, including its ends.
+    /// Sources and guide stay unchanged; one atomic ARRAYPATH undo step.
+    /// Alignment is relative to the first item's unchanged orientation.
+    pub fn path_array(
+        &mut self,
+        ids: &[EntityId],
+        guide: EntityId,
+        base: Point2,
+        count: usize,
+        align: bool,
+    ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let (path, _) = self.document().join_path(guide)?;
+        let transforms = arq_geometry::path_array_transforms(&path.vertices, base, count, align)?;
+        let ids = distinct(ids);
+        self.transact("ARRAYPATH", |doc| {
+            let mut sources = Vec::new();
+            for &id in &ids {
+                let entity = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+                check_unlocked(doc, &entity)?;
+                check_transformable(&entity)?;
+                let bounds = entity.bounds().ok_or_else(|| {
+                    CadError::InvalidGeometry("array sources need finite bounds".into())
+                })?;
+                sources.push((id, bounds));
+            }
+            let mut copies = Vec::new();
+            for transform in transforms {
+                for &(id, bounds) in &sources {
+                    for corner in bounds.corners() {
+                        transform.checked_apply_point(corner)?;
+                    }
+                    let copy = doc.copy_entity(id)?;
+                    doc.transform_entity(copy, transform)?;
+                    copies.push(copy);
+                }
+            }
+            Ok(copies)
+        })
+    }
+
     /// FILLET: `a` and `b` (two lines, or a line and an arc) met by an arc of
     /// `radius` tangent to both, each kept on the side it was picked (`pa`,
     /// `pb`) and, when `trim`, trimmed or extended to it; radius 0 makes a
