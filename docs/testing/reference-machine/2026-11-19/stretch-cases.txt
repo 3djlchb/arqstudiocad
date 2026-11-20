@@ -1,0 +1,80 @@
+STRETCH cursor frames, the cases cursor-frames.txt left out, reference
+machine, 2026-11-19
+
+Machine, builds and isolation as in operations.txt; the same pair, base
+66c012588a2c18ec6eb159474df1a650fd070f1e (before the live preview) and
+candidate 5ac83f42f4c2eb54aebf8dd59f1df0ec593f45e4 (#192). Series
+19:57-20:01, no heavy process during any run.
+
+Harnesses (SHA-256):
+  stretch_cases.py  d68e18a970f670d7d41fcf4fde00b2f03ba4610a7b4f93e73b2fc30e4c51ac49
+  polygon_probe.py  5cdc665e1143df88a53c99fbbd1b990100c5b60f1f91a4bbc4c750e3824f2787
+
+Method as in cursor-frames.txt: the real MainWindow, 1366 x 740 (a
+1098 x 347 viewport), the renderer it chooses (OpenGL ES on the GT 730) or
+the CPU through safe mode; 100000 generated entities on a 3-unit grid at 20
+pixels a unit; synthetic QMouseEvent moves on a loop, each sample a move
+plus a repaint, 60 samples after 3 warm-ups; "idle" with no command,
+"command" at STRETCH's displacement prompt after base point 0,0. The 100
+entities of row 50 (y = 150, x = 3k) are stretched:
+
+- bulged: they are LWPOLYLINEs of two arcs, (x,150) -> (x+0.5,150.25) ->
+  (x+1,150), bulges 0.5 and -0.5; a crossing box of +-0.1 around each last
+  vertex.
+- polygon: lines (x,150)-(x+1,150), all selected with one crossing polygon
+  (CP) of 402 corners, a comb with a 0.2-wide tooth around each end
+  (x+1,150) rising from a base below the row, so the starts stay outside.
+- zoompan: lines with a crossing box around each end; every sample also
+  pans 7 pixels or zooms by 1.03 and redraws the drawing, standing in for
+  a wheel zoom or a pan during the prompt.
+
+Every run checked: cancelling leaves the history unchanged; the same
+selection with displacement 2,3 typed moves the first entity's end by
+exactly (2,3) as one undo step; undo restores it.
+
+Median / 95th percentile, ms:
+
+  Case     Renderer  Base idle    Base command   Cand. idle   Cand. command    Outline strokes base / cand.
+  bulged   cpu       1.25 / 1.60  8.83 / 9.12    1.34 / 1.95  24.06 / 27.05    9 / 209
+  polygon  cpu       1.36 / 2.26  4.00 / 4.24    1.40 / 1.67  252.35 / 265.96  9 / 109
+  zoompan  cpu       3.59 / 4.24  6.07 / 6.50    3.55 / 4.15  8.98 / 11.95     9 / 109
+  bulged   gpu       16.48/16.57  14.33 / 14.43  16.45/16.57  9.29 / 11.19     9 / 209
+  polygon  gpu       16.48/16.58  15.79 / 15.94  16.48/16.61  241.79 / 248.15  9 / 109
+  zoompan  gpu       16.50/16.56  15.82 / 15.90  16.49/16.58  15.46 / 15.59    9 / 109
+
+== The long crossing polygon: about a quarter of a second a cursor move
+
+With the polygon, the candidate's preview costs 242-252 ms a cursor move on
+both renderers, about four frames a second, against 4 ms without the
+preview. polygon_probe.py, on the candidate, an 800 x 600 Top CadView over
+the same 100000 lines, 3 warm-ups and 20 samples each:
+
+  call                                                      median, ms
+  doc.select_crossing_polygon(comb)  (one validation + a query)    4.122
+  view.stretch_outlines, the polygon given once per entity (100)  248.741
+  view.stretch_outlines, a rectangle per entity instead             0.114
+
+The cause, in the code: the viewport passes the polygon once per selected
+entity, and the bindings (`CadView.stretch_outlines` in
+crates/arq-python/src/view.rs and `CadDocument.stretch_entities` in
+crates/arq-python/src/documents.rs) validate each pair's polygon from
+scratch with `SelectionPolygon::new`, whose self-intersection check
+compares every edge with every other: 402 edges, about 80,000 edge
+intersections, repeated 100 times on every cursor move. The commit pays
+the same once (0.58 s in a profiled run made while a build was running). Validating each distinct polygon
+once and sharing it among its entities would leave about 4 ms. Not changed
+in this session.
+
+== Bulged polylines on the CPU
+
+The candidate's CPU cursor frame with 100 two-arc polylines stretched is
+24 ms (95th percentile 27 ms), over one 60 Hz frame; 8.8 ms without the
+preview. The overlay then holds 209 one-pixel strokes. On the GPU the
+frame fits (9.3 ms). Where the 15 ms goes was not looked into in this
+session.
+
+== Zoom and pan during the prompt
+
+With the drawing redrawn on every move, the preview adds about 3 ms on the
+CPU (6.1 -> 9.0 ms) and nothing visible on the GPU (15.8 -> 15.5 ms, the
+display's refresh).

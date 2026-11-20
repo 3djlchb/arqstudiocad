@@ -273,8 +273,10 @@ the separate reference-machine follow-up. That follow-up was measured on
 2026-11-19 at `66c0125` → `5ac83f4` ([reports](../testing/reference-machine/2026-11-19/)): the edit pooled
 0.361476 → 0.360268 ms (0.99666), the preview query 0.117402 ms, and CPU
 cursor frames at the displacement prompt 4.2 → 6.9 ms with 100 lines
-stretched, the GPU's at the display's 16.4-16.7 ms. Bulged polylines,
-crossing polygons and zoom or pan during the prompt were not covered.
+stretched, the GPU's at the display's 16.4-16.7 ms. The same day
+([stretch cases](../testing/reference-machine/2026-11-19/stretch-cases.txt)): zoom or pan during the prompt adds
+about 3 ms on the CPU; bulged polylines take the CPU frame to 24 ms; and
+a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity, 80,000 edge tests each time.
 
 The public contour query also refuses non-Top views, rather than returning
 XY contours through a camera for another plane. Removing that guard caused
