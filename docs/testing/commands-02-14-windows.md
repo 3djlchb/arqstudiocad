@@ -63,6 +63,13 @@ Every case reads back the same from our DWG and from our DXF.
 
 **The drawings are not committed:** the two tools reproduce them.
 
+## Reservation (2026-11-20)
+
+Claude, Windows validation role, with the maintainer's go-ahead: the cases
+below (J3–J7, M1–M6, EL1–EL4) run in ProgeCAD 2026 on this laptop, every
+02.14 case run again with them. ProgeCAD is in use by this task until the
+pull request leaves draft. Base: `7487c3257a1b6d86280c5dc9f29628669cfc79cf`.
+
 ## To run: JOIN on polylines (J3–J7)
 
 Added to both tools on 2026-11-17 with JOIN's second delivery: a constant
