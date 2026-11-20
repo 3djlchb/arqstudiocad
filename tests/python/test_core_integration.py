@@ -18,12 +18,13 @@ from arqstudiocad.core import (
     CadCircle,
     CadColor,
     CadDocument,
+    CadEllipse,
     CadEntityInfo,
     CadLayerInfo,
     CadLine,
 )
 
-type Shape = CadLine | CadCircle | CadArc | None
+type Shape = CadLine | CadCircle | CadArc | CadEllipse | None
 
 
 def same_shape(a: Shape, b: Shape) -> bool:

@@ -169,7 +169,7 @@ def ellipse_ends(h: Harness) -> tuple[tuple[float, float], tuple[float, float]]:
     """The ends of the one elliptical arc drawn, rounded."""
     found = [e for e in h.document.get_entities() if e.kind == "ELLIPSE"]
     assert len(found) == 1, found
-    curve = h.document.editable_curve(found[0].id)
+    curve = found[0].geometry
     assert isinstance(curve, CadEllipse) and not curve.is_full
     first, *_, last = curve.points()
     r = round
@@ -218,3 +218,17 @@ def test_a_whole_ellipse_is_not_extended_and_a_fence_trims_it() -> None:
     h.line((4.0, -9.0), (4.0, 9.0))
     h.run("TRIM", "F", "4.8,-2", "4.8,2", "")
     assert ellipse_ends(h) == ((4.0, 1.8), (4.0, -1.8))
+
+
+def test_an_ellipse_is_plan_geometry_and_offset_still_refuses_it() -> None:
+    h = Harness()
+    h.run("ELLIPSE", "C", "0,0", "5,0", "3")
+    (entity,) = [e for e in h.document.get_entities() if e.kind == "ELLIPSE"]
+    assert isinstance(entity.geometry, CadEllipse) and entity.geometry.is_full
+    assert entity.is_editable and entity.elevation == 0.0
+    before = h.document.undo_history
+    h.run("OFFSET", "1")
+    h.runner.answer_entity(entity.id, (5.0, 0.0))
+    assert h.messages()[-1] == "Cannot offset that object."
+    h.runner.cancel()
+    assert h.document.undo_history == before
