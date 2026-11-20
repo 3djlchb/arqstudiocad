@@ -114,3 +114,13 @@ as an interoperability reference (signed fill, item rotation and group base).
 Implementation and hand-derived expected coordinates are original. No
 proprietary code, prose or artwork is incorporated; code remains
 GPL-3.0-or-later and project documentation CC BY-SA 4.0.
+
+## Path ARRAY behavioral reference (2026-11-20)
+
+The independent `ARRAYPATH` / `MATRIZCAMINO` workflow refers to
+[AutoCAD 2021 ARRAYPATH](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-D36C46CD-4E17-4A16-A387-C0B158EA5A9E.htm)
+for Divide, base points, independent items and relative alignment. Source
+retention and outgoing corner tangents are explicit maintainer decisions;
+no full parity is claimed. Original implementation and hand-derived expected
+coordinates; no proprietary source, manual prose or artwork incorporated.
+Code remains GPL-3.0-or-later; documentation CC BY-SA 4.0.
