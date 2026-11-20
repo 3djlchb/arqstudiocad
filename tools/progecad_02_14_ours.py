@@ -287,6 +287,21 @@ def el9(doc: CadDocument) -> None:
     doc.extend_entity(target, (-8.5, 1.8), [boundary])
 
 
+def el10(doc: CadDocument) -> None:
+    target = ell(doc)
+    doc.stretch_entities([target], (2, 3), [(target, CadBounds2((-1, -1), (1, 1)))])
+
+
+def el11(doc: CadDocument) -> None:
+    target = ell(doc, 0.0, math.pi / 2)
+    doc.stretch_entities([target], (1, 0), [(target, CadBounds2((-1, -1), (6, 4)))])
+
+
+def el12(doc: CadDocument) -> None:
+    target = ell(doc, 0.0, math.pi / 2)
+    doc.stretch_entities([target], (1, 0), [(target, CadBounds2((4, -1), (6, 1)))])
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -329,6 +344,9 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("EL7-extend-ellipse-arc", el7),
     ("EL8-break-ellipse-whole", el8),
     ("EL9-extend-line-to-ellipse", el9),
+    ("EL10-stretch-ellipse-whole", el10),
+    ("EL11-stretch-ellipse-arc-both-ends", el11),
+    ("EL12-stretch-ellipse-arc-one-end", el12),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),
