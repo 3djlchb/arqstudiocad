@@ -102,7 +102,7 @@ Cases EL5–EL9 are about (0,0), with semi-axes 5 and 3:
 | EL7 | EXTEND the first quarter at (0,3) to x = −4 | the arc from (5,0) to (−4,1.8) |
 | EL8 | BREAK a whole ellipse, First (5,0), second (0,3) | the arc from (0,3) round to (5,0) |
 | EL9 | EXTEND a line along y = 1.8 from x = −10 to the ellipse | to (−4,1.8) |
-| EL10 | STRETCH a whole ellipse, crossing window round its center, by (2,3) | moved to center (2,3) |
+| EL10 | STRETCH a whole ellipse, crossing window from (6,1) to (−1,−1), holding its center, by (2,3) | moved to center (2,3) |
 | EL11 | STRETCH the first quarter, window round both ends, by (1,0) | moved, ends (6,0) and (1,3) |
 | EL12 | STRETCH the first quarter, window round (5,0) only, by (1,0) | refused, unchanged: to confirm |
 
@@ -110,6 +110,9 @@ To confirm: that angles count from the first axis drawn when it is not
 horizontal (EL4 draws one whose first end is (0,0), the axis pointing
 west), and what Parameter gives.
 
-**Run on 2026-11-20** ([results](../testing/commands-02-14-windows.md#join-on-polylines-matchprop-and-ellipse-2026-11-20)): EL1–EL4 the same as ProgeCAD,
+**Run on 2026-11-20** ([results](../testing/commands-02-14-windows.md#join-on-polylines-matchprop-and-ellipse-2026-11-20)): EL1–EL11 the same as ProgeCAD,
 the major axis toward the first point and the arc's angles counted from
-it. Parameter was not among the cases.
+it; a whole ellipse moves when the crossing window holds its center and
+stays when it does not. EL12 differs: ProgeCAD reshapes the arc into
+another ellipse, which ours refuses, kept by the maintainer's choice.
+Parameter was not among the cases.

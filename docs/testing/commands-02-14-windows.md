@@ -100,9 +100,25 @@ case reads back the same from our DWG and from our DXF.
 
 **MATCHPROP of a text's look (M6).** ProgeCAD gives the style, the width factor, the oblique angle and the rotation. Ours, by its design (option A), gives the first three and never the rotation. The maintainer chose to keep ours (2026-11-20): matching properties does not turn a drawing's texts. Our tool cannot build this source yet; the rule is covered by the Rust tests.
 
-## To run: ELLIPSE edits (EL5–EL12)
+## ELLIPSE edits (2026-11-20)
 
-Added on 2026-11-20 with the ellipse as a curve (ADR 0041): EL5–EL9, an
-ellipse trimmed, extended and broken, and a line extended to an ellipse;
-EL10–EL12, ellipses stretched. What ours gives is in
-[ELLIPSE's design](../design/ellipse-command.md#windows-comparison).
+The cases added with the ellipse as a curve (ADR 0041), run the same day
+after merging them, with TRIM, EXTEND, BREAK and STRETCH's earlier cases
+again: 23 cases, 67 files reopened.
+
+| Commands | Cases | Result |
+|---|---|---|
+| TRIM, EXTEND, BREAK | EL5 a whole ellipse trimmed, EL6 an arc cut in the middle, EL7 an arc extended, EL8 a whole ellipse broken, EL9 a line extended to an ellipse | **all the same** |
+| STRETCH | EL10 a whole ellipse, EL11 an arc with both ends in the window | the same |
+| STRETCH | EL12 an arc with one end in the window | differs (below) |
+| The earlier TRIM, EXTEND, BREAK, STRETCH | T1–T3, E1–E2, B1–B4, S1–S2 | the same, as before |
+
+**A whole ellipse stretched (EL10).**
+- **The case was wrong at first.** Its crossing window lay round the center and touched no part of the ellipse, so ProgeCAD selected nothing. Ours, given the ellipse directly, moved it.
+- **Probed again,** with a window crossing the ellipse: ProgeCAD moves a whole ellipse when the window holds its center, and leaves it when it does not. Ours does the same in both.
+- **The case** now uses the crossing window, in both tools.
+
+**An arc stretched by one end (EL12).**
+- **ProgeCAD** reshapes it into another ellipse: center (0.4378,−0.0950), major axis (5.5782,−0.2137), ratio 0.5538.
+- **Ours** refuses it, by its design, and changes nothing.
+- **Decision.** The maintainer chose to keep the refusal (2026-11-20). ProgeCAD's rule is not evident, and changes the whole ellipse.
