@@ -162,3 +162,12 @@ and affected Python bytecode caches removed. The final 4000-vertex budget
 was independently sabotage-verified after the rebase. Temporary scripts,
 logs and public fixtures stayed outside tracked source; no private drawing,
 real QSettings or system/desktop setting was changed.
+
+Final diagnostic: edit after/before 0.992421; bounded query 0.329887 ms;
+overlay construction 1.481141 ms, CPU painting 6.808924 ms and combined
+build+paint 8.389221 ms for the approved fixture. The final budget shows
+20 of 99 copied cells (2000 paths/4000 vertices) with an explicit notice.
+See [testing and performance](../TESTING_AND_PERFORMANCE.md) for exact
+commits, environment, repetitions, the initial 40.011402 ms full-preview
+measurement and its different work budget. Reference interaction acceptance
+remains pending.
