@@ -4,6 +4,7 @@ the block definition's budget data (ADR 0027 step 5)."""
 
 import math
 from collections.abc import Sequence
+from typing import Any
 
 from PySide6.QtWidgets import QDockWidget, QMessageBox, QWidget
 
@@ -13,6 +14,7 @@ from arqstudiocad.core import (
     CadCircle,
     CadColor,
     CadDocument,
+    CadEllipse,
     CadEntityInfo,
     CadError,
     CadLine,
@@ -173,7 +175,7 @@ def selection_properties(
     if (
         len(kinds) == 1
         and all(type(geometry) is geometry_type for geometry in geometries)
-        and isinstance(geometries[0], (CadLine, CadCircle, CadArc))
+        and isinstance(geometries[0], (CadLine, CadCircle, CadArc, CadEllipse))
     ):
         sections.append(_geometry_section(entities, geometries))
     else:
@@ -316,6 +318,8 @@ def _geometry_section(entities: Sequence[CadEntityInfo], geometries: Sequence[ob
             [0.5 * arc.radius**2 * _arc_sweep(arc) for arc in arcs],
             editable=False,
         )
+    elif isinstance(first, CadEllipse):
+        _ellipse_rows([g for g in geometries if isinstance(g, CadEllipse)], numeric)
     elevations = [entity.elevation for entity in entities]
     if elevations and all(elevation is not None for elevation in elevations):
         elevation = _common(elevations)
@@ -471,6 +475,7 @@ def _kind_name(kind: str) -> str:
         "LINE": tr("Line"),
         "CIRCLE": tr("Circle"),
         "ARC": tr("Arc"),
+        "ELLIPSE": tr("Ellipse"),
         "TEXT": tr("Text"),
         "MTEXT": tr("Multiline text"),
     }
@@ -504,10 +509,64 @@ def _arc_sweep(arc: CadArc) -> float:
     return (arc.end_angle - arc.start_angle) % (2.0 * math.pi)
 
 
+def _ellipse_rows(ellipses: Sequence[CadEllipse], numeric: Any) -> None:
+    """An ellipse's rows, as AutoCAD's (ADR 0041 D4): its center, radii
+    and ratio, and an arc's angles from the major axis, editable; its
+    major axis, an arc's ends, its length and area shown."""
+    for name, index in (("Center X", 0), ("Center Y", 1)):
+        values = [e.center[index] for e in ellipses]
+        numeric(f"geometry.center.{index}", name, values, editable=True)
+    majors = [math.hypot(*e.major_axis) for e in ellipses]
+    numeric("geometry.major_radius", "Major radius", majors, editable=True)
+    minors = [m * e.ratio for m, e in zip(majors, ellipses, strict=True)]
+    numeric("geometry.minor_radius", "Minor radius", minors, editable=True)
+    numeric("geometry.ratio", "Radius ratio", [e.ratio for e in ellipses], editable=True)
+    for name, index in (("Major axis X", 0), ("Major axis Y", 1)):
+        numeric(f"major.{index}", name, [e.major_axis[index] for e in ellipses], editable=False)
+    if not any(e.is_full for e in ellipses):
+        starts = [math.degrees(ellipse_angle(e, e.start_param)) for e in ellipses]
+        numeric("geometry.start_angle", "Start angle", starts, editable=True)
+        ends = [math.degrees(ellipse_angle(e, e.end_param)) for e in ellipses]
+        numeric("geometry.end_angle", "End angle", ends, editable=True)
+        for label, at, index in (
+            ("Start X", 0, 0),
+            ("Start Y", 0, 1),
+            ("End X", -1, 0),
+            ("End Y", -1, 1),
+        ):
+            values = [e.points()[at][index] for e in ellipses]
+            numeric(f"ends.{at}.{index}", label, values, editable=False)
+    numeric("length", "Length", [e.length for e in ellipses], editable=False)
+    areas = [
+        0.5 * m * n * _ellipse_sweep(e) for m, n, e in zip(majors, minors, ellipses, strict=True)
+    ]
+    numeric("area", "Area", areas, editable=False)
+
+
+def ellipse_angle(ellipse: CadEllipse, param: float) -> float:
+    """The angle about the center, from the major axis, in [0, 2π), of
+    the point at ``param``."""
+    return math.atan2(ellipse.ratio * math.sin(param), math.cos(param)) % (2.0 * math.pi)
+
+
+def ellipse_param(ellipse: CadEllipse, angle: float) -> float:
+    """The parameter of the point at ``angle`` about the center, from the
+    major axis."""
+    return math.atan2(math.sin(angle), ellipse.ratio * math.cos(angle))
+
+
+def _ellipse_sweep(ellipse: CadEllipse) -> float:
+    if ellipse.is_full:
+        return 2.0 * math.pi
+    return (ellipse.end_param - ellipse.start_param) % (2.0 * math.pi)
+
+
 def _replace_geometry_value(
     geometry: object, key: str, value: float
-) -> CadLine | CadCircle | CadArc:
+) -> CadLine | CadCircle | CadArc | CadEllipse:
     parts = key.split(".")
+    if isinstance(geometry, CadEllipse):
+        return _replace_ellipse_value(geometry, parts[1], parts[2:], value)
     if isinstance(geometry, CadLine):
         start = list(geometry.start)
         end = list(geometry.end)
@@ -535,6 +594,27 @@ def _replace_geometry_value(
             end_angle = math.radians(value)
         return CadArc(center, radius, start_angle, end_angle)
     raise ValueError(str(value))
+
+
+def _replace_ellipse_value(
+    ellipse: CadEllipse, name: str, rest: list[str], value: float
+) -> CadEllipse:
+    """``ellipse`` with one of its Properties rows set: its center, a radius
+    (the longer becoming the major), its ratio, or an arc's angle (degrees
+    from the major axis)."""
+    start, end = (0.0, 0.0) if ellipse.is_full else (ellipse.start_param, ellipse.end_param)
+    if name == "center":
+        center = list(ellipse.center)
+        center[int(rest[0])] = value
+        return CadEllipse(center, ellipse.major_axis, ellipse.ratio, start, end)
+    if name in ("major_radius", "minor_radius"):
+        return ellipse.with_semi_axis(name == "major_radius", value)
+    if name == "ratio":
+        return CadEllipse(ellipse.center, ellipse.major_axis, value, start, end)
+    param = ellipse_param(ellipse, math.radians(value))
+    if name == "start_angle":
+        return CadEllipse(ellipse.center, ellipse.major_axis, ellipse.ratio, param, end)
+    return CadEllipse(ellipse.center, ellipse.major_axis, ellipse.ratio, start, param)
 
 
 class PropertiesPanel(QDockWidget):

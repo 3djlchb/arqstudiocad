@@ -1,6 +1,7 @@
 """Multifunction grips (ADR 0016 D7): which grips show, the grip edit's
 modes and options, and grips in the viewport."""
 
+import math
 from pathlib import Path
 
 import pytest
@@ -309,3 +310,58 @@ def test_grips_hide_while_another_command_runs(window: MainWindow, tmp_path: Pat
     window.runner.cancel()
     window.session.select(document, [document.get_entities()[1].id])
     assert len(viewport.grips) == 5
+
+
+def ellipse_harness(start: float = 0.0, end: float = 0.0) -> tuple[Harness, int]:
+    """The harness with an ellipse about (50,0), semi-axes 5 along x and 3,
+    from ``start`` to ``end`` (equal: whole), selected alone."""
+    h = Harness()
+    ellipse, _ = h.document.add_ellipse(CadEllipse((50, 0), (5, 0), 0.6, start, end))
+    h.session.select(h.document, [ellipse])
+    h.steps = len(h.document.undo_history)
+    return h, ellipse
+
+
+def test_an_ellipse_shows_its_center_and_axis_ends_and_its_center_moves_it() -> None:
+    h, ellipse = ellipse_harness()
+    kinds = [g.kind for g in shown_grips(h.session, h.document) if g.entity_id == ellipse]
+    assert kinds == ["CEN", "QUA", "QUA", "QUA", "QUA"]
+    h.edit(h.grip(ellipse, "CEN"), "52,1")
+    moved = h.geometry(ellipse)
+    assert isinstance(moved, CadEllipse) and moved.center == pytest.approx((52.0, 1.0))
+    assert h.new_steps() == ["GRIP"]
+
+
+def test_an_axis_end_sets_its_semi_axis_and_the_longer_becomes_major() -> None:
+    h, ellipse = ellipse_harness()
+    h.edit(h.grip(ellipse, "QUA", (55.0, 0.0)), "58,1")
+    longer = h.geometry(ellipse)
+    assert isinstance(longer, CadEllipse)
+    assert longer.major_axis == pytest.approx((math.hypot(8, 1), 0.0))
+    assert longer.ratio == pytest.approx(3 / math.hypot(8, 1))
+    # The minor end pulled past the major: the major turns upright.
+    h, ellipse = ellipse_harness()
+    h.edit(h.grip(ellipse, "QUA", (50.0, 3.0)), "50,7")
+    swapped = h.geometry(ellipse)
+    assert isinstance(swapped, CadEllipse)
+    assert swapped.major_axis == pytest.approx((0.0, 7.0), abs=1e-12)
+    assert swapped.ratio == pytest.approx(5 / 7)
+    # Onto the center: no shape, asked again.
+    h.edit(h.grip(ellipse, "QUA", (57.0 - 7.0, 7.0)), "50,0")
+    assert h.messages()[-1] == "The object cannot take that shape."
+
+
+def test_an_elliptical_arc_end_slides_along_it() -> None:
+    # The first quarter, (55,0) to (50,3): its end pulled toward (40,0),
+    # to (45,0); the axis end at (55,0) is its end grip, not a quadrant.
+    h, ellipse = ellipse_harness(0.0, math.pi / 2)
+    kinds = [g.kind for g in shown_grips(h.session, h.document) if g.entity_id == ellipse]
+    assert kinds == ["CEN", "END", "END"]
+    h.edit(h.grip(ellipse, "END", (50.0, 3.0)), "40,0")
+    arc = h.geometry(ellipse)
+    assert isinstance(arc, CadEllipse) and not arc.is_full
+    first, last = arc.points()[0], arc.points()[-1]
+    assert first == pytest.approx((55.0, 0.0)) and last == pytest.approx((45.0, 0.0))
+    h.edit(h.grip(ellipse, "END", (55.0, 0.0)), "50,-9")
+    back = h.geometry(ellipse)
+    assert isinstance(back, CadEllipse) and back.points()[0] == pytest.approx((50.0, -3.0))
