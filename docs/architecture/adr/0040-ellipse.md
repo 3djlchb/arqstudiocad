@@ -2,6 +2,10 @@
 
 Date: 2026-11-17 · Status: Accepted (maintainer, 2026-11-17)
 
+> **D5 carried out by [ADR 0041](0041-ellipse-curve.md) (2026-11-20):**
+> the ellipse is a `Geometry2`, in four deliveries. The text below keeps
+> its history.
+
 ## Context
 
 Milestone 02.14's group 5 is ELLIPSE and SPLINE, "new curves, new

@@ -39,7 +39,9 @@ and distances define no ellipse."), leave the drawing unchanged.
 
 The ellipse snaps to its center, its arc's ends and middle, its quadrants
 and its nearest point, and is moved, copied, turned, scaled and mirrored
-as a whole (ADR 0040).
+as a whole (ADR 0040). Since ADR 0041 it is a curve: it gives the
+Intersection, Perpendicular and Tangent snaps, a crossing meets its curve,
+and TRIM cuts at it.
 
 ## Reference and validation
 
