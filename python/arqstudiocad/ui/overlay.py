@@ -9,8 +9,12 @@ the GPU path hands it to the view, which draws it with wgpu
 """
 
 import math
+from array import array
 from dataclasses import dataclass, field
+from itertools import chain
+from typing import Any
 
+import shiboken6
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPen, QPolygonF
 
@@ -113,23 +117,65 @@ def marker(kind: str, at: XY, r: float, color: RGBA, width: float) -> list[Strok
     return [line((x - r, y - r), (x + r, y - r), (x - r, y + r), (x + r, y + r), closed=True)]
 
 
+#: shiboken6's view of C++ memory, which also takes a wrapped pointer, a size
+#: and whether it is writable; its stub knows only ``VoidPtr(int)``.
+_VoidPtr: Any = shiboken6.VoidPtr
+
+
+def _polygon_by_points(points: tuple[XY, ...]) -> QPolygonF:
+    return QPolygonF([QPointF(x, y) for x, y in points])
+
+
+def _polygon_by_copy(points: tuple[XY, ...]) -> QPolygonF:
+    """``points`` copied into the polygon's storage in one block, without a
+    ``QPointF`` for each: Qt keeps a polygon's points as consecutive pairs of
+    ``qreal``. Making those objects one by one was most of the time a busy
+    overlay took to paint (STRETCH's preview of curved polylines)."""
+    flat = array("d", chain.from_iterable(points))
+    polygon = QPolygonF()
+    polygon.resize(len(points))
+    # data() wraps the address of the first point; Qt keeps ownership.
+    storage = _VoidPtr(polygon.data(), len(flat) * flat.itemsize, True)
+    memoryview(storage).cast("B")[:] = memoryview(flat).cast("B")
+    return polygon
+
+
+def _copy_is_exact() -> bool:
+    """Whether a copied polygon equals one built point by point here: true
+    where ``qreal`` is a double, as on every platform Qt ships for."""
+    try:
+        points = ((1.5, -2.25), (3e9, 0.1))
+        return _polygon_by_copy(points) == _polygon_by_points(points)
+    except (TypeError, ValueError):
+        return False
+
+
+_polygon = _polygon_by_copy if _copy_is_exact() else _polygon_by_points
+
+
 def paint(painter: QPainter, overlay: Overlay) -> None:
     """Paints ``overlay`` with ``painter``, in logical pixels."""
     painter.save()
+    style: tuple[RGBA, float, bool, bool] | None = None
     for item in overlay.items:
         if isinstance(item, Fill):
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
             painter.fillRect(QRectF(QPointF(*item.min), QPointF(*item.max)), QColor(*item.color))
+            style = None
             continue
         if len(item.points) < 2:
             continue
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, not item.crisp)
-        pen = QPen(QColor(*item.color), item.width)
-        if item.dashed:
-            pen.setStyle(Qt.PenStyle.DashLine)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        polygon = QPolygonF([QPointF(x, y) for x, y in item.points])
+        # The painter's state changes only with the style: strokes come in
+        # runs of one style (the outlines of a selection, of a preview).
+        if style != (item.color, item.width, item.dashed, item.crisp):
+            style = (item.color, item.width, item.dashed, item.crisp)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, not item.crisp)
+            pen = QPen(QColor(*item.color), item.width)
+            if item.dashed:
+                pen.setStyle(Qt.PenStyle.DashLine)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+        polygon = _polygon(item.points)
         if item.closed:
             painter.drawPolygon(polygon)
         else:

@@ -9,8 +9,10 @@ from test_point_input import mouse, plan
 from ui_fakes import QuietUi
 
 from arqstudiocad.core import CadApplication, CadBounds2, CadError, CadLine, CadView
+from arqstudiocad.events import Drag
 from arqstudiocad.ui.main_window import MainWindow
-from arqstudiocad.ui.overlay import Stroke
+from arqstudiocad.ui.overlay import Overlay, Stroke
+from arqstudiocad.ui.viewport import Viewport
 
 
 def test_stretch_outlines_are_exact_read_only_and_validate_inputs() -> None:
@@ -125,3 +127,32 @@ def test_a_crossing_polygon_shared_by_many_entities_stretches_each_by_its_own() 
         else:
             assert (line.start, line.end) == ((3 * k + 2, 3), (3 * k + 1, 0))
     assert len(doc.undo_history) == len(history) + 1
+
+
+@pytest.mark.parametrize("ratio", [1.0, 2.0])
+def test_outlines_and_previews_come_in_logical_pixels_at_any_display_ratio(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch, ratio: float
+) -> None:
+    document = CadApplication().create_document("ratio")
+    source, _ = document.add_polyline([((0, 0), 0.5), ((5, 2), -0.5), ((10, 0), 0.0)])
+    viewport = Viewport(document)
+    qtbot.addWidget(viewport)
+    viewport.view.resize(round(400 * ratio), round(300 * ratio))
+    viewport.view.zoom_extents()
+    monkeypatch.setattr(viewport, "devicePixelRatioF", lambda: ratio)
+    physical = viewport.view.outlines([source])
+    out = Overlay()
+    viewport._outline_strokes(out, (source,), (0, 0, 0, 255), 1.0)
+    assert [s.points for s in out.items if isinstance(s, Stroke)] == [
+        tuple((x / ratio, y / ratio) for x, y in path) for path in physical
+    ]
+    area = [(source, CadBounds2((9, -1), (11, 1)))]
+    viewport._dragged = Drag("stretch", (source,), crossing=tuple(area))
+    viewport._base, viewport._target = (0.0, 0.0), (2.0, 3.0)
+    preview = Overlay()
+    viewport._stretch_items(preview, (0, 0, 0, 255))
+    shown = viewport.view.stretch_outlines([source], (2, 3), area, [])
+    assert [s.points for s in preview.items if isinstance(s, Stroke)] == [
+        tuple((x / ratio, y / ratio) for x, y in path) for path in shown
+    ]
+    assert len(preview.items) == len(shown) > 0
