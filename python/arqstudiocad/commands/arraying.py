@@ -15,6 +15,7 @@ from arqstudiocad.commands import (
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
 from arqstudiocad.core import CadError
+from arqstudiocad.events import Drag
 from arqstudiocad.i18n import tr
 
 
@@ -66,10 +67,17 @@ def rectangular_array(ctx: CommandContext) -> CommandScript:
             )
             if column_spacing == 0:
                 ctx.message(tr("Spacing must be nonzero."))
+    default_angle = ctx.remembered.get("ARRAY_ANGLE", 0.0)
     angle = yield ctx.angle(
         tr("Specify array orientation"),
         (0.0, 0.0),
-        default=ctx.remembered.get("ARRAY_ANGLE", 0.0),
+        default=default_angle,
+        drag=Drag(
+            "array_rect",
+            ids,
+            rotation=default_angle,
+            array=(rows, columns, row_spacing, column_spacing),
+        ),
     )
     try:
         copies, changes = document.rectangular_array(

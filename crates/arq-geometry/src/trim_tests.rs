@@ -1,4 +1,4 @@
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use super::*;
 use crate::circle::Circle;
@@ -201,27 +201,211 @@ fn break_circle_removes_the_directed_counterclockwise_gap() {
     assert!(break_curve(circle, p(5.0, 0.0), p(5.0, 1e-12), TOL).is_err());
 }
 
+/// About (0,0), semi-axes 5 along x and 3 along y, from `start` to `end`
+/// (equal: the whole ellipse).
+fn ellipse(start: f64, end: f64) -> crate::Ellipse {
+    crate::Ellipse::new(
+        p(0.0, 0.0),
+        crate::Vector2::new(5.0, 0.0).unwrap(),
+        0.6,
+        start,
+        end,
+    )
+    .unwrap()
+}
+
+fn near(a: Point2, b: Point2) -> bool {
+    a.distance_to(b) < 1e-9
+}
+
+/// An elliptical piece's ends and sweep.
+fn elliptical(g: &Geometry2) -> (Point2, Point2, f64) {
+    let Geometry2::Ellipse(e) = g else {
+        panic!("{g:?}")
+    };
+    let (a, b) = e.ends().expect("an arc");
+    (a, b, e.sweep())
+}
+
 #[test]
-fn an_ellipse_is_not_trimmed_extended_broken_or_offset_yet() {
-    // Its edits come in the next delivery, OFFSET with SPLINE (ADR 0041):
-    // refused, nothing made.
-    use crate::{Ellipse, Vector2};
-    let e: Geometry2 = Ellipse::new(p(0.0, 0.0), Vector2::new(5.0, 0.0).unwrap(), 0.6, 0.0, PI)
-        .unwrap()
-        .into();
-    let edge = line((0.0, -1.0), (0.0, 9.0));
+fn a_whole_ellipse_cut_twice_becomes_the_arc_left() {
+    // x = 4 cuts it at (4, ±1.8); picked on its right, that side goes.
     let tol = Tolerance::DEFAULT;
-    assert!(trim(e, &cutting_points(e, &[edge], tol), p(3.0, 2.0), tol).is_err());
-    assert!(extend(e, &[edge], p(5.0, 0.0), tol).is_err());
-    assert!(break_curve(e, p(4.0, 1.8), p(-4.0, 1.8), tol).is_err());
-    assert!(e.offset(1.0, p(0.0, 9.0), tol).is_err());
-    assert!(e.offset_through(p(0.0, 9.0), tol).is_err());
-    // As an edge it cuts a line it crosses, and bounds no EXTEND yet.
-    let cut = line((-9.0, 1.8), (9.0, 1.8));
-    assert_eq!(cutting_points(cut, &[e], tol).len(), 2);
+    let e: Geometry2 = ellipse(0.0, 0.0).into();
+    let cuts = cutting_points(e, &[line((4.0, -9.0), (4.0, 9.0))], tol);
+    let left = trim(e, &cuts, p(5.1, 0.2), tol).unwrap().unwrap();
+    let [piece] = &left[..] else {
+        panic!("{left:?}")
+    };
+    let (a, b, sweep) = elliptical(piece);
+    assert!(near(a, p(4.0, 1.8)) && near(b, p(4.0, -1.8)), "{a:?} {b:?}");
+    assert!(sweep > PI, "the long way round: {sweep}");
+    // Cut once only, it has no part to take away.
+    let one = cutting_points(e, &[line((0.0, 0.0), (0.0, 9.0))], tol);
+    assert!(trim(e, &one, p(0.0, 3.0), tol).unwrap().is_none());
+}
+
+#[test]
+fn an_elliptical_arc_cut_in_the_middle_becomes_two() {
+    // The upper half, cut at its top (0,3) and at x = -4, picked between.
+    let tol = Tolerance::DEFAULT;
+    let upper: Geometry2 = ellipse(0.0, PI).into();
+    let cuts = cutting_points(
+        upper,
+        &[line((0.0, 0.0), (0.0, 9.0)), line((-4.0, 0.0), (-4.0, 9.0))],
+        tol,
+    );
+    let left = trim(upper, &cuts, p(-2.5, 2.8), tol).unwrap().unwrap();
+    let [first, second] = &left[..] else {
+        panic!("{left:?}")
+    };
+    let (a, b, _) = elliptical(first);
+    assert!(near(a, p(5.0, 0.0)) && near(b, p(0.0, 3.0)), "{a:?} {b:?}");
+    let (a, b, _) = elliptical(second);
     assert!(
-        extend(line((-9.0, 1.8), (-6.0, 1.8)), &[e], p(-6.0, 1.8), tol)
+        near(a, p(-4.0, 1.8)) && near(b, p(-5.0, 0.0)),
+        "{a:?} {b:?}"
+    );
+    // Picked beyond the last cut: only the part to its end goes.
+    let left = trim(upper, &cuts, p(-4.8, 0.5), tol).unwrap().unwrap();
+    let [piece] = &left[..] else {
+        panic!("{left:?}")
+    };
+    let (a, b, _) = elliptical(piece);
+    assert!(near(a, p(5.0, 0.0)) && near(b, p(-4.0, 1.8)), "{a:?} {b:?}");
+    // A cut at its very start cuts nothing off there.
+    let at_start = cutting_points(upper, &[line((5.0, -1.0), (5.0, 1.0))], tol);
+    assert_eq!(at_start.len(), 1);
+    assert!(trim(upper, &at_start, p(4.0, 1.8), tol).unwrap().is_none());
+}
+
+#[test]
+fn a_break_takes_a_span_out_of_an_ellipse() {
+    let tol = Tolerance::DEFAULT;
+    // Whole: the counterclockwise span from the first point to the second
+    // goes, as a circle's.
+    let whole = ellipse(0.0, 0.0);
+    let (q1, q2) = (whole.point_at_param(0.5), whole.point_at_param(1.5));
+    let left = break_curve(whole.into(), q1, q2, tol).unwrap();
+    let [piece] = &left[..] else {
+        panic!("{left:?}")
+    };
+    let (a, b, sweep) = elliptical(piece);
+    assert!(near(a, q2) && near(b, q1), "{a:?} {b:?}");
+    assert!((sweep - (TAU - 1.0)).abs() < 1e-9, "{sweep}");
+    // An arc broken in the middle: two arcs, whatever the points' order.
+    let upper = ellipse(0.0, PI);
+    let (q1, q2) = (upper.point_at_param(1.0), upper.point_at_param(2.0));
+    for (first, second) in [(q1, q2), (q2, q1)] {
+        let left = break_curve(upper.into(), first, second, tol).unwrap();
+        let [a, b] = &left[..] else {
+            panic!("{left:?}")
+        };
+        let (s0, e0, _) = elliptical(a);
+        let (s1, e1, _) = elliptical(b);
+        assert!(near(s0, p(5.0, 0.0)) && near(e0, q1), "{s0:?} {e0:?}");
+        assert!(near(s1, q2) && near(e1, p(-5.0, 0.0)), "{s1:?} {e1:?}");
+    }
+    // From an arc's very start, wherever it starts: only the span to the
+    // second point goes, not the rest round to its end.
+    for start in [0.3, 0.7, 1.1, 2.9, 4.4, 5.9] {
+        let arc = ellipse(start, start + 2.0);
+        let (from, to) = arc.ends().unwrap();
+        let second = arc.point_at_param(start + 1.0);
+        let left = break_curve(arc.into(), from, second, tol).unwrap();
+        let [piece] = &left[..] else {
+            panic!("{start}: {left:?}")
+        };
+        let (a, b, _) = elliptical(piece);
+        assert!(near(a, second) && near(b, to), "{start}: {a:?} {b:?}");
+    }
+    // The same point twice on a whole ellipse breaks nothing.
+    assert!(break_curve(whole.into(), q1, q1, tol).is_err());
+}
+
+#[test]
+fn an_elliptical_arc_grows_round_its_ellipse() {
+    let tol = Tolerance::DEFAULT;
+    // The first quarter, (5,0) to (0,3), grown at its end to x = -4: to
+    // (-4,1.8).
+    let quarter: Geometry2 = ellipse(0.0, FRAC_PI_2).into();
+    let wall = line((-4.0, -9.0), (-4.0, 9.0));
+    let grown = extend(quarter, &[wall], p(0.2, 3.0), tol).unwrap().unwrap();
+    let (a, b, _) = elliptical(&grown);
+    assert!(near(a, p(5.0, 0.0)) && near(b, p(-4.0, 1.8)), "{a:?} {b:?}");
+    // At its start, back to y = -1.8 on x from 0 to 9: to (4,-1.8).
+    let floor = line((0.0, -1.8), (9.0, -1.8));
+    let grown = extend(quarter, &[floor], p(5.0, 0.1), tol)
+        .unwrap()
+        .unwrap();
+    let (a, b, _) = elliptical(&grown);
+    assert!(near(a, p(4.0, -1.8)) && near(b, p(0.0, 3.0)), "{a:?} {b:?}");
+    // No edge that way, and a whole ellipse cannot grow.
+    assert!(
+        extend(quarter, &[line((20.0, 0.0), (21.0, 0.0))], p(0.2, 3.0), tol)
             .unwrap()
             .is_none()
     );
+    assert!(extend(ellipse(0.0, 0.0).into(), &[wall], p(5.0, 0.0), tol).is_err());
+    // An edge crossing only the arc itself is not reached by going round
+    // onto it.
+    let across = line((4.0, 0.0), (4.0, 9.0));
+    assert!(
+        extend(quarter, &[across], p(0.2, 3.0), tol)
+            .unwrap()
+            .is_none()
+    );
+    // An edge only beyond its other end, round the far side: not reached
+    // the short way, so the nearest wins.
+    let both = [wall, line((4.0, -9.0), (4.0, -1.0))];
+    let grown = extend(quarter, &both, p(0.2, 3.0), tol).unwrap().unwrap();
+    assert!(near(elliptical(&grown).1, p(-4.0, 1.8)));
+}
+
+#[test]
+fn an_ellipse_bounds_lines_and_arcs_extended_to_it() {
+    let tol = Tolerance::DEFAULT;
+    let edge: Geometry2 = ellipse(0.0, 0.0).into();
+    // A line along y = 1.8 from x = -10, grown at its end: to (-4,1.8).
+    let grown = extend(line((-10.0, 1.8), (-8.0, 1.8)), &[edge], p(-8.0, 1.8), tol)
+        .unwrap()
+        .unwrap();
+    assert!(near(grown.end_point().unwrap(), p(-4.0, 1.8)), "{grown:?}");
+    // An arc of radius 4 about the center, 0 to 45°, grown at its end:
+    // round to where the circle next meets the ellipse, x < 0.
+    let arc: Geometry2 = crate::Arc::new(p(0.0, 0.0), 4.0, 0.0, PI / 4.0)
+        .unwrap()
+        .into();
+    let tip = arc.end_point().unwrap();
+    let grown = extend(arc, &[edge], tip, tol).unwrap().unwrap();
+    let end = grown.end_point().unwrap();
+    let (x, y) = ((25.0f64 * 7.0 / 16.0).sqrt(), (81.0f64 / 16.0).sqrt());
+    assert!(near(end, p(-x, y)), "{end:?}");
+    // A line passing above it, along y = 4, reaches nothing.
+    assert!(
+        extend(line((-10.0, 4.0), (-8.0, 4.0)), &[edge], p(-8.0, 4.0), tol)
+            .unwrap()
+            .is_none()
+    );
+    // Only the upper half as an edge: a line along y = -1.8 reaches none.
+    let upper: Geometry2 = ellipse(0.0, PI).into();
+    assert!(
+        extend(
+            line((-10.0, -1.8), (-8.0, -1.8)),
+            &[upper],
+            p(-8.0, -1.8),
+            tol
+        )
+        .unwrap()
+        .is_none()
+    );
+}
+
+#[test]
+fn an_ellipse_is_not_offset_yet() {
+    // OFFSET with SPLINE (ADR 0041): refused, nothing made.
+    let tol = Tolerance::DEFAULT;
+    let e: Geometry2 = ellipse(0.0, PI).into();
+    assert!(e.offset(1.0, p(0.0, 9.0), tol).is_err());
+    assert!(e.offset_through(p(0.0, 9.0), tol).is_err());
 }

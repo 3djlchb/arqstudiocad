@@ -43,7 +43,7 @@ class Harness:
 
     def curves(self) -> list[CadLine | CadCircle | CadArc]:
         found = [e.geometry for e in self.document.get_entities()]
-        return [g for g in found if g is not None]
+        return [g for g in found if isinstance(g, (CadLine, CadCircle, CadArc))]
 
 
 def ends(line: CadLine | CadCircle | CadArc) -> tuple[tuple[float, float], tuple[float, float]]:

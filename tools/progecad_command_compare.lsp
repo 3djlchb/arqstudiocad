@@ -311,6 +311,13 @@
 
 (defun arq:ln (doc a b) (vla-AddLine (vla-get-ModelSpace doc) (arq:v a) (arq:v b)))
 (defun arq:circ (doc c r) (vla-AddCircle (vla-get-ModelSpace doc) (arq:v c) r))
+;;; An ELLIPSE about c, its major semi-axis the vector major, cut to the
+;;; parameters p0 to p1 (radians) unless they are nil; returned.
+(defun arq:ell (doc c major ratio p0 p1 / e)
+  (setq e (vla-AddEllipse (vla-get-ModelSpace doc) (arq:v c) (arq:v major) ratio))
+  (if p0 (vla-put-StartParameter e p0))
+  (if p1 (vla-put-EndParameter e p1))
+  e)
 (defun arq:en (o) (vlax-vla-object->ename o))
 
 ;;; POLYLINE with a constant width, returned.
@@ -457,6 +464,16 @@
   (arq:command-case "EL3-ellipse-rotation" 'nil '(command "_.ELLIPSE" '(0 0) '(10 0) "_R" 60) dir log)
   ;; EL4: angles from the first axis drawn, which points west from (5,0).
   (arq:command-case "EL4-ellipse-arc" 'nil '(command "_.ELLIPSE" "_A" '(0 0) '(10 0) 3 30 120) dir log)
+  ;; EL5-EL9: ellipses trimmed, extended and broken (ADR 0041), about
+  ;; (0,0), semi-axes 5 and 3.
+  (arq:command-case "EL5-trim-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil) (arq:ln doc '(4 -9) '(4 9))) '(command "_.TRIM" '(5 0) "") dir log)
+  (arq:command-case "EL6-trim-ellipse-arc-middle" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 pi) (arq:ln doc '(0 0) '(0 9)) (arq:ln doc '(-4 0) '(-4 9))) '(command "_.TRIM" '(-2.5 2.598076211) "") dir log)
+  (arq:command-case "EL7-extend-ellipse-arc" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2)) (arq:ln doc '(-4 -9) '(-4 9))) '(arq:extend (cadr arq:o) '(0.2 2.997599)) dir log)
+  (arq:command-case "EL8-break-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(5 0) '(0 3)) dir log)
+  (arq:command-case "EL10-stretch-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.STRETCH" "_C" '(1 1) '(-1 -1) "" '(0 0) '(2 3)) dir log)
+  (arq:command-case "EL11-stretch-ellipse-arc-both-ends" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 4) '(-1 -1) "" '(0 0) '(1 0)) dir log)
+  (arq:command-case "EL12-stretch-ellipse-arc-one-end" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 1) '(4 -1) "" '(0 0) '(1 0)) dir log)
+  (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)

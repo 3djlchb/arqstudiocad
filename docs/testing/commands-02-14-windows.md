@@ -83,7 +83,11 @@ to an MTEXT, and, in ProgeCAD only, a text with style, width factor,
 oblique angle and rotation, to see which ProgeCAD gives. The dump now
 describes texts and MTEXTs.
 
-## To run: ELLIPSE (EL1–EL4)
+## To run: ELLIPSE (EL1–EL12)
+
+Added on 2026-11-20: EL5–EL9, an ellipse trimmed, extended and broken,
+and a line extended to an ellipse; EL10–EL12, ellipses stretched (ADR
+0041).
 
 Added on 2026-11-17: by an axis and a distance, by its Center, by a
 Rotation, and an elliptical Arc whose first axis points west. The dump now

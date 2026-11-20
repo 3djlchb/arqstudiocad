@@ -252,6 +252,43 @@ impl CadDocument {
         column_spacing: f64,
         angle: f64,
     ) -> CadResult<(Vec<EntityId>, ChangeSet)> {
+        let (grid, ids) = self.rectangular_array_preview_plan(
+            ids,
+            rows,
+            columns,
+            row_spacing,
+            column_spacing,
+            angle,
+        )?;
+        let mut offsets = Vec::with_capacity(grid.cells() - 1);
+        for offset in grid.offsets() {
+            offsets.push(offset?);
+        }
+        self.transact("ARRAYRECT", |doc| {
+            let mut copies = Vec::new();
+            for offset in offsets {
+                let transform = Transform2::translation(offset);
+                for id in &ids {
+                    let copy = doc.copy_entity(*id)?;
+                    doc.transform_entity(copy, transform)?;
+                    copies.push(copy);
+                }
+            }
+            Ok(copies)
+        })
+    }
+
+    /// Read-only placement and validated IDs shared by preview and commit.
+    #[allow(clippy::too_many_arguments)]
+    pub fn rectangular_array_preview_plan(
+        &self,
+        ids: &[EntityId],
+        rows: usize,
+        columns: usize,
+        row_spacing: f64,
+        column_spacing: f64,
+        angle: f64,
+    ) -> CadResult<(arq_geometry::RectangularGrid, Vec<EntityId>)> {
         let cells = rows
             .checked_mul(columns)
             .filter(|n| (2..=100_000).contains(n));
@@ -270,36 +307,18 @@ impl CadDocument {
                 "array spacing and angle must be finite; repeated axes need nonzero spacing".into(),
             ));
         }
+        let grid =
+            arq_geometry::RectangularGrid::new(rows, columns, row_spacing, column_spacing, angle)?;
         let ids = distinct(ids);
-        let (sin, cos) = angle.sin_cos();
-        let mut offsets = Vec::with_capacity(cells.unwrap() - 1);
-        for row in 0..rows {
-            for column in 0..columns {
-                if row == 0 && column == 0 {
-                    continue;
-                }
-                let x = column as f64 * column_spacing;
-                let y = row as f64 * row_spacing;
-                offsets.push(Vector2::new(x * cos - y * sin, x * sin + y * cos)?);
-            }
+        for &id in &ids {
+            let entity = self
+                .document()
+                .entity(id)
+                .ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(self.document(), &entity)?;
+            check_transformable(&entity)?;
         }
-        self.transact("ARRAYRECT", |doc| {
-            for id in &ids {
-                let e = doc.entity(*id).ok_or(CadError::EntityNotFound(*id))?;
-                check_unlocked(doc, &e)?;
-                check_transformable(&e)?;
-            }
-            let mut copies = Vec::new();
-            for offset in offsets {
-                let transform = Transform2::translation(offset);
-                for id in &ids {
-                    let copy = doc.copy_entity(*id)?;
-                    doc.transform_entity(copy, transform)?;
-                    copies.push(copy);
-                }
-            }
-            Ok(copies)
-        })
+        Ok((grid, ids))
     }
 
     /// Independent polar copies, ordered by item and distinct source ID order.
@@ -1441,7 +1460,8 @@ fn check_unlocked(doc: &Document, e: &Entity) -> CadResult<()> {
     Ok(())
 }
 
-/// Finite ray to the index envelope, or an arc's full supporting circle.
+/// Finite ray to the index envelope, or an arc's full supporting circle
+/// (an elliptical arc's whole ellipse).
 /// No bounds()/drawing_all() scan is needed to bound a ray.
 fn extension_query_area(
     curve: Geometry2,
@@ -1450,29 +1470,22 @@ fn extension_query_area(
     padding: f64,
 ) -> Option<arq_geometry::Bounds2> {
     match curve {
-        Geometry2::Circle(_) | Geometry2::Ellipse(_) => None,
+        Geometry2::Circle(_) => None,
+        Geometry2::Ellipse(e) if e.is_full() => None,
         Geometry2::Arc(arc) => {
             // A partial arc may have finite bounds even if its supporting
             // circle overflows. Refuse the broad phase, never panic here.
-            let center = arc.center();
-            let radius = arc.radius();
-            let bounds = arq_geometry::Bounds2::new(
-                Point2::new(center.x() - radius, center.y() - radius).ok()?,
-                Point2::new(center.x() + radius, center.y() + radius).ok()?,
-            );
-            let scale = [
-                bounds.min().x(),
-                bounds.min().y(),
-                bounds.max().x(),
-                bounds.max().y(),
-            ]
-            .into_iter()
-            .map(f64::abs)
-            .fold(1.0, f64::max);
-            bounds
-                .expanded(padding.max(4.0 * arq_geometry::EXTEND_EDGE_RELATIVE_TOLERANCE * scale))
-                .ok()
+            let (center, radius) = (arc.center(), arc.radius());
+            round_query_area(
+                arq_geometry::Bounds2::new(
+                    Point2::new(center.x() - radius, center.y() - radius).ok()?,
+                    Point2::new(center.x() + radius, center.y() + radius).ok()?,
+                ),
+                padding,
+            )
         }
+        // An elliptical arc grows round its whole ellipse.
+        Geometry2::Ellipse(e) => round_query_area(e.whole().bounds(), padding),
         Geometry2::Line(line) => {
             let at_end = arq_geometry::extends_at_end(curve, pick);
             let tip = if at_end { line.end() } else { line.start() };
@@ -1502,10 +1515,25 @@ fn extension_query_area(
     }
 }
 
+/// A round curve's whole extent, padded as EXTEND's on-edge test needs.
+fn round_query_area(bounds: arq_geometry::Bounds2, padding: f64) -> Option<arq_geometry::Bounds2> {
+    let scale = [
+        bounds.min().x(),
+        bounds.min().y(),
+        bounds.max().x(),
+        bounds.max().y(),
+    ]
+    .into_iter()
+    .map(f64::abs)
+    .fold(1.0, f64::max);
+    bounds
+        .expanded(padding.max(4.0 * arq_geometry::EXTEND_EDGE_RELATIVE_TOLERANCE * scale))
+        .ok()
+}
+
 /// The curves TRIM cuts at and EXTEND reaches: the lines, arcs, circles
 /// and ellipses `edges` draw (every entity drawn but `target` when None),
-/// those inside blocks and polylines included; texts never. An ellipse
-/// bounds no EXTEND yet (ADR 0041).
+/// those inside blocks and polylines included; texts never.
 fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> Vec<Geometry2> {
     let ids: Vec<EntityId> = match edges {
         Some(edges) => edges.to_vec(),
