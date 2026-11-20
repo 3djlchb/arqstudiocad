@@ -275,8 +275,9 @@ the separate reference-machine follow-up. That follow-up was measured on
 cursor frames at the displacement prompt 4.2 → 6.9 ms with 100 lines
 stretched, the GPU's at the display's 16.4-16.7 ms. The same day
 ([stretch cases](../testing/reference-machine/2026-11-19/stretch-cases.txt)): zoom or pan during the prompt adds
-about 3 ms on the CPU; bulged polylines take the CPU frame to 24 ms; and
-a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity, 80,000 edge tests each time.
+about 3 ms on the CPU; bulged polylines took the CPU frame to 24 ms, 12 ms since the overlay is
+painted without a QPointF a point; and
+a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity, 80,000 edge tests each time (fixed by #213, which validates it once: 16 ms on the CPU and 11 ms on the GPU).
 
 The public contour query also refuses non-Top views, rather than returning
 XY contours through a camera for another plane. Removing that guard caused

@@ -1037,9 +1037,10 @@ class Viewport(QWidget):
         ``transform`` when they are being dragged."""
         ratio = self.devicePixelRatioF()
         for polyline in self.view.outlines(entity_ids):
-            points = [QPointF(x, y) for x, y in polyline]
-            if transform is not None:
-                points = [transform.map(p) for p in points]
+            if transform is None:
+                out.items.append(Stroke(_logical(polyline, ratio), color, width))
+                continue
+            points = [transform.map(QPointF(x, y)) for x, y in polyline]
             out.items.append(
                 Stroke(tuple((p.x() / ratio, p.y() / ratio) for p in points), color, width)
             )
@@ -1059,8 +1060,7 @@ class Viewport(QWidget):
             # Invalid geometry has no valid preview and remains uncommitted.
             return
         ratio = self.devicePixelRatioF()
-        for path in paths:
-            out.items.append(Stroke(tuple((x / ratio, y / ratio) for x, y in path), color, 1.0))
+        out.items.extend(Stroke(_logical(path, ratio), color, 1.0) for path in paths)
 
     def _grip_items(self, out: Overlay) -> None:
         """Grips as filled squares, the hot one red, edged in the base color."""
@@ -1352,6 +1352,14 @@ def _world_transform(kind: str, base: Point, target: Point) -> QTransform | None
 
 def _distance(a: QPointF, b: QPointF) -> float:
     return float(((a.x() - b.x()) ** 2 + (a.y() - b.y()) ** 2) ** 0.5)
+
+
+def _logical(path: list[tuple[float, float]], ratio: float) -> tuple[tuple[float, float], ...]:
+    """A path in physical pixels, as the view gives it, in logical pixels.
+    At a ratio of one the points are those already: no copy point by point."""
+    if ratio == 1.0:
+        return tuple(path)
+    return tuple((x / ratio, y / ratio) for x, y in path)
 
 
 #: The window systems the GPU presents to, by Qt's platform name (ADR 0034

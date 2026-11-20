@@ -49,6 +49,7 @@ and separation between tests, checking containment before writing.
 | STRETCH edit, 100 selected lines in 100000 lines | Initial median 0.168242 → 0.178892 ms (1.063); five alternating batches pooled 0.168732 → 0.169612 ms (1.005) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension; 3 warm-ups + 20 samples per run (2026-11-15); diagnostic only; reference check pending |
 | STRETCH read-only preview, same selection | Median 0.061386 ms per contour query | Same host/profile; 3 warm-ups + 20 samples; excludes Qt overlay construction, painting and frame scheduling |
 | STRETCH preview, one 402-corner crossing polygon over 100 of 100000 lines | `stretch_outlines` 240.5 → 8.0 ms (0.033); Criterion: validating per pair 235.94 ms, once for all 3.08 ms | Reference machine, i7-2600, 2026-11-19; three alternating runs of 3 warm-ups + 20 samples; `cargo bench -p arq-core --bench query`; method below |
+| STRETCH preview cursor frame on the CPU, 100 two-arc polylines among 100000 entities | 22.88, 23.23 → 12.42, 11.84 ms; the overlay painted 16.12 → 7.50 ms | Reference machine, i7-2600, 2026-11-19; two alternating runs of 60 synthetic cursor moves after 3 warm-ups; method below |
 | World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
 | ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
 | BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
@@ -226,12 +227,14 @@ frame stays at the display's 16.4-16.7 ms. Cancelling leaves the history
 unchanged and the committed stretch is one undo step. The cases left out
 at first, measured the same day ([stretch cases](testing/reference-machine/2026-11-19/stretch-cases.txt)): zoom
 and pan during the prompt, CPU 6.07 → 8.98 ms, GPU unchanged; 100 two-arc
-polylines, CPU 8.83 → 24.06 ms (95th percentile 27.05 ms), GPU 9.29 ms;
+polylines, CPU 8.83 → 24.06 ms (95th percentile 27.05 ms), GPU 9.29 ms
+(12 ms on the CPU since; below, "Overlay painting without a QPointF a point");
 a 402-corner crossing polygon, 4.00 → 252.35 ms on the CPU and 241.79 ms
 on the GPU. The polygon's cost is its validation, repeated for each of the
 100 entities: `stretch_outlines` takes 248.741 ms with the polygon given
 per entity, 0.114 ms with rectangles, and one validation plus a selection
-query 4.122 ms. Not covered: a hand on a real mouse. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
+query 4.122 ms; #213 validates it once (below, "Shared crossing polygon
+validation"). Not covered: a hand on a real mouse. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
 
 ## Metrics to keep
 
@@ -491,3 +494,69 @@ alternating runs each, median (95th percentile) per cursor move:
 
 From about four frames a second to the display's rate on the GPU and
 about one 60 Hz frame on the CPU.
+
+### Overlay painting without a QPointF a point (2026-11-19)
+
+Found on the reference machine with STRETCH's preview of 100 two-arc
+polylines (#212, its `stretch-cases.txt`): a CPU cursor frame of 24 ms,
+over one 60 Hz frame, against 8.8 ms without the preview. A frame's parts,
+timed one by one in the main window with the prompt up (median of 50,
+harness `frame_breakdown.py`, SHA-256
+`73e1fe03f967309b82de5ae1b6e873f16a35e50213e411ee5320e673973a1024`):
+the overlay had 409 strokes and 8,418 points; `stretch_outlines` took
+1.45 ms, building the overlay 6.46 ms (the preview's strokes 4.2 ms, the
+selection's 2.0 ms) and painting it with QPainter 16.12 ms. The core's
+tessellation is the one the drawing uses (0.25 pixel); a stretched arc
+grows, and its points with it.
+
+Painting cost one `QPointF` made in Python for each point, and a pen,
+brush and antialiasing set for each stroke. A bench of 400 strokes and
+8,400 points on an offscreen image (`paint_bench.py`, SHA-256
+`4e39c996f05c0f8776cbf9461b2bc8f420001e54d3c8b5ca98d61754abf1da25`):
+
+| Way | Median, ms |
+|---|---|
+| as before: state per stroke, a `QPointF` per point | 14.44 |
+| the state set once | 10.18 |
+| building the polygons only, a `QPointF` per point | 8.12 |
+| drawing polygons already built | 1.42 |
+| the state set once, each polygon copied in one block | 6.10 |
+
+Now `overlay.paint` sets the painter's state only when the style changes
+(and again after a fill), and builds each polygon by copying its points
+into the polygon's storage in one block (`QPolygonF.resize`, then
+`shiboken6.VoidPtr` over `data()`), the technique pyqtgraph uses under
+PySide6 (THIRD_PARTY.md). At import it checks that a copied polygon
+equals one built point by point, and builds them point by point if not.
+The viewport hands the core's outlines over as they come when the
+display ratio is one, instead of dividing each point by it. A test paints
+an overlay of mixed styles both ways and compares the images pixel by
+pixel.
+
+Measured on the reference machine, base `main` at
+`fc5d76bd0f1890919846856fd997f43aca091667` against this change, each
+built by its own `uv sync`. The main window and the method of
+`stretch-cases.txt` (`stretch_cases.py`, SHA-256
+`d68e18a970f670d7d41fcf4fde00b2f03ba4610a7b4f93e73b2fc30e4c51ac49`; the
+lines with `cursor_frames.py`,
+`4b01c469cba2dc10246c8066ae1e5d30d039e27a8eb2d9d7acbcfc51679b2482`), two
+runs alternating base and fix, median a cursor move at STRETCH's
+displacement prompt, no heavy process during any run:
+
+| CPU (safe mode) | Base, ms | Fix, ms |
+|---|---|---|
+| 100 two-arc polylines | 22.88, 23.23 | 12.42, 11.84 |
+| 402-corner crossing polygon | 15.39, 15.42 | 13.32, 15.27 |
+| 100 lines, zoom and pan with each move | 8.87, 8.53 | 6.41, 6.41 |
+| 100 lines | 6.55, 6.44 | 4.36, 4.36 |
+
+The frame's parts with the two-arc polylines: building the overlay 6.46 →
+3.23 ms, painting it 16.12 → 7.50 ms. On the GPU nothing is painted with
+QPainter; the overlay and `to_core` took 6.56 → 3.37 ms a frame there,
+and the frames stay at the display's refresh (a repeated `repaint`
+16.59 → 16.43 ms). Its cursor-move medians in this series (bulged 9.5 →
+13.0 ms, lines 15.4 → 16.0 ms) follow when each move meets the next
+refresh, not the work. `gpu_viewport_check.py`, twice each, alternating:
+the overlays 0 pixels apart; pan 17.2 and 15.8 ms on the base, 18.0 and
+16.1 ms with the fix, both with a 95th percentile near 32 ms that the base
+shows too in this session, after a reboot.

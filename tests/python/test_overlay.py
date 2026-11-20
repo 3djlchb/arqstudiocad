@@ -1,9 +1,12 @@
 """The overlay's description (ADR 0034 D4) and its QPainter painter."""
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QImage, QPainter
+import math
+
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPolygonF
 from pytestqt.qtbot import QtBot
 
+from arqstudiocad.ui import overlay as overlay_module
 from arqstudiocad.ui.overlay import (
     CIRCLE_SEGMENTS,
     Fill,
@@ -99,3 +102,56 @@ def test_painting_leaves_the_painter_as_it_was() -> None:
     assert not painter.testRenderHint(QPainter.RenderHint.Antialiasing)
     assert painter.pen().style() != Qt.PenStyle.DashLine
     painter.end()
+
+
+def _painted_item_by_item(overlay: Overlay) -> QImage:
+    """The overlay painted as before the painter kept its state between
+    strokes: every stroke sets its antialiasing, pen and brush, and its
+    polygon is built point by point."""
+    image = QImage(100, 100, QImage.Format.Format_RGB32)
+    image.fill(DARK)
+    painter = QPainter(image)
+    for item in overlay.items:
+        if isinstance(item, Fill):
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+            painter.fillRect(QRectF(QPointF(*item.min), QPointF(*item.max)), QColor(*item.color))
+            continue
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, not item.crisp)
+        pen = QPen(QColor(*item.color), item.width)
+        if item.dashed:
+            pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        polygon = QPolygonF([QPointF(x, y) for x, y in item.points])
+        if item.closed:
+            painter.drawPolygon(polygon)
+        else:
+            painter.drawPolyline(polygon)
+    painter.end()
+    return image
+
+
+def test_strokes_of_one_style_in_a_row_paint_as_if_each_set_its_own() -> None:
+    arc = tuple((50 + 30 * math.cos(t / 10), 50 + 20 * math.sin(t / 10)) for t in range(40))
+    overlay = Overlay(
+        [
+            Stroke(arc, BLUE, 1.0),
+            Stroke(tuple((x, y + 3) for x, y in arc), BLUE, 1.0),
+            Fill((10.0, 10.0), (20.0, 20.0), (200, 30, 30, 120)),
+            # After a fill, antialiasing is on again for the same style.
+            Stroke(((5.0, 90.0), (95.0, 70.0)), BLUE, 1.0),
+            Stroke(((5.0, 80.0), (95.0, 60.0)), BLUE, 2.0, dashed=True),
+            Stroke(((5.0, 75.0), (95.0, 75.0)), BLUE, 1.0, crisp=True),
+            Stroke(((5.0, 70.0), (95.0, 50.0)), BLUE, 1.0),
+            Stroke(((60.0, 5.0), (90.0, 5.0), (90.0, 30.0)), (250, 200, 0, 255), 1.0, closed=True),
+        ]
+    )
+    assert painted(overlay) == _painted_item_by_item(overlay)
+
+
+def test_a_polygon_copied_in_one_block_is_the_one_built_point_by_point() -> None:
+    assert overlay_module._polygon is overlay_module._polygon_by_copy, "the fast path, here"
+    points = tuple(((-1) ** i * i * 0.37, 1e6 - i / 3) for i in range(257))
+    copied = overlay_module._polygon_by_copy(points)
+    assert copied == overlay_module._polygon_by_points(points)
+    assert [(copied.at(i).x(), copied.at(i).y()) for i in range(copied.size())] == list(points)

@@ -14,8 +14,9 @@ GPU frames at the display's 16.4-16.7 ms. The cursor was synthetic Qt mouse
 events. The cases left out were measured the same day
 ([stretch cases](reference-machine/2026-11-19/stretch-cases.txt)): zoom or pan during the prompt adds about
 3 ms on the CPU and nothing on the GPU; 100 two-arc polylines take the CPU
-frame to 24 ms (8.8 ms before), over one 60 Hz frame; and a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity
-(4 ms before). Acceptance of the floor is the maintainer's.
+frame to 24 ms (8.8 ms before), over one 60 Hz frame (12 ms since the
+overlay is painted without a QPointF a point); and a 402-corner crossing polygon previews at about 250 ms a cursor move on both renderers, because the bindings validate the same polygon once per selected entity
+(4 ms before) (fixed by #213, which validates it once: 16 ms on the CPU and 11 ms on the GPU). Acceptance of the floor is the maintainer's.
 
 ## Scope and revisions
 
