@@ -179,7 +179,7 @@ def _trim_one(
 ) -> int:
     """Trims the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
-    if document.editable_curve(picked.entity_id) is None and entity.kind != "LWPOLYLINE":
+    if entity.geometry is None and entity.kind != "LWPOLYLINE":
         ctx.message(tr("Cannot trim that object."))
         return 0
     try:
@@ -200,7 +200,7 @@ def _extend_one(ctx: CommandContext, document: CadDocument, picked: Picked, edge
     """Extends the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
     polyline = entity.kind == "LWPOLYLINE"
-    curve = document.editable_curve(picked.entity_id)
+    curve = entity.geometry
     closed = (polyline and dict(entity.details).get("Closed") == "true") or (
         isinstance(curve, CadEllipse) and curve.is_full
     )

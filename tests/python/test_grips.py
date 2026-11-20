@@ -13,7 +13,7 @@ from ui_fakes import QuietUi
 from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.builtin import builtin_registry
 from arqstudiocad.commands.grips import GRIP_LIMIT, grip_edit, shown_grips
-from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadGrip, CadLine
+from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadEllipse, CadGrip, CadLine
 from arqstudiocad.events import (
     CommandMessage,
     CommandPrompt,
@@ -56,7 +56,7 @@ class Harness:
         for answer in answers:
             self.runner.execute(answer)
 
-    def geometry(self, entity_id: int) -> CadLine | CadCircle | CadArc | None:
+    def geometry(self, entity_id: int) -> CadLine | CadCircle | CadArc | CadEllipse | None:
         return self.document.get_entity(entity_id).geometry
 
     def prompt(self) -> str:

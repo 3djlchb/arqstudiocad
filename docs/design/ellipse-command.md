@@ -55,6 +55,10 @@ broken as AutoCAD does:
 
 Each is one undo step, and an ellipse seen from below keeps its normal.
 
+STRETCH moves a whole ellipse when its center is inside the crossing
+area, as a circle, and an elliptical arc when both its ends are, as an
+arc; an arc with one end inside is refused, nothing changed.
+
 ## Reference and validation
 
 Behavioral reference: AutoCAD 2021 Help, "ELLIPSE (Command)". The
@@ -98,6 +102,9 @@ Cases EL5–EL9 are about (0,0), with semi-axes 5 and 3:
 | EL7 | EXTEND the first quarter at (0,3) to x = −4 | the arc from (5,0) to (−4,1.8) |
 | EL8 | BREAK a whole ellipse, First (5,0), second (0,3) | the arc from (0,3) round to (5,0) |
 | EL9 | EXTEND a line along y = 1.8 from x = −10 to the ellipse | to (−4,1.8) |
+| EL10 | STRETCH a whole ellipse, crossing window round its center, by (2,3) | moved to center (2,3) |
+| EL11 | STRETCH the first quarter, window round both ends, by (1,0) | moved, ends (6,0) and (1,3) |
+| EL12 | STRETCH the first quarter, window round (5,0) only, by (1,0) | refused, unchanged: to confirm |
 
 To confirm: that angles count from the first axis drawn when it is not
 horizontal (EL4 draws one whose first end is (0,0), the axis pointing
