@@ -20,7 +20,7 @@ use arq_core::{
     CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
     DocumentId, EntityId, LayerId, MatchSettings, Money,
 };
-use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance};
+use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance, selection_polygons};
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 
@@ -1107,18 +1107,15 @@ impl CadDocument {
             .into_iter()
             .map(|(id, area)| (id, area.0))
             .collect();
-        let polygons: Vec<_> = polygons
-            .into_iter()
-            .map(|(id, points)| {
-                SelectionPolygon::new(
-                    points.into_iter().map(|p| p.0).collect(),
-                    Tolerance::DEFAULT,
-                )
-                .map(|polygon| (id, polygon))
-            })
-            .collect::<Result<_, _>>()
-            .map_err(CadError::from)
-            .py()?;
+        // One validation per distinct polygon, shared by its entities.
+        let polygons = selection_polygons(
+            polygons
+                .into_iter()
+                .map(|(id, points)| (id, points.into_iter().map(|p| p.0).collect())),
+            Tolerance::DEFAULT,
+        )
+        .map_err(CadError::from)
+        .py()?;
         self.change(|cad| {
             cad.stretch_entities_with_polygons(&entity_ids, offset.0, &areas, &polygons)
         })

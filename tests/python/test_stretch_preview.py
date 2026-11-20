@@ -77,3 +77,51 @@ def test_stretch_cursor_previews_partial_geometry_and_clears_on_cancel(
     assert viewport.preview is None
     assert not any(isinstance(s, Stroke) and s.points == expected for s in viewport.overlay().items)
     assert document.undo_history == before
+
+
+def _comb(xs: list[float]) -> list[tuple[float, float]]:
+    """A crossing polygon with a 0.2-wide tooth around each x on y = 0,
+    rising from a base below it."""
+    points: list[tuple[float, float]] = []
+    for x in xs:
+        points += [(x - 0.1, -0.2), (x - 0.1, 0.2), (x + 0.1, 0.2), (x + 0.1, -0.2)]
+    return [*points, (xs[-1] + 0.2, -0.4), (xs[0] - 0.2, -0.4)]
+
+
+def test_a_crossing_polygon_shared_by_many_entities_stretches_each_by_its_own() -> None:
+    app = CadApplication()
+    doc = app.create_document("shared polygon")
+    ids = [doc.add_line((3 * k, 0), (3 * k + 1, 0))[0] for k in range(12)]
+    view = CadView(doc, 800, 600)
+    view.zoom_extents()
+    ends = _comb([3 * k + 1 for k in range(6)])  # the first six lines' ends
+    starts = _comb([3 * k for k in range(6, 12)])  # the last six lines' starts
+    polygons = [(e, ends) for e in ids[:6]] + [(e, starts) for e in ids[6:]]
+    boxes = [
+        (e, CadBounds2((x - 0.1, -0.1), (x + 0.1, 0.1)))
+        for k, e in enumerate(ids)
+        for x in [3 * k + 1 if k < 6 else 3 * k]
+    ]
+    history = doc.undo_history
+    shown = view.stretch_outlines(ids, (2, 3), [], polygons)
+    assert len(shown) == 12
+    for got, want in zip(shown, view.stretch_outlines(ids, (2, 3), boxes, []), strict=True):
+        assert got == pytest.approx(want)
+    assert shown[0][-1] == pytest.approx(view.to_screen(3, 3)), "the first line's end"
+    assert shown[11][0] == pytest.approx(view.to_screen(35, 3)), "the last line's start"
+    crossed: list[tuple[float, float]] = [(0, 0), (2, 2), (0, 2), (2, 0)]
+    bad = [(ids[-1], crossed)]  # crosses itself
+    with pytest.raises(CadError):
+        view.stretch_outlines(ids, (2, 3), [], polygons[:-1] + bad)
+    with pytest.raises(CadError):
+        doc.stretch_entities(ids, (2, 3), [], polygons[:-1] + bad)
+    assert doc.undo_history == history
+    doc.stretch_entities(ids, (2, 3), [], polygons)
+    for k, e in enumerate(ids):
+        line = doc.get_entity(e).geometry
+        assert isinstance(line, CadLine)
+        if k < 6:
+            assert (line.start, line.end) == ((3 * k, 0), (3 * k + 3, 3))
+        else:
+            assert (line.start, line.end) == ((3 * k + 2, 3), (3 * k + 1, 0))
+    assert len(doc.undo_history) == len(history) + 1

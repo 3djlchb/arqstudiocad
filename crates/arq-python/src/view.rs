@@ -485,18 +485,16 @@ impl CadView {
             .py();
         }
         let areas: Vec<_> = crossing.into_iter().map(|(id, b)| (id, b.0)).collect();
-        let polygons: Vec<_> = polygons
-            .into_iter()
-            .map(|(id, points)| {
-                arq_geometry::SelectionPolygon::new(
-                    points.into_iter().map(|p| p.0).collect(),
-                    arq_geometry::Tolerance::DEFAULT,
-                )
-                .map(|polygon| (id, polygon))
-            })
-            .collect::<Result<_, _>>()
-            .map_err(arq_core::CadError::from)
-            .py()?;
+        // One validation per distinct polygon: the viewport repeats the
+        // selection's polygon for every entity, on every cursor move.
+        let polygons = arq_geometry::selection_polygons(
+            polygons
+                .into_iter()
+                .map(|(id, points)| (id, points.into_iter().map(|p| p.0).collect())),
+            arq_geometry::Tolerance::DEFAULT,
+        )
+        .map_err(arq_core::CadError::from)
+        .py()?;
         let shapes = self
             .document
             .get()

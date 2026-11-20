@@ -48,6 +48,7 @@ and separation between tests, checking containment before writing.
 | Rectangular ARRAY, 100 lines × 10 rows × 10 columns | Grouped COPY median 27.539 ms → atomic ARRAY 19.784 ms; after/before 0.718 | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warm-ups + 10 samples (2026-11-15); diagnostic only; method below |
 | STRETCH edit, 100 selected lines in 100000 lines | Initial median 0.168242 → 0.178892 ms (1.063); five alternating batches pooled 0.168732 → 0.169612 ms (1.005) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension; 3 warm-ups + 20 samples per run (2026-11-15); diagnostic only; reference check pending |
 | STRETCH read-only preview, same selection | Median 0.061386 ms per contour query | Same host/profile; 3 warm-ups + 20 samples; excludes Qt overlay construction, painting and frame scheduling |
+| STRETCH preview, one 402-corner crossing polygon over 100 of 100000 lines | `stretch_outlines` 240.5 → 8.0 ms (0.033); Criterion: validating per pair 235.94 ms, once for all 3.08 ms | Reference machine, i7-2600, 2026-11-19; three alternating runs of 3 warm-ups + 20 samples; `cargo bench -p arq-core --bench query`; method below |
 | World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
 | ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
 | BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
@@ -433,3 +434,60 @@ ProgeCAD execution is implied.
 **On the reference machine (2026-11-19, the same commits):** five
 alternating pairs, open pooled 0.706338 → 0.715927 ms (1.01358), the pair
 medians overlapping; closed 0.709716 ms. Details in the [2026-11-19 reports](testing/reference-machine/2026-11-19/).
+
+### Shared crossing polygon validation (2026-11-19)
+
+Found on the reference machine while checking STRETCH's preview with a
+crossing polygon (#212, its `stretch-cases.txt`): a 402-corner polygon over 100 selected lines previewed at about
+250 ms a cursor move. The viewport gives the selection's polygon once per
+entity, and `CadView.stretch_outlines` and `CadDocument.stretch_entities`
+validated each pair's copy with `SelectionPolygon::new`, whose
+self-intersection check compares every edge with every other. Now both go
+through `arq_geometry::selection_polygons`, which validates each distinct
+contour once (keyed by its exact coordinates) and shares it, keeping the
+pairs' order and the first invalid contour's error.
+
+Measured on the reference machine (i7-2600, LMDE 7, Rust 1.99.0, Python
+3.13.5), base `main` at `ab94cc81ad2f02fd41a3865809580e62c9271050`
+against this change, each in its own `uv sync` build. The harness
+(polygon_probe.py, kept outside the repository like the others) opens
+100000 generated lines (line i from `((i % 1000)*3, (i // 1000)*3)` one
+unit along +X), an 800 × 600 Top `CadView` fitted to them, and a comb
+polygon of 402 corners with a 0.2-wide tooth around each of the first 100
+lines' ends; three warm-ups and twenty samples a call, three runs
+alternating base and fix, medians:
+
+| Call | Base, ms | Fix, ms |
+|---|---|---|
+| `stretch_outlines`, the polygon given for each of the 100 entities | 241.150, 237.400, 240.540 | 7.987, 8.101, 8.048 |
+| `stretch_outlines`, a rectangle per entity instead | 0.111, 0.121, 0.110 | 0.117, 0.109, 0.114 |
+| `select_crossing_polygon` (one validation and a query) | 4.082, 4.190, 4.067 | 4.097, 4.143, 4.128 |
+
+`cargo bench --locked -p arq-core --bench query -- "STRETCH crossing polygon"`
+(the new group, the same 402-corner polygon and 100 of 100000 lines, built
+in the benchmark) on the same machine, Criterion's [low median high]:
+
+| Benchmark | Time |
+|---|---|
+| validate per pair (402 corners x 100) | [233.31 ms 235.94 ms 238.91 ms] |
+| validate shared (402 corners x 100) | [3.0540 ms 3.0818 ms 3.1259 ms] |
+| preview, polygons validated | [2.6878 ms 2.7036 ms 2.7197 ms] |
+
+Of the fix's 8 ms, one validation is about 3 ms and the preview itself
+2.7 ms; the rest is converting the 100 copies of the polygon's points from
+Python and comparing them. Rectangles and single polygons cost what they
+did. The commit (`stretch_entities`) takes the same path.
+
+In the main window, as in #212's `stretch-cases.txt` (the 1366 × 740
+window, a 1098 × 347 viewport, synthetic cursor moves at the displacement
+prompt with that polygon over the 100 lines; harness SHA-256
+`d68e18a970f670d7d41fcf4fde00b2f03ba4610a7b4f93e73b2fc30e4c51ac49`), two
+alternating runs each, median (95th percentile) per cursor move:
+
+| Renderer | Base, ms | Fix, ms |
+|---|---|---|
+| CPU (safe mode) | 260.74 (270.14), 264.83 (286.90) | 15.63 (16.64), 16.28 (18.45) |
+| GPU (OpenGL ES on the GT 730) | 248.71 (257.77), 256.18 (266.98) | 11.11 (12.62), 11.08 (15.16) |
+
+From about four frames a second to the display's rate on the GPU and
+about one 60 Hz frame on the CPU.
