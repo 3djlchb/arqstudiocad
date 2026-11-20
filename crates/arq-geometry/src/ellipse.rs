@@ -134,6 +134,15 @@ impl Ellipse {
         Self::new(self.center, self.major, self.ratio, s, e)
     }
 
+    /// The whole ellipse this arc lies on.
+    pub fn whole(self) -> Self {
+        Self {
+            start: 0.0,
+            sweep: TAU,
+            ..self
+        }
+    }
+
     /// The center.
     pub fn center(self) -> Point2 {
         self.center

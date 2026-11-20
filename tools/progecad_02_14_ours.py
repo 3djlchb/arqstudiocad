@@ -253,6 +253,55 @@ def el4(doc: CadDocument) -> None:
     doc.add_ellipse(whole.arc((0, 0), math.radians(30), math.radians(120)))
 
 
+def ell(doc: CadDocument, start: float = 0.0, end: float = 0.0) -> int:
+    """About (0,0), semi-axes 5 and 3, from start to end (equal: whole)."""
+    return doc.add_ellipse(CadEllipse((0, 0), (5, 0), 0.6, start, end))[0]
+
+
+def el5(doc: CadDocument) -> None:
+    target = ell(doc)
+    line(doc, (4, -9), (4, 9))
+    doc.trim_entity(target, (5, 0))
+
+
+def el6(doc: CadDocument) -> None:
+    target = ell(doc, 0.0, math.pi)
+    line(doc, (0, 0), (0, 9))
+    line(doc, (-4, 0), (-4, 9))
+    doc.trim_entity(target, (-2.5, 2.598076211))
+
+
+def el7(doc: CadDocument) -> None:
+    target = ell(doc, 0.0, math.pi / 2)
+    boundary = line(doc, (-4, -9), (-4, 9))
+    doc.extend_entity(target, (0.2, 2.997599), [boundary])
+
+
+def el8(doc: CadDocument) -> None:
+    doc.break_entity(ell(doc), (5, 0), (0, 3))
+
+
+def el9(doc: CadDocument) -> None:
+    target = line(doc, (-10, 1.8), (-8, 1.8))
+    boundary = ell(doc)
+    doc.extend_entity(target, (-8.5, 1.8), [boundary])
+
+
+def el10(doc: CadDocument) -> None:
+    target = ell(doc)
+    doc.stretch_entities([target], (2, 3), [(target, CadBounds2((-1, -1), (1, 1)))])
+
+
+def el11(doc: CadDocument) -> None:
+    target = ell(doc, 0.0, math.pi / 2)
+    doc.stretch_entities([target], (1, 0), [(target, CadBounds2((-1, -1), (6, 4)))])
+
+
+def el12(doc: CadDocument) -> None:
+    target = ell(doc, 0.0, math.pi / 2)
+    doc.stretch_entities([target], (1, 0), [(target, CadBounds2((4, -1), (6, 1)))])
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -290,6 +339,14 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("EL2-ellipse-center", el2),
     ("EL3-ellipse-rotation", el3),
     ("EL4-ellipse-arc", el4),
+    ("EL5-trim-ellipse-whole", el5),
+    ("EL6-trim-ellipse-arc-middle", el6),
+    ("EL7-extend-ellipse-arc", el7),
+    ("EL8-break-ellipse-whole", el8),
+    ("EL9-extend-line-to-ellipse", el9),
+    ("EL10-stretch-ellipse-whole", el10),
+    ("EL11-stretch-ellipse-arc-both-ends", el11),
+    ("EL12-stretch-ellipse-arc-one-end", el12),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),

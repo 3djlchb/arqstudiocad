@@ -202,12 +202,26 @@ impl Document {
                     }
                     return Err(DocumentError::NotEditable { id, kind: "ARC" });
                 }
-                // A plan gives no ellipse yet: its grips and STRETCH come
-                // in a later delivery (ADR 0041).
-                Geometry2::Ellipse(_) => {
-                    return Err(DocumentError::NotEditable {
-                        id,
-                        kind: "ELLIPSE",
+                // As a circle when whole, as an arc otherwise: moved, or
+                // left, whole (ADR 0041 D4).
+                Geometry2::Ellipse(ellipse) => {
+                    let moved = match ellipse.ends() {
+                        None => inside(ellipse.center()),
+                        Some((a, b)) => match (inside(a), inside(b)) {
+                            (true, true) => true,
+                            (false, false) => false,
+                            _ => {
+                                return Err(DocumentError::NotEditable {
+                                    id,
+                                    kind: "ELLIPSE",
+                                });
+                            }
+                        },
+                    };
+                    return Ok(if moved {
+                        StretchPlan::Move
+                    } else {
+                        StretchPlan::Unchanged
                     });
                 }
             }
@@ -1455,6 +1469,10 @@ impl Document {
 #[cfg(test)]
 #[path = "whole_tests.rs"]
 mod whole_tests;
+
+#[cfg(test)]
+#[path = "plan_ellipse_tests.rs"]
+mod plan_ellipse_tests;
 
 #[cfg(test)]
 mod tests {

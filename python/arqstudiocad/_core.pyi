@@ -702,7 +702,7 @@ class CadEntityInfo:
     @property
     def bounds(self) -> CadBounds2 | None: ...
     @property
-    def geometry(self) -> CadLine | CadCircle | CadArc | None: ...
+    def geometry(self) -> CadLine | CadCircle | CadArc | CadEllipse | None: ...
     @property
     def text(self) -> CadText | None: ...
     @property
@@ -964,6 +964,15 @@ class CadView:
     def path_outline(
         self, vertices: Sequence[tuple[_PointLike, float]], closed: bool = True
     ) -> list[_Point]: ...
+    def rectangular_array_outlines(
+        self,
+        entity_ids: _Ids,
+        rows: int,
+        columns: int,
+        row_spacing: float,
+        column_spacing: float,
+        angle: float,
+    ) -> tuple[list[list[_Point]], int, int]: ...
     def stretch_outlines(
         self,
         entity_ids: _Ids,

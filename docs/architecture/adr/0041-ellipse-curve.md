@@ -96,8 +96,30 @@ not see it yet (D4).
    - an arc cut in the middle becomes two arcs;
    - an arc grows round its ellipse;
    - the ellipse also bounds EXTEND and is seen by fences.
+
+   They reach the ellipse through a curve of its own, kept apart from the
+   entity's plan geometry: `Document::curve_plan` gives a line's, circle's
+   or arc's plan geometry, or an ellipse lying in the plan, and
+   `Document::set_curve_plan` writes it back, in the ellipse's own sense
+   seen from below (maintainer, 2026-11-20). `Entity::plan`, the own model
+   (ADR 0018), the check after saving, grips, STRETCH and Properties are
+   left as they were until delivery 3, which opens `Entity::plan` to
+   ellipses and folds the two together.
+3. In two pull requests (maintainer, 2026-11-20):
+   - **3a, plan geometry:** `Entity::plan` gives an ellipse lying in the
+     plan, so the own model owns it (ADR 0018 stage 1 widened) and a save
+     checks it; `curve_plan` folds into it. STRETCH moves a whole ellipse
+     when its center is inside, an arc when both its ends are, and refuses
+     an arc with one end inside, as a circle and an arc.
+   - **3b, grips and Properties,** as AutoCAD: the center moves it; an
+     axis end sets that semi-axis's length, its direction and the other
+     axis kept, the longer becoming the major; an arc's ends slide along
+     the ellipse; the quadrants on an arc only. Properties edits the
+     center, the major and minor radii, the ratio and an arc's start and
+     end angles, and shows the major axis, an arc's end points, the length
+     and the area.
 3. Grips and the Properties panel: center, axes, ratio, and the start and
-   end angles. To be compared with ProgeCAD.
+   end angles. To be compared with ProgeCAD (see below).
 4. JOIN: a source elliptical arc takes the arcs of its own ellipse,
    making an arc or the whole ellipse; Close completes it. Joining with
    lines or arcs, which AutoCAD turns into a SPLINE, waits for SPLINE.
@@ -108,10 +130,11 @@ planned here.
 
 ## Consequences
 
-- Until delivery 2, TRIM, EXTEND, BREAK and OFFSET refuse an ellipse, as
-  before; the geometry says so (`OutOfRange { what: "curve" }`).
-- The entity's plan geometry (`Entity::plan`) gives no ellipse yet, so
-  its grips and STRETCH are unchanged; deliveries 2 and 3 open it.
+- Until delivery 2, TRIM, EXTEND, BREAK and OFFSET refused an ellipse;
+  since it, only OFFSET does (`OutOfRange { what: "curve" }`).
+- Since delivery 3a, `Entity::plan` gives an ellipse lying in the plan
+  and the own model owns it; a tilted one is kept by the codec as
+  before.
 - `Geometry2` has one more variant. Every match on it takes the ellipse:
   as itself where the meaning is clear, and refused where its delivery is
   still to come.

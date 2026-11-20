@@ -55,6 +55,7 @@ and separation between tests, checking containment before writing.
 | BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
 | Polar ARRAY, 100 lines × 100 positions over 360 degrees | Rotate: grouped COPY/ROTATE 50.053234 → atomic ARRAY 19.694723 ms (0.393476x); no rotation: grouped COPY 28.168532 → 19.834554 ms (0.704139x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; reference interaction pending |
 | Path ARRAY, 100 lines × 100 positions on a mixed open path | Align: grouped COPY/ROTATE 40.513941 → atomic ARRAY 18.280985 ms (0.451227x); no alignment: grouped COPY 26.347081 → 18.245295 ms (0.692498x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; reference interaction pending |
+| ARRAYRECT orientation preview, 100 lines × 10×10 cells, CPU 800×600 | Edit 17.897058 → 17.761422 ms (0.992421x); bounded query 0.329887 ms, overlay build 1.481141 ms, paint 6.808924 ms, build+paint 8.389221 ms; 20 of 99 copied cells | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 5 warmups + 100 samples per metric (2026-11-20); diagnostic only; reference cursor acceptance pending |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -665,3 +666,67 @@ Check the actual i7-2600/GT 730 with `tools/reference_machine_report.sh` and
 `uv run python tools/gpu_viewport_check.py` before accepting minimum
 interactive performance. No cross-machine timing multiplier or independent
 ProgeCAD validation is claimed.
+
+### ARRAYRECT orientation preview diagnostic (2026-11-20)
+
+Approved fixture: 100 synthetic horizontal lines indexed i=0..99, from
+(i%10, i//10) to (i%10+0.5, i//10), a 10×10 rectangular array with signed
+spacings (20,20) and orientation zero, including the unchanged source cell.
+Base `7487c3257a1b6d86280c5dc9f29628669cfc79cf` includes the merged ellipse
+curve delivery (#221); candidate `35ad934cf79ffe213971a35d342d8e3d08c8540a`
+uses the shared grid, original preallocated edit buffer and final preview
+budgets. Both were built from their exact sources with the same lockfile,
+repository-default release PyO3 profile and x86-64-v2 baseline. LMDE 7,
+Linux 6.12.117+deb13-amd64, Python 3.13.5, Ryzen 9 5900X, Qt offscreen.
+No compiler CPU feature or system/desktop setting changed.
+
+Five warmups and 100 timed samples per metric, perf_counter_ns; GC collected
+before and disabled during timing. A fresh document is used per edit sample.
+Fixture creation, result inspection and undo are excluded from edit timing;
+normal transaction/index/history/API work is included. Both create 9900 new
+IDs and 10000 entities and undo in one step to the 100 originals. The final
+measurement ran candidate then base, reversing the initial diagnostic order.
+
+The CPU view is 800×600 at one logical-to-physical pixel, centered on
+(94.75,94.5), scale 540/189 pixels per unit: the complete zero-angle array
+fits the frame. Query timing includes native validation, cached-scene
+contours, bounded translations and conversion to Python. Overlay construction
+also includes this query and conversion to shared Stroke/Label items.
+Painting uses the application's QPainter overlay painter over a cached
+premultiplied RGBA CPU image; clearing and copying that image are included.
+Build+paint measures both together; it is not the sum of separate medians.
+The document is rendered once outside these timings. There is no attached
+GPU, full application event scheduling, selection overlay or live pointer
+frame measurement here. Temporary QSettings/config paths isolate settings.
+
+| Measure | Median |
+|---|---|
+| Base edit | 17.897058 ms |
+| Candidate edit | 17.761422 ms |
+| Edit after / before | 0.992421 |
+| Native bounded preview query | 0.329887 ms |
+| Build shared overlay, including query | 1.481141 ms |
+| Paint cached overlay + cached CPU background | 6.808924 ms |
+| Build and paint together | 8.389221 ms |
+
+The final query returns 20 of 99 copied cells: 2000 paths, 4000 vertices.
+The translated partial-preview notice is included in painting; confirming
+still creates all 99 copied cells. An initial candidate
+`cee9d022f3861a53615e58597df66b41061d253e`, with a 20000-vertex budget,
+showed all 99 cells (9900 paths, 19800 vertices), taking 40.011402 ms to
+build and paint. The reduced work budget, not an equivalent-work speedup,
+explains the final 8.389221 ms cost. Small edit-time differences do not
+establish a universal speedup or absence of regressions.
+
+Final temporary harness SHA-256:
+`d15fae2dbaf518faceb5b2178bca35b18ebc1737c4bf71d443b6d2be8d32783f`.
+Both final runs monitored compiler/test/lint/build processes every 10 ms
+and found no overlap. One attempted final run refused to start because
+another agent was compiling; no samples from that attempt are claimed.
+Scripts, synthetic fixtures and raw samples remained outside tracked source.
+
+These are development-host diagnostics, not reference-floor acceptance or
+minimum cursor latency. Measure real interaction on the i7-2600/GT 730 with
+`tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`.
+No cross-machine timing multiplier or independent ProgeCAD comparison is
+claimed. This delivery changes only visualization of the existing operation.

@@ -35,7 +35,7 @@ not own yet stays in the engine's database and is preserved:
 
 | Stage | The own model owns |
 |---|---|
-| 1 | layers, current layer; LINE, CIRCLE, ARC (the editable kinds) |
+| 1 | layers, current layer; LINE, CIRCLE, ARC (the editable kinds); ELLIPSE lying in the plan since [ADR 0041](0041-ellipse-curve.md) D4 (2026-11-20) |
 | 2 | LWPOLYLINE, INSERT and block definitions |
 | 3 | everything the platform edits; preserved data as per-object payloads |
 

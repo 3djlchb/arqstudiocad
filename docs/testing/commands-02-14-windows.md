@@ -99,3 +99,10 @@ case reads back the same from our DWG and from our DXF.
 - **Decision.** The maintainer chose to keep ours (2026-11-20).
 
 **MATCHPROP of a text's look (M6).** ProgeCAD gives the style, the width factor, the oblique angle and the rotation. Ours, by its design (option A), gives the first three and never the rotation. The maintainer chose to keep ours (2026-11-20): matching properties does not turn a drawing's texts. Our tool cannot build this source yet; the rule is covered by the Rust tests.
+
+## To run: ELLIPSE edits (EL5–EL12)
+
+Added on 2026-11-20 with the ellipse as a curve (ADR 0041): EL5–EL9, an
+ellipse trimmed, extended and broken, and a line extended to an ellipse;
+EL10–EL12, ellipses stretched. What ours gives is in
+[ELLIPSE's design](../design/ellipse-command.md#windows-comparison).

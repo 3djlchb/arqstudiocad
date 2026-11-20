@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use arq_geometry::{Bounds2, Tolerance};
+use arq_geometry::{Bounds2, Geometry2, Tolerance};
 
 use crate::document::Document;
 use crate::entity::{Color, Entity, PlanGeometry};
@@ -273,17 +273,37 @@ fn option_eq<T: Copy>(a: Option<T>, b: Option<T>, eq: impl Fn(T, T) -> bool) -> 
 }
 
 /// Same curve: kind, ends, box and length within tolerance. For a circle the
-/// box fixes center and radius; for an arc ends, box and length fix it.
+/// box fixes center and radius; for an arc ends, box and length fix it. An
+/// ellipse is compared by what it is made of, its center, major axis,
+/// ratio and parameters: its length is an integral and its box needs
+/// trigonometry, too dear for every save.
 fn same_plan(a: PlanGeometry, b: PlanGeometry) -> bool {
     let (ga, gb) = (a.geometry(), b.geometry());
-    ga.kind() == gb.kind()
-        && near(a.elevation(), b.elevation())
-        && option_eq(ga.start_point(), gb.start_point(), |x, y| {
-            x.approx_eq(y, tol())
-        })
-        && option_eq(ga.end_point(), gb.end_point(), |x, y| x.approx_eq(y, tol()))
-        && ga.bounds().approx_eq(gb.bounds(), tol())
-        && near(ga.length(), gb.length())
+    if !near(a.elevation(), b.elevation()) {
+        return false;
+    }
+    match (ga, gb) {
+        (Geometry2::Ellipse(x), Geometry2::Ellipse(y)) => {
+            let angle = |u: f64, v: f64| {
+                let d = (u - v).rem_euclid(std::f64::consts::TAU);
+                d.min(std::f64::consts::TAU - d) <= tol().angular()
+            };
+            x.center().approx_eq(y.center(), tol())
+                && (x.center() + x.major_axis()).approx_eq(y.center() + y.major_axis(), tol())
+                && near(x.ratio(), y.ratio())
+                && near(x.sweep(), y.sweep())
+                && (x.is_full() || angle(x.start_param(), y.start_param()))
+        }
+        _ => {
+            ga.kind() == gb.kind()
+                && option_eq(ga.start_point(), gb.start_point(), |x, y| {
+                    x.approx_eq(y, tol())
+                })
+                && option_eq(ga.end_point(), gb.end_point(), |x, y| x.approx_eq(y, tol()))
+                && ga.bounds().approx_eq(gb.bounds(), tol())
+                && near(ga.length(), gb.length())
+        }
+    }
 }
 
 /// Fault injection for tests: the next save on this thread has its bytes
