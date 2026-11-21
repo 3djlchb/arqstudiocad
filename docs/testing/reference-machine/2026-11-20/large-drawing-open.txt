@@ -1,0 +1,59 @@
+Large DXF open and first paint, reference machine, 2026-11-20
+
+LMDE 7, kernel 6.12.117, i7-2600, GeForce GT 730, Mesa 25.0.7, X11
+at 1920 x 1080 and 60 Hz, Python 3.13.5 and PySide6 6.12.0. Used the
+existing development installation at 763c69c. The Rust and Python
+sources are identical at the report branch base (3e8e5ce).
+
+Fixture: 5,946,036-byte generated ASCII DXF with 100,000 LINE entities.
+Line i goes from (i mod 500, i div 500) to (+0.5, +0.5), as in the
+2026-11-15 startup measurement. The 1200 x 800 main window yielded a
+932 x 407 viewport. Every run used a fresh XDG_CONFIG_HOME and
+XDG_DATA_HOME, LANG=C.UTF-8 and QT_QPA_PLATFORM=xcb.
+
+The harness wraps the existing application.run and records monotonic
+timestamps around CadApplication.open_document on the worker,
+CadView construction, the DocumentOpened handler, GPU attachment,
+CommandFinished, and the first viewport paint that completes on the
+selected renderer. It opens through runner.start(open_command(path)),
+the File > Open Recent path. The first frame timestamp is the end of
+the widget's paint handler. It does not measure physical display
+scanout. Each open asserts that the drawing has 100,000 entities.
+
+Idle: two sessions per renderer in GPU-CPU-GPU-CPU order, five opens
+per session with the drawing closed between runs. The first request
+came 2.4 s after show(), after the GPU selection and survey were done
+in the OpenGL sessions. The CPU sessions used the app's safe mode.
+Startup: a request posted immediately after show(), one open per
+process for five fresh processes. All five first paints used OpenGL.
+
+Median milliseconds (each interval aggregated independently):
+
+Stage                                      Idle GL   Idle CPU  Startup GL
+Request to worker                              5.4        4.4         7.6
+Open document on worker                      371.5      372.5       498.0
+Worker return to viewport handler              3.6        3.9         3.2
+Build CadView scene                           64.3       55.7        63.2
+DocumentOpened viewport handler               70.6       58.5        67.5
+Attach GPU                                    62.4         --        74.2
+First viewport paint                          33.6       37.1        35.0
+Request to OPEN finished                     531.2      466.2       715.8
+Request to end of first paint                573.5      513.1       760.3
+
+The CadView scene interval is part of the viewport handler interval.
+GPU attachment is independently timed. Open document includes reading
+bytes, DXF decoding, internal document construction and the spatial
+index. The measurements do not put a separate clock on those steps.
+
+First-paint ranges: idle GL 557.3-831.9 ms, idle CPU 489.3-650.0 ms,
+startup GL 753.3-786.4 ms. The first idle open per process was slower:
+the median of the two first opens was 788.9 ms in GL and 646.4 ms in
+CPU. File-system caches were not flushed. Since the startup runs were
+all first opens, compare them with the idle first opens when considering
+startup overlap. The protocol does not isolate startup contention.
+
+Opening the document on the worker accounts for about 65% of median
+elapsed time in idle GL and 73% in idle CPU. It is the largest stage
+to break down next. GPU attachment took about 62 ms in idle GL, while
+first paint cost about 34 ms in GL and 37 ms in CPU. The two renderers
+have different startup paths and the result pertains to this fixture.
