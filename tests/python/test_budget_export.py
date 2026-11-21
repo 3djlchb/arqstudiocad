@@ -24,7 +24,7 @@ from arqstudiocad.budget_export import (
     export_xlsx,
     number_format,
 )
-from arqstudiocad.core import CadApplication, CadCurrency, CadDocument
+from arqstudiocad.core import CadApplication, CadBlockData, CadCurrency, CadDocument
 from arqstudiocad.events import CommandCancelled
 from arqstudiocad.i18n import set_language
 from arqstudiocad.ui.main_window import MainWindow
@@ -101,10 +101,22 @@ def test_csv_separates_fields_with_semicolons_where_the_decimal_is_a_comma(
 ) -> None:
     document = furnished()
     document.set_currencies([USD, EUR], "USD", ".", ",")
+    supplier = 'Diseño "Norte"; Quito'
+    document.set_block_data(
+        "SILLA",
+        CadBlockData(
+            category="MOBILIARIO",
+            type="Silla",
+            material="Madera",
+            supplier=supplier,
+            cost="50.00",
+            currency="USD",
+        ),
+    )
     path = tmp_path / "presupuesto.CSV"
     export_budget(budget_of(document), path)
     rows = read_csv(path, ";")
-    assert rows[4] == ["Silla", "Madera", "Muebles SA", "each", "9", "50,00", "450,00", "USD"]
+    assert rows[4] == ["Silla", "Madera", supplier, "each", "9", "50,00", "450,00", "USD"]
     assert ";" in path.read_text(encoding="utf-8-sig").splitlines()[0]
 
 
@@ -232,10 +244,14 @@ def test_without_an_interface_the_file_is_typed(tmp_path: Path) -> None:
 
 
 @pytest.fixture
-def window(qtbot: QtBot, tmp_path: Path) -> MainWindow:
-    ui = QuietUi(export_path=tmp_path / "presupuesto.csv")
-    w = MainWindow(ui=ui)
-    ui.panel_for = w.show_panel
+def export_ui(tmp_path: Path) -> QuietUi:
+    return QuietUi(export_path=tmp_path / "presupuesto.csv")
+
+
+@pytest.fixture
+def window(qtbot: QtBot, export_ui: QuietUi) -> MainWindow:
+    w = MainWindow(ui=export_ui)
+    export_ui.panel_for = w.show_panel
     qtbot.addWidget(w)
     w.resize(1100, 700)
     w.show()
@@ -263,6 +279,64 @@ def test_the_panels_export_writes_what_it_shows(window: MainWindow, tmp_path: Pa
     panel.selection_only.setChecked(True)
     panel.export_button.click()
     assert read_csv(path, ",")[1][0] == "No category", "the selection, as shown"
+
+
+def test_the_panels_budget_and_exports_follow_undo_and_redo(
+    window: MainWindow, export_ui: QuietUi, tmp_path: Path
+) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    document.set_currencies([USD], "USD")
+    line, _ = document.add_line((0, 0), (0, 1))
+    document.create_block("CHAIR", (0, 0), [line])
+    chair, _ = document.insert_block("CHAIR", (2, 0))
+    document.set_block_data("CHAIR", CadBlockData(type="Chair", cost="12.50", currency="USD"))
+    window.runner.execute("BUDGET")
+
+    panel = window.budget_panel
+    assert panel.rows()[1][4:] == ["2", "$ 12.50", "$ 25.00"]
+    window.session.select(document, [chair])
+    window.runner.execute("ERASE")
+    assert panel.rows()[1][4:] == ["1", "$ 12.50", "$ 12.50"]
+
+    for command, quantity, total in [("UNDO", 2, "25.00"), ("REDO", 1, "12.50")]:
+        window.runner.execute(command)
+        assert panel.rows()[1][4:] == [str(quantity), "$ 12.50", f"$ {total}"]
+        assert panel.rows()[-1] == ["Total USD", "", "", "", "", "", f"$ {total}"]
+
+        csv_path = tmp_path / f"{command}.csv"
+        export_ui.export_path = csv_path
+        panel.export_button.click()
+        rows = read_csv(csv_path, ",")
+        assert rows[2][4:] == [str(quantity), "12.50", total, "USD"]
+        assert rows[-1] == ["Total USD", "", "", "", "", "", total, "USD"]
+
+        xlsx_path = tmp_path / f"{command}.xlsx"
+        export_ui.export_path = xlsx_path
+        panel.export_button.click()
+        workbook = load_workbook(xlsx_path, read_only=True)
+        try:
+            sheet = workbook.active
+            assert sheet is not None
+            assert [cell.value for cell in sheet[3]][4:] == [
+                quantity,
+                12.5,
+                float(total),
+                "USD",
+            ]
+            assert [cell.value for cell in sheet[sheet.max_row or 0]] == [
+                "Total USD",
+                None,
+                None,
+                None,
+                None,
+                None,
+                float(total),
+                "USD",
+            ]
+        finally:
+            workbook.close()
 
 
 def test_the_export_in_spanish(tmp_path: Path) -> None:
