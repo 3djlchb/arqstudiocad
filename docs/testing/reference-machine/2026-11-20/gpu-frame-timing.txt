@@ -1,0 +1,71 @@
+Viewport frame timing on the reference machine, 2026-11-20
+
+Compared local commits c19705b (A) and 763c69c (B) in one X11 session.
+Intel Core i7-2600, GeForce GT 730 (NV106), LMDE 7, kernel 6.12.117,
+Mesa 25.0.7, 1920 x 1080 at 60 Hz. Both extensions used the release
+profile, the same Cargo and uv lockfiles, and Python 3.13.5. Verified
+that the extensions differ and that only B exposes rectangular array
+outlines. The two commits have identical benchmark, GPU renderer, and
+GPU overlay source files. The benchmark selected the OpenGL hardware
+adapter in both builds. The desktop and browsers were left open.
+
+Ran tools/gpu_viewport_check.py --entities 100000 six times in
+A-B-B-A-A-B order, with a fresh XDG_CONFIG_HOME for each pass,
+LANG=C.UTF-8, and QT_QPA_PLATFORM=xcb. The drawing occupies a 1200 x 650
+viewport. Each pan or zoom statistic uses 57 repaint timings after
+discarding three warm-up frames. The overlay check uses a separate scene
+and allows a one-pixel tolerance.
+
+Pass  Commit   GPU pan    GPU zoom   CPU pan    CPU zoom   Overlay misses
+               median/p95 median/p95 median/p95 median/p95 pixels
+1     c19705b  28.1/53.1  29.5/47.2  47.1/52.6  62.9/69.1  0
+2     763c69c  30.4/49.2  29.7/52.4  47.1/53.1  63.5/70.6  0
+3     763c69c  31.1/51.8  27.8/52.3  47.8/53.7  62.7/67.9  0
+4     c19705b  27.9/47.8  29.6/52.5  46.7/54.1  61.2/68.4  0
+5     c19705b  29.1/51.8  29.1/44.0  46.5/53.5  62.6/71.3  0
+6     763c69c  27.4/48.8  29.4/45.5  47.8/54.6  61.5/70.2  0
+
+Aggregate values are medians of the three reported medians and the three
+reported p95 values, in milliseconds.
+
+A              28.1/51.8  29.5/47.2  46.7/53.5  62.6/69.1
+B              30.4/49.2  29.4/52.3  47.8/53.7  62.7/70.2
+
+The GPU was slower in both builds than the preceding reference reports.
+Candidate-to-baseline GPU ratios were 1.08 for median pan, 1.00 for
+median zoom, 0.95 for pan p95, and 1.11 for zoom p95. The ranges of all
+four GPU statistics overlap and the direction of the difference changes
+across adjacent pairs. The high frame times reproduce on the older
+commit. Three passes per build in a single desktop session leave the
+size and cause of any commit-specific effect unresolved.
+
+Stage timings
+
+After the comparison, rebuilt B with temporary Instant checkpoints in
+GpuRenderer::present. The intervals bracketed retained geometry and
+uniform preparation, surface acquisition, overlay preparation and
+encoder setup, queue submission (including encoder.finish), queue
+presentation, and the final error check. The harness marked the pan
+and zoom loops, and recorded 60 successful frames in each loop. The
+analysis drops the first three frames and groups the remaining frames
+by whether the sum of the Rust intervals exceeded 25 ms. The complete
+repaint in this instrumented run was 27.1/51.3 ms for pan and
+31.2/51.1 ms for zoom (median/p95). The instrumented data is separate
+from the comparison between builds.
+
+Phase  Frames  Prepare  Acquire  Encode  Submit  Present  Check  Total
+Pan    57        0.061    0.007   0.029   0.527   25.110  0.001  26.086
+Zoom   57        0.060    0.007   0.028   0.496   30.141  0.001  30.804
+Pan*   31        0.060    0.007   0.029   0.516   36.075  0.001  36.665
+Zoom*  35        0.060    0.007   0.028   0.517   34.500  0.001  35.045
+
+* Frames exceeding 25 ms. Entries are medians in milliseconds. Each
+column is aggregated separately, so the total need not equal the sum
+of the displayed columns.
+
+The median queue presentation call accounts for about 98% of the
+median Rust time in each slow-frame group. On this OpenGL backend the
+call includes making the EGL context current, a framebuffer blit and
+the buffer swap. The checkpoints measure CPU-side elapsed time, so
+they cannot distinguish GPU completion, buffer swapping, compositor
+scheduling or other waits inside the presentation call.
