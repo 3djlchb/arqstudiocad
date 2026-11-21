@@ -1,0 +1,56 @@
+CPU viewport frame timing on the reference machine, 2026-11-20
+
+LMDE 7, Linux 6.12.117, Intel Core i7-2600, Python 3.13.5,
+PySide6 6.12.0, X11 at 1920 x 1080 and 60 Hz. The instrumented release
+build was based on 89f6ebd. The controls used the existing installation
+from 763c69c. The tracked Rust and Python sources and the benchmark
+script are identical between the two base commits.
+
+Ran the CPU child of tools/gpu_viewport_check.py --entities 100000
+five times in one session, with the controls before and after the three
+instrumented runs. Each run had a fresh XDG_CONFIG_HOME and used
+LANG=C.UTF-8 and QT_QPA_PLATFORM=xcb. The 1200 x 650 viewport repainted
+a generated mix of lines, arcs and circles. The harness measured 57
+frames per operation after discarding three warm-up frames. The five
+CPU overlay captures from the separate 400 x 300 scene were byte-identical.
+
+End-to-end repaint timings in milliseconds:
+
+Run               Pan median/p95   Zoom median/p95
+Control before         49.7/56.1         65.6/83.3
+Instrumented 1        48.5/55.4         63.8/72.6
+Instrumented 2        48.5/55.1         64.6/72.8
+Instrumented 3        48.1/53.9         62.9/71.0
+Control after          49.3/57.0         63.4/71.4
+
+Temporary timers bracketed the pixmap setup and crop, and accumulated
+the duration of every tiny-skia fill_path and stroke_path call.
+Subtracting those calls from the trace and flush interval gives the
+time for traversal, visibility checks, tessellation, clipping, and
+path preparation. At the Python boundary, the CadView.render call
+covers those Rust phases, the binding, the copy to PyBytes, and
+emitting the trace. Qt measurements cover QImage construction,
+setting its device pixel ratio, QPainter setup and drawImage, and
+overlay painting through QPainter.end. The display compositor and
+event dispatch outside the widget paint handler are outside these
+stage timers.
+
+Stage medians in milliseconds. Each stage uses the median across the
+three pass medians. Stages are aggregated individually.
+
+Operation  Setup  Trace   tiny-skia  Crop   Rust total   Qt total
+Pan        0.450  11.882  32.507     0.477  45.278       0.925
+Zoom       0.446  20.212  39.084     0.479  60.656       0.921
+
+The binding and trace logging residual was 0.385 ms for pan and 0.374 ms
+for zoom. QImage setup was 0.067 ms for both. QPainter setup and drawImage
+were 0.683 ms for pan and 0.715 ms for zoom. Overlay paint and ending the
+painter took 0.147 ms for pan and 0.144 ms for zoom.
+
+Tiny-skia took roughly two thirds of the measured repaint times in this
+fixture. The trace was the next largest stage and increased from
+11.9 ms on pan to 20.2 ms on zoom. These timings favor investigating
+stroke rasterization first and separating curve subdivision from the
+rest of the trace on zoom. A different drawing or zoom range can change
+the balance. The instrumentation was removed from the source after the
+measurement.
