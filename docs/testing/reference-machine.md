@@ -110,3 +110,7 @@ entities, median (95th percentile).
 | 2026-11-20 | `763c69c` | 25.0.7 / 4.3, ES 3.2 | — | — | — | 30.4 (49.2) | 29.4 (52.3) | 47.8 (53.7) | 62.7 (70.2) | Same alternating comparison as the preceding row. All six overlay comparisons found zero unmatched pixels. In a separate instrumented pass, median time inside `queue.present` was about 98% of median Rust frame time among frames exceeding 25 ms. |
 | 2026-11-20 | `89f6ebd` | 25.0.7 / 4.3, ES 3.2 | — | — | — | — | — | 48.5 (55.1) | 63.8 (72.6) | [CPU stage timings](reference-machine/2026-11-20/cpu-frame-timing.txt). Medians from three instrumented passes. Tiny-skia took about 32.5 ms for pan and 39.1 ms for zoom. Qt took less than 1 ms in each phase. |
 | 2026-11-20 | `763c69c` | 25.0.7 / 4.3, ES 3.2 | — | — | — | — | — | — | — | [Large drawing open](reference-machine/2026-11-20/large-drawing-open.txt). For a generated 100,000-line DXF, median request to first paint was 573.5 ms with idle OpenGL, 513.1 ms with idle CPU and 760.3 ms when requested at startup. Opening the document on the worker took about 372 ms in the idle sessions. |
+
+## Renderer and safe mode checks
+
+- 2026-11-20, `763c69c`. Automatic used OpenGL on the GT 730. Safe mode used the CPU with default settings and with OpenGL saved in Preferences. Both paths opened, edited, saved and reopened the generated DXF. [Validation report](reference-machine/2026-11-20/renderer-safe-mode.txt)

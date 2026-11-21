@@ -1,0 +1,33 @@
+Automatic renderer and safe mode on the reference machine, 2026-11-20
+
+LMDE 7, kernel 6.12.117, i7-2600, GeForce GT 730 (NV106), Mesa
+25.0.7, X11 at 1920 x 1080 and 60 Hz, Python 3.13.5, PySide6 6.12.0.
+Used the installed application at 763c69c. The Rust and Python sources
+are identical at the report branch base (8849928).
+
+Ran the application through its CLI entry point on X11 in three
+sessions. Each had separate settings and data directories, with
+ARQ_GPU_VIEWPORT and ARQ_GPU_BACKEND unset. The first two started with
+default settings. The third had OpenGL saved in the Renderer preference.
+
+Session                         Selected by   First view      Reopened view
+Default                         Automatic     OpenGL NV106    OpenGL NV106
+--safe-mode                     Safe mode     CPU             CPU
+--safe-mode, OpenGL preference  Safe mode     CPU             CPU
+
+In each session, the harness posted commands to the real main window
+and supplied a temporary SAVEAS destination. It opened a generated
+one-line DXF through the OPEN command path used for recent drawings,
+added a line from (4, 6) to (12, 9), used UNDO and REDO, and saved to
+a new DXF. The entity count changed from one to two, back to one, and
+back to two. After closing and reopening the saved file, it checked
+the two entities and the added line's endpoints.
+
+The automatic session reported the OpenGL NV106 adapter attached to
+both viewports and a completed paint. Both safe-mode sessions produced
+a nonempty CPU image without a GPU attached. The GPU startup sentinel
+was disarmed after each paint. The three exported DXFs were byte-identical.
+
+Focused Python tests in test_renderer.py and test_core_integration.py
+ran with Qt offscreen, with 39 passed and one skipped. The separate
+X11 sessions provided the hardware validation.
