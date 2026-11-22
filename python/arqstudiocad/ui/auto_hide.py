@@ -19,9 +19,9 @@ the mouse leaves it and rolls down when the mouse comes back, as an
 AutoCAD palette set to auto-hide.
 """
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
 
-from PySide6.QtCore import QEvent, QObject, QRect, QSettings, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QPoint, QRect, QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QCursor, QIcon, QMouseEvent, QPainter, QPaintEvent, QPixmap
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -41,6 +41,12 @@ from PySide6.QtWidgets import (
 from arqstudiocad.i18n import tr
 
 AUTO_HIDE_SETTING = "panels/auto_hidden"
+#: How wide (or tall) each unpinned panel slides out, as the user left it.
+OVERLAY_SIZE_SETTING = "panels/overlay_sizes"
+#: The overlay's inner edge, in pixels, that drags to resize it.
+GRIP = 6
+#: The least an unpinned panel slides out to when it has no width of its own.
+USEFUL_SIZE = 200
 #: The floating panels set to roll up to their title bar.
 ROLL_UP_SETTING = "panels/rolled_up"
 #: How long the mouse may be away before an open overlay slides back.
@@ -190,22 +196,89 @@ class SideTab(QAbstractButton):
         painter.drawText(area, Qt.AlignmentFlag.AlignCenter, self.text())
 
 
+class EdgeGrip(QWidget):
+    """An overlay's inner edge, the one facing the drawing: dragged, it
+    resizes the overlay (maintainer, 2026-11-20). It reports where its own
+    top-left corner goes, so the edge moves exactly as the mouse does,
+    wherever on the grip it was taken."""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        side: Side,
+        dragged: Callable[[QPoint], None],
+        ended: Callable[[], None],
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("overlay_edge")
+        self.setCursor(
+            Qt.CursorShape.SizeHorCursor if is_vertical(side) else Qt.CursorShape.SizeVerCursor
+        )
+        self._dragged, self._ended = dragged, ended
+        self.dragging = False
+        self._held = QPoint()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self._held = event.position().toPoint()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
+        if self.dragging:
+            self._dragged(event.globalPosition().toPoint() - self._held)
+            event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 (Qt API)
+        if self.dragging:
+            self.dragging = False
+            self._ended()
+            event.accept()
+
+
 class Overlay(QFrame):
     """An unpinned panel slid out over the drawing: its title bar with the
-    pin, then its contents."""
+    pin, then its contents; its edge facing the drawing resizes it."""
 
-    def __init__(self, dock: QDockWidget, parent: QWidget) -> None:
+    def __init__(
+        self,
+        dock: QDockWidget,
+        parent: QWidget,
+        side: Side = Qt.DockWidgetArea.RightDockWidgetArea,
+        dragged: Callable[[QPoint], None] | None = None,
+        ended: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName(f"overlay_{dock.objectName()}")
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setAutoFillBackground(True)
+        self.side = side
         self.title_bar = PanelTitleBar(dock, pinned=False)
         self.contents: QWidget | None = None
         self._column = QVBoxLayout(self)
-        self._column.setContentsMargins(1, 1, 1, 1)
+        # Room for the grip on the side facing the drawing: it covers nothing.
+        margins = {
+            Qt.DockWidgetArea.LeftDockWidgetArea: (1, 1, GRIP, 1),
+            Qt.DockWidgetArea.RightDockWidgetArea: (GRIP, 1, 1, 1),
+            Qt.DockWidgetArea.TopDockWidgetArea: (1, 1, 1, GRIP),
+            Qt.DockWidgetArea.BottomDockWidgetArea: (1, GRIP, 1, 1),
+        }
+        self._column.setContentsMargins(*margins.get(side, (1, 1, 1, 1)))
         self._column.setSpacing(0)
         self._column.addWidget(self.title_bar)
+        self.grip = EdgeGrip(self, side, dragged or (lambda _point: None), ended or (lambda: None))
         self.hide()
+
+    def resizeEvent(self, event: object) -> None:  # noqa: N802 (Qt API)
+        w, h = self.width(), self.height()
+        place = {
+            Qt.DockWidgetArea.LeftDockWidgetArea: QRect(w - GRIP, 0, GRIP, h),
+            Qt.DockWidgetArea.RightDockWidgetArea: QRect(0, 0, GRIP, h),
+            Qt.DockWidgetArea.TopDockWidgetArea: QRect(0, h - GRIP, w, GRIP),
+            Qt.DockWidgetArea.BottomDockWidgetArea: QRect(0, 0, w, GRIP),
+        }
+        self.grip.setGeometry(place.get(self.side, QRect(0, 0, GRIP, h)))
+        self.grip.raise_()
 
     def hold(self, contents: QWidget) -> None:
         self.contents = contents
@@ -227,8 +300,14 @@ class AutoHide(QObject):
         window: QMainWindow,
         panels: Iterable[QDockWidget],
         settings: QSettings | None = None,
+        useful: Mapping[QDockWidget, int] | None = None,
     ) -> None:
+        """``useful``: the least each panel slides out to, so that what it
+        holds is not cut (maintainer, 2026-11-20)."""
         super().__init__(window)
+        self._useful = dict(useful or {})
+        #: An overlay's edge is being dragged: it stays out meanwhile.
+        self._resizing = False
         self._window = window
         self._settings = settings
         self.panels = list(panels)
@@ -295,7 +374,13 @@ class AutoHide(QObject):
         size = dock.width() if is_vertical(side) else dock.height()
         self._sizes[dock] = max(size, 180)
         contents = dock.widget()
-        overlay = Overlay(dock, self._window)
+        overlay = Overlay(
+            dock,
+            self._window,
+            side,
+            lambda point: self._drag_edge(dock, point),
+            self._end_drag,
+        )
         overlay.title_bar.pin.clicked.connect(lambda _checked=False: self.pin(dock))
         overlay.title_bar.mode.clicked.connect(lambda _checked=False: self.toggle_floating(dock))
         overlay.title_bar.close_button.clicked.connect(lambda _checked=False: self.close(dock))
@@ -317,7 +402,7 @@ class AutoHide(QObject):
         it (it never left the window's layout, only hid)."""
         if self.is_pinned(dock):
             return
-        del self.sides[dock]
+        side = self.sides.pop(dock)
         self._remove_tab(dock)
         overlay = self.overlays.pop(dock)
         contents = overlay.release()
@@ -328,6 +413,14 @@ class AutoHide(QObject):
             dock.setWidget(contents)
         dock.toggleViewAction().setEnabled(True)
         dock.show()
+        # In front of its tabs: the panel just pinned is the one wanted.
+        dock.raise_()
+        # Docked at the size it slid out to, once its tab group has turned to
+        # it: before that, some platforms (Windows) drop the request.
+        orientation = Qt.Orientation.Horizontal if is_vertical(side) else Qt.Orientation.Vertical
+        size = self.overlay_size(dock)
+        self._window.resizeDocks([dock], [size], orientation)
+        QTimer.singleShot(0, lambda: self._window.resizeDocks([dock], [size], orientation))
         self._save()
 
     def close(self, dock: QDockWidget) -> None:
@@ -422,8 +515,11 @@ class AutoHide(QObject):
             bar.setVisible(any(tab.side == side for tab in self.tabs.values()))
 
     def restore(self) -> None:
-        """Unpins the panels that were unpinned last time, and sets the
-        floating ones that rolled up to roll up again."""
+        """Unpins the panels that were unpinned last time, at the sizes they
+        slid out to, and sets the floating ones that rolled up to roll up
+        again."""
+        # Read first: unpinning saves the sizes the panels have docked.
+        sizes = None if self._settings is None else self._settings.value(OVERLAY_SIZE_SETTING)
         rolling = None if self._settings is None else self._settings.value(ROLL_UP_SETTING)
         if isinstance(rolling, str) and rolling:
             for name in rolling.split(","):
@@ -431,15 +527,20 @@ class AutoHide(QObject):
                 if dock is not None and dock.isFloating():
                     self.set_rolling(dock, True)
         saved = None if self._settings is None else self._settings.value(AUTO_HIDE_SETTING)
-        if not isinstance(saved, str) or not saved:
-            return
         by_name = {SIDE_NAMES[side]: side for side in SIDES}
-        for item in saved.split(","):
+        for item in saved.split(",") if isinstance(saved, str) and saved else []:
             name, _, side_name = item.partition(":")
             dock = next((d for d in self.panels if d.objectName() == name), None)
             side = by_name.get(side_name)
             if dock is not None and side is not None:
                 self.unpin(dock, side)
+        if isinstance(sizes, str) and sizes:
+            for item in sizes.split(","):
+                name, _, value = item.partition(":")
+                dock = next((d for d in self.panels if d.objectName() == name), None)
+                if dock is not None and value.isdigit():
+                    self._sizes[dock] = int(value)
+            self._save()
 
     # Sliding out and back
 
@@ -484,13 +585,58 @@ class AutoHide(QObject):
         for overlay in self.overlays.values():
             overlay.title_bar.retranslate()
 
+    # Resizing (maintainer, 2026-11-20)
+
+    def useful_size(self, dock: QDockWidget) -> int:
+        """The least ``dock`` slides out to."""
+        return self._useful.get(dock, USEFUL_SIZE)
+
+    def overlay_size(self, dock: QDockWidget) -> int:
+        """How wide (tall, at the top or bottom) ``dock`` slides out: as the
+        user left it, never under its useful size."""
+        return max(self._sizes.get(dock, 0), self.useful_size(dock))
+
+    def _drawing_area(self) -> QRect:
+        layout = self._window.layout()
+        if layout is not None:
+            layout.activate()  # docks just hidden or shown: place the drawing first
+        central = self._window.centralWidget()
+        return central.geometry() if central is not None else self._window.rect()
+
+    def _drag_edge(self, dock: QDockWidget, corner: QPoint) -> None:
+        """The overlay's inner edge follows its grip, whose top-left corner
+        is at ``corner`` (global): not under the panel's useful size, nor
+        past the drawing."""
+        side = self.sides.get(dock)
+        overlay = self.overlays.get(dock)
+        if side is None or overlay is None:
+            return
+        self._resizing = True
+        area = self._drawing_area()
+        at = self._window.mapFromGlobal(corner)
+        # The grip lies along the inside of the edge facing the drawing.
+        if side == Qt.DockWidgetArea.RightDockWidgetArea:
+            size, room = area.right() + 1 - at.x(), area.width()
+        elif side == Qt.DockWidgetArea.LeftDockWidgetArea:
+            size, room = at.x() + GRIP - area.left(), area.width()
+        elif side == Qt.DockWidgetArea.TopDockWidgetArea:
+            size, room = at.y() + GRIP - area.top(), area.height()
+        else:
+            size, room = area.bottom() + 1 - at.y(), area.height()
+        self._sizes[dock] = max(self.useful_size(dock), min(size, room))
+        overlay.setGeometry(self._overlay_rect(dock))
+
+    def _end_drag(self) -> None:
+        self._resizing = False
+        self._save()
+
     def _overlay_rect(self, dock: QDockWidget) -> QRect:
         layout = self._window.layout()
         if layout is not None:
             layout.activate()  # docks just hidden or shown: place the drawing first
         central = self._window.centralWidget()
         area = central.geometry() if central is not None else self._window.rect()
-        size = self._sizes.get(dock, 240)
+        size = self.overlay_size(dock)
         side = self.sides[dock]
         if side == Qt.DockWidgetArea.LeftDockWidgetArea:
             return QRect(area.left(), area.top(), min(size, area.width()), area.height())
@@ -512,6 +658,8 @@ class AutoHide(QObject):
         dock = self.open
         if dock is None:
             self._leave_timer.stop()
+            return
+        if self._resizing:
             return
         overlay = self.overlays[dock]
         focus = QApplication.focusWidget()
@@ -564,5 +712,9 @@ class AutoHide(QObject):
                 f"{dock.objectName()}:{SIDE_NAMES[side]}" for dock, side in self.sides.items()
             )
             self._settings.setValue(AUTO_HIDE_SETTING, value)
+            sizes = ",".join(
+                f"{dock.objectName()}:{size}" for dock, size in self._sizes.items() if size > 0
+            )
+            self._settings.setValue(OVERLAY_SIZE_SETTING, sizes)
             rolling = sorted(dock.objectName() for dock in self.rolling)
             self._settings.setValue(ROLL_UP_SETTING, ",".join(rolling))

@@ -217,7 +217,16 @@ class MainWindow(QMainWindow):
         self.budget_panel.hide()
         self.layers_panel.raise_()
         #: The pins: a panel stays open, or collapses to a tab on its side.
-        self.auto_hide = AutoHide(self, self.panels.values(), settings)
+        # Unpinned, each slides out at least wide enough for what it holds:
+        # its columns and buttons uncut (maintainer, 2026-11-20).
+        useful = {
+            self.layers_panel: 300,
+            self.properties_panel: 260,
+            self.blocks_panel: 320,
+            self.history_panel: 200,
+            self.budget_panel: 480,
+        }
+        self.auto_hide = AutoHide(self, self.panels.values(), settings, useful)
         # A palette's button toggles it and is pressed while it is open
         # (ADR 0025 D2), agreeing with its item in the View menu.
         self._palette_button("BLOCKSPALETTE", self.blocks_panel)
