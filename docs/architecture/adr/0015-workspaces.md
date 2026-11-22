@@ -78,6 +78,12 @@ override this data, not a second mechanism.
   the mouse leaves it and rolls down when the mouse comes back, as an
   AutoCAD palette set to auto-hide; docked again, it is open. Which floating
   panels roll up is remembered.
+- An unpinned panel slides out at least as wide as what it holds needs
+  (maintainer, 2026-11-20): Layers 300 pixels, Properties 260, Blocks 320,
+  History 200, Budget 480. Its edge facing the drawing drags to resize it,
+  between that and the drawing's width; the size is remembered for each
+  panel, across restarts, and the panel docks at it when pinned again, in
+  front of its tabs.
 - The drawings' **tabs run the full width** of the window, under the ribbon
   or the toolbars, and the panels start below them, as AutoCAD's file tabs.
 - Panels and the command window are shared. Their arrangement (dock and

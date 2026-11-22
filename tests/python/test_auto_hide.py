@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QEvent, QPointF, QRect, QSettings, Qt
-from PySide6.QtGui import QEnterEvent
+from PySide6.QtGui import QEnterEvent, QMouseEvent
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
@@ -366,3 +366,123 @@ def test_a_rolling_floating_panel_rolls_again_after_a_restart(qtbot: QtBot, tmp_
     assert again.layers_panel.isFloating()
     assert again.layers_panel in pins(again).rolling
     assert not title_bar(again).pinned and title_bar(again).mode.toolTip() == "Dock"
+
+
+def _drag(grip: QWidget, dx: int, dy: int = 0) -> None:
+    """Presses the overlay's edge, moves it by (dx, dy) and lets go."""
+    local = QPointF(grip.width() / 2, grip.height() / 2)
+    start = QPointF(grip.mapToGlobal(local.toPoint()))
+    end = start + QPointF(dx, dy)
+    left, none = Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton
+    plain = Qt.KeyboardModifier.NoModifier
+    press = QMouseEvent(QEvent.Type.MouseButtonPress, local, start, left, left, plain)
+    QApplication.sendEvent(grip, press)
+    moved = local + QPointF(dx, dy)
+    QApplication.sendEvent(grip, QMouseEvent(QEvent.Type.MouseMove, moved, end, none, left, plain))
+    QApplication.sendEvent(
+        grip, QMouseEvent(QEvent.Type.MouseButtonRelease, moved, end, left, none, plain)
+    )
+
+
+def test_an_unpinned_panel_slides_out_at_least_as_wide_as_it_needs(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    panel, hide = window.layers_panel, pins(window)
+    title_bar(window).pin.click()
+    hide._sizes[panel] = 150  # as if it had been docked that narrow
+    assert hide.expand(panel)
+    assert hide.useful_size(panel) == 300
+    assert hide.overlays[panel].width() == 300, "its columns uncut, though docked narrower"
+    assert hide.useful_size(window.budget_panel) == 480
+
+
+def test_dragging_the_overlay_edge_resizes_it_within_bounds(
+    qtbot: QtBot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = make_window(qtbot)
+    panel, hide = window.layers_panel, pins(window)
+    title_bar(window).pin.click()
+    hide.expand(panel)
+    overlay = hide.overlays[panel]
+    grip = overlay.grip
+    assert grip.cursor().shape() == Qt.CursorShape.SizeHorCursor
+    assert grip.x() == 0 and grip.height() == overlay.height(), "the edge facing the drawing"
+    width = overlay.width()
+    _drag(grip, -120)
+    assert overlay.width() == width + 120, "dragged left, wider"
+    assert overlay.geometry().right() == drawing(window).right(), "still against its side"
+    _drag(grip, 400)
+    assert overlay.width() == hide.useful_size(panel), "never narrower than it needs"
+    _drag(grip, -5000)
+    assert overlay.width() == drawing(window).width(), "never past the drawing"
+    # While its edge is held, the mouse leaving the overlay does not close it.
+    monkeypatch.setattr(AutoHide, "_under_mouse", staticmethod(lambda widget: False))
+    local = QPointF(3, 20)
+    left, plain = Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier
+    QApplication.sendEvent(
+        grip,
+        QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            local,
+            QPointF(grip.mapToGlobal(local.toPoint())),
+            left,
+            left,
+            plain,
+        ),
+    )
+    QApplication.sendEvent(
+        grip,
+        QMouseEvent(
+            QEvent.Type.MouseMove,
+            local,
+            QPointF(grip.mapToGlobal(local.toPoint())),
+            Qt.MouseButton.NoButton,
+            left,
+            plain,
+        ),
+    )
+    hide._check_leave()
+    assert hide.open is panel and overlay.isVisible()
+    QApplication.sendEvent(
+        grip,
+        QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            local,
+            QPointF(grip.mapToGlobal(local.toPoint())),
+            left,
+            Qt.MouseButton.NoButton,
+            plain,
+        ),
+    )
+    hide._check_leave()
+    assert hide.open is None, "let go, it slides back as before"
+
+
+def test_the_width_it_slid_out_to_stays_when_collapsed_and_pinned(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    panel, hide = window.layers_panel, pins(window)
+    title_bar(window).pin.click()
+    hide.expand(panel)
+    _drag(hide.overlays[panel].grip, -80)
+    wide = hide.overlays[panel].width()
+    hide.collapse()
+    hide.expand(panel)
+    assert hide.overlays[panel].width() == wide, "slides out again as left"
+    hide.overlays[panel].title_bar.pin.click()
+    assert hide.is_pinned(panel)
+    qtbot.waitUntil(lambda: abs(panel.width() - wide) <= 2)
+
+
+def test_the_width_it_slid_out_to_survives_a_restart(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    window = make_window(qtbot, settings)
+    hide = pins(window)
+    title_bar(window).pin.click()
+    hide.expand(window.layers_panel)
+    _drag(hide.overlays[window.layers_panel].grip, -90)
+    wide = hide.overlays[window.layers_panel].width()
+    window.close()
+    again = make_window(qtbot, settings)
+    assert not pins(again).is_pinned(again.layers_panel)
+    assert pins(again).overlay_size(again.layers_panel) == wide
+    assert pins(again).expand(again.layers_panel)
+    assert pins(again).overlays[again.layers_panel].width() == wide
