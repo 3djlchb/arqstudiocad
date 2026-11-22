@@ -12,7 +12,7 @@ from ui_fakes import QuietUi
 
 from arqstudiocad.events import WorkFinished, WorkStarted
 from arqstudiocad.i18n import set_language
-from arqstudiocad.ui.auto_hide import AutoHide, PanelTitleBar, SideTab
+from arqstudiocad.ui.auto_hide import HOVER_DELAY_MS, AutoHide, PanelTitleBar, SideTab
 from arqstudiocad.ui.main_window import MainWindow
 
 RIGHT = Qt.DockWidgetArea.RightDockWidgetArea
@@ -50,7 +50,9 @@ def tab(window: MainWindow) -> SideTab:
 
 
 def hover(widget: SideTab) -> None:
+    """The mouse comes onto a side tab and rests there past the delay."""
     QApplication.sendEvent(widget, QEnterEvent(QPointF(2, 2), QPointF(2, 2), QPointF(2, 2)))
+    QTest.qWait(HOVER_DELAY_MS + 100)
 
 
 def test_panels_start_pinned_with_a_pin_in_the_title(qtbot: QtBot) -> None:
@@ -178,7 +180,10 @@ def test_closing_an_unpinned_panel(qtbot: QtBot) -> None:
     tab(window).click()
     pins(window).overlays[window.layers_panel].title_bar.close_button.click()
     assert pins(window).is_pinned(window.layers_panel)
-    assert not window.layers_panel.isVisible() and not pins(window).bars[RIGHT].isVisible()
+    assert not window.layers_panel.isVisible()
+    # Its group stays as it was: Properties, unpinned with it, keeps its tab.
+    assert not pins(window).is_pinned(window.properties_panel)
+    assert list(pins(window).tabs) == [window.properties_panel]
     window.layers_panel.toggleViewAction().trigger()
     assert window.layers_panel.isVisible()
 
@@ -494,3 +499,75 @@ def test_the_width_it_slid_out_to_survives_a_restart(qtbot: QtBot, tmp_path: Pat
     assert pins(again).overlay_size(again.layers_panel) == wide
     assert pins(again).expand(again.layers_panel)
     assert pins(again).overlays[again.layers_panel].width() == wide
+
+
+def _gaps(window: MainWindow) -> int:
+    return sum(1 for action in pins(window).bars[RIGHT].actions() if action.isSeparator())
+
+
+def test_the_pin_unpins_and_pins_back_the_whole_tab_group(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    window.show_panel("blocks")
+    hide = pins(window)
+    group = (window.layers_panel, window.properties_panel, window.blocks_panel)
+    title_bar(window).pin.click()
+    assert all(not hide.is_pinned(panel) for panel in group), "its tabs went with it"
+    assert len({hide.groups[panel] for panel in group}) == 1
+    assert hide.is_pinned(window.history_panel), "History, docked apart, stays"
+    assert _gaps(window) == 0, "one group: its tabs side by side"
+    hide.title_bars[window.history_panel].pin.click()
+    assert list(hide.tabs) == [*group, window.history_panel]
+    assert hide.groups[window.history_panel] not in {hide.groups[p] for p in group}
+    assert _gaps(window) == 1, "a gap between the two groups"
+    hide.overlays[window.properties_panel].title_bar.pin.click()
+    assert all(hide.is_pinned(panel) for panel in group), "pinned back together"
+    assert window.properties_panel in window.tabifiedDockWidgets(window.layers_panel)
+    assert window.properties_panel.isVisible(), "the one pinned in front"
+    assert list(hide.tabs) == [window.history_panel] and _gaps(window) == 0, "no gap left"
+
+
+def test_closing_or_floating_one_panel_leaves_its_group(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    hide = pins(window)
+    title_bar(window).pin.click()
+    hide.overlays[window.properties_panel].title_bar.mode.click()
+    assert window.properties_panel.isFloating()
+    assert not hide.is_pinned(window.layers_panel), "Layers stays unpinned"
+
+
+def test_resting_on_a_tab_slides_its_panel_out_after_a_delay(qtbot: QtBot) -> None:
+    window = make_window(qtbot)
+    hide = pins(window)
+    title_bar(window).pin.click()
+    hide.title_bars[window.history_panel].pin.click()
+    layers = hide.tabs[window.layers_panel]
+    enter = QEnterEvent(QPointF(2, 2), QPointF(2, 2), QPointF(2, 2))
+    QApplication.sendEvent(layers, enter)
+    assert hide.open is None, "not at once"
+    QApplication.sendEvent(layers, QEvent(QEvent.Type.Leave))
+    QTest.qWait(HOVER_DELAY_MS + 100)
+    assert hide.open is None, "passing over the edge opens nothing"
+    QApplication.sendEvent(layers, enter)
+    QTest.qWait(HOVER_DELAY_MS + 100)
+    assert hide.open is window.layers_panel, "resting there, it slides out"
+    QApplication.sendEvent(hide.tabs[window.history_panel], enter)
+    assert hide.open is window.history_panel, "one already out: the next at once"
+    hide.collapse()
+    hide.tabs[window.properties_panel].click()
+    assert hide.open is window.properties_panel, "a click opens at once"
+
+
+def test_tab_groups_survive_a_restart(qtbot: QtBot, tmp_path: Path) -> None:
+    settings = QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat)
+    window = make_window(qtbot, settings)
+    title_bar(window).pin.click()
+    pins(window).title_bars[window.history_panel].pin.click()
+    window.close()
+    again = make_window(qtbot, settings)
+    hide = pins(again)
+    assert hide.groups[again.layers_panel] == hide.groups[again.properties_panel]
+    assert hide.groups[again.history_panel] != hide.groups[again.layers_panel]
+    assert _gaps(again) == 1
+    hide.overlays[again.layers_panel].title_bar.pin.click()
+    assert hide.is_pinned(again.properties_panel), "still pinned back as one"
+    assert not hide.is_pinned(again.history_panel)
