@@ -459,6 +459,10 @@ def test_dragging_the_overlay_edge_resizes_it_within_bounds(
 
 def test_the_width_it_slid_out_to_stays_when_collapsed_and_pinned(qtbot: QtBot) -> None:
     window = make_window(qtbot)
+    # Room beside the drawing: on Windows the drawing's own minimum leaves
+    # a 1100-pixel window's panels no more than about 340 pixels.
+    window.resize(1500, 760)
+    qtbot.waitUntil(lambda: window.width() >= 1400)
     panel, hide = window.layers_panel, pins(window)
     title_bar(window).pin.click()
     hide.expand(panel)
