@@ -84,6 +84,14 @@ override this data, not a second mechanism.
   between that and the drawing's width; the size is remembered for each
   panel, across restarts, and the panel docks at it when pinned again, in
   front of its tabs.
+- The pin of a panel that shares tabs unpins the whole **tab group**
+  (maintainer, 2026-11-22), as an AutoCAD palette group: one tab per panel
+  on the side, the group's side by side and a gap between groups. The pin
+  of any of them docks the group back as tabs, that one in front; closing
+  or floating one panel leaves the rest as they are. Groups are remembered.
+  Resting the mouse on a side tab slides its panel out after **250 ms**, so
+  passing over the edge opens nothing; with a panel already out, the next
+  tab opens at once, and a click always does.
 - The drawings' **tabs run the full width** of the window, under the ribbon
   or the toolbars, and the panels start below them, as AutoCAD's file tabs.
 - Panels and the command window are shared. Their arrangement (dock and

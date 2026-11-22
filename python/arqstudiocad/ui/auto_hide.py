@@ -49,6 +49,9 @@ GRIP = 6
 USEFUL_SIZE = 200
 #: The floating panels set to roll up to their title bar.
 ROLL_UP_SETTING = "panels/rolled_up"
+#: How long the mouse rests on a side tab before its panel slides out
+#: (maintainer, 2026-11-22): passing over the edge opens nothing.
+HOVER_DELAY_MS = 250
 #: How long the mouse may be away before an open overlay slides back.
 LEAVE_DELAY_MS = 400
 
@@ -308,6 +311,12 @@ class AutoHide(QObject):
         self._useful = dict(useful or {})
         #: An overlay's edge is being dragged: it stays out meanwhile.
         self._resizing = False
+        #: The tab group each unpinned panel was unpinned with: pinned and
+        #: unpinned together, their side tabs side by side.
+        self.groups: dict[QDockWidget, int] = {}
+        self._next_group = 0
+        #: The side tab the mouse rests on, until its panel slides out.
+        self._hovered: SideTab | None = None
         self._window = window
         self._settings = settings
         self.panels = list(panels)
@@ -351,6 +360,10 @@ class AutoHide(QObject):
         self._leave_timer = QTimer(self)
         self._leave_timer.setInterval(LEAVE_DELAY_MS)
         self._leave_timer.timeout.connect(self._check_leave)
+        self._hover_timer = QTimer(self)
+        self._hover_timer.setSingleShot(True)
+        self._hover_timer.setInterval(HOVER_DELAY_MS)
+        self._hover_timer.timeout.connect(self._hover_rested)
         self._roll_timer = QTimer(self)
         self._roll_timer.setInterval(LEAVE_DELAY_MS)
         self._roll_timer.timeout.connect(self._check_rolling)
@@ -363,9 +376,10 @@ class AutoHide(QObject):
     def is_pinned(self, dock: QDockWidget) -> bool:
         return dock not in self.sides
 
-    def unpin(self, dock: QDockWidget, side: Side | None = None) -> bool:
+    def unpin(self, dock: QDockWidget, side: Side | None = None, group: int | None = None) -> bool:
         """Collapses ``dock`` to a tab on ``side`` (the side it is docked
-        on); False for a floating or already unpinned panel."""
+        on), with ``group``'s tabs if given; False for a floating or already
+        unpinned panel."""
         if not self.is_pinned(dock) or (side is None and dock.isFloating()):
             return False
         side = side if side is not None else self._window.dockWidgetArea(dock)
@@ -381,14 +395,21 @@ class AutoHide(QObject):
             lambda point: self._drag_edge(dock, point),
             self._end_drag,
         )
-        overlay.title_bar.pin.clicked.connect(lambda _checked=False: self.pin(dock))
+        overlay.title_bar.pin.clicked.connect(lambda _checked=False: self.pin_group(dock))
         overlay.title_bar.mode.clicked.connect(lambda _checked=False: self.toggle_floating(dock))
         overlay.title_bar.close_button.clicked.connect(lambda _checked=False: self.close(dock))
         if contents is not None:
             overlay.hold(contents)
+        if group is None:
+            group = self._new_group()
         tab = SideTab(dock, side)
         tab.clicked.connect(lambda _checked=False: self.expand(dock))
+        here = [d for d, t in self.tabs.items() if t.side == side]
+        if here and not any(self.groups.get(d) == group for d in here):
+            # Another group's tabs: a gap between them.
+            self.bars[side].addSeparator()
         self.bars[side].addWidget(tab)
+        self.groups[dock] = group
         self.bars[side].show()
         self.sides[dock], self.tabs[dock], self.overlays[dock] = side, tab, overlay
         dock.toggleViewAction().setEnabled(False)
@@ -403,6 +424,7 @@ class AutoHide(QObject):
         if self.is_pinned(dock):
             return
         side = self.sides.pop(dock)
+        self.groups.pop(dock, None)
         self._remove_tab(dock)
         overlay = self.overlays.pop(dock)
         contents = overlay.release()
@@ -423,9 +445,41 @@ class AutoHide(QObject):
         QTimer.singleShot(0, lambda: self._window.resizeDocks([dock], [size], orientation))
         self._save()
 
+    # Tab groups (maintainer, 2026-11-22)
+
+    def _new_group(self) -> int:
+        self._next_group += 1
+        return self._next_group
+
+    def unpin_group(self, dock: QDockWidget) -> bool:
+        """The pin of a docked panel: it and the panels sharing its tabs
+        collapse together, their side tabs side by side, as an AutoCAD
+        palette group. A panel alone collapses alone."""
+        if not self.is_pinned(dock) or dock.isFloating():
+            return False
+        shared = set(self._window.tabifiedDockWidgets(dock))
+        members = [d for d in self.panels if d is dock or d in shared]
+        group = self._new_group()
+        unpinned = False
+        for member in members:
+            if self.is_pinned(member) and not member.isFloating() and member.isVisible():
+                unpinned = self.unpin(member, None, group) or unpinned
+        if self.is_pinned(dock):
+            unpinned = self.unpin(dock, None, group) or unpinned
+        return unpinned
+
+    def pin_group(self, dock: QDockWidget) -> None:
+        """The pin of an unpinned panel: its whole group docks again, as
+        tabs, the one pinned in front."""
+        group = self.groups.get(dock)
+        for member in [d for d in list(self.sides) if d is not dock]:
+            if group is not None and self.groups.get(member) == group:
+                self.pin(member)
+        self.pin(dock)
+
     def close(self, dock: QDockWidget) -> None:
         """Closes an unpinned panel: docked back, then hidden, as closing a
-        pinned one (the View menu opens it again)."""
+        pinned one (the View menu opens it again); its group stays as it is."""
         self.pin(dock)
         dock.close()
 
@@ -441,7 +495,7 @@ class AutoHide(QObject):
         if dock.isFloating():
             self.set_rolling(dock, dock not in self.rolling)
         else:
-            self.unpin(dock)
+            self.unpin_group(dock)
 
     def _top_level_changed(self, dock: QDockWidget, floating: bool) -> None:
         self.title_bars[dock].set_floating(floating)
@@ -528,12 +582,19 @@ class AutoHide(QObject):
                     self.set_rolling(dock, True)
         saved = None if self._settings is None else self._settings.value(AUTO_HIDE_SETTING)
         by_name = {SIDE_NAMES[side]: side for side in SIDES}
+        renumbered: dict[str, int] = {}
         for item in saved.split(",") if isinstance(saved, str) and saved else []:
-            name, _, side_name = item.partition(":")
+            # name:side, or name:side:group since 2026-11-22.
+            name, _, rest = item.partition(":")
+            side_name, _, saved_group = rest.partition(":")
             dock = next((d for d in self.panels if d.objectName() == name), None)
             side = by_name.get(side_name)
-            if dock is not None and side is not None:
-                self.unpin(dock, side)
+            if dock is None or side is None:
+                continue
+            group = None
+            if saved_group.isdigit() and saved_group != "0":
+                group = renumbered.setdefault(saved_group, self._new_group())
+            self.unpin(dock, side, group)
         if isinstance(sizes, str) and sizes:
             for item in sizes.split(","):
                 name, _, value = item.partition(":")
@@ -675,7 +736,15 @@ class AutoHide(QObject):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 (Qt API)
         kind = event.type()
         if kind == QEvent.Type.Enter and isinstance(watched, SideTab):
-            self.expand(watched.dock)
+            if self.open is not None:
+                # Already looking through the panels: the next one at once.
+                self.expand(watched.dock)
+            else:
+                self._hovered = watched
+                self._hover_timer.start()
+        elif kind == QEvent.Type.Leave and watched is self._hovered:
+            self._hover_timer.stop()
+            self._hovered = None
         elif kind == QEvent.Type.Enter and watched in self.rolled:
             # Back over a rolled-up panel: it rolls down at once.
             assert isinstance(watched, QDockWidget)
@@ -696,20 +765,45 @@ class AutoHide(QObject):
                 self.collapse()
         return False
 
+    def _hover_rested(self) -> None:
+        tab, self._hovered = self._hovered, None
+        if tab is not None and tab.dock in self.overlays:
+            self.expand(tab.dock)
+
     def _remove_tab(self, dock: QDockWidget) -> None:
         tab = self.tabs.pop(dock)
+        if self._hovered is tab:
+            self._hover_timer.stop()
+            self._hovered = None
         bar = self.bars[tab.side]
         for action in bar.actions():
             if bar.widgetForAction(action) is tab:
                 bar.removeAction(action)
         tab.deleteLater()
+        self._tidy(bar)
         if not any(t.side == tab.side for t in self.tabs.values()):
             bar.hide()
+
+    @staticmethod
+    def _tidy(bar: QToolBar) -> None:
+        """No gap at either end of a side bar, nor two in a row."""
+        previous_gap = True
+        actions = bar.actions()
+        for i, action in enumerate(actions):
+            if action.isSeparator():
+                last = all(a.isSeparator() for a in actions[i + 1 :])
+                if previous_gap or last:
+                    bar.removeAction(action)
+                    continue
+                previous_gap = True
+            else:
+                previous_gap = False
 
     def _save(self) -> None:
         if self._settings is not None:
             value = ",".join(
-                f"{dock.objectName()}:{SIDE_NAMES[side]}" for dock, side in self.sides.items()
+                f"{dock.objectName()}:{SIDE_NAMES[side]}:{self.groups.get(dock, 0)}"
+                for dock, side in self.sides.items()
             )
             self._settings.setValue(AUTO_HIDE_SETTING, value)
             sizes = ",".join(
