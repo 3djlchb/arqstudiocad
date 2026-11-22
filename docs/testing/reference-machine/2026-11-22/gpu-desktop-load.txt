@@ -1,0 +1,83 @@
+The GPU viewport at 1920 x 1080 against the desktop's load, reference
+machine, 2026-11-22
+
+Machine: GeForce GT 730 (NV106) on nouveau, Mesa 25.0.7-2+deb13u1
+(OpenGL 4.3, ES 3.2), i7-2600, LMDE 7, X11 (Cinnamon), kernel
+6.12.118 (since that day), screen 1920 x 1080 at 60 Hz. main at 0da68ac.
+Fresh XDG folders and LANG=C.UTF-8 for every run.
+
+Why: on 2026-11-20 (gpu-frame-timing.txt there) the GPU viewport took
+28-30 ms a frame (95th percentile about 50 ms) at 1920 x 1080 on two
+commits, nearly all of it inside queue.present, with "the desktop and
+browsers left open". On 2026-11-19 the same screen had given 16.6 ms
+medians with the desktop idle.
+
+== The surface offers only Fifo
+
+A temporary change (not committed) printed the surface's present modes
+and took the mode and frame latency from the environment. With OpenGL on
+the GT 730 the surface offers [Fifo] only: there is no other present mode
+to choose. The frame latency, 2 as configured or 1, makes no difference.
+
+== Idle desktop: six passes, latency 2 and 1 alternating
+
+`tools/gpu_viewport_check.py` (1200 x 650 viewport, 100,000 entities, 57
+frames after 3 warm-ups); one browser process open, nothing playing.
+
+  Latency  Pass  GPU pan, median/p95  GPU zoom    CPU pan
+  2        1     16.6/17.0            16.6/16.9   43.8/49.5
+  1        1     16.6/16.8            16.6/17.2   45.5/49.7
+  1        2     16.6/16.9            16.6/17.2   44.3/53.7
+  2        2     16.6/16.8            16.6/16.8   44.0/49.1
+  2        3     16.6/16.9            16.6/16.8   44.6/50.5
+  1        3     16.6/17.3            16.7/16.8   43.3/48.9
+
+Every GPU frame is the display's refresh, 60 frames a second.
+
+== The usual programs open: three passes, latency 2
+
+The maintainer opened what they usually work with (Firefox, VLC and a
+Chrome helper running) and left the mouse alone.
+
+  Pass  GPU pan, median/p95  GPU zoom    CPU pan     CPU zoom
+  1     20.0/31.9            16.1/28.1   45.4/50.1   61.6/68.4
+  2     16.8/29.5            16.0/18.6   47.6/51.7   59.9/67.7
+  3     17.0/27.2            16.0/19.2   44.6/50.5   60.3/66.9
+
+The GPU and CPU overlays were 0 pixels apart in every pass.
+
+Reading: the desktop's load reaches the GPU viewport and not the CPU one.
+The compositor draws every window of the 1920 x 1080 screen on the same
+GT 730, so with other programs drawing, some of our frames wait for it:
+the 95th percentile goes from about 17 ms to about 30 ms, and a median
+rose once to 20 ms. The application's presentation is the one the
+surface offers, and its latency changes nothing; there is no code change
+to make. The 28-30 ms medians of 2026-11-20 were not reproduced here and
+probably came from a heavier load, or from that day's nouveau state
+(below).
+
+== nouveau's GPU faults
+
+The kernel log of the recent boots holds nouveau graphics traps
+("gr: TRAP ... MULTIPLE_WARP_ERRORS", OOR_REG, STACK_ERROR). Counted per
+boot, with the process whose GPU channel trapped:
+
+  Boot starting      Traps    In
+  2026-11-19 20:44   140,998  Xorg
+  2026-11-20 16:35         6  Chrome
+  2026-11-20 16:58         8  GStreamer plugin scanner, Xorg, Celluloid
+  2026-11-22 09:42         6  Xorg
+  2026-11-22 17:36        58  Xorg (17:53:30)
+  2026-11-22 18:09         0  (this session's measurements: none)
+
+None was in ArqStudioCAD. After the Xorg traps of 2026-11-19 and
+2026-11-22 17:53 the X server stopped accepting new clients ("could not
+connect to display :0"), which is what made the GPU viewport tests fail
+those days; a reboot cleared it. The log also shows that the GT 730's
+video-decoding firmware is missing (nouveau/nv106_fuc084), so video
+players fall back to other paths.
+
+The traps are the GT 730's driver stack, not the application. They make
+a session's measurements suspect, and from now on
+`reference_machine_report.sh` records how many there were in the
+current boot, and which drawing programs were open.

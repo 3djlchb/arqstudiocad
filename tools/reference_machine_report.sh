@@ -48,6 +48,16 @@ done
 section "Graphics"
 have lspci && lspci -nnk | grep -A3 -Ei 'vga|3d controller'
 if have glxinfo; then glxinfo -B; else echo "glxinfo missing: sudo apt install mesa-utils"; fi
+# What else draws, and the driver's GPU faults this boot: both weigh on the
+# GPU viewport's frames, and traps in Xorg can stop new windows opening
+# (reference-machine.md, 2026-11-22). Program names only.
+echo "drawing programs open: $(ps -eo comm --no-headers \
+    | grep -iE '^(chrome|firefox|firefox-bin|msedge|vlc|celluloid|mpv|totem|obs)$' \
+    | sort | uniq -c | tr -s ' ' | tr '\n' ';')"
+if have journalctl; then
+    traps=$(journalctl -b 0 -k --no-pager 2>/dev/null | grep -c 'nouveau.*gr: TRAP')
+    echo "nouveau GPU traps this boot: ${traps:-0}"
+fi
 if have vulkaninfo; then
     # The instance version, then every device with its type (hardware or CPU).
     vulkaninfo --summary 2>&1 | grep -m1 'Vulkan Instance Version'
