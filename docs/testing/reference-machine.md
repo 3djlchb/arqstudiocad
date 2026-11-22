@@ -15,7 +15,7 @@ machine compares against.
 | Graphics stack | Mesa 25.0.7 (`25.0.7-2+deb13u1`): OpenGL 4.3, OpenGL ES 3.2; Vulkan instance 1.4.309 with llvmpipe only (software) |
 | Processor | Intel Core i7-2600 (2011), 4 cores / 8 threads, AVX but no AVX2 or FMA |
 | Memory | 16 GB |
-| System | LMDE 7, kernel 6.12.117 (6.12.116 until 2026-11-11), X11 (Cinnamon) |
+| System | LMDE 7, kernel 6.12.118 since 2026-11-22 (6.12.117 from 2026-11-11, 6.12.116 before), X11 (Cinnamon) |
 | Screen | 1920 × 1080 at 60 Hz over HDMI since 2026-11-19 (a new monitor); 1366 × 768 until then |
 
 The application draws there with OpenGL ES on the GT 730; Vulkan and the
@@ -28,7 +28,12 @@ and no drawings. The screen's size counts: the desktop composes every
 frame of it on the same card, and at 1920 × 1080 the GPU viewport's 95th
 percentile is about twice what it is at 1366 × 768 (2026-11-19,
 [resolution](reference-machine/2026-11-19/resolution-and-startup.txt)).
-`reference_machine_report.sh` records the screens and the mode in use. Every run of the application uses a fresh
+`reference_machine_report.sh` records the screens and the mode in use. The desktop's load counts too: with other programs drawing, the GPU
+viewport's 95th percentile at 1920 × 1080 goes from about 17 to about
+30 ms (2026-11-22, [desktop load](reference-machine/2026-11-22/gpu-desktop-load.txt)).
+Measure with the desktop idle, and the report records which drawing
+programs were open and how many nouveau GPU traps the boot had: traps in
+Xorg can leave the X server refusing new windows until a reboot. Every run of the application uses a fresh
 `XDG_CONFIG_HOME`, so no saved setting or crash sentinel counts, and
 `LANG=C.UTF-8`. Run `uv run python tools/fetch_codec_samples.py` first, or
 the tests that read the public samples skip.
@@ -110,6 +115,7 @@ entities, median (95th percentile).
 | 2026-11-20 | `763c69c` | 25.0.7 / 4.3, ES 3.2 | — | — | — | 30.4 (49.2) | 29.4 (52.3) | 47.8 (53.7) | 62.7 (70.2) | Same alternating comparison as the preceding row. All six overlay comparisons found zero unmatched pixels. In a separate instrumented pass, median time inside `queue.present` was about 98% of median Rust frame time among frames exceeding 25 ms. |
 | 2026-11-20 | `89f6ebd` | 25.0.7 / 4.3, ES 3.2 | — | — | — | — | — | 48.5 (55.1) | 63.8 (72.6) | [CPU stage timings](reference-machine/2026-11-20/cpu-frame-timing.txt). Medians from three instrumented passes. Tiny-skia took about 32.5 ms for pan and 39.1 ms for zoom. Qt took less than 1 ms in each phase. |
 | 2026-11-20 | `763c69c` | 25.0.7 / 4.3, ES 3.2 | — | — | — | — | — | — | — | [Large drawing open](reference-machine/2026-11-20/large-drawing-open.txt). For a generated 100,000-line DXF, median request to first paint was 573.5 ms with idle OpenGL, 513.1 ms with idle CPU and 760.3 ms when requested at startup. Opening the document on the worker took about 372 ms in the idle sessions. |
+| 2026-11-22 | `0da68ac` | 25.0.7 / 4.3, ES 3.2 | — | — | — | 16.6 (16.8–17.3) | 16.6 (16.8–17.2) | 43.3–45.5 (48.9–53.7) | — | [Desktop load](reference-machine/2026-11-22/gpu-desktop-load.txt). Kernel 6.12.118. At 1920 × 1080 with the desktop idle every GPU frame is the refresh; with the usual programs open (Firefox, VLC) the GPU's 95th percentile rises to 27–32 ms and the CPU's does not. The surface offers only Fifo, and frame latency 1 or 2 changes nothing: no code change. nouveau GPU traps in Xorg on earlier boots explain the days the X server refused new windows |
 
 ## Renderer and safe mode checks
 
