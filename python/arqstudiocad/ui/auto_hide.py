@@ -415,9 +415,12 @@ class AutoHide(QObject):
         dock.show()
         # In front of its tabs: the panel just pinned is the one wanted.
         dock.raise_()
-        # Docked at the size it slid out to.
+        # Docked at the size it slid out to, once its tab group has turned to
+        # it: before that, some platforms (Windows) drop the request.
         orientation = Qt.Orientation.Horizontal if is_vertical(side) else Qt.Orientation.Vertical
-        self._window.resizeDocks([dock], [self.overlay_size(dock)], orientation)
+        size = self.overlay_size(dock)
+        self._window.resizeDocks([dock], [size], orientation)
+        QTimer.singleShot(0, lambda: self._window.resizeDocks([dock], [size], orientation))
         self._save()
 
     def close(self, dock: QDockWidget) -> None:

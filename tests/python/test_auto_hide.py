@@ -469,7 +469,11 @@ def test_the_width_it_slid_out_to_stays_when_collapsed_and_pinned(qtbot: QtBot) 
     assert hide.overlays[panel].width() == wide, "slides out again as left"
     hide.overlays[panel].title_bar.pin.click()
     assert hide.is_pinned(panel)
-    qtbot.waitUntil(lambda: abs(panel.width() - wide) <= 2)
+    try:
+        qtbot.waitUntil(lambda: abs(panel.width() - wide) <= 2)
+    except Exception as timeout:
+        sizes = {d.objectName(): d.width() for d in window.panels.values() if d.isVisible()}
+        raise AssertionError(f"docked at {panel.width()}, not {wide}: {sizes}") from timeout
 
 
 def test_the_width_it_slid_out_to_survives_a_restart(qtbot: QtBot, tmp_path: Path) -> None:
