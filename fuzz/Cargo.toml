@@ -39,4 +39,4 @@ debug = 1
 # The same AcadRust as the application: this line must match the root
 # Cargo.toml's (tests/python/test_workflows.py checks it).
 [patch.crates-io]
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "81b8de18af11fadd2f884eba253cc4aed1a2f2bf" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "cc116a75467c2c52b2497422fdd974d75bae74d0" }

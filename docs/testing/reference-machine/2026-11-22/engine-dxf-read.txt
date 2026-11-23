@@ -1,0 +1,66 @@
+The engine's DXF read, profiled and made cheaper, reference machine,
+2026-11-22
+
+Machine: i7-2600, LMDE 7, kernel 6.12.118, Rust 1.99.0; perf 6.12.118
+(installed by the maintainer that day, kernel.perf_event_paranoid set
+to 1 until the next reboot). Drawings generated: 100,000 LINEs, line i
+from (i mod 500, i div 500) to (+0.5, +0.5), as DXF (5.9 MB) and as the
+same drawing saved by the application as DWG (1.6 MB).
+
+Follows open-phases.txt (the same day), which found the engine's decode
+to be 74% of opening that DXF (309 ms) and 55% of the DWG (133 ms).
+
+Method: a small program, kept outside the repository, that reads the
+drawing with arq_document::Document::open N times and prints each read's
+time, built in release with line tables (CARGO_PROFILE_RELEASE_DEBUG=
+line-tables-only); `perf record -F 4000` over 10 reads, `perf report
+--no-children --sort symbol`.
+
+== DXF: where the read goes (the pinned fork, 81b8de1)
+
+  Reading lines (BufRead::read_until, DxfTextReader, read_line)   ~22%
+  malloc and free                                                 ~11%
+  Number parsing (f64, i32)                                       ~5.5%
+  Substring searches (str::contains)                              ~3.8%
+  UTF-8 checks and trimming                                       ~5%
+  The rest: section reading, reference resolution, our model
+
+DxfTextReader copied every value line twice: read_line made a String,
+then process_string_value copied it again although it held no ^ escape,
+nearly always. It also searched every line three times, for '^' and for
+the "\U+" and "\M+" legacy escapes, each a substring search with its own
+setup, on lines a few bytes long.
+
+The change, in our fork (ADR 0017 D2), commit cc116a7, immutable tag
+arqstudiocad/on-ea66abe-dxf-text-read, stacked on 81b8de1:
+process_string_value takes the line and gives it back unchanged when
+there is no '^'; the legacy-escape search runs only on a line with a
+backslash; both checks are single-byte searches of the line's bytes.
+A new fork test reads a \U+ escape and a plain value through the text
+reader; looking for any other byte than the backslash fails it. The
+fork's full suite: 2,458 passed.
+
+== Measured
+
+perf stat over five reads of the DXF, alternating builds:
+
+  build       instructions   cycles
+  81b8de1     8.836 G        5.840 G
+  cc116a7     7.610 G        5.082 G
+  81b8de1     8.842 G        5.735 G
+  cc116a7     7.609 G        5.243 G
+
+14% fewer instructions and about 11% fewer cycles; the read itself about
+282 -> 263 ms (medians of 7, two rounds, the desktop not idle).
+
+The whole open from Python, five fresh processes, two rounds, against
+the maintainer's main folder (9dd05c4, which has neither this change nor
+#236's index sizing): 393.2 and 387.7 ms -> 345.8 and 342.6 ms (about
+0.88 for both changes together).
+
+== DWG
+
+The same profile of the DWG read finds no such single cause: the bit
+reader (require_bits 8%, read_byte, read_2bits and shifts, about 15% in
+all), the AC1018 decompression (5%) and the document builder's passes.
+Making it cheaper means reworking the bit reader; left for later.
