@@ -962,6 +962,9 @@ pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
             crate::drawing::write_plan_ellipse(&mut el, g);
             EntityType::Ellipse(el)
         }
+        Geometry2::Spline(g) => EntityType::Spline(
+            crate::entities::new_spline(&g, z).expect("a plan geometry's elevation is finite"),
+        ),
     };
     e.common_mut().layer = layer.to_owned();
     e

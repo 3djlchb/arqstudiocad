@@ -115,6 +115,8 @@ impl Document {
                     add(GripKind::End, a.end_point(), None);
                     add(GripKind::Center, a.center(), None);
                 }
+                // Its grips come in ADR 0043's third delivery.
+                Some(Geometry2::Spline(_)) => {}
                 None if e.is_transformable() => {
                     if let Some(acadrust::EntityType::LwPolyline(polyline)) =
                         self.cad().get_entity(handle(id))

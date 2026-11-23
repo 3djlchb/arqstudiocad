@@ -102,3 +102,23 @@ def test_a_spline_it_cannot_make_is_refused() -> None:
         CadSpline.through([(0, 0), (1, 1), (2, 0)], start_tangent=(1, 0), closed=True)
     with pytest.raises(InvalidGeometryError, match="degree"):
         CadSpline.by_vertices([(0, 0), (1, 1)], closed=True)
+
+
+def test_a_read_spline_is_a_curve_to_snap_to_and_trim_at(tmp_path: Path) -> None:
+    # The Bezier: x = 6u, y = 9u(1 - u); y = 1 where u(1 - u) = 1/9.
+    doc = CadApplication().open_document(spline_dxf(tmp_path / "s.dxf"))
+    (spline,) = doc.get_entities()
+    root = math.sqrt(5.0) / 3.0
+    x1, x2 = 3.0 * (1.0 - root), 3.0 * (1.0 + root)
+    line, _ = doc.add_line((-1.0, 1.0), (7.0, 1.0))
+    found = doc.snap((x1 + 0.05, 1.05), 0.3, ["INT"])
+    assert found is not None and found.kind == "INT"
+    assert found.point == pytest.approx((x1, 1.0))
+    touch = doc.snap((2.25, 2.15), 0.3, ["TAN"], (-3.0, 0.0))
+    u = (math.sqrt(3.0) - 1.0) / 2.0
+    assert touch is not None and touch.point == pytest.approx((6.0 * u, 9.0 * u * (1.0 - u)))
+    left, _ = doc.trim_entity(line, (3.0, 1.0), None, True)
+    boxes = [doc.get_entity(i).bounds for i in left]
+    ends = sorted(x for b in boxes if b is not None for x in (b.min[0], b.max[0]))
+    assert ends == pytest.approx([-1.0, x1, x2, 7.0])
+    assert doc.get_entity(spline.id).geometry is None, "not plan geometry yet (ADR 0043)"

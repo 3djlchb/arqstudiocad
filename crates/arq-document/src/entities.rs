@@ -89,6 +89,7 @@ impl Document {
             Geometry2::Circle(circle) => Shape::Circle(circle),
             Geometry2::Arc(arc) => Shape::Arc(arc),
             Geometry2::Ellipse(ellipse) => Shape::Ellipse(ellipse),
+            Geometry2::Spline(spline) => Shape::Spline(spline),
         };
         match self.stretch_plan(id, areas, offset)? {
             StretchPlan::Unchanged => Ok(Vec::new()),
@@ -239,6 +240,10 @@ impl Document {
                     } else {
                         StretchPlan::Unchanged
                     });
+                }
+                // Its points stretched in ADR 0043's third delivery.
+                Geometry2::Spline(_) => {
+                    return Err(DocumentError::NotEditable { id, kind: "SPLINE" });
                 }
             }
         }
@@ -789,7 +794,7 @@ impl Document {
                 let path = match plan.geometry() {
                     Geometry2::Line(line) => JoinPath::line(line),
                     Geometry2::Arc(arc) => JoinPath::arc(arc),
-                    Geometry2::Circle(_) | Geometry2::Ellipse(_) => {
+                    Geometry2::Circle(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
                         unreachable!("a line or an arc")
                     }
                 };
@@ -1532,7 +1537,7 @@ impl Document {
 /// A SPLINE of `spline`'s control points at `elevation`, its knots and
 /// weights, planar, in the World plane; periodic when closed, as AutoCAD
 /// makes a closed one.
-fn new_spline(
+pub(crate) fn new_spline(
     spline: &arq_geometry::Spline,
     elevation: f64,
 ) -> DocumentResult<acadrust::entities::Spline> {
@@ -1977,7 +1982,9 @@ mod tests {
                     Geometry2::Line(_) => EntityType::Line(acadrust::Line::from_coords(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
                     Geometry2::Circle(_) => { let mut c = acadrust::Circle::new(); c.radius = 1.0; c.normal = Vector3::new(0.0, 0.0, nz); EntityType::Circle(c) }
                     Geometry2::Arc(_) => codec_arc((0.0, 0.0, 0.0), 1.0, 0.0, 1.0, nz),
-                    Geometry2::Ellipse(_) => unreachable!("the strategy makes no ellipse"),
+                    Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
+                        unreachable!("the strategy makes no ellipse or spline")
+                    }
                 };
                 let id = add_raw(&mut doc, raw);
                 doc.set_plan_geometry(id, plan(g.clone(), z)).unwrap();

@@ -1408,7 +1408,8 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
             let (joined, taken) = join_elliptical_arcs(ellipse, &arcs, tol);
             (joined, taken.into_iter().map(|i| ids[i]).collect())
         }
-        Geometry2::Circle(_) => return None,
+        // Splines are joined in ADR 0043's fourth delivery.
+        Geometry2::Circle(_) | Geometry2::Spline(_) => return None,
     };
     (!taken.is_empty()).then_some(Join {
         source: source.id,
@@ -1556,7 +1557,7 @@ fn extension_query_area(
     padding: f64,
 ) -> Option<arq_geometry::Bounds2> {
     match curve {
-        Geometry2::Circle(_) => None,
+        Geometry2::Circle(_) | Geometry2::Spline(_) => None,
         Geometry2::Ellipse(e) if e.is_full() => None,
         Geometry2::Arc(arc) => {
             // A partial arc may have finite bounds even if its supporting
@@ -1617,8 +1618,9 @@ fn round_query_area(bounds: arq_geometry::Bounds2, padding: f64) -> Option<arq_g
         .ok()
 }
 
-/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs, circles
-/// and ellipses `edges` draw (every entity drawn but `target` when None),
+/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs, circles,
+/// ellipses and splines `edges` draw (every entity drawn but `target` when
+/// None),
 /// those inside blocks and polylines included; texts never.
 fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> Vec<Geometry2> {
     let ids: Vec<EntityId> = match edges {
@@ -1641,6 +1643,7 @@ fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> 
             arq_document::Shape::Arc(a) => Some(Geometry2::Arc(a)),
             arq_document::Shape::Circle(c) => Some(Geometry2::Circle(c)),
             arq_document::Shape::Ellipse(e) => Some(Geometry2::Ellipse(e)),
+            arq_document::Shape::Spline(s) => Some(Geometry2::Spline(s)),
             _ => None,
         })
         .collect()

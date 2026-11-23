@@ -554,6 +554,7 @@ fn ends(curve: &Geometry2) -> (Point2, Point2) {
             let p = e.point_at_param(0.0);
             (p, p)
         }),
+        Geometry2::Spline(ref s) => s.ends(),
     }
 }
 
