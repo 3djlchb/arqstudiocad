@@ -166,7 +166,7 @@ fn new_geometry_of_the_same_kind_keeps_the_entity() {
     let circle: Geometry2 = Circle::new(p(0.0, 0.0), 1.0).unwrap().into();
     // A line cannot become a circle; a text has no geometry to edit yet.
     for id in [line, text] {
-        let err = cad.set_entity_geometry(id, circle).unwrap_err();
+        let err = cad.set_entity_geometry(id, circle.clone()).unwrap_err();
         assert!(matches!(err, CadError::InvalidOperation(_)), "{err:?}");
     }
     cad.undo().unwrap();

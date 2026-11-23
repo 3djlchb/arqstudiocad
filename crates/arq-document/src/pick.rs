@@ -126,7 +126,7 @@ impl Document {
             let point = items
                 .into_iter()
                 .filter_map(|item| curve(&item.shape))
-                .flat_map(|g| intersection_points(fence.into(), g, TOL))
+                .flat_map(|g| intersection_points(&fence.into(), &g, TOL))
                 .map(|snap| snap.point)
                 .min_by(|a, b| start.distance_to(*a).total_cmp(&start.distance_to(*b)));
             if let Some(point) = point {
@@ -204,7 +204,10 @@ impl Document {
         let mut near: Vec<(Geometry2, f64)> = shapes
             .iter()
             .filter_map(curve)
-            .map(|g| (g, g.distance_to(cursor)))
+            .map(|g| {
+                let d = g.distance_to(cursor);
+                (g, d)
+            })
             .filter(|(_, d)| *d <= aperture)
             .collect();
         near.sort_by(|a, b| a.1.total_cmp(&b.1));
@@ -230,14 +233,14 @@ impl Document {
 
         let mut points: Vec<SnapPoint> = near
             .iter()
-            .flat_map(|(g, _)| key_points(*g))
+            .flat_map(|(g, _)| key_points(g))
             .chain(splines.iter().flat_map(|(s, _)| spline_ends(s)))
             .filter(|p| p.kind != SnapKind::Center && on(p.kind) && within(p))
             .collect();
         if on(SnapKind::Intersection) {
             for (i, (a, _)) in near.iter().enumerate() {
                 for (b, _) in &near[i + 1..] {
-                    points.extend(intersection_points(*a, *b, TOL).into_iter().filter(within));
+                    points.extend(intersection_points(a, b, TOL).into_iter().filter(within));
                 }
             }
         }
@@ -250,17 +253,17 @@ impl Document {
             let mut found: Vec<SnapPoint> = Vec::new();
             if on(SnapKind::Center) {
                 found.extend(
-                    key_points(*g)
+                    key_points(g)
                         .into_iter()
                         .filter(|p| p.kind == SnapKind::Center),
                 );
             }
             if let Some(from) = from {
                 if on(SnapKind::Perpendicular) {
-                    found.extend(perpendicular_points(*g, from, TOL));
+                    found.extend(perpendicular_points(g, from, TOL));
                 }
                 if on(SnapKind::Tangent) {
-                    found.extend(tangent_points(*g, from, TOL));
+                    found.extend(tangent_points(g, from, TOL));
                 }
             }
             if let Some(p) = closest(found) {
@@ -269,7 +272,7 @@ impl Document {
         }
 
         if on(SnapKind::Nearest) {
-            let curve = near.first().map(|(g, d)| (nearest_point(*g, cursor), *d));
+            let curve = near.first().map(|(g, d)| (nearest_point(g, cursor), *d));
             let spline = splines.first().map(|(s, d)| {
                 let point = SnapPoint {
                     kind: SnapKind::Nearest,
@@ -415,7 +418,7 @@ fn touches(shape: &Shape, area: Bounds2) -> bool {
                 .any(|side| {
                     edges(area)
                         .into_iter()
-                        .any(|edge| !arq_geometry::intersect(side, edge, TOL).is_empty())
+                        .any(|edge| !arq_geometry::intersect(&side, &edge, TOL).is_empty())
                 });
     }
     if let Shape::Spline(s) = shape {
@@ -425,7 +428,7 @@ fn touches(shape: &Shape, area: Bounds2) -> bool {
             area.contains_point(chord.point_at(0.0), TOL)
                 || edges
                     .iter()
-                    .any(|&edge| !arq_geometry::intersect(chord, edge, TOL).is_empty())
+                    .any(|edge| !arq_geometry::intersect(&chord, edge, TOL).is_empty())
         });
     }
     let Some(g) = curve(shape) else {
@@ -436,7 +439,7 @@ fn touches(shape: &Shape, area: Bounds2) -> bool {
     }
     edges(area)
         .into_iter()
-        .any(|edge| !arq_geometry::intersect(g, edge, TOL).is_empty())
+        .any(|edge| !arq_geometry::intersect(&g, &edge, TOL).is_empty())
 }
 
 /// Polygon counterpart of `touches`, using exact curves and the same text boxes.
@@ -445,7 +448,7 @@ fn touches_polygon(shape: &Shape, polygon: &SelectionPolygon) -> bool {
         return false;
     }
     if let Some(curve) = curve(shape) {
-        return polygon.touches_curve(curve, TOL);
+        return polygon.touches_curve(&curve, TOL);
     }
     match *shape {
         Shape::Point(point) => polygon.contains(point, TOL),
@@ -460,7 +463,7 @@ fn touches_polygon(shape: &Shape, polygon: &SelectionPolygon) -> bool {
                     .any(|&point| bounds.contains_point(point, TOL))
                 || edges(bounds)
                     .into_iter()
-                    .any(|edge| polygon.touches_curve(edge, TOL))
+                    .any(|edge| polygon.touches_curve(&edge, TOL))
         }
         Shape::Triangle(triangle) => {
             triangle.iter().any(|&point| polygon.contains(point, TOL))
@@ -475,9 +478,9 @@ fn touches_polygon(shape: &Shape, polygon: &SelectionPolygon) -> bool {
                 ]
                 .into_iter()
                 .filter_map(|(a, b)| Line::new(a, b).ok())
-                .any(|edge| polygon.touches_curve(edge.into(), TOL))
+                .any(|edge| polygon.touches_curve(&edge.into(), TOL))
         }
-        Shape::Spline(ref s) => chords(s).any(|chord| polygon.touches_curve(chord, TOL)),
+        Shape::Spline(ref s) => chords(s).any(|chord| polygon.touches_curve(&chord, TOL)),
         _ => unreachable!("curves handled above"),
     }
 }

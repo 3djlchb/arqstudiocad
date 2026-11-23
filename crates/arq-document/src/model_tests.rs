@@ -61,7 +61,7 @@ fn the_model_owns_layers_and_editable_entities() {
     assert_eq!(doc.model.current, walls);
     assert_eq!(doc.model.layers.len(), 3);
     assert_eq!(doc.model.entities.len(), 3);
-    let line = doc.model.entities[&ids[0]];
+    let line = doc.model.entities[&ids[0]].clone();
     assert_eq!((line.layer, line.color), (walls, Color::ByLayer));
     assert_eq!(line.plan.elevation(), 3.0);
     assert_eq!(
@@ -130,7 +130,10 @@ fn copies_join_the_model() {
     let (mut doc, walls, ids) = sample();
     let copy = doc.copy_entity(ids[2]).unwrap();
     assert!(doc.check_model().is_empty(), "{:?}", doc.check_model());
-    let (a, b) = (doc.model.entities[&ids[2]], doc.model.entities[&copy]);
+    let (a, b) = (
+        doc.model.entities[&ids[2]].clone(),
+        doc.model.entities[&copy].clone(),
+    );
     assert_eq!((b.layer, b.plan), (walls, a.plan));
 }
 
@@ -204,7 +207,10 @@ fn the_working_document_is_saved_and_recovered_from_the_own_model() {
         assert_eq!(back.model.current, doc.model.current, "{name}");
         assert_eq!(back.model.layers, doc.model.layers, "{name}");
         for id in &ids {
-            let (a, b) = (doc.model.entities[id], back.model.entities[id]);
+            let (a, b) = (
+                doc.model.entities[id].clone(),
+                back.model.entities[id].clone(),
+            );
             assert_eq!(
                 (a.layer, a.color),
                 (b.layer, b.color),

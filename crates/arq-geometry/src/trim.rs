@@ -19,8 +19,8 @@ pub const EXTEND_EDGE_RELATIVE_TOLERANCE: f64 = 1e-9;
 
 /// Where a curve stands at a point on it: a line's fraction from its start,
 /// an arc's turn from its start, a circle's angle.
-fn parameter(curve: Geometry2, p: Point2) -> f64 {
-    match curve {
+fn parameter(curve: &Geometry2, p: Point2) -> f64 {
+    match *curve {
         Geometry2::Line(l) => {
             let d = l.vector();
             (p - l.start()).dot(d) / d.length_squared()
@@ -33,8 +33,8 @@ fn parameter(curve: Geometry2, p: Point2) -> f64 {
 }
 
 /// The curve's whole span of parameters.
-fn span(curve: Geometry2) -> f64 {
-    match curve {
+fn span(curve: &Geometry2) -> f64 {
+    match *curve {
         Geometry2::Line(_) => 1.0,
         Geometry2::Arc(a) => a.sweep(),
         Geometry2::Circle(_) => TAU,
@@ -44,8 +44,8 @@ fn span(curve: Geometry2) -> f64 {
 
 /// The part of `curve` between two of its parameters (`from` before `to`,
 /// a circle's going round through 2π); None when it has no length.
-fn piece(curve: Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometry2> {
-    match curve {
+fn piece(curve: &Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometry2> {
+    match *curve {
         Geometry2::Line(l) => Line::new(l.point_at(from), l.point_at(to))
             .ok()
             .filter(|n| n.length() > tol.linear())
@@ -79,10 +79,10 @@ fn piece(curve: Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometr
 
 /// The intersections of `curve` with `edges`, as AutoCAD's TRIM finds its
 /// cutting points: where each edge really crosses or touches it.
-pub fn cutting_points(curve: Geometry2, edges: &[Geometry2], tol: Tolerance) -> Vec<Point2> {
+pub fn cutting_points(curve: &Geometry2, edges: &[Geometry2], tol: Tolerance) -> Vec<Point2> {
     edges
         .iter()
-        .flat_map(|&e| intersect(curve, e, tol).points().to_vec())
+        .flat_map(|e| intersect(curve, e, tol).points().to_vec())
         .collect()
 }
 
@@ -93,7 +93,7 @@ pub fn cutting_points(curve: Geometry2, edges: &[Geometry2], tol: Tolerance) -> 
 /// then erases the whole object). A circle needs two cuts, and becomes the
 /// arc left between them.
 pub fn trim(
-    curve: Geometry2,
+    curve: &Geometry2,
     cuts: &[Point2],
     pick: Point2,
     tol: Tolerance,
@@ -157,7 +157,7 @@ pub fn trim(
 /// order. Equal interior points split them without a gap. Circles lose the
 /// counterclockwise span from first to second; equal points are refused.
 pub fn break_curve(
-    curve: Geometry2,
+    curve: &Geometry2,
     first: Point2,
     second: Point2,
     tol: Tolerance,
@@ -205,7 +205,7 @@ pub fn break_curve(
 /// longer along itself, an arc further round its circle (never round onto
 /// itself). None when no edge lies that way. A circle cannot be extended.
 pub fn extend(
-    curve: Geometry2,
+    curve: &Geometry2,
     edges: &[Geometry2],
     pick: Point2,
     tol: Tolerance,
@@ -214,7 +214,7 @@ pub fn extend(
     // Where the curve's line or circle meets each edge, on the edge.
     let reach: Vec<Point2> = edges
         .iter()
-        .flat_map(|&edge| {
+        .flat_map(|edge| {
             let found = match (curve, edge) {
                 (Geometry2::Line(l), Geometry2::Line(e)) => {
                     line_line(l.start(), l.vector(), e.start(), e.vector())
@@ -240,11 +240,11 @@ pub fn extend(
                     line_ellipse(l.start(), l.vector(), e.whole())
                 }
                 (Geometry2::Arc(a), Geometry2::Ellipse(_)) => {
-                    intersect(a.circle().into(), edge, tol).points().to_vec()
+                    intersect(&a.circle().into(), edge, tol).points().to_vec()
                 }
                 // An elliptical arc reaches round its whole ellipse.
                 (Geometry2::Ellipse(e), _) => {
-                    intersect(e.whole().into(), edge, tol).points().to_vec()
+                    intersect(&e.whole().into(), edge, tol).points().to_vec()
                 }
                 (Geometry2::Circle(_), _) => Vec::new(),
             };
@@ -254,7 +254,7 @@ pub fn extend(
                 .collect::<Vec<_>>()
         })
         .collect();
-    match curve {
+    match *curve {
         Geometry2::Circle(_) => Err(GeometryError::OutOfRange { what: "curve" }),
         Geometry2::Ellipse(e) if e.is_full() => Err(GeometryError::OutOfRange { what: "curve" }),
         Geometry2::Ellipse(e) => {
@@ -341,13 +341,13 @@ pub fn extend(
 }
 
 /// Same end choice for the operation and its broad-phase query.
-pub fn extends_at_end(curve: Geometry2, pick: Point2) -> bool {
+pub fn extends_at_end(curve: &Geometry2, pick: Point2) -> bool {
     parameter(curve, curve.closest_point(pick)) > span(curve) / 2.0
 }
 
 /// Whether `q`, computed where two curves meet, lies on `edge`: within a
 /// hair, relative to the coordinates' size.
-fn on(edge: Geometry2, q: Point2) -> bool {
+fn on(edge: &Geometry2, q: Point2) -> bool {
     let scale = q.x().abs().max(q.y().abs()).max(1.0);
     edge.distance_to(q) <= EXTEND_EDGE_RELATIVE_TOLERANCE * scale
 }

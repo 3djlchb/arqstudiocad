@@ -109,8 +109,8 @@ fn every_operation_agrees_at_survey_coordinates() {
         };
         let mut crossings = 0;
         for (k, ((a0, b0), (a1, b1))) in pairs(&here).into_iter().zip(pairs(&there)).enumerate() {
-            let local = intersect(a0, b0, TOL);
-            let survey = intersect(a1, b1, TOL);
+            let local = intersect(&a0, &b0, TOL);
+            let survey = intersect(&a1, &b1, TOL);
             assert_same_points(
                 local.points(),
                 &localize(&there, &survey),
@@ -137,7 +137,7 @@ fn every_operation_agrees_at_survey_coordinates() {
                 (Geometry2::from(here.wall()), Geometry2::from(there.wall())),
                 (here.door_swing().into(), there.door_swing().into()),
             ] {
-                let (i0, i1) = (t0.apply(g0).unwrap(), t1.apply(g1).unwrap());
+                let (i0, i1) = (t0.apply(&g0).unwrap(), t1.apply(&g1).unwrap());
                 for s in [0.0, 0.37, 1.0] {
                     assert_same_point(
                         i0.point_at(s),
@@ -145,7 +145,7 @@ fn every_operation_agrees_at_survey_coordinates() {
                         &format!("{site}: transform"),
                     );
                 }
-                let back = t1.inverse().apply(i1).unwrap();
+                let back = t1.inverse().apply(&i1).unwrap();
                 assert_same_point(
                     g1.point_at(0.5),
                     back.point_at(0.5),
@@ -156,8 +156,8 @@ fn every_operation_agrees_at_survey_coordinates() {
 
         // Snaps and closest points from a cursor in the scene.
         let cursor = |s: &Scene| s.p(-7.25, 9.5);
-        let tan = |s: &Scene| snap::tangent_points(s.column().into(), cursor(s), TOL);
-        let per = |s: &Scene| snap::perpendicular_points(s.wall().into(), cursor(s), TOL);
+        let tan = |s: &Scene| snap::tangent_points(&s.column().into(), cursor(s), TOL);
+        let per = |s: &Scene| snap::perpendicular_points(&s.wall().into(), cursor(s), TOL);
         for (f, name) in [
             (&tan as &dyn Fn(&Scene) -> Vec<snap::SnapPoint>, "TAN"),
             (&per, "PER"),

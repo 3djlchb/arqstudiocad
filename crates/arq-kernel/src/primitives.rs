@@ -253,7 +253,7 @@ fn whole(surface: Surface, extent: &[Point3]) -> Result<Body, BrepError> {
 /// A piece of a closed profile in plan: a segment or an arc (stored
 /// counterclockwise, as [`Arc`] is), run from its start to its end, or
 /// `backward`, from its end to its start.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProfilePiece {
     /// The segment or arc.
     pub curve: Geometry2,
@@ -264,13 +264,13 @@ pub struct ProfilePiece {
 impl ProfilePiece {
     /// Where the profile enters it.
     pub fn start(&self) -> Point2 {
-        let (a, b) = ends(self.curve);
+        let (a, b) = ends(&self.curve);
         if self.backward { b } else { a }
     }
 
     /// Where the profile leaves it.
     pub fn end(&self) -> Point2 {
-        let (a, b) = ends(self.curve);
+        let (a, b) = ends(&self.curve);
         if self.backward { a } else { b }
     }
 
@@ -511,7 +511,7 @@ fn closed_profile(
     // Neighbours meet only at their shared corners; others, nowhere.
     for i in 0..n {
         for j in i + 1..n {
-            let meet = intersect(pieces[i].curve, pieces[j].curve, tol);
+            let meet = intersect(&pieces[i].curve, &pieces[j].curve, tol);
             if !meet.overlaps().is_empty() {
                 return Err(ExtrusionError::Profile(ProfileError::Crossing));
             }
@@ -537,13 +537,13 @@ fn closed_profile(
     Ok(if area > 0.0 {
         pieces.to_vec()
     } else {
-        pieces.iter().rev().map(|p| p.reversed()).collect()
+        pieces.iter().rev().map(|p| p.clone().reversed()).collect()
     })
 }
 
 /// A curve's two ends, as stored; a closed one's start twice.
-fn ends(curve: Geometry2) -> (Point2, Point2) {
-    match curve {
+fn ends(curve: &Geometry2) -> (Point2, Point2) {
+    match *curve {
         Geometry2::Line(l) => (l.start(), l.end()),
         Geometry2::Arc(a) => (a.start_point(), a.end_point()),
         Geometry2::Circle(c) => {

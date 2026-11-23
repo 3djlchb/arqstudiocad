@@ -36,7 +36,8 @@ impl GeometryKind {
 
 /// Any 2D curve. The rest of the core (document, selection, rendering)
 /// works with this type and never needs to know which curve it holds.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Not `Copy`: a spline is held by reference count (ADR 0043 D1).
+#[derive(Clone, Debug, PartialEq)]
 pub enum Geometry2 {
     /// A straight segment.
     Line(Line),
@@ -62,7 +63,7 @@ macro_rules! each {
 
 impl Geometry2 {
     /// Which curve this is.
-    pub fn kind(self) -> GeometryKind {
+    pub fn kind(&self) -> GeometryKind {
         match self {
             Self::Line(_) => GeometryKind::Line,
             Self::Circle(_) => GeometryKind::Circle,
@@ -72,7 +73,7 @@ impl Geometry2 {
     }
 
     /// Whether the curve ends where it starts (a circle, a whole ellipse).
-    pub fn is_closed(self) -> bool {
+    pub fn is_closed(&self) -> bool {
         match self {
             Self::Circle(_) => true,
             Self::Ellipse(e) => e.is_full(),
@@ -81,7 +82,7 @@ impl Geometry2 {
     }
 
     /// First point, for open curves; `None` for a closed one.
-    pub fn start_point(self) -> Option<Point2> {
+    pub fn start_point(&self) -> Option<Point2> {
         match self {
             Self::Line(l) => Some(l.start()),
             Self::Arc(a) => Some(a.start_point()),
@@ -91,7 +92,7 @@ impl Geometry2 {
     }
 
     /// Last point, for open curves; `None` for a closed one.
-    pub fn end_point(self) -> Option<Point2> {
+    pub fn end_point(&self) -> Option<Point2> {
         match self {
             Self::Line(l) => Some(l.end()),
             Self::Arc(a) => Some(a.end_point()),
@@ -101,37 +102,37 @@ impl Geometry2 {
     }
 
     /// Length of the curve.
-    pub fn length(self) -> f64 {
+    pub fn length(&self) -> f64 {
         each!(self, g => g.length())
     }
 
     /// Bounding box.
-    pub fn bounds(self) -> Bounds2 {
+    pub fn bounds(&self) -> Bounds2 {
         each!(self, g => g.bounds())
     }
 
     /// Point at normalized parameter `t` in `[0, 1]`.
-    pub fn point_at(self, t: f64) -> Point2 {
+    pub fn point_at(&self, t: f64) -> Point2 {
         each!(self, g => g.point_at(t))
     }
 
     /// Point at `distance` along the curve from its start.
-    pub fn point_at_distance(self, distance: f64) -> GeometryResult<Point2> {
+    pub fn point_at_distance(&self, distance: f64) -> GeometryResult<Point2> {
         each!(self, g => g.point_at_distance(distance))
     }
 
     /// Point of the curve closest to `p`.
-    pub fn closest_point(self, p: Point2) -> Point2 {
+    pub fn closest_point(&self, p: Point2) -> Point2 {
         each!(self, g => g.closest_point(p))
     }
 
     /// Shortest distance from `p` to the curve.
-    pub fn distance_to(self, p: Point2) -> f64 {
+    pub fn distance_to(&self, p: Point2) -> f64 {
         each!(self, g => g.distance_to(p))
     }
 
     /// Whether `p` lies on the curve, within `tol.linear()`.
-    pub fn contains_point(self, p: Point2, tol: Tolerance) -> bool {
+    pub fn contains_point(&self, p: Point2, tol: Tolerance) -> bool {
         each!(self, g => g.contains_point(p, tol))
     }
 }

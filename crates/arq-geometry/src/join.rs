@@ -281,10 +281,10 @@ pub fn join_groups(curves: &[Geometry2], tol: Tolerance) -> Vec<Vec<usize>> {
             if taken[other] {
                 continue;
             }
-            let together = match (curves[first], curves[other]) {
-                (Geometry2::Line(a), Geometry2::Line(b)) => collinear(a, b, tol),
-                (Geometry2::Arc(a), Geometry2::Arc(b)) => same_circle(a, b, tol),
-                (Geometry2::Ellipse(a), Geometry2::Ellipse(b)) => {
+            let together = match (&curves[first], &curves[other]) {
+                (&Geometry2::Line(a), &Geometry2::Line(b)) => collinear(a, b, tol),
+                (&Geometry2::Arc(a), &Geometry2::Arc(b)) => same_circle(a, b, tol),
+                (&Geometry2::Ellipse(a), &Geometry2::Ellipse(b)) => {
                     !a.is_full() && !b.is_full() && same_ellipse(a, b, tol)
                 }
                 _ => false,

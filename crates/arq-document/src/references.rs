@@ -85,7 +85,7 @@ pub(crate) fn points(e: &EntityType) -> Vec<(SnapKind, Point3)> {
 
 fn planar(out: &mut Vec<(SnapKind, Point3)>, curve: Geometry2, z: f64, normal: Vector3) {
     let transform = super::drawing::ocs_to_world(normal);
-    for snap in key_points(curve) {
+    for snap in key_points(&curve) {
         if let Ok(point) = world(&transform, snap.point.x(), snap.point.y(), z) {
             out.push((snap.kind, point));
         }

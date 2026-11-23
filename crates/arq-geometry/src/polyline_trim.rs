@@ -292,8 +292,8 @@ pub fn trim_polyline(
     let mut cuts: Vec<f64> = Vec::new();
     for (i, s) in path.iter().enumerate() {
         let curve = s.curve()?;
-        for &e in edges {
-            for &q in intersect(curve, e, tol).points() {
+        for e in edges {
+            for &q in intersect(&curve, e, tol).points() {
                 cuts.push(i as f64 + s.fraction(q).clamp(0.0, 1.0));
             }
         }
@@ -355,7 +355,7 @@ pub fn extend_polyline(
     let (index, s, at_end) = extension_segment(vertices, closed, pick)?;
     let tip = if at_end { s.end } else { s.start };
     let curve = s.curve()?;
-    let Some(grown) = extend(curve, edges, tip, tol)? else {
+    let Some(grown) = extend(&curve, edges, tip, tol)? else {
         return Ok(None);
     };
     let mut out = vertices.to_vec();

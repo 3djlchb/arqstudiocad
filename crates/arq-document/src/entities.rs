@@ -1071,7 +1071,7 @@ impl Document {
     pub fn transform_entity(&mut self, id: EntityId, t: Transform2) -> DocumentResult<()> {
         let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         if let Some(plan) = e.plan() {
-            let moved = plan.with_geometry(t.apply(plan.geometry())?);
+            let moved = plan.with_geometry(t.apply(&plan.geometry())?);
             return self.set_plan_geometry(id, moved);
         }
         let raw = self
@@ -1750,7 +1750,7 @@ mod tests {
         ];
         let ids: Vec<_> = shapes
             .iter()
-            .map(|g| doc.add_entity(plan(*g, 7.5), layer0(&doc)).unwrap())
+            .map(|g| doc.add_entity(plan(g.clone(), 7.5), layer0(&doc)).unwrap())
             .collect();
         assert_eq!(
             ids.len(),
@@ -1851,9 +1851,9 @@ mod tests {
         );
         let before = doc.entity(id).unwrap().plan().unwrap();
         let moved = Transform2::translation(Vector2::new(10.0, -1.0).unwrap())
-            .apply(before.geometry())
+            .apply(&before.geometry())
             .unwrap();
-        doc.set_plan_geometry(id, before.with_geometry(moved))
+        doc.set_plan_geometry(id, before.with_geometry(moved.clone()))
             .unwrap();
         let after = doc.entity(id).unwrap().plan().unwrap();
         for t in [0.0, 0.3, 1.0] {
@@ -1936,7 +1936,7 @@ mod tests {
             .unwrap();
         let circle = plan(Circle::new(p(0.0, 0.0), 1.0).unwrap(), 0.0);
         assert_eq!(
-            doc.set_plan_geometry(id, circle),
+            doc.set_plan_geometry(id, circle.clone()),
             Err(DocumentError::KindMismatch { id, kind: "LINE" })
         );
         assert_eq!(
@@ -1980,7 +1980,7 @@ mod tests {
                     Geometry2::Ellipse(_) => unreachable!("the strategy makes no ellipse"),
                 };
                 let id = add_raw(&mut doc, raw);
-                doc.set_plan_geometry(id, plan(g, z)).unwrap();
+                doc.set_plan_geometry(id, plan(g.clone(), z)).unwrap();
                 let back = doc.entity(id).unwrap().plan().unwrap();
                 let tol = Tolerance::new(1e-12 * (1.0 + 2e6), 1e-9).unwrap();
                 for t in [0.0, 0.37, 1.0] {
