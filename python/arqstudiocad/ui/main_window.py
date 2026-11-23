@@ -386,6 +386,7 @@ class MainWindow(QMainWindow):
             "CIRCLE",
             "ARC",
             "ELLIPSE",
+            "SPLINE",
             "MTEXT",
             "TEXT",
             "BLOCK",

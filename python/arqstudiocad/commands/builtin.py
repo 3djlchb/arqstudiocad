@@ -34,6 +34,7 @@ from arqstudiocad.commands.joining import JOIN_COMMAND
 from arqstudiocad.commands.matchprop import MATCHPROP_COMMAND
 from arqstudiocad.commands.modify import MODIFY_COMMANDS
 from arqstudiocad.commands.solids import SOLID_COMMANDS
+from arqstudiocad.commands.spline import SPLINE_COMMAND
 from arqstudiocad.commands.stretch import STRETCH_COMMAND
 from arqstudiocad.commands.trimming import TRIM_COMMANDS
 from arqstudiocad.commands.views import VIEW_COMMANDS
@@ -401,6 +402,7 @@ def builtin_registry() -> CommandRegistry:
             *BUILTIN_COMMANDS,
             *DRAW_COMMANDS,
             ELLIPSE_COMMAND,
+            SPLINE_COMMAND,
             *MODIFY_COMMANDS,
             STRETCH_COMMAND,
             BREAK_COMMAND,

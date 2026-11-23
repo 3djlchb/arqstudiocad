@@ -58,6 +58,39 @@
 
 (defun arq:cw (obj) (arq:num (vla-get-ConstantWidth obj)))
 
+;;; A SPLINE (ADR 0042): its degree, closed and periodic flags, knot
+;;; parameterization, tangents, fit points, control points and knots.
+(defun arq:xy3 (v / l s)
+  (setq l (arq:lst v) s "")
+  (while l
+    (setq s (strcat s (if (= s "") "" " ; ") "(" (arq:num (car l)) "," (arq:num (cadr l)) ")")
+          l (cdddr l)))
+  s)
+
+(defun arq:nums (v / s)
+  (setq s "")
+  (foreach x (arq:lst v) (setq s (strcat s (if (= s "") "" " ") (arq:num x))))
+  s)
+
+(defun arq:yes (b) (if (= b :vlax-true) "yes" "no"))
+
+(defun arq:spline (obj)
+  (strcat "SPLINE h=" (vla-get-Handle obj)
+          " degree=" (itoa (vla-get-Degree obj))
+          " closed=" (arq:try '(lambda (o) (arq:yes (vla-get-Closed o))) (list obj))
+          " periodic=" (arq:try '(lambda (o) (arq:yes (vla-get-IsPeriodic o))) (list obj))
+          " knotparam=" (arq:try '(lambda (o) (itoa (vla-get-KnotParameterization o))) (list obj))
+          " start-tangent=" (arq:try '(lambda (o) (arq:pt (vla-get-StartTangent o))) (list obj))
+          " end-tangent=" (arq:try '(lambda (o) (arq:pt (vla-get-EndTangent o))) (list obj))
+          " fit=[" (arq:try '(lambda (o) (arq:xy3 (vla-get-FitPoints o))) (list obj)) "]"
+          " control=[" (arq:try '(lambda (o) (arq:xy3 (vla-get-ControlPoints o))) (list obj)) "]"
+          " knots=[" (arq:try '(lambda (o) (arq:nums (vla-get-Knots o))) (list obj)) "]"))
+
+;;; SPLINE's settings back to AutoCAD's defaults: Fit, Chord, degree 3.
+(defun arq:spline-defaults ()
+  (foreach v '(("SPLMETHOD" 0) ("SPLKNOTS" 0) ("SPLDEGREE" 3))
+    (vl-catch-all-apply 'setvar v)))
+
 (defun arq:describe (obj / k)
   (setq k (vla-get-ObjectName obj))
   (cond
@@ -91,6 +124,7 @@
              " end=" (arq:num (vla-get-EndParameter obj))
              " start-angle=" (arq:num (vla-get-StartAngle obj))
              " end-angle=" (arq:num (vla-get-EndAngle obj))))
+    ((= k "AcDbSpline") (arq:spline obj))
     ((= k "AcDbMText")
      (strcat "MTEXT h=" (vla-get-Handle obj) " at=" (arq:pt (vla-get-InsertionPoint obj))
              " value=" (vla-get-TextString obj) " height=" (arq:num (vla-get-Height obj))
@@ -481,6 +515,21 @@
   (arq:command-case "EL15-join-elliptical-arc-close" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 1.0)) '(command "_.JOIN" (arq:en (car arq:o)) "" "_L") dir log)
   (arq:command-case "EL12-stretch-ellipse-arc-one-end" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 1) '(4 -1) "" '(0 0) '(1 0)) dir log)
   (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
+  ;; SPLINE (docs/design/spline-command.md): through (0,0) (3,4) (7,1)
+  ;; (9,6). Prompts as AutoCAD 2021's; a case whose prompts ProgeCAD does
+  ;; not have logs its command error. SP2b gives the tangents as older
+  ;; versions ask them, after the points. SP3 closes a convex four,
+  ;; (0,0) (6,1) (8,5) (3,7).
+  (arq:spline-defaults)
+  (arq:command-case "SP1-spline-fit" 'nil '(command "_.SPLINE" '(0 0) '(3 4) '(7 1) '(9 6) "") dir log)
+  (arq:command-case "SP2-spline-fit-tangents" 'nil '(command "_.SPLINE" '(0 0) "_T" '(0 5) '(3 4) '(7 1) '(9 6) "_T" '(12 6)) dir log)
+  (arq:command-case "SP2b-spline-fit-tangents-after" 'nil '(command "_.SPLINE" '(0 0) '(3 4) '(7 1) '(9 6) "" '(0 5) '(12 6)) dir log)
+  (arq:command-case "SP3-spline-fit-closed" 'nil '(command "_.SPLINE" '(0 0) '(6 1) '(8 5) '(3 7) "_C") dir log)
+  (arq:command-case "SP4-spline-fit-square-root" 'nil '(command "_.SPLINE" "_K" "_S" '(0 0) '(3 4) '(7 1) '(9 6) "") dir log)
+  (arq:spline-defaults)
+  (arq:command-case "SP5-spline-cv" 'nil '(command "_.SPLINE" "_M" "_CV" '(0 0) '(3 4) '(7 1) '(9 6) "") dir log)
+  (arq:command-case "SP6-spline-cv-closed-degree-2" 'nil '(command "_.SPLINE" "_M" "_CV" "_D" 2 '(0 0) '(3 4) '(7 1) '(9 6) "_C") dir log)
+  (arq:spline-defaults)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
   (arq:command-case "R1-rectang" 'nil '(arq:rectang 0.0 nil 0.0 0.0) dir log)
   (arq:command-case "R2-rectang-fillet" 'nil '(arq:rectang 1.0 nil 0.0 0.0) dir log)

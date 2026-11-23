@@ -122,7 +122,7 @@ CAD = Discipline(
                 RibbonGroup(
                     "draw",
                     lambda: tr("Draw"),
-                    ("LINE", "PLINE", "RECTANG", "CIRCLE", "ARC", "ELLIPSE"),
+                    ("LINE", "PLINE", "RECTANG", "CIRCLE", "ARC", "ELLIPSE", "SPLINE"),
                 ),
                 RibbonGroup(
                     "modify",
@@ -227,6 +227,7 @@ CAD = Discipline(
                 "CIRCLE",
                 "ARC",
                 "ELLIPSE",
+                "SPLINE",
                 None,
                 "INSERT",
                 "BLOCK",
