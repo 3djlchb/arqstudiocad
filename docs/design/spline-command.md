@@ -134,6 +134,20 @@ curve.
   - One by its vertices moves its vertices inside; a closed one's
     repeated vertices follow their own, so it stays closed.
   - With none inside it stays; with all inside it moves whole.
+- **Grips** (delivery 3b, 2026-11-23), as AutoCAD:
+  - a spline through fit points shows a grip at each fit point; one
+    stretched moves that point, and the spline is fitted again, its knots
+    method and tangents kept;
+  - one by its vertices shows its own vertices, those a closed one repeats
+    left out; one stretched moves that vertex and its copies;
+  - Move, Rotate, Scale and Mirror move the spline whole;
+  - a point that would make no spline (onto its neighbor) is refused,
+    nothing changed.
+- **Properties:**
+  - shown: its method (Fit or CV), degree, closing, knots (Fit), length
+    and elevation;
+  - for one spline, a fit point or control vertex chosen by its number,
+    its X and Y editable.
 
 Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 

@@ -148,7 +148,13 @@ with no new library.
        its exact box are computed when first asked for, so reading,
        checking and comparing splines costs little.
      - STRETCH as D4 says.
-   - **3b, grips and Properties.**
+   - **3b, grips and Properties** (2026-11-23), as D4 says:
+     - grips `FIT` and `CV`, by number;
+     - a point is checked before it is moved, read-only
+       (`Document::spline_with_point`), as a refusal within a grip edit's
+       group would undo the whole group;
+     - Properties shows one spline's point chosen by its number, its X and
+       Y editable, as one PROPERTIES step.
 4. JOIN of splines.
 5. OFFSET of ellipses and splines.
 
