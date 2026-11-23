@@ -1644,27 +1644,21 @@ fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> 
         .collect()
 }
 
-/// What TRIM and BREAK cut of `e`: its plan geometry, or a spline lying in
-/// the plan (ADR 0043 D4).
-fn curve_plan(doc: &Document, e: &arq_document::Entity) -> CadResult<PlanGeometry> {
-    e.plan()
-        .or_else(|| doc.spline_curve(e.id()))
-        .ok_or_else(|| {
-            DocumentError::NotEditable {
-                id: e.id(),
-                kind: e.kind(),
-            }
-            .into()
-        })
+/// What TRIM and BREAK cut of `e`: its plan geometry, a spline lying in the
+/// plan included (ADR 0043 D4).
+fn curve_plan(_doc: &Document, e: &arq_document::Entity) -> CadResult<PlanGeometry> {
+    e.plan().ok_or_else(|| {
+        DocumentError::NotEditable {
+            id: e.id(),
+            kind: e.kind(),
+        }
+        .into()
+    })
 }
 
-/// Writes `plan` into `id`: a spline as a SPLINE, any other curve as its
-/// plan geometry.
+/// Writes `plan` into `id`, a spline by its vertices (ADR 0043 D4).
 fn write_curve(doc: &mut Document, id: EntityId, plan: PlanGeometry) -> CadResult<()> {
-    match plan.geometry() {
-        Geometry2::Spline(_) => doc.set_spline_curve(id, plan)?,
-        _ => doc.set_plan_geometry(id, plan)?,
-    }
+    doc.set_plan_geometry(id, plan)?;
     Ok(())
 }
 

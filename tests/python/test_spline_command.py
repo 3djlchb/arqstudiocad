@@ -234,8 +234,8 @@ def test_spline_refuses_other_views_before_asking() -> None:
 
 def spline_ends(h: Harness, entity_id: int) -> list[tuple[float, float]]:
     """The ends of spline `entity_id`, rounded."""
-    curve = h.document.spline_curve(entity_id)
-    assert curve is not None
+    curve = h.document.get_entity(entity_id).geometry
+    assert isinstance(curve, CadSpline)
     first, *_, last = curve.points()
     return [(round(first[0], 9), round(first[1], 9)), (round(last[0], 9), round(last[1], 9))]
 
@@ -246,7 +246,7 @@ def test_trim_and_break_cut_a_spline() -> None:
     h = Harness()
     bezier = CadSpline.by_vertices([(0, 0), (2, 3), (4, 3), (6, 0)])
     spline, _ = h.document.add_spline(bezier)
-    assert h.document.spline_curve(spline) is not None
+    assert isinstance(h.document.get_entity(spline).geometry, CadSpline)
     h.line((2.0, -9.0), (2.0, 9.0))
     h.line((4.0, -9.0), (4.0, 9.0))
     h.run("TRIM")
@@ -268,3 +268,23 @@ def test_trim_and_break_cut_a_spline() -> None:
     h.run("EXTEND")
     h.runner.answer_entity(spline, (1.9, 1.9))
     assert h.messages()[-1] == "Cannot extend that object."
+
+
+def test_stretch_moves_a_fitted_spline_s_fit_point_and_fits_again() -> None:
+    # Through POINTS, a crossing window round (7,1) only (ADR 0043 D4).
+    from arqstudiocad.core import CadBounds2
+
+    h = Harness()
+    spline, _ = h.document.add_spline(CadSpline.through(POINTS))
+    h.session.select(h.document, (spline,), crossing=CadBounds2((6.0, 0.0), (8.0, 2.0)))
+    h.run("STRETCH", "0,0", "0,-2")
+    assert h.document.undo_history[-1] == "STRETCH"
+    moved = [(0.0, 0.0), (3.0, 4.0), (7.0, -1.0), (9.0, 6.0)]
+    curve = h.document.get_entity(spline).geometry
+    assert isinstance(curve, CadSpline)
+    expected = CadSpline.through(moved)
+    assert curve.control_points == pytest.approx(expected.control_points)
+    h.run("UNDO")
+    back = h.document.get_entity(spline).geometry
+    assert isinstance(back, CadSpline)
+    assert back.control_points == pytest.approx(CadSpline.through(POINTS).control_points)

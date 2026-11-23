@@ -286,6 +286,16 @@ def sc5(doc: CadDocument) -> None:
     doc.break_entity(bezier(doc), (2, 2), (4, 2))
 
 
+def sc6(doc: CadDocument) -> None:
+    target = bezier(doc)
+    doc.stretch_entities([target], (1, 1), [(target, CadBounds2((3.5, 2), (4.5, 3.5)))])
+
+
+def sc7(doc: CadDocument) -> None:
+    target = doc.add_spline(CadSpline.through(SPLINE_POINTS))[0]
+    doc.stretch_entities([target], (0, -2), [(target, CadBounds2((6, 0), (8, 2)))])
+
+
 def sc4(doc: CadDocument) -> None:
     target = bezier(doc)
     boundary = line(doc, (8, -9), (8, 9))
@@ -418,6 +428,8 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("SC3-trim-spline-middle", sc3),
     ("SC4-extend-spline", sc4),
     ("SC5-break-spline", sc5),
+    ("SC6-stretch-spline-vertex", sc6),
+    ("SC7-stretch-spline-fit-point", sc7),
     ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
     (
         "SP2-spline-fit-tangents",

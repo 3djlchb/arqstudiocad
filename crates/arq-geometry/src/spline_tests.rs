@@ -205,3 +205,28 @@ fn a_closed_spline_s_nearest_point_is_found_across_where_it_closes() {
         assert!(s.distance_to(q) < 1e-12, "{back}: {}", s.distance_to(q));
     }
 }
+
+#[test]
+fn two_splines_are_equal_by_their_data_not_by_what_they_computed() {
+    let points = vec![p(0.0, 0.0), p(1.0, 3.0), p(3.5, 3.2), p(4.0, 0.5)];
+    let knots = Spline::clamped_knots(3, 4);
+    let make = |w: Vec<f64>, closed: bool| {
+        Spline::new(3, points.clone(), w, knots.clone(), closed).unwrap()
+    };
+    let a = make(vec![1.0, 2.0, 1.0, 1.0], false);
+    // One whose drawing and box were asked for is still equal.
+    let b = make(vec![1.0, 2.0, 1.0, 1.0], false);
+    let _ = (b.flatten(), b.bounds());
+    assert_eq!(a, b);
+    assert_ne!(a, make(vec![1.0, 2.5, 1.0, 1.0], false), "weights");
+    assert_ne!(a, make(vec![1.0, 2.0, 1.0, 1.0], true), "closed");
+    let other = Spline::new(
+        3,
+        points.clone(),
+        vec![1.0, 2.0, 1.0, 1.0],
+        vec![0.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0, 2.0],
+        false,
+    )
+    .unwrap();
+    assert_ne!(a, other, "knots");
+}

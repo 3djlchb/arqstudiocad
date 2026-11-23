@@ -33,6 +33,7 @@ from arqstudiocad.core import (
     CadEllipse,
     CadError,
     CadLine,
+    CadSpline,
     InvalidGeometryError,
     InvalidOperationError,
 )
@@ -330,8 +331,10 @@ def offset(ctx: CommandContext) -> CommandScript:
         entity = document.get_entity(source)
         geometry = entity.geometry
         # A polyline is offset by the core as a whole (None here); an
-        # ellipse waits for SPLINE (ADR 0041).
-        if isinstance(geometry, CadEllipse) or (geometry is None and entity.kind != "LWPOLYLINE"):
+        # ellipse and a spline wait for their offset (ADR 0043 D5).
+        if isinstance(geometry, (CadEllipse, CadSpline)) or (
+            geometry is None and entity.kind != "LWPOLYLINE"
+        ):
             ctx.message(tr("Cannot offset that object."))
             continue
         ctx.session.select(document, (source,))

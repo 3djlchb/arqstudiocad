@@ -135,8 +135,20 @@ with no new library.
    piece across where a closed spline closes is its two pieces joined; a
    closed curve's span goes round by its own period, a spline's no longer
    `TAU`.
-3. Plan geometry, STRETCH, grips and Properties; two pull requests if it
-   is large, as the ellipse's was.
+3. Plan geometry, STRETCH, grips and Properties, in two pull requests, as
+   the ellipse's was:
+   - **3a, plan geometry and STRETCH** (2026-11-23):
+     - `Entity::plan` gives a spline lying in the plan, so the own model
+       owns it and a save checks it by its data, as an ellipse;
+       `spline_curve` folds into it.
+     - Written as plan geometry, a spline is by its vertices. Moved,
+       turned, scaled or mirrored whole, it keeps its fit points and
+       tangents, as before.
+     - Its entity box stays its control points'. What it is drawn by and
+       its exact box are computed when first asked for, so reading,
+       checking and comparing splines costs little.
+     - STRETCH as D4 says.
+   - **3b, grips and Properties.**
 4. JOIN of splines.
 5. OFFSET of ellipses and splines.
 

@@ -17,8 +17,7 @@ def break_object(ctx: CommandContext) -> CommandScript:
             return
         assert isinstance(picked, Picked)
         entity = document.get_entity(picked.entity_id)
-        curve = entity.geometry is not None or document.spline_curve(picked.entity_id)
-        if entity.kind != "LWPOLYLINE" and not curve:
+        if entity.kind != "LWPOLYLINE" and entity.geometry is None:
             ctx.message(
                 tr(
                     "BREAK currently supports lines, arcs, circles, ellipses, splines and "

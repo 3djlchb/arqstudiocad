@@ -22,9 +22,10 @@ from arqstudiocad.core import (
     CadEntityInfo,
     CadLayerInfo,
     CadLine,
+    CadSpline,
 )
 
-type Shape = CadLine | CadCircle | CadArc | CadEllipse | None
+type Shape = CadLine | CadCircle | CadArc | CadEllipse | CadSpline | None
 
 
 def same_shape(a: Shape, b: Shape) -> bool:
@@ -37,6 +38,8 @@ def same_shape(a: Shape, b: Shape) -> bool:
             and math.isclose(a.start_angle, b.start_angle, abs_tol=1e-12)
             and math.isclose(a.end_angle, b.end_angle, abs_tol=1e-12)
         )
+    if isinstance(a, CadSpline) and isinstance(b, CadSpline):
+        return (a.degree, a.knots, a.control_points) == (b.degree, b.knots, b.control_points)
     return a == b
 
 

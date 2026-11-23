@@ -12,7 +12,12 @@ use crate::text_layout::{HAlign, Layout, TextFrame, VAlign, layout, plain_mtext}
 
 /// Our view of a codec entity.
 pub(crate) fn read_entity(e: &EntityType) -> Entity {
-    let plan = plan_of(e);
+    read_entity_with(e, plan_of(e))
+}
+
+/// [`read_entity`] with its plan geometry already known, as the own model
+/// keeps it: not read again (a spline's is made from its codec record).
+pub(crate) fn read_entity_with(e: &EntityType, plan: Option<PlanGeometry>) -> Entity {
     let bounds = bounds_with(e, plan.clone());
     let common = e.common();
     Entity {
@@ -551,18 +556,22 @@ pub(crate) fn bounds_of(e: &EntityType) -> Option<Bounds2> {
 
 fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
     match plan {
-        // An ellipse in the plan too, exactly (ADR 0041).
-        Some(p) => Some(p.geometry().bounds()),
-        // A spline in the plan: its control points' box, which holds the
-        // curve and costs nothing; its drawn shape's box is exact (ADR 0042
-        // D4, maintainer, 2026-11-22: reading and saving stay as fast).
-        None if let EntityType::Spline(sp) = e
-            && let Some(b) = crate::drawing::plan_spline_box(sp) =>
-        {
-            Some(b)
-        }
+        Some(p) => Some(plan_bounds(&p)),
         // A text's box is where its letters are drawn (text_layout.rs).
         None => text_layout(e).map(|l| l.bounds).or_else(|| codec_bounds(e)),
+    }
+}
+
+/// The box of plan geometry as the entity's: exact, an ellipse's too (ADR
+/// 0041); a spline's its control points', which holds the curve and costs
+/// nothing; its drawn shape's box is exact (ADR 0042 D4, maintainer,
+/// 2026-11-22: reading and saving stay as fast).
+pub(crate) fn plan_bounds(plan: &PlanGeometry) -> Bounds2 {
+    match plan.geometry() {
+        Geometry2::Spline(s) => {
+            Bounds2::from_points(s.points().iter().copied()).expect("a spline has points")
+        }
+        g => g.bounds(),
     }
 }
 
@@ -851,6 +860,11 @@ pub(crate) fn plan_of(e: &EntityType) -> Option<PlanGeometry> {
             let ellipse = crate::drawing::plan_ellipse(el)?;
             PlanGeometry::at_elevation(ellipse.into(), el.center.z).ok()
         }
+        // A spline lying in the plan (ADR 0043 D4).
+        EntityType::Spline(sp) => {
+            let spline = crate::drawing::plan_spline(sp)?;
+            PlanGeometry::at_elevation(spline.into(), crate::drawing::spline_height(sp)).ok()
+        }
         _ => None,
     }
 }
@@ -910,11 +924,16 @@ pub(crate) fn write_plan(e: &mut EntityType, plan: PlanGeometry) -> DocumentResu
             crate::drawing::write_plan_ellipse(el, g);
             el.center.z = z;
         }
+        // By its vertices (ADR 0043 D4).
+        (EntityType::Spline(sp), Geometry2::Spline(g)) => {
+            crate::drawing::write_plan_spline(sp, &g, z);
+        }
         (
             EntityType::Line(_)
             | EntityType::Circle(_)
             | EntityType::Arc(_)
-            | EntityType::Ellipse(_),
+            | EntityType::Ellipse(_)
+            | EntityType::Spline(_),
             _,
         ) => {
             return Err(DocumentError::KindMismatch { id, kind });

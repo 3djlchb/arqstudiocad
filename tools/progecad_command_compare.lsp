@@ -531,6 +531,10 @@
   (arq:command-case "SC2-extend-line-to-spline" '(list (arq:ln doc '(-5 1) '(-2 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(arq:extend (cadr arq:o) '(-2.5 1)) dir log)
   (arq:command-case "SC3-trim-spline-middle" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(2 -9) '(2 9)) (arq:ln doc '(4 -9) '(4 9))) '(command "_.TRIM" '(3 2.25) "") dir log)
   (arq:command-case "SC5-break-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.BREAK" (arq:en (car arq:o)) "_F" '(2 2) '(4 2)) dir log)
+  ;; SC6: STRETCH the vertex (4,3) of the Bezier; SC7: STRETCH the fit
+  ;; point (7,1) of a spline SPLINE makes through (0,0) (3,4) (7,1) (9,6).
+  (arq:command-case "SC6-stretch-spline-vertex" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.STRETCH" "_C" '(4.5 3.5) '(3.5 2) "" '(0 0) '(1 1)) dir log)
+  (arq:command-case "SC7-stretch-spline-fit-point" '(progn (arq:spline-defaults) (command "_.SPLINE" '(0 0) '(3 4) '(7 1) '(9 6) "") (while (= 1 (logand 1 (getvar "CMDACTIVE"))) (command "")) (list (vlax-ename->vla-object (entlast)))) '(command "_.STRETCH" "_C" '(8 2) '(6 0) "" '(0 0) '(0 -2)) dir log)
   (arq:command-case "SC4-extend-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(8 -9) '(8 9))) '(arq:extend (cadr arq:o) '(5.8824 0.1764)) dir log)
   ;; SPLINE (docs/design/spline-command.md): through (0,0) (3,4) (7,1)
   ;; (9,6). Prompts as AutoCAD 2021's; a case whose prompts ProgeCAD does

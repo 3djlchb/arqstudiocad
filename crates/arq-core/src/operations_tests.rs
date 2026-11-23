@@ -2937,3 +2937,24 @@ fn trim_and_break_cut_a_spline_into_splines_as_one_step() {
     );
     assert_eq!(cad.document().entity(spline).unwrap(), kept);
 }
+
+#[test]
+fn join_takes_no_spline_until_its_delivery_and_changes_nothing() {
+    // Two splines end to end: JOIN of splines is ADR 0043's fourth
+    // delivery.
+    let (mut cad, spline) = bezier_spline();
+    let other = arq_geometry::Spline::by_vertices(
+        3,
+        vec![p(6.0, 0.0), p(8.0, -3.0), p(10.0, -3.0), p(12.0, 0.0)],
+        false,
+    )
+    .unwrap();
+    let (next, _) = cad.add_spline(&other).unwrap();
+    let before = cad.document().entities();
+    let joined = cad.join_entities(Some(spline), &[next]);
+    assert!(
+        joined.map_or(true, |(j, _)| j.joined == 0),
+        "nothing joined"
+    );
+    assert_eq!(cad.document().entities(), before);
+}
