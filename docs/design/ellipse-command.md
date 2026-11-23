@@ -68,6 +68,14 @@ arc; an arc with one end inside is refused, nothing changed.
 - an elliptical arc's ends slide along the ellipse toward the cursor;
 - an arc shows only the axis ends on it, and none at its own ends.
 
+**JOIN** (ADR 0041 D4, delivery 4), as for arcs of one circle: a source
+elliptical arc takes the elliptical arcs of its own ellipse,
+counterclockwise from its start, gaps filled, its id and properties kept;
+going all the way round they make the whole ellipse. Close makes the arc
+its whole ellipse. Many at once, the arcs of one ellipse join together.
+An ellipse never chains into a polyline (AutoCAD would make a SPLINE,
+which waits), a whole one joins nothing, and a source polyline takes none.
+
 **Properties,** as AutoCAD:
 
 - editable: Center X and Y, Major radius, Minor radius (past the major,
@@ -126,6 +134,9 @@ Cases EL5–EL9 are about (0,0), with semi-axes 5 and 3:
 | EL10 | STRETCH a whole ellipse, crossing window from (6,1) to (−1,−1), holding its center, by (2,3) | moved to center (2,3) |
 | EL11 | STRETCH the first quarter, window round both ends, by (1,0) | moved, ends (6,0) and (1,3) |
 | EL12 | STRETCH the first quarter, window round (5,0) only, by (1,0) | refused, unchanged: to confirm |
+| EL13 | JOIN from the arc 0–1 the arcs 1.5–2.5 and 2.5–3 of its ellipse | the arc 0–3, the gap filled |
+| EL14 | JOIN many at once the arcs 0–2, 2–4 and 4–0 | the whole ellipse |
+| EL15 | JOIN from the arc 0–1, Close | the whole ellipse |
 
 To confirm: that angles count from the first axis drawn when it is not
 horizontal (EL4 draws one whose first end is (0,0), the axis pointing

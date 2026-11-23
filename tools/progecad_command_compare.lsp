@@ -476,6 +476,9 @@
   ;; round the center alone selects nothing: crossing selects what it touches).
   (arq:command-case "EL10-stretch-ellipse-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.STRETCH" "_C" '(6 1) '(-1 -1) "" '(0 0) '(2 3)) dir log)
   (arq:command-case "EL11-stretch-ellipse-arc-both-ends" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 4) '(-1 -1) "" '(0 0) '(1 0)) dir log)
+  (arq:command-case "EL13-join-elliptical-arcs-gap" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 1.0) (arq:ell doc '(0 0) '(5 0) 0.6 1.5 2.5) (arq:ell doc '(0 0) '(5 0) 0.6 2.5 3.0)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) (arq:en (caddr arq:o)) "") dir log)
+  (arq:command-case "EL14-join-elliptical-arcs-whole" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 2.0) (arq:ell doc '(0 0) '(5 0) 0.6 2.0 4.0) (arq:ell doc '(0 0) '(5 0) 0.6 4.0 0.0)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) (arq:en (caddr arq:o)) "") dir log)
+  (arq:command-case "EL15-join-elliptical-arc-close" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 1.0)) '(command "_.JOIN" (arq:en (car arq:o)) "" "_L") dir log)
   (arq:command-case "EL12-stretch-ellipse-arc-one-end" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 1) '(4 -1) "" '(0 0) '(1 0)) dir log)
   (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
   ;; RECTANG, every option given each time (ProgeCAD remembers them)
