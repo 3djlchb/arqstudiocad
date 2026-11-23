@@ -255,6 +255,37 @@ def el4(doc: CadDocument) -> None:
 
 
 SPLINE_POINTS = [(0.0, 0.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)]
+BEZIER = [(0.0, 0.0), (2.0, 3.0), (4.0, 3.0), (6.0, 0.0)]
+
+
+def bezier(doc: CadDocument) -> int:
+    """The Bézier SC1-SC4 use, by its control points."""
+    return doc.add_spline(CadSpline.by_vertices(BEZIER))[0]
+
+
+def sc1(doc: CadDocument) -> None:
+    target = line(doc, (-1, 1), (7, 1))
+    bezier(doc)
+    doc.trim_entity(target, (3, 1))
+
+
+def sc2(doc: CadDocument) -> None:
+    target = line(doc, (-5, 1), (-2, 1))
+    boundary = bezier(doc)
+    doc.extend_entity(target, (-2.5, 1), [boundary])
+
+
+def sc3(doc: CadDocument) -> None:
+    target = bezier(doc)
+    line(doc, (2, -9), (2, 9))
+    line(doc, (4, -9), (4, 9))
+    doc.trim_entity(target, (3, 2.25))
+
+
+def sc4(doc: CadDocument) -> None:
+    target = bezier(doc)
+    boundary = line(doc, (8, -9), (8, 9))
+    doc.extend_entity(target, (5.8824, 0.1764), [boundary])
 
 
 def spline(made: CadSpline) -> Callable[[CadDocument], None]:
@@ -378,6 +409,10 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("EL13-join-elliptical-arcs-gap", el13),
     ("EL14-join-elliptical-arcs-whole", el14),
     ("EL15-join-elliptical-arc-close", el15),
+    ("SC1-trim-line-at-spline", sc1),
+    ("SC2-extend-line-to-spline", sc2),
+    ("SC3-trim-spline-middle", sc3),
+    ("SC4-extend-spline", sc4),
     ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
     (
         "SP2-spline-fit-tangents",
