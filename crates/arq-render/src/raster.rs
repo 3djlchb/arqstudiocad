@@ -77,7 +77,7 @@ pub fn preview(items: &[DrawItem], size: u32, background: [u8; 3], ink: Option<[
     let shown = items
         .iter()
         .map(|item| DrawItem {
-            shape: item.shape,
+            shape: item.shape.clone(),
             color: ink.map_or(item.color, |[r, g, b]| Color::Rgb { r, g, b }),
         })
         .collect();
@@ -169,11 +169,11 @@ pub(crate) fn trace(scene: &Scene, camera: &Camera, style: Style, sink: &mut imp
             }
             for item in &entry.items {
                 let is_fill = matches!(item.shape, Shape::Triangle(_));
-                if is_fill != fills || !shape_bounds(item.shape).intersects(view, tol) {
+                if is_fill != fills || !shape_bounds(&item.shape).intersects(view, tol) {
                     continue;
                 }
                 tracer.set_color(item.color, matches!(item.shape, Shape::Placeholder(_)));
-                tracer.add(camera, item.shape);
+                tracer.add(camera, &item.shape);
             }
         }
     }
@@ -198,9 +198,9 @@ impl<S: Sink> Tracer<'_, S> {
         }
     }
 
-    fn add(&mut self, camera: &Camera, shape: Shape) {
+    fn add(&mut self, camera: &Camera, shape: &Shape) {
         let screen = |p: arq_geometry::Point2| camera.to_screen(p.x(), p.y());
-        match shape {
+        match *shape {
             Shape::Line(l) => self.segment(screen(l.start()), screen(l.end())),
             Shape::Circle(c) => {
                 self.arc(camera, c.center(), c.radius(), 0.0, std::f64::consts::TAU);
@@ -223,6 +223,14 @@ impl<S: Sink> Tracer<'_, S> {
             // Chord by chord, as ellipses have always been drawn (ADR 0040).
             Shape::Ellipse(e) => {
                 for w in e.flatten().windows(2) {
+                    if w[0] != w[1] {
+                        self.segment(screen(w[0]), screen(w[1]));
+                    }
+                }
+            }
+            // And splines, by the codec's own points (ADR 0042).
+            Shape::Spline(ref s) => {
+                for w in s.flatten().windows(2) {
                     if w[0] != w[1] {
                         self.segment(screen(w[0]), screen(w[1]));
                     }

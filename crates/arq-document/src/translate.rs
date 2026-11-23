@@ -103,6 +103,8 @@ pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
         EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
         EntityType::Text(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
         EntityType::MText(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
+        // A spline lying in the plan, by our geometry (ADR 0042).
+        EntityType::Spline(sp) => crate::drawing::spline_in_plan(sp),
         // ACIS bodies whose data reads: their placement takes the change
         // (maintainer, 2026-11-05).
         EntityType::Solid3D(_)
@@ -487,6 +489,27 @@ pub(crate) fn whole_grip(e: &EntityType) -> Option<(bool, Point2)> {
 /// it, with the wires and silhouettes the drawing keeps for it (ADR 0024
 /// step 5a).
 pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
+    // A spline in the plan: its points and tangents carried by our
+    // geometry, each at its height; its knots and weights kept (ADR 0042).
+    if let EntityType::Spline(sp) = e
+        && crate::drawing::spline_in_plan(sp)
+    {
+        let carry = |v: &mut Vector3| {
+            if let Ok(q) = Point2::new(v.x, v.y) {
+                let q = t.apply_point(q);
+                (v.x, v.y) = (q.x(), q.y());
+            }
+        };
+        sp.control_points.iter_mut().for_each(carry);
+        sp.fit_points.iter_mut().for_each(carry);
+        for tangent in [&mut sp.begin_tangent, &mut sp.end_tangent] {
+            if let Ok(d) = arq_geometry::Vector2::new(tangent.x, tangent.y) {
+                let d = t.apply_vector(d);
+                (tangent.x, tangent.y) = (d.x(), d.y());
+            }
+        }
+        return;
+    }
     let reading = text_data(e).map(|text| text.rotation());
     let [[a, b, tx], [c, d, ty]] = t.affine();
     // A solid scales in height too, as AutoCAD's SCALE does, about the
@@ -530,6 +553,18 @@ fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
     match plan {
         // An ellipse in the plan too, exactly (ADR 0041).
         Some(p) => Some(p.geometry().bounds()),
+        // A spline in the plan: its control points' box, which holds the
+        // curve and costs nothing; its drawn shape's box is exact (ADR 0042
+        // D4, maintainer, 2026-11-22: reading and saving stay as fast).
+        None if let EntityType::Spline(sp) = e
+            && crate::drawing::spline_in_plan(sp) =>
+        {
+            Bounds2::from_points(
+                sp.control_points
+                    .iter()
+                    .filter_map(|c| Point2::new(c.x, c.y).ok()),
+            )
+        }
         // A text's box is where its letters are drawn (text_layout.rs).
         None => text_layout(e).map(|l| l.bounds).or_else(|| codec_bounds(e)),
     }

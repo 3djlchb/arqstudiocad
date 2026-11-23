@@ -94,7 +94,7 @@ fn stretch_preview_is_read_only_and_matches_committed_line_and_bulged_path() {
         doc.drawing(id)
             .iter()
             .flatten()
-            .map(|i| i.shape)
+            .map(|i| i.shape.clone())
             .collect::<Vec<_>>(),
         preview
     );
@@ -117,7 +117,7 @@ fn stretch_preview_is_read_only_and_matches_committed_line_and_bulged_path() {
         doc.drawing(poly)
             .iter()
             .flatten()
-            .map(|i| i.shape)
+            .map(|i| i.shape.clone())
             .collect::<Vec<_>>(),
         preview
     );
@@ -143,7 +143,7 @@ fn stretch_preview_preserves_whole_block_expansion_and_partial_arcs() {
         doc.drawing(block)
             .iter()
             .flatten()
-            .map(|i| i.shape)
+            .map(|i| i.shape.clone())
             .collect::<Vec<_>>(),
         preview
     );

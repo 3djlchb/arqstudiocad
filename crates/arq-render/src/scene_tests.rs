@@ -37,7 +37,11 @@ fn from_the_front_a_line_in_plan_lies_on_the_ground() {
     assert_eq!(segments(&front), [((1.0, 0.0), (5.0, 0.0))]);
     // From the right, across is Y: the line is seen end on, a point.
     let right = Scene::build_in(cad.document(), View::Right);
-    let shapes: Vec<_> = right.entries()[0].items.iter().map(|i| i.shape).collect();
+    let shapes: Vec<_> = right.entries()[0]
+        .items
+        .iter()
+        .map(|i| i.shape.clone())
+        .collect();
     assert_eq!(shapes, [Shape::Point(p(2.0, 0.0))]);
 }
 

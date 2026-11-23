@@ -676,3 +676,75 @@ fn a_crossing_polygon_selects_an_ellipse_it_crosses_and_not_one_it_misses() {
     assert!(doc.select_polygon_candidates(&inside, &[id]).is_empty());
     assert!(doc.select_polygon_candidates(&missing, &[id]).is_empty());
 }
+
+/// A cubic spline from (0,0) through the control points to (6,0), and a
+/// closed one far away.
+fn splines() -> Document {
+    let spline = |flags: &str, dx: f64| -> Vec<String> {
+        let mut c: Vec<String> = [
+            "0", "SPLINE", "8", "0", "210", "0", "220", "0", "230", "1", "70", flags, "71", "3",
+            "72", "8", "73", "4", "74", "0",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        for k in [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] {
+            c.extend(["40".to_owned(), format!("{k:?}")]);
+        }
+        for (x, y) in [(0.0, 0.0), (2.0, 3.0), (4.0, 3.0), (6.0, 0.0)] {
+            c.extend([
+                "10".to_owned(),
+                format!("{:?}", x + dx),
+                "20".to_owned(),
+                format!("{y:?}"),
+                "30".to_owned(),
+                "0.0".to_owned(),
+            ]);
+        }
+        c
+    };
+    let (open, closed) = (spline("8", 0.0), spline("9", 100.0));
+    let open: Vec<&str> = open.iter().map(String::as_str).collect();
+    let closed: Vec<&str> = closed.iter().map(String::as_str).collect();
+    dxf(LAYERS, &[], &[&open, &closed])
+}
+
+#[test]
+fn a_spline_snaps_to_its_ends_and_nearest_point_not_its_chords() {
+    let doc = splines();
+    let at = |cursor: Point2, modes: &[SnapKind]| doc.snap(cursor, 0.3, modes, None);
+    let end = at(p(6.1, 0.1), &[Endpoint]).unwrap();
+    assert!(near(end.point, p(6.0, 0.0)), "{end:?}");
+    // Its middle, (3, 2.25) for this Bézier, is no end between chords.
+    assert!(at(p(3.0, 2.25), &[Endpoint, Midpoint]).is_none());
+    let nearest = at(p(3.0, 2.4), &[Nearest]).unwrap();
+    assert!(near(nearest.point, p(3.0, 2.25)), "{nearest:?}");
+    // A closed one has no ends.
+    assert!(at(p(100.0, 0.05), &[Endpoint]).is_none());
+}
+
+#[test]
+fn a_spline_is_picked_by_its_curve_and_selected_by_its_chords() {
+    let doc = splines();
+    let id = doc.entities()[0].id();
+    assert_eq!(doc.pick(p(3.0, 2.3), 0.1), Some(id));
+    assert_eq!(doc.pick(p(3.0, 1.5), 0.1), None, "under it, off the curve");
+    assert_eq!(doc.select_window(area(-0.1, -0.1, 6.1, 2.3), false), [id]);
+    assert_eq!(doc.select_window(area(2.9, 2.0, 3.1, 2.5), true), [id]);
+    assert!(
+        doc.select_window(area(2.0, 0.5, 4.0, 1.5), true).is_empty(),
+        "under it"
+    );
+    let polygon = arq_geometry::SelectionPolygon::new(
+        vec![p(2.9, 2.0), p(3.1, 2.0), p(3.0, 2.6)],
+        arq_geometry::Tolerance::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(doc.select_polygon_candidates(&polygon, &[id]), [id]);
+    // The entity's box is its control points' (ADR 0042 D4); its drawn
+    // shape's is the curve's, under them, which windows go by.
+    let b = doc.entity(id).unwrap().bounds().unwrap();
+    assert_eq!((b.max().y(), b.max().x()), (3.0, 6.0));
+    let drawn = doc.drawing(id).unwrap()[0].shape.bounds();
+    assert!((drawn.max().y() - 2.25).abs() < 1e-9, "{drawn:?}");
+}
