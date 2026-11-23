@@ -145,7 +145,7 @@ impl Spline {
 
 /// `first` and then `second`, two clamped pieces of one degree, `second`
 /// starting where `first` ends, its knots carried on by `shift`.
-fn join(first: &Spline, second: &Spline, shift: f64) -> GeometryResult<Spline> {
+pub(crate) fn join(first: &Spline, second: &Spline, shift: f64) -> GeometryResult<Spline> {
     let p = first.degree();
     // A clamped curve's weights may all be scaled: the second's first is
     // made the first's last, so the shared point is one control point.
