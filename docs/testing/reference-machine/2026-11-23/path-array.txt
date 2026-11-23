@@ -1,0 +1,90 @@
+Path ARRAY (ARRAYPATH, #220), reference machine acceptance, 2026-11-23
+
+LMDE 7, Linux 6.12.118, Intel Core i7-2600, GeForce GT 730 on nouveau,
+Mesa 25.0.7 (OpenGL 4.3), X11 (Cinnamon) at 1920 x 1080 and 60 Hz.
+Desktop idle (no browser, video or streaming program; load 0.77 at the
+start). Series 18:28-18:30, no other heavy process.
+
+Plan agreed with the maintainer before measuring: main at
+bc1f6a97748b64f083e2ec08e5345fb15b07fca6 (ARRAYPATH unchanged since
+#220; later commits on main are documents only), a release build by
+uv sync in a detached copy. Accepted when:
+  (A) the atomic ARRAY is no slower than the equivalent grouped
+      COPY/ROTATE, aligned and not (the development host gave 0.451 and
+      0.692);
+  (B) in the main window the copies are on screen within 250 ms for
+      10,000 and 1.5 s for 100,000 (the rectangular ARRAY took 98 and
+      609 ms on 2026-11-19); then pan and zoom keep the display's rate on
+      the GPU and take at most 33 ms a CPU frame; the copy count, the
+      last copy's place and one undo step are right.
+
+Harnesses, kept outside the repository (SHA-256):
+  path_timing.py         b3bcdf9efd9aefcf64e8f286de188028d6bce608f18ea30f40ebd90918c72298
+  path_frames.py         813a9ecb8ae96034640ad4c123205a61b4faeccff35871b6937ca9b247d450a0
+  path_array_series.sh   b62dd0952ddda6b40b61f12193843625e7c3e41138e79e5dac1c467fe7305bd0
+Each run had a fresh XDG_CONFIG_HOME (and, in the main window, QSettings
+in a temporary INI folder), LANG=C.UTF-8, QT_QPA_PLATFORM=xcb.
+
+== (A) The development diagnostic, repeated
+
+TESTING_AND_PERFORMANCE.md, "Path ARRAY diagnostic comparison": 100 lines
+i from (100+i%10, 100+i//10) to (+0.5, 0), base (100,100); the guide
+((0,0),0), ((L,0),1), ((L+10,0),0) with L = 5*pi; 100 new groups. The
+grouped workflow is COPY by point - base and, aligned, ROTATE of the new
+ids about the point, of placements computed beforehand (the last at the
+stored end, turned 5*pi/2); the atomic one is path_array(ids, guide,
+(100,100), 100, align). Each sample is checked: 10,101 entities, the
+last group's copy of line 0 from (L+10,0) to (L+10,0.5) aligned or
+(L+10.5,0) not, the ARRAYPATH history entry, and undo to 101 entities.
+Garbage collection off; 2 warm-ups and 10 samples a run; five runs, the
+workflow going first alternating.
+
+Run medians, ms:
+  Aligned   COPY/ROTATE  82.75 80.19 78.20 77.02 78.61   pooled 79.39
+            ARRAY        39.81 44.30 38.94 40.26 39.35   pooled 40.28
+            ARRAY / COPY 0.507
+  Kept      COPY         55.32 54.06 52.98 52.49 52.62   pooled 53.74
+            ARRAY        41.30 41.35 39.70 39.19 39.18   pooled 40.21
+            ARRAY / COPY 0.748
+The development host gave 0.451 and 0.692: the same gain on the floor,
+a little smaller, as the floor's slower copies weigh less against the
+grouped calls.
+
+== (B) ARRAYPATH in the main window
+
+The real MainWindow, 1366 x 740 (a 1098 x 347 viewport), the renderer it
+chooses (OpenGL on the GT 730) or the CPU through safe mode. A generated
+DXF: N lines from (100+i%s, 100+i//s) to (+0.5, 0), s = ceil(sqrt N),
+and the guide, an LWPOLYLINE (0,0) -> (L,0) -> (L+2R,0) with L = 100*pi,
+R = 100 and bulge 1 on the second span (a lower semicircle). The lines
+selected, then ARRAYPATH, base 100,100, the guide picked, 100 items,
+Align Y. Timed from the command to the copies reported ("command") and
+to the first frame painted after the queued events ("first frame");
+then zoom extents and 57 pan and 57 zoom frames (after 3 warm-ups), and
+the undo to its frame. Three rounds, both renderers and sizes in each.
+
+Copies     Renderer  Command, ms         First frame, ms     Undo frame, ms
+10,000     CPU       123.2 117.2 124.3   133.8 128.7 137.9   8.5 7.2 8.4
+10,000     GPU       126.5 116.6 122.0   140.7 128.9 136.2   16.7 16.7 16.7
+100,000    CPU       632.0 591.9 642.1   652.9 612.8 663.2   79.9 83.2 80.6
+100,000    GPU       637.6 634.4 657.0   676.6 673.9 696.8   115.2 113.5 114.9
+
+Over the result, ms, median (p95) of each round:
+10,000     CPU  pan  5.20 (7.50)  4.84 (7.58)  5.36 (7.84)
+                zoom 2.81 (3.29)  2.63 (3.51)  2.87 (3.25)
+           GPU  pan and zoom 16.64 (16.68-16.76), the display's rate
+100,000    CPU  pan  10.62 (16.64) 11.02 (18.00) 10.68 (13.92)
+                zoom 3.78 (5.41)  3.91 (5.75)  3.31 (4.94)
+           GPU  pan and zoom 16.64 (16.69-16.73), the display's rate
+
+Every run: 100 x N copies (N*101 + 1 entities), the sources and the guide
+kept, line 0's last copy from (L+2R,0) to (L+2R,0.5) (turned a quarter at
+the semicircle's end), one ARRAYPATH undo step back to N + 1 entities.
+
+Verdict, against the agreed criteria:
+  (A) 0.507 aligned, 0.748 kept: accepted.
+  (B) 10,000 copies on screen in 129-141 ms (limit 250), 100,000 in
+      613-697 ms (limit 1,500), about what the rectangular ARRAY took for
+      the same counts; GPU frames at the display's rate, CPU frames at
+      most 18 ms p95 (limit 33); counts, place and undo right: accepted.
+Not covered: a hand on a real mouse, and ProgeCAD reopening (Windows).
