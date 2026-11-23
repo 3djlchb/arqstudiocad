@@ -127,6 +127,13 @@ curve.
   longer describe it. Fences and Quick TRIM see a spline as they see any
   curve.
 - **EXTEND** refuses the spline itself until ProgeCAD shows its rule.
+- **STRETCH** (delivery 3a, 2026-11-23):
+  - A spline through fit points moves its fit points inside the crossing
+    area and is fitted again through them, its knots method and tangents
+    kept.
+  - One by its vertices moves its vertices inside; a closed one's
+    repeated vertices follow their own, so it stays closed.
+  - With none inside it stays; with all inside it moves whole.
 
 Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 
@@ -137,5 +144,7 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 | SC3 | TRIM (Quick) the spline at its top, cut by x = 2 and x = 4 | two splines, (0,0)–(2,2) and (4,2)–(6,0), by their vertices; whether ProgeCAD keeps fit points to confirm |
 | SC4 | EXTEND the spline at its end (6,0) to x = 8 | refused, unchanged: what ProgeCAD makes decides EXTEND's rule |
 | SC5 | BREAK the spline, First (2,2), second (4,2) | the same two splines as SC3 |
+| SC6 | STRETCH the Bézier, crossing window (3.5,2)–(4.5,3.5) round its vertex (4,3), by (1,1) | that vertex at (5,4), the others kept |
+| SC7 | STRETCH a spline made through (0,0), (3,4), (7,1), (9,6), window (6,0)–(8,2), by (0,−2) | fitted again through (7,−1), its fit points kept |
 
 **To run.**

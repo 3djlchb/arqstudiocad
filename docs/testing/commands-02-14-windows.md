@@ -149,11 +149,13 @@ Added on 2026-11-23 with the SPLINE command (ADR 0042):
 
 What ours gives is in [SPLINE's design](../design/spline-command.md#windows-comparison).
 
-## To run: the spline as a curve (SC1–SC5)
+## To run: the spline as a curve (SC1–SC7)
 
 Added on 2026-11-23 with the spline as a curve (ADR 0043):
 - a line trimmed at a spline, and extended to one;
 - the spline itself trimmed and broken (SC3, SC5, added with delivery 2),
-  and extended, which ours refuses until ProgeCAD shows its rule (SC4).
+  and extended, which ours refuses until ProgeCAD shows its rule (SC4);
+- the spline stretched by a vertex and by a fit point (SC6, SC7, added
+  with delivery 3a).
 
 What ours gives is in [SPLINE's design](../design/spline-command.md#the-spline-as-a-curve-adr-0043).
