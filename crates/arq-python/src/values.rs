@@ -9,7 +9,8 @@ use std::hash::{Hash, Hasher};
 
 use arq_core::{Color, Grip, SnapKind, SnapPoint};
 use arq_geometry::{
-    Arc, Bounds2, Circle, Corners, Ellipse, Geometry2, Line, Point2, Rectangle, Tolerance, Vector2,
+    Arc, Bounds2, Circle, Corners, Ellipse, Geometry2, Line, Point2, Rectangle, Spline, SplineFit,
+    SplineKnots, Tolerance, Vector2,
 };
 use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -478,6 +479,125 @@ impl CadEllipse {
             self.0.ratio(),
             self.0.start_param(),
             self.0.end_param()
+        )
+    }
+}
+
+/// A spline in the plan that SPLINE makes (ADR 0042): through fit points,
+/// or by control vertices.
+#[pyclass(frozen, from_py_object, module = "arqstudiocad._core")]
+#[derive(Clone)]
+pub struct CadSpline {
+    pub spline: Spline,
+    /// What it was fitted through, when it was.
+    pub fit: Option<SplineFit>,
+}
+
+/// The knot spacing named `knots`: `"chord"`, `"square_root"` or
+/// `"uniform"`.
+fn spline_knots(knots: &str) -> PyResult<SplineKnots> {
+    match knots {
+        "chord" => Ok(SplineKnots::Chord),
+        "square_root" => Ok(SplineKnots::SquareRoot),
+        "uniform" => Ok(SplineKnots::Uniform),
+        _ => Err(PyValueError::new_err(
+            "knots must be \"chord\", \"square_root\" or \"uniform\"",
+        )),
+    }
+}
+
+#[pymethods]
+impl CadSpline {
+    /// The cubic spline through `points` (SPLINE's Fit method): its knots
+    /// spaced by `knots` (`"chord"`, `"square_root"` or `"uniform"`), along
+    /// `start_tangent` and `end_tangent` (directions) when given, periodic
+    /// when `closed`, which takes no tangent.
+    #[staticmethod]
+    #[pyo3(signature = (points, knots = "chord", start_tangent = None, end_tangent = None, closed = false))]
+    fn through(
+        points: Vec<PyPoint>,
+        knots: &str,
+        start_tangent: Option<PyVector>,
+        end_tangent: Option<PyVector>,
+        closed: bool,
+    ) -> PyResult<Self> {
+        let fit = SplineFit::new(
+            points.into_iter().map(|p| p.0).collect(),
+            spline_knots(knots)?,
+            start_tangent.map(|v| v.0),
+            end_tangent.map(|v| v.0),
+            closed,
+        )
+        .py()?;
+        Ok(Self {
+            spline: fit.spline().py()?,
+            fit: Some(fit),
+        })
+    }
+
+    /// The spline of `degree` by control vertices `points` (SPLINE's CV
+    /// method): its degree at most one fewer than the points, periodic when
+    /// `closed`.
+    #[staticmethod]
+    #[pyo3(signature = (points, degree = 3, closed = false))]
+    fn by_vertices(points: Vec<PyPoint>, degree: usize, closed: bool) -> PyResult<Self> {
+        let spline =
+            Spline::by_vertices(degree, points.into_iter().map(|p| p.0).collect(), closed).py()?;
+        Ok(Self { spline, fit: None })
+    }
+
+    /// Its degree.
+    #[getter]
+    fn degree(&self) -> usize {
+        self.spline.degree()
+    }
+
+    /// Its knots.
+    #[getter]
+    fn knots(&self) -> Vec<f64> {
+        self.spline.knots().to_vec()
+    }
+
+    /// Its control points, the first ones repeated at the end when closed.
+    #[getter]
+    fn control_points(&self) -> Vec<(f64, f64)> {
+        self.spline.points().iter().copied().map(xy).collect()
+    }
+
+    /// The points it was fitted through; empty when made by its vertices.
+    #[getter]
+    fn fit_points(&self) -> Vec<(f64, f64)> {
+        self.fit
+            .as_ref()
+            .map_or_else(Vec::new, |f| f.points().iter().copied().map(xy).collect())
+    }
+
+    /// Whether it closes.
+    #[getter]
+    fn is_closed(&self) -> bool {
+        self.spline.is_closed()
+    }
+
+    /// The points it is drawn by, its ends included.
+    fn points(&self) -> Vec<(f64, f64)> {
+        self.spline.flatten().iter().copied().map(xy).collect()
+    }
+
+    fn __repr__(&self) -> String {
+        let how = if self.fit.is_some() {
+            "fit"
+        } else {
+            "vertices"
+        };
+        format!(
+            "CadSpline({how}, degree {}, {} control points{})",
+            self.spline.degree(),
+            self.spline.points().len(),
+            if self.spline.is_closed() {
+                ", closed"
+            } else {
+                ""
+            }
         )
     }
 }
@@ -1023,6 +1143,7 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<CadLine>()?;
     m.add_class::<CadCircle>()?;
     m.add_class::<CadEllipse>()?;
+    m.add_class::<CadSpline>()?;
     m.add_class::<CadArc>()?;
     m.add_class::<CadRectangle>()?;
     Ok(())

@@ -878,9 +878,10 @@ fn segment(a: (f64, f64), b: (f64, f64)) -> Option<Shape> {
 /// A spline lying in the plan, as the codec reads it to draw it: its
 /// control points all at one height, its degree clamped below their count,
 /// its knots when usable (else clamped uniform ones), its weights when it
-/// is rational. None for one out of the plan, of fewer than two control
-/// points (drawn by its fit points), or that our geometry refuses, all
-/// drawn as before (ADR 0042).
+/// is rational. One of fit points alone, as DWG keeps a spline made through
+/// them, is the cubic through them that SPLINE makes, its fit points and
+/// tangents in the plan. None for one out of the plan or that our geometry
+/// refuses, drawn as before (ADR 0042).
 pub(crate) fn plan_spline(sp: &Spline) -> Option<arq_geometry::Spline> {
     let (degree, points, weights, knots) = plan_spline_parts(sp)?;
     arq_geometry::Spline::new(degree, points, weights, knots, sp.flags.closed).ok()
@@ -888,27 +889,34 @@ pub(crate) fn plan_spline(sp: &Spline) -> Option<arq_geometry::Spline> {
 
 /// Whether [`plan_spline`] reads `sp`, without drawing it.
 pub(crate) fn spline_in_plan(sp: &Spline) -> bool {
-    plan_spline_parts(sp).is_some_and(|(degree, points, weights, knots)| {
-        arq_geometry::Spline::check(degree, &points, &weights, &knots).is_ok()
-    })
+    plan_spline_box(sp).is_some()
 }
 
-/// What [`plan_spline`] makes a spline of: its degree, its control points
-/// in the plan, its weights and its knots.
+/// The box of the control points [`plan_spline`] draws `sp` by, which
+/// holds the curve; none when it does not read `sp`.
+pub(crate) fn plan_spline_box(sp: &Spline) -> Option<arq_geometry::Bounds2> {
+    let (degree, points, weights, knots) = plan_spline_parts(sp)?;
+    arq_geometry::Spline::check(degree, &points, &weights, &knots).ok()?;
+    arq_geometry::Bounds2::from_points(points)
+}
+
 /// A spline's degree, control points in the plan, weights and knots.
 type SplineParts = (usize, Vec<Point2>, Vec<f64>, Vec<f64>);
+
+/// Whether `points` all lie at one height.
+fn level(points: &[Vector3]) -> bool {
+    let z = points.first().map_or(0.0, |c| c.z);
+    points
+        .iter()
+        .all(|c| (c.z - z).abs() <= 1e-9 * (1.0 + z.abs()))
+}
 
 fn plan_spline_parts(sp: &Spline) -> Option<SplineParts> {
     let n = sp.control_points.len();
     if n < 2 {
-        return None;
+        return fit_spline_parts(sp);
     }
-    let z = sp.control_points[0].z;
-    if sp
-        .control_points
-        .iter()
-        .any(|c| (c.z - z).abs() > 1e-9 * (1.0 + z.abs()))
-    {
+    if !level(&sp.control_points) {
         return None;
     }
     let degree = usize::try_from(sp.degree)
@@ -932,6 +940,52 @@ fn plan_spline_parts(sp: &Spline) -> Option<SplineParts> {
         Vec::new()
     };
     Some((degree, points, weights, knots))
+}
+
+/// What a spline of fit points alone is drawn by (ADR 0042 D4): its fit
+/// points at one height, its tangents, zero when not given, in the plan.
+fn fit_spline_parts(sp: &Spline) -> Option<SplineParts> {
+    let fit = spline_fit(sp)?;
+    let (points, knots) = fit.control().ok()?;
+    Some((3, points, Vec::new(), knots))
+}
+
+/// The fit a spline keeps, when its fit points and tangents lie in the
+/// plan; none for one without fit points.
+pub(crate) fn spline_fit(sp: &Spline) -> Option<arq_geometry::SplineFit> {
+    if sp.fit_points.len() < 2 || !level(&sp.fit_points) {
+        return None;
+    }
+    let tangent = |t: Vector3| -> Option<Option<arq_geometry::Vector2>> {
+        if t.x == 0.0 && t.y == 0.0 && t.z == 0.0 {
+            return Some(None);
+        }
+        if t.z.abs() > 1e-9 * (t.x.hypot(t.y) + t.z.abs()) {
+            return None;
+        }
+        arq_geometry::Vector2::new(t.x, t.y).ok().map(Some)
+    };
+    // A closed one runs on smoothly where it closes: tangents it may
+    // keep are not used.
+    let closed = sp.flags.closed;
+    let (start, end) = if closed {
+        (None, None)
+    } else {
+        (tangent(sp.begin_tangent)?, tangent(sp.end_tangent)?)
+    };
+    let points = sp
+        .fit_points
+        .iter()
+        .map(|c| Point2::new(c.x, c.y).ok())
+        .collect::<Option<Vec<_>>>()?;
+    arq_geometry::SplineFit::new(
+        points,
+        arq_geometry::SplineKnots::from_code(sp.knot_parameterization),
+        start,
+        end,
+        closed,
+    )
+    .ok()
 }
 
 /// An ellipse seen in plan: itself when it lies in the plan, else segments

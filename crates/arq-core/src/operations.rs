@@ -14,8 +14,9 @@ use arq_document::{
 };
 use arq_geometry::{
     Arc, Chain, Circle, CrossingArea, Ellipse, Geometry2, GeometryError, JoinPath, Line, Point2,
-    Point3, SelectionPolygon, Tolerance, Transform2, Vector2, break_curve, chain_paths,
-    cutting_points, extend, join_arcs, join_elliptical_arcs, join_groups, join_lines, trim,
+    Point3, SelectionPolygon, Spline, SplineFit, Tolerance, Transform2, Vector2, break_curve,
+    chain_paths, cutting_points, extend, join_arcs, join_elliptical_arcs, join_groups, join_lines,
+    trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -146,6 +147,18 @@ impl CadDocument {
     /// World plane at elevation 0 (ELLIPSE, ADR 0040).
     pub fn add_ellipse(&mut self, ellipse: Ellipse) -> CadResult<(EntityId, ChangeSet)> {
         self.transact("ELLIPSE", |doc| Ok(doc.add_ellipse(ellipse, 0.0)?))
+    }
+
+    /// Draws a spline by its control vertices on the current layer, in the
+    /// World plane at elevation 0 (SPLINE's CV method, ADR 0042).
+    pub fn add_spline(&mut self, spline: &Spline) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("SPLINE", |doc| Ok(doc.add_spline(spline, 0.0)?))
+    }
+
+    /// Draws the spline through `fit`'s points on the current layer, in the
+    /// World plane at elevation 0 (SPLINE's Fit method, ADR 0042).
+    pub fn add_fit_spline(&mut self, fit: &SplineFit) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("SPLINE", |doc| Ok(doc.add_fit_spline(fit, 0.0)?))
     }
 
     /// Draws a circle on the current layer.
