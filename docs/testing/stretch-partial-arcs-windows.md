@@ -80,11 +80,13 @@ ProgeCAD was not used in this task. Its observations above were recorded on
 reopening of our outputs. Our own-reader round trips are internal checks.
 The Qt tests validate the common overlay geometry, not physical GPU pixels.
 
-No benchmark or reference-floor acceptance is claimed. Agree base/candidate
-SHAs, synthetic scenarios, build profile, repetitions and acceptance criteria
-before measuring. Exercise both partial-arc cursor interaction and unchanged
-whole-object/line controls on the actual reference machine, checking CPU and
-GPU paths through the existing tools. Startup and backend probing are untouched.
+No benchmark or reference-floor acceptance was claimed here. It was done
+on the reference machine on 2026-11-23, with base, candidate, cases and
+criteria agreed first: partial arcs preview at 5.3 ms a CPU cursor frame and
+at the display's rate on the GPU, the whole-arc and line controls stay within
+3.1% of the base, and the commit and undo are right
+([report](reference-machine/2026-11-23/stretch-partial-arcs.txt)). Startup
+and backend probing are untouched.
 
 Milestone 02.14 remains in progress; wider STRETCH/AutoCAD compatibility is
 not implied. Surface PR #183 is a separate task.
