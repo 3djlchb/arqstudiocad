@@ -1367,9 +1367,21 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
 }
 
 /// `first` with the curves of `others` whose ends touch chained on, as a
-/// polyline; None when none touches.
+/// polyline; None when none touches. When `first` has one width all along,
+/// the lines and arcs chained on take it, as ProgeCAD gives them (case J3,
+/// maintainer, 2026-11-20); polylines keep their own.
 fn join_chain(first: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
-    let paths: Vec<JoinPath> = others.iter().map(|p| p.path.clone()).collect();
+    let width = uniform_width(first, tol);
+    let paths: Vec<JoinPath> = others
+        .iter()
+        .map(|p| match (width, p.plan) {
+            (Some(w), Some(_)) => JoinPath {
+                widths: vec![(w, w); p.path.widths.len()],
+                ..p.path.clone()
+            },
+            _ => p.path.clone(),
+        })
+        .collect();
     let chain = chain_paths(&first.path, &paths, tol);
     if chain.taken.is_empty() {
         return None;
@@ -1380,6 +1392,19 @@ fn join_chain(first: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
         made: Made::Polyline(chain, first.height),
         erased,
     })
+}
+
+/// The width a piece has all along (none for a line or an arc, whose width
+/// is nothing); None for a varying width.
+fn uniform_width(piece: &Piece, tol: Tolerance) -> Option<f64> {
+    let (w, _) = *piece.path.widths.first()?;
+    let same = |v: f64| (v - w).abs() <= tol.linear();
+    piece
+        .path
+        .widths
+        .iter()
+        .all(|&(a, b)| same(a) && same(b))
+        .then_some(w)
 }
 
 /// JOIN many at once on one level: chains of touching ends, in selection

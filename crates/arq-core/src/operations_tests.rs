@@ -2586,3 +2586,60 @@ fn stretch_partial_arc_is_atomic_indexed_and_undoable_with_matching_preview() {
     assert_eq!(cad.undo_names().len(), n);
     assert!(cad.redo_name().is_some());
 }
+
+fn path_widths(cad: &CadDocument, id: EntityId) -> Vec<(f64, f64)> {
+    cad.document().join_path(id).unwrap().0.widths
+}
+
+fn wide_polyline(cad: &mut CadDocument, a: Point2, b: Point2, width: f64) -> EntityId {
+    let style = arq_document::PolylineStyle {
+        width,
+        ..Default::default()
+    };
+    cad.add_polyline_with(&[(a, 0.0), (b, 0.0)], false, style)
+        .unwrap()
+        .0
+}
+
+#[test]
+fn join_gives_lines_and_arcs_a_source_polylines_one_width() {
+    // J3: a polyline (0,0)-(4,0) of width 0.5 and the line (4,0)-(4,3):
+    // the line's segment is 0.5 wide too, as ProgeCAD gives it.
+    let mut cad = CadDocument::new();
+    let source = wide_polyline(&mut cad, p(0.0, 0.0), p(4.0, 0.0), 0.5);
+    let (line, _) = cad.add_line(p(4.0, 0.0), p(4.0, 3.0)).unwrap();
+    cad.join_entities(Some(source), &[line]).unwrap();
+    assert_eq!(path_widths(&cad, source), [(0.5, 0.5), (0.5, 0.5)]);
+    // An arc before its start takes it too; a polyline of its own width
+    // keeps that.
+    let mut cad = CadDocument::new();
+    let source = wide_polyline(&mut cad, p(0.0, 0.0), p(4.0, 0.0), 0.5);
+    let (arc, _) = cad.add_arc(p(-1.0, 0.0), 1.0, 0.0, FRAC_PI_2).unwrap();
+    let other = wide_polyline(&mut cad, p(4.0, 0.0), p(8.0, 0.0), 0.8);
+    cad.join_entities(Some(source), &[arc, other]).unwrap();
+    assert_eq!(
+        path_widths(&cad, source),
+        [(0.5, 0.5), (0.5, 0.5), (0.8, 0.8)]
+    );
+    // A source of varying width gives none: the line keeps 0.
+    let line = cad.add_line(p(8.0, 0.0), p(8.0, 3.0)).unwrap().0;
+    cad.join_entities(Some(source), &[line]).unwrap();
+    assert_eq!(path_widths(&cad, source).last(), Some(&(0.0, 0.0)));
+    // Nor does a source of no width.
+    let mut cad = CadDocument::new();
+    let source = wide_polyline(&mut cad, p(0.0, 0.0), p(4.0, 0.0), 0.0);
+    let (line, _) = cad.add_line(p(4.0, 0.0), p(4.0, 3.0)).unwrap();
+    cad.join_entities(Some(source), &[line]).unwrap();
+    assert_eq!(path_widths(&cad, source), [(0.0, 0.0), (0.0, 0.0)]);
+}
+
+#[test]
+fn many_at_once_a_chain_from_a_polyline_of_one_width_gives_it_to_its_lines() {
+    // The polyline selected first seeds the chain: the line takes its width.
+    let mut cad = CadDocument::new();
+    let polyline = wide_polyline(&mut cad, p(0.0, 0.0), p(4.0, 0.0), 0.5);
+    let (line, _) = cad.add_line(p(4.0, 0.0), p(4.0, 3.0)).unwrap();
+    let (joined, _) = cad.join_entities(None, &[polyline, line]).unwrap();
+    assert_eq!(joined.results, [polyline]);
+    assert_eq!(path_widths(&cad, polyline), [(0.5, 0.5), (0.5, 0.5)]);
+}
