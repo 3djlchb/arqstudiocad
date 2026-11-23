@@ -26,8 +26,9 @@ as BREAK and STRETCH today.
    join to source [Close(L)]:` for a source arc, `Select elliptical arcs
    to join to source [Close(L)]:` for a source elliptical arc (since
    2026-11-22, ADR 0041; its rules in
-   [ELLIPSE's design](ellipse-command.md)), or `Select objects to join to
-   source:` for a source polyline; any selection method, Enter ending it.
+   [ELLIPSE's design](ellipse-command.md)), `Select splines to join to
+   source:` for a source spline (since 2026-11-23, ADR 0043), or `Select
+   objects to join to source:` for a source polyline; any selection method, Enter ending it.
    Close turns the source arc into its circle, an elliptical arc into its
    ellipse.
 
@@ -41,9 +42,11 @@ erased.
 |---|---|---|
 | Line | lines | Collinear, gaps allowed: the result spans the farthest ends. |
 | Arc | arcs | Same center and radius, gaps allowed, joined counterclockwise from the source. A full turn gives a circle. `cLose` alone turns the source arc into its circle. |
+| Open spline | open splines | Contiguous, as a polyline: one spline, each raised to the highest degree, turned round as needed, closed when the chain comes back to its start; by its vertices (since 2026-11-23, ADR 0043 D4; its rules in [SPLINE's design](spline-command.md#the-spline-as-a-curve-adr-0043)). |
 | Open polyline | lines, arcs, open polylines | Contiguous (ends touching within the model tolerance, no gap filled) and at the polyline's height: one polyline, segments in path order, arcs as bulges. Pieces attach at either end, turned round when they run the other way. |
 
-A circle or a closed polyline cannot be a source, nor join one.
+A circle, a closed polyline or a closed spline cannot be a source, nor
+join one.
 
 ### Polylines: what each segment keeps
 

@@ -193,6 +193,14 @@ impl Spline {
         self.closed
     }
 
+    /// Whether it is periodic, as DWG marks one: closed, its knots not
+    /// clamped at its start. A closed spline clamped round to its start,
+    /// as JOIN closes one, is not.
+    pub fn is_periodic(&self) -> bool {
+        let p = self.degree;
+        self.closed && self.knots[p] != self.knots[0]
+    }
+
     /// The parameters it runs over.
     pub fn domain(&self) -> (f64, f64) {
         (self.knots[self.degree], self.knots[self.points.len()])

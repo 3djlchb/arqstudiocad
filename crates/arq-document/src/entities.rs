@@ -1736,7 +1736,7 @@ pub(crate) fn new_spline(
         .collect();
     sp.weights = spline.weights().to_vec();
     sp.flags.closed = spline.is_closed();
-    sp.flags.periodic = spline.is_closed();
+    sp.flags.periodic = spline.is_periodic();
     sp.flags.rational = !spline.weights().is_empty();
     sp.flags.planar = true;
     sp.flags.linear = spline.degree() == 1;
