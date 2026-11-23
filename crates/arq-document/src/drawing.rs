@@ -918,7 +918,7 @@ pub(crate) fn write_plan_spline(sp: &mut Spline, g: &arq_geometry::Spline, z: f6
         .collect();
     sp.weights = g.weights().to_vec();
     sp.flags.closed = g.is_closed();
-    sp.flags.periodic = g.is_closed();
+    sp.flags.periodic = g.is_periodic();
     sp.flags.rational = !g.weights().is_empty();
     sp.flags.planar = true;
     sp.flags.linear = g.degree() == 1;

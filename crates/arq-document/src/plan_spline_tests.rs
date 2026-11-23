@@ -311,3 +311,55 @@ fn a_spline_s_point_moved_by_its_number() {
     assert!(doc.spline_with_point(other, 0, p(0.0, 1.0)).is_err());
     assert!(doc.spline_fit(other).is_none());
 }
+
+#[test]
+fn a_closed_spline_clamped_round_to_its_start_is_not_periodic_and_reads_back() {
+    // As JOIN closes a chain: clamped, its last control point its first.
+    let open = Spline::by_vertices(3, wave(), false).unwrap();
+    let mut points = open.points().to_vec();
+    let last = points.len() - 1;
+    points[last] = points[0];
+    let ring = Spline::new(3, points, Vec::new(), open.knots().to_vec(), true).unwrap();
+    assert!(!ring.is_periodic());
+    assert!(Spline::by_vertices(3, wave(), true).unwrap().is_periodic());
+    let mut doc = Document::new();
+    let made = doc.add_spline(&ring, 0.0).unwrap();
+    // Written as plan geometry too, over a fitted spline.
+    let fit = SplineFit::new(wave(), SplineKnots::Chord, None, None, false).unwrap();
+    let fitted = doc.add_fit_spline(&fit, 0.0).unwrap();
+    let plan = doc.entity(fitted).unwrap().plan().unwrap();
+    doc.set_plan_geometry(
+        fitted,
+        plan.with_geometry(Geometry2::Spline(ring.clone().into())),
+    )
+    .unwrap();
+    for id in [made, fitted] {
+        let sp = codec(&doc, id);
+        assert!(
+            sp.flags.closed && !sp.flags.periodic,
+            "closed, not periodic"
+        );
+    }
+    let dxf = Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap();
+    let dwg = Document::read(
+        doc.to_dwg_bytes().unwrap(),
+        crate::FileFormat::Dwg,
+        std::path::Path::new("ring.dwg"),
+    )
+    .unwrap();
+    for back in [dxf, dwg] {
+        let ids: Vec<u64> = back
+            .entities()
+            .iter()
+            .filter(|e| e.kind() == "SPLINE")
+            .map(|e| e.id())
+            .collect();
+        assert_eq!(ids.len(), 2);
+        for id in ids {
+            let (s, _) = plan_spline(&back, id);
+            assert_eq!(s, ring);
+            assert_eq!(s.own_vertices().len(), ring.points().len() - 1);
+            assert!(!codec(&back, id).flags.periodic);
+        }
+    }
+}

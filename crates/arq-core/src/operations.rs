@@ -16,7 +16,7 @@ use arq_geometry::{
     Arc, Chain, Circle, CrossingArea, Ellipse, Geometry2, GeometryError, JoinPath, Line, Point2,
     Point3, SelectionPolygon, Spline, SplineFit, Tolerance, Transform2, Vector2, break_curve,
     chain_paths, cutting_points, extend, join_arcs, join_elliptical_arcs, join_groups, join_lines,
-    trim,
+    join_splines, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -656,7 +656,7 @@ impl CadDocument {
                     .filter(|p| same_height(p, &first, tol))
                     .collect();
                 let join = if first.plan.is_some() {
-                    join_curves(&first, &others, tol)
+                    join_curves(&first, &others, tol)?
                 } else {
                     join_chain(&first, &others, tol)
                 };
@@ -664,7 +664,7 @@ impl CadDocument {
             }
             None => {
                 for level in by_height(&usable, tol) {
-                    joins.extend(join_many(&level, tol));
+                    joins.extend(join_many(&level, tol)?);
                 }
             }
         }
@@ -1335,11 +1335,12 @@ enum Made {
     Polyline(Chain, f64),
 }
 
-/// A curve that can join: a line, an arc, an elliptical arc or an open
-/// lightweight polyline drawn in plan, not on a locked layer; its plan
-/// geometry when a line or an arc (elliptical or not), the path it chains
-/// by into a polyline (an elliptical arc has none: it joins only arcs of
-/// its ellipse, ADR 0041 D4), and its height.
+/// A curve that can join: a line, an arc, an elliptical arc, a spline or
+/// an open lightweight polyline drawn in plan, not on a locked layer; its
+/// plan geometry when a line, an arc (elliptical or not) or a spline, the
+/// path it chains by into a polyline (an elliptical arc has none: it joins
+/// only arcs of its ellipse, ADR 0041 D4; nor a spline: it joins only
+/// splines, ADR 0043 D4), and its height.
 #[derive(Clone)]
 struct Piece {
     id: EntityId,
@@ -1350,12 +1351,14 @@ struct Piece {
 
 fn piece(doc: &Document, id: EntityId) -> Option<Piece> {
     let e = doc.entity(id)?;
-    if !matches!(e.kind(), "LINE" | "ARC" | "ELLIPSE" | "LWPOLYLINE")
-        || check_unlocked(doc, &e).is_err()
+    if !matches!(
+        e.kind(),
+        "LINE" | "ARC" | "ELLIPSE" | "SPLINE" | "LWPOLYLINE"
+    ) || check_unlocked(doc, &e).is_err()
     {
         return None;
     }
-    if e.kind() == "ELLIPSE" {
+    if matches!(e.kind(), "ELLIPSE" | "SPLINE") {
         let plan = e.plan()?;
         return Some(Piece {
             id,
@@ -1373,10 +1376,12 @@ fn piece(doc: &Document, id: EntityId) -> Option<Piece> {
     })
 }
 
-/// A source line or arc joined with the lines, or the arcs, of `others` it
-/// takes; None when it takes none.
-fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
-    let plan = source.plan.clone()?;
+/// A source line, arc or spline joined with the lines, the arcs, or the
+/// splines of `others` it takes; None when it takes none.
+fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> CadResult<Option<Join>> {
+    let Some(plan) = source.plan.clone() else {
+        return Ok(None);
+    };
     let curves: Vec<(EntityId, Geometry2)> = others
         .iter()
         .filter_map(|p| p.plan.as_ref().map(|plan| (p.id, plan.geometry())))
@@ -1416,14 +1421,27 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
             let (joined, taken) = join_elliptical_arcs(ellipse, &arcs, tol);
             (joined, taken.into_iter().map(|i| ids[i]).collect())
         }
-        // Splines are joined in ADR 0043's fourth delivery.
-        Geometry2::Circle(_) | Geometry2::Spline(_) => return None,
+        Geometry2::Spline(spline) => {
+            let (ids, splines): (Vec<EntityId>, Vec<Spline>) = curves
+                .iter()
+                .filter_map(|(id, g)| match g {
+                    Geometry2::Spline(s) => Some((*id, s.as_ref().clone())),
+                    _ => None,
+                })
+                .unzip();
+            let Some((joined, taken)) = join_splines(&spline, &splines, tol)? else {
+                return Ok(None);
+            };
+            let taken = taken.into_iter().map(|i| ids[i]).collect();
+            (Geometry2::Spline(std::sync::Arc::new(joined)), taken)
+        }
+        Geometry2::Circle(_) => return Ok(None),
     };
-    (!taken.is_empty()).then_some(Join {
+    Ok((!taken.is_empty()).then_some(Join {
         source: source.id,
         made: Made::Curve(plan, result),
         erased: taken,
-    })
+    }))
 }
 
 /// `first` with the curves of `others` whose ends touch chained on, as a
@@ -1479,9 +1497,10 @@ fn uniform_width(piece: &Piece, tol: Tolerance) -> Option<f64> {
 
 /// JOIN many at once on one level: chains of touching ends, in selection
 /// order, each from its first (collinear lines alone stay a line, arcs of
-/// one circle alone an arc); then the lines and arcs left grouped as with
-/// a source, gaps filled.
-fn join_many(level: &[Piece], tol: Tolerance) -> Vec<Join> {
+/// one circle alone an arc); chains of touching splines, each from its
+/// first, a spline; then the lines and arcs left grouped as with a source,
+/// gaps filled.
+fn join_many(level: &[Piece], tol: Tolerance) -> CadResult<Vec<Join>> {
     let mut free = vec![true; level.len()];
     let mut joins = Vec::new();
     for seed in 0..level.len() {
@@ -1504,8 +1523,33 @@ fn join_many(level: &[Piece], tol: Tolerance) -> Vec<Join> {
         // All collinear lines stay a line; all arcs of one circle an arc, or
         // the circle when they close it.
         let alike =
-            join_curves(&level[seed], &members, tol).filter(|j| j.erased.len() == members.len());
+            join_curves(&level[seed], &members, tol)?.filter(|j| j.erased.len() == members.len());
         joins.push(alike.unwrap_or(chained));
+    }
+    let is_spline = |p: &Piece| {
+        matches!(
+            p.plan.as_ref().map(PlanGeometry::geometry),
+            Some(Geometry2::Spline(_))
+        )
+    };
+    for seed in 0..level.len() {
+        if !free[seed] || !is_spline(&level[seed]) {
+            continue;
+        }
+        let rest: Vec<usize> = (0..level.len())
+            .filter(|&i| i != seed && free[i] && is_spline(&level[i]))
+            .collect();
+        let others: Vec<Piece> = rest.iter().map(|&i| level[i].clone()).collect();
+        let Some(chained) = join_curves(&level[seed], &others, tol)? else {
+            continue;
+        };
+        for &i in &rest {
+            if chained.erased.contains(&level[i].id) {
+                free[i] = false;
+            }
+        }
+        free[seed] = false;
+        joins.push(chained);
     }
     let left: Vec<Piece> = (0..level.len())
         .filter(|&i| free[i] && level[i].plan.is_some())
@@ -1519,9 +1563,9 @@ fn join_many(level: &[Piece], tol: Tolerance) -> Vec<Join> {
     for group in join_groups(&curves, tol) {
         let (first, rest) = group.split_first().expect("a group has two");
         let others: Vec<Piece> = rest.iter().map(|&i| left[i].clone()).collect();
-        joins.extend(join_curves(&left[*first], &others, tol));
+        joins.extend(join_curves(&left[*first], &others, tol)?);
     }
-    joins
+    Ok(joins)
 }
 
 /// Whether two curves lie at one height: only those join.

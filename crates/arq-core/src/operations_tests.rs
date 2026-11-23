@@ -2938,25 +2938,109 @@ fn trim_and_break_cut_a_spline_into_splines_as_one_step() {
     assert_eq!(cad.document().entity(spline).unwrap(), kept);
 }
 
+/// The spline of entity `id` as plan geometry.
+fn plan_spline(cad: &CadDocument, id: EntityId) -> arq_geometry::Spline {
+    let Geometry2::Spline(s) = geometry(cad, id) else {
+        panic!("not a spline")
+    };
+    s.as_ref().clone()
+}
+
 #[test]
-fn join_takes_no_spline_until_its_delivery_and_changes_nothing() {
-    // Two splines end to end: JOIN of splines is ADR 0043's fourth
-    // delivery.
-    let (mut cad, spline) = bezier_spline();
-    let other = arq_geometry::Spline::by_vertices(
-        3,
-        vec![p(6.0, 0.0), p(8.0, -3.0), p(10.0, -3.0), p(12.0, 0.0)],
+fn join_from_a_spline_chains_the_splines_at_its_ends_as_one_step() {
+    let mut cad = CadDocument::new();
+    let fit = SplineFit::new(
+        vec![p(0.0, 0.0), p(2.0, 2.0), p(4.0, 1.0), p(6.0, 0.0)],
+        arq_geometry::SplineKnots::Chord,
+        None,
+        None,
         false,
     )
     .unwrap();
-    let (next, _) = cad.add_spline(&other).unwrap();
-    let before = cad.document().entities();
-    let joined = cad.join_entities(Some(spline), &[next]);
+    let (source, _) = cad.add_fit_spline(&fit).unwrap();
+    cad.set_entity_color(&[source], Color::Index(4)).unwrap();
+    // After its end, the other way round, of degree 2.
+    let after =
+        arq_geometry::Spline::by_vertices(2, vec![p(12.0, 0.0), p(9.0, -3.0), p(6.0, 0.0)], false)
+            .unwrap();
+    let (next, _) = cad.add_spline(&after).unwrap();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(-3.0, 0.0)).unwrap();
+    let before = cad.document().entity(source).unwrap();
+    let steps = cad.undo_names().len();
+
+    let (joined, changes) = cad.join_entities(Some(source), &[line, next]).unwrap();
+    assert_eq!(joined.results, [source], "the source, its id kept");
+    assert_eq!((joined.joined, joined.discarded), (1, 1));
+    assert_eq!(changes.deleted(), [next]);
+    assert_eq!(changes.modified(), [source]);
+    assert_eq!(cad.undo_names().len(), steps + 1);
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    let e = cad.document().entity(source).unwrap();
+    assert_eq!((e.kind(), e.color()), ("SPLINE", Color::Index(4)));
     assert!(
-        joined.map_or(true, |(j, _)| j.joined == 0),
-        "nothing joined"
+        cad.document().entity(line).is_some(),
+        "splines join splines"
     );
-    assert_eq!(cad.document().entities(), before);
+    let s = plan_spline(&cad, source);
+    assert_eq!(s.degree(), 3);
+    assert_eq!(s.ends(), (p(0.0, 0.0), p(12.0, 0.0)));
+    assert!(s.distance_to(p(9.0, -1.5)) < 1e-9, "through the other");
+    assert!(
+        cad.document().spline_fit(source).is_none(),
+        "by its vertices now"
+    );
+    let far = arq_geometry::Bounds2::new(p(11.0, -0.5), p(11.5, 0.5));
+    assert_eq!(cad.query_entities(far), [source], "the index has it");
+
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entity(source).unwrap(), before);
+    assert!(cad.document().spline_fit(source).is_some(), "its fit back");
+    assert_eq!(plan_spline(&cad, next), after);
+}
+
+#[test]
+fn join_many_at_once_chains_splines_each_from_its_first_and_closes() {
+    let mut cad = CadDocument::new();
+    let cubic = |points: [(f64, f64); 4]| {
+        arq_geometry::Spline::by_vertices(3, points.map(|(x, y)| p(x, y)).to_vec(), false).unwrap()
+    };
+    // A ring of three, and two apart in a line of their own.
+    let (a, _) = cad
+        .add_spline(&cubic([(0.0, 0.0), (1.0, -1.0), (3.0, -1.0), (4.0, 0.0)]))
+        .unwrap();
+    let (far, _) = cad
+        .add_spline(&cubic([(20.0, 0.0), (21.0, 1.0), (22.0, 1.0), (23.0, 0.0)]))
+        .unwrap();
+    let (b, _) = cad
+        .add_spline(&cubic([(4.0, 0.0), (5.0, 1.0), (5.0, 3.0), (4.0, 4.0)]))
+        .unwrap();
+    let (c, _) = cad
+        .add_spline(&cubic([(0.0, 0.0), (-1.0, 2.0), (2.0, 6.0), (4.0, 4.0)]))
+        .unwrap();
+    let (farther, _) = cad
+        .add_spline(&cubic([
+            (23.0, 0.0),
+            (24.0, -1.0),
+            (25.0, -1.0),
+            (26.0, 0.0),
+        ]))
+        .unwrap();
+    let (line, _) = cad.add_line(p(4.0, 0.0), p(8.0, 0.0)).unwrap();
+    let (joined, _) = cad
+        .join_entities(None, &[a, far, b, c, farther, line])
+        .unwrap();
+    assert_eq!(joined.results, [a, far]);
+    assert_eq!((joined.joined, joined.discarded), (3, 1));
+    let ring = plan_spline(&cad, a);
+    assert!(ring.is_closed());
+    let n = ring.points().len();
+    assert_eq!(ring.points()[n - 1], ring.points()[0]);
+    assert_eq!(plan_spline(&cad, far).ends(), (p(20.0, 0.0), p(26.0, 0.0)));
+    for id in [b, c, farther] {
+        assert!(cad.document().entity(id).is_none());
+    }
+    assert!(cad.document().entity(line).is_some());
+    assert_eq!(cad.undo_names().iter().filter(|n| **n == "JOIN").count(), 1);
 }
 
 #[test]

@@ -2,7 +2,8 @@
 
 One object selected is the source: a line takes collinear lines, an arc the
 arcs of its circle, an elliptical arc the arcs of its ellipse (ADR 0041),
-an open polyline the lines, arcs and polylines whose ends touch it. Several
+an open spline the open splines whose ends touch it (ADR 0043 D4), an open
+polyline the lines, arcs and polylines whose ends touch it. Several
 selected at once are joined together: chains of touching ends, and lines
 and arcs of one line, circle or ellipse.
 """
@@ -19,12 +20,12 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import Ids, done_selecting
-from arqstudiocad.core import CadDocument, CadEllipse, CadError
+from arqstudiocad.core import CadDocument, CadEllipse, CadError, CadSpline
 from arqstudiocad.i18n import tr
 
-#: What can join, and be a source; a polyline when it is open, an ellipse
-#: when it is an arc.
-JOINABLE = ("LINE", "ARC", "ELLIPSE", "LWPOLYLINE")
+#: What can join, and be a source; a polyline or a spline when it is open,
+#: an ellipse when it is an arc.
+JOINABLE = ("LINE", "ARC", "ELLIPSE", "SPLINE", "LWPOLYLINE")
 
 
 def join(ctx: CommandContext) -> CommandScript:
@@ -47,10 +48,13 @@ def join(ctx: CommandContext) -> CommandScript:
     in_plan = entity.kind == "LWPOLYLINE" or entity.geometry is not None
     whole = isinstance(entity.geometry, CadEllipse) and entity.geometry.is_full
     if entity.kind not in JOINABLE or not in_plan or whole:
-        ctx.message(tr("JOIN joins lines, arcs, elliptical arcs and open polylines."))
+        ctx.message(tr("JOIN joins lines, arcs, elliptical arcs, splines and open polylines."))
         return
     if entity.kind == "LWPOLYLINE" and dict(entity.details).get("Closed") == "true":
         ctx.message(tr("A closed polyline cannot be joined."))
+        return
+    if isinstance(entity.geometry, CadSpline) and entity.geometry.is_closed:
+        ctx.message(tr("A closed spline cannot be joined."))
         return
     options: list[Option] = []
     if entity.kind == "ARC":
@@ -61,6 +65,8 @@ def join(ctx: CommandContext) -> CommandScript:
         options = [Option("L", tr("Close"))]
     elif entity.kind == "LINE":
         message = tr("Select lines to join to source")
+    elif entity.kind == "SPLINE":
+        message = tr("Select splines to join to source")
     else:
         message = tr("Select objects to join to source")
     others = yield from _selected(ctx, document, message, options)
