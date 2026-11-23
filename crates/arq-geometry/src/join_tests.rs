@@ -213,3 +213,111 @@ fn nothing_touching_leaves_the_path_as_it_was() {
     assert!(chain.taken.is_empty() && !chain.closed);
     assert_eq!(chain.path, first);
 }
+
+/// About (0,0), semi-axes 5 along x and 3, from `start` to `end`.
+fn elliptical(start: f64, end: f64) -> crate::Ellipse {
+    crate::Ellipse::new(
+        Point2::new(0.0, 0.0).unwrap(),
+        crate::Vector2::new(5.0, 0.0).unwrap(),
+        0.6,
+        start,
+        end,
+    )
+    .unwrap()
+}
+
+fn ellipse_of(g: Geometry2) -> crate::Ellipse {
+    let Geometry2::Ellipse(e) = g else {
+        panic!("{g:?}")
+    };
+    e
+}
+
+#[test]
+fn elliptical_arcs_of_one_ellipse_join_counterclockwise_gaps_filled() {
+    let tol = Tolerance::DEFAULT;
+    // From 0 to 1, then 1.5 to 2.5 (a gap filled) and 2.5 to 3: 0 to 3.
+    let (joined, taken) = join_elliptical_arcs(
+        elliptical(0.0, 1.0),
+        &[elliptical(1.5, 2.5), elliptical(2.5, 3.0)],
+        tol,
+    );
+    let e = ellipse_of(joined);
+    assert_eq!(taken, [0, 1]);
+    assert!(
+        e.start_param().abs() < 1e-12 && (e.sweep() - 3.0).abs() < 1e-12,
+        "{e:?}"
+    );
+    // Going all the way round: the whole ellipse.
+    let (whole, _) = join_elliptical_arcs(
+        elliptical(0.0, 2.0),
+        &[elliptical(2.0, 4.0), elliptical(4.0, 0.0)],
+        tol,
+    );
+    assert!(ellipse_of(whole).is_full());
+    // Short of the turn by a rounding: whole too.
+    let (whole, _) = join_elliptical_arcs(
+        elliptical(0.0, 2.0),
+        &[elliptical(2.0, 4.0), elliptical(4.0, TAU - 1e-13)],
+        tol,
+    );
+    assert!(ellipse_of(whole).is_full());
+    // One written with its major axis the other way (parameters a half
+    // turn on) is the same ellipse.
+    let flipped = crate::Ellipse::new(
+        Point2::new(0.0, 0.0).unwrap(),
+        crate::Vector2::new(-5.0, 0.0).unwrap(),
+        0.6,
+        1.0 - std::f64::consts::PI,
+        2.0 - std::f64::consts::PI,
+    )
+    .unwrap();
+    let (joined, taken) = join_elliptical_arcs(elliptical(0.0, 1.0), &[flipped], tol);
+    assert_eq!(taken, [0]);
+    assert!((ellipse_of(joined).sweep() - 2.0).abs() < 1e-9);
+}
+
+#[test]
+fn other_ellipses_and_whole_ones_do_not_join() {
+    let tol = Tolerance::DEFAULT;
+    let p = |x: f64, y: f64| Point2::new(x, y).unwrap();
+    let v = |x: f64, y: f64| crate::Vector2::new(x, y).unwrap();
+    let others = [
+        crate::Ellipse::new(p(1.0, 0.0), v(5.0, 0.0), 0.6, 1.0, 2.0).unwrap(),
+        crate::Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.5, 1.0, 2.0).unwrap(),
+        crate::Ellipse::new(p(0.0, 0.0), v(0.0, 5.0), 0.6, 1.0, 2.0).unwrap(),
+        crate::Ellipse::new(p(0.0, 0.0), v(6.0, 0.0), 0.5, 1.0, 2.0).unwrap(),
+        elliptical(0.0, 0.0),
+    ];
+    let source = elliptical(0.0, 1.0);
+    let (joined, taken) = join_elliptical_arcs(source, &others, tol);
+    assert!(taken.is_empty(), "{taken:?}");
+    assert_eq!(ellipse_of(joined), source);
+    // A whole ellipse as the source takes nothing.
+    let (_, taken) = join_elliptical_arcs(elliptical(0.0, 0.0), &[elliptical(1.0, 2.0)], tol);
+    assert!(taken.is_empty());
+    // Round ones, a circle-like ellipse, join whatever way their axis lies.
+    let round =
+        |m: crate::Vector2, s: f64, e: f64| crate::Ellipse::new(p(0.0, 0.0), m, 1.0, s, e).unwrap();
+    let (_, taken) = join_elliptical_arcs(
+        round(v(2.0, 0.0), 0.0, 1.0),
+        &[round(v(0.0, 2.0), 0.0, 1.0)],
+        tol,
+    );
+    assert_eq!(taken, [0]);
+}
+
+#[test]
+fn many_at_once_groups_arcs_of_one_ellipse() {
+    let tol = Tolerance::DEFAULT;
+    let curves: Vec<Geometry2> = vec![
+        elliptical(0.0, 1.0).into(),
+        elliptical(0.0, 0.0).into(),
+        elliptical(2.0, 3.0).into(),
+    ];
+    assert_eq!(
+        join_groups(&curves, tol),
+        [vec![0, 2]],
+        "the whole one joins none"
+    );
+}

@@ -8,6 +8,7 @@ use std::f64::consts::TAU;
 
 use crate::angle;
 use crate::arc::Arc;
+use crate::ellipse::Ellipse;
 use crate::geometry::Geometry2;
 use crate::line::Line;
 use crate::point::Point2;
@@ -211,8 +212,60 @@ pub fn join_arcs(source: Arc, others: &[Arc], tol: Tolerance) -> (Geometry2, Vec
     (curve, joined)
 }
 
+/// The elliptical arc `source` becomes joined with every elliptical arc of
+/// `others` on its own ellipse, as an arc with the arcs of its circle (ADR
+/// 0041 D4): counterclockwise from its start round to the farthest end any
+/// reaches, gaps filled; the whole ellipse when they go all the way round.
+/// Also the indices of the `others` it took. A whole ellipse takes none.
+pub fn join_elliptical_arcs(
+    source: Ellipse,
+    others: &[Ellipse],
+    tol: Tolerance,
+) -> (Geometry2, Vec<usize>) {
+    if source.is_full() {
+        return (Geometry2::Ellipse(source), Vec::new());
+    }
+    let joined: Vec<usize> = (0..others.len())
+        .filter(|&i| !others[i].is_full() && same_ellipse(source, others[i], tol))
+        .collect();
+    let slack = (tol.linear() / (source.major_axis().length() * source.ratio())).max(tol.angular());
+    let start = source.start_param();
+    let mut reach = source.sweep();
+    for &i in &joined {
+        // Its ends' parameters on the source's own frame: the same ellipse
+        // may be written with its major axis the other way.
+        let (a, b) = others[i].ends().expect("an arc");
+        let (from_param, to_param) = (source.param_of(a), source.param_of(b));
+        let sweep = match angle::ccw_sweep(from_param, to_param) {
+            0.0 => TAU,
+            w => w,
+        };
+        let mut from = angle::ccw_sweep(start, from_param);
+        if from > TAU - slack {
+            from -= TAU; // starts with the source, a rounding before it
+        }
+        reach = reach.max(from + sweep);
+    }
+    let curve = if reach >= TAU - slack {
+        source.whole()
+    } else if reach == source.sweep() {
+        source
+    } else {
+        Ellipse::new(
+            source.center(),
+            source.major_axis(),
+            source.ratio(),
+            start,
+            start + reach,
+        )
+        .expect("the source's ellipse and a sweep short of a turn")
+    };
+    (Geometry2::Ellipse(curve), joined)
+}
+
 /// JOIN's groups when many objects are joined at once, as AutoCAD makes
-/// them: collinear lines together, arcs of one circle together. Each group
+/// them: collinear lines together, arcs of one circle together, arcs of
+/// one ellipse together. Each group
 /// lists indices into `curves` in selection order, the first being the
 /// object its result is joined from; a group has two curves at least. A
 /// curve in no group joins nothing (a circle never does).
@@ -231,6 +284,9 @@ pub fn join_groups(curves: &[Geometry2], tol: Tolerance) -> Vec<Vec<usize>> {
             let together = match (curves[first], curves[other]) {
                 (Geometry2::Line(a), Geometry2::Line(b)) => collinear(a, b, tol),
                 (Geometry2::Arc(a), Geometry2::Arc(b)) => same_circle(a, b, tol),
+                (Geometry2::Ellipse(a), Geometry2::Ellipse(b)) => {
+                    !a.is_full() && !b.is_full() && same_ellipse(a, b, tol)
+                }
                 _ => false,
             };
             if together {
@@ -259,6 +315,19 @@ fn collinear(line: Line, other: Line, tol: Tolerance) -> bool {
 fn same_circle(arc: Arc, other: Arc, tol: Tolerance) -> bool {
     arc.center().distance_to(other.center()) <= tol.linear()
         && (arc.radius() - other.radius()).abs() <= tol.linear()
+}
+
+/// Whether `other` lies on `ellipse`'s own: the same center and semi-axes,
+/// the major one along the same line (either way), unless both are round.
+fn same_ellipse(ellipse: Ellipse, other: Ellipse, tol: Tolerance) -> bool {
+    let (a, b) = (ellipse.major_axis().length(), other.major_axis().length());
+    let (minor_a, minor_b) = (a * ellipse.ratio(), b * other.ratio());
+    let round = (a - minor_a).abs() <= tol.linear();
+    let along = ellipse.major_axis().cross(other.major_axis()).abs() / (a * b) <= tol.angular();
+    ellipse.center().distance_to(other.center()) <= tol.linear()
+        && (a - b).abs() <= tol.linear()
+        && (minor_a - minor_b).abs() <= tol.linear()
+        && (round || along)
 }
 
 /// The angle the linear tolerance spans on `arc`'s circle, at least the
