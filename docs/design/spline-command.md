@@ -148,6 +148,21 @@ curve.
     and elevation;
   - for one spline, a fit point or control vertex chosen by its number,
     its X and Y editable.
+- **JOIN** (delivery 4, 2026-11-23):
+  - a source open spline takes the open splines touching its ends,
+    end to end, each turned round when it runs the other way; where
+    several touch an end, the first selected joins;
+  - each is brought exactly to the highest degree among them, and their
+    knots run on one after the other, so where two meet the curve is one
+    control point;
+  - many at once, touching splines chain into one spline from the first
+    selected;
+  - a chain that comes back to its start closes: clamped round to its
+    start, written closed but not periodic;
+  - the result keeps the source's id and properties, by its vertices,
+    its fit points dropped, which no longer describe it *(to confirm)*;
+  - a closed spline is no source and joins nothing; lines, arcs,
+    ellipses and polylines do not join a spline yet.
 
 Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 
@@ -160,5 +175,8 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 | SC5 | BREAK the spline, First (2,2), second (4,2) | the same two splines as SC3 |
 | SC6 | STRETCH the Bézier, crossing window (3.5,2)–(4.5,3.5) round its vertex (4,3), by (1,1) | that vertex at (5,4), the others kept |
 | SC7 | STRETCH a spline made through (0,0), (3,4), (7,1), (9,6), window (6,0)–(8,2), by (0,−2) | fitted again through (7,−1), its fit points kept |
+| SC8 | JOIN from the Bézier the one from (12,0) by (10,−3) and (8,−3) to (6,0) | one cubic by (0,0), (2,3), (4,3), (6,0), (8,−3), (10,−3), (12,0), knots 0 ×4, 1 ×3, 2 ×4 |
+| SC9 | JOIN from the Bézier the quadratic by (6,0), (8,−3), (10,0) | one cubic, the quadratic raised: (6,0), (7⅓,−2), (8⅔,−2), (10,0) after the Bézier's points, knots as SC8 |
+| SC10 | JOIN many at once three cubic Béziers in a ring: (0,0) (1,−1) (3,−1) (4,0); (4,0) (5,1) (5,3) (4,4); (4,4) (2,6) (−1,2) (0,0) | one closed cubic of 10 control points, its last its first, knots 0 ×4, 1 ×3, 2 ×3, 3 ×4; DXF flag 70 = 9, closed and not periodic |
 
 **To run.**

@@ -356,6 +356,14 @@
                    (mapcar '(lambda (k) (cons 40 k)) '(0.0 0.0 0.0 0.0 1.0 1.0 1.0 1.0))
                    (mapcar '(lambda (p) (list 10 (float (car p)) (float (cadr p)) 0.0)) pts)))
   (vlax-ename->vla-object (entlast)))
+;;; A quadratic Bezier SPLINE by its three control points pts; returned.
+(defun arq:spl2 (doc pts)
+  (entmake (append (list '(0 . "SPLINE") '(100 . "AcDbEntity") '(8 . "0") '(100 . "AcDbSpline")
+                         '(210 0.0 0.0 1.0) '(70 . 8) '(71 . 2) '(72 . 6) '(73 . 3) '(74 . 0)
+                         '(42 . 1.0e-10) '(43 . 1.0e-10))
+                   (mapcar '(lambda (k) (cons 40 k)) '(0.0 0.0 0.0 1.0 1.0 1.0))
+                   (mapcar '(lambda (p) (list 10 (float (car p)) (float (cadr p)) 0.0)) pts)))
+  (vlax-ename->vla-object (entlast)))
 ;;; An ELLIPSE about c, its major semi-axis the vector major, cut to the
 ;;; parameters p0 to p1 (radians) unless they are nil; returned.
 (defun arq:ell (doc c major ratio p0 p1 / e)
@@ -535,6 +543,12 @@
   ;; point (7,1) of a spline SPLINE makes through (0,0) (3,4) (7,1) (9,6).
   (arq:command-case "SC6-stretch-spline-vertex" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.STRETCH" "_C" '(4.5 3.5) '(3.5 2) "" '(0 0) '(1 1)) dir log)
   (arq:command-case "SC7-stretch-spline-fit-point" '(progn (arq:spline-defaults) (command "_.SPLINE" '(0 0) '(3 4) '(7 1) '(9 6) "") (while (= 1 (logand 1 (getvar "CMDACTIVE"))) (command "")) (list (vlax-ename->vla-object (entlast)))) '(command "_.STRETCH" "_C" '(8 2) '(6 0) "" '(0 0) '(0 -2)) dir log)
+  ;; SC8-SC10: JOIN of splines (ADR 0043 D4). SC8: the Bezier and one
+  ;; after it, the other way round; SC9: a quadratic after it; SC10: three
+  ;; touching in a ring, many at once.
+  (arq:command-case "SC8-join-splines" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:spl doc '((12 0) (10 -3) (8 -3) (6 0)))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  (arq:command-case "SC9-join-spline-degrees" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:spl2 doc '((6 0) (8 -3) (10 0)))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
+  (arq:command-case "SC10-join-splines-ring-at-once" '(list (arq:spl doc '((0 0) (1 -1) (3 -1) (4 0))) (arq:spl doc '((4 0) (5 1) (5 3) (4 4))) (arq:spl doc '((4 4) (2 6) (-1 2) (0 0)))) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
   (arq:command-case "SC4-extend-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(8 -9) '(8 9))) '(arq:extend (cadr arq:o) '(5.8824 0.1764)) dir log)
   ;; SPLINE (docs/design/spline-command.md): through (0,0) (3,4) (7,1)
   ;; (9,6). Prompts as AutoCAD 2021's; a case whose prompts ProgeCAD does

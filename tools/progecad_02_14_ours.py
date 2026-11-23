@@ -375,6 +375,30 @@ def el15(doc: CadDocument) -> None:
     doc.close_arc(ell(doc, 0.0, 1.0))
 
 
+def cubic(doc: CadDocument, points: list[tuple[float, float]], degree: int = 3) -> int:
+    """A Bézier of ``degree`` by its control points, as ``arq:spl`` makes."""
+    return doc.add_spline(CadSpline.by_vertices(points, degree=degree))[0]
+
+
+def sc8(doc: CadDocument) -> None:
+    source = bezier(doc)
+    doc.join_entities(source, [cubic(doc, [(12, 0), (10, -3), (8, -3), (6, 0)])])
+
+
+def sc9(doc: CadDocument) -> None:
+    source = bezier(doc)
+    doc.join_entities(source, [cubic(doc, [(6, 0), (8, -3), (10, 0)], degree=2)])
+
+
+def sc10(doc: CadDocument) -> None:
+    ring = [
+        cubic(doc, [(0, 0), (1, -1), (3, -1), (4, 0)]),
+        cubic(doc, [(4, 0), (5, 1), (5, 3), (4, 4)]),
+        cubic(doc, [(4, 4), (2, 6), (-1, 2), (0, 0)]),
+    ]
+    doc.join_entities(None, ring)
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -430,6 +454,9 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("SC5-break-spline", sc5),
     ("SC6-stretch-spline-vertex", sc6),
     ("SC7-stretch-spline-fit-point", sc7),
+    ("SC8-join-splines", sc8),
+    ("SC9-join-spline-degrees", sc9),
+    ("SC10-join-splines-ring-at-once", sc10),
     ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
     (
         "SP2-spline-fit-tangents",

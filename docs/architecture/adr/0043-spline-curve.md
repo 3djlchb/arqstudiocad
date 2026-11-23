@@ -155,7 +155,16 @@ with no new library.
        group would undo the whole group;
      - Properties shows one spline's point chosen by its number, its X and
        Y editable, as one PROPERTIES step.
-4. JOIN of splines.
+4. JOIN of splines (2026-11-23), as D4 says:
+   - `Spline::reversed` and `Spline::elevated`, degree elevation by The
+     NURBS Book's A5.9 in homogeneous coordinates, so exact for a
+     rational spline too; `join_splines` chains them as `chain_paths`
+     chains a polyline's pieces;
+   - many at once, touching splines chain from the first selected;
+   - a chain back to its start is clamped round to it, its last control
+     point its first: DWG's closed flag without the periodic one, which
+     is now set only when its knots are not clamped (`Spline::is_periodic`);
+   - the result is written by its vertices, its fit points dropped.
 5. OFFSET of ellipses and splines.
 
 Each delivery adds its cases to the Windows comparison tools.
