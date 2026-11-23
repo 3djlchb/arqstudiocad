@@ -108,12 +108,12 @@ impl Retained {
                 continue;
             }
             for item in &entry.items {
-                if !shape_bounds(item.shape).intersects(region, tol) {
+                if !shape_bounds(&item.shape).intersects(region, tol) {
                     continue;
                 }
                 let [r, g, b] = ink(item.color, style);
                 builder.rgba = [r, g, b, 255];
-                builder.add(item.shape);
+                builder.add(&item.shape);
             }
         }
         Some(Self {
@@ -174,8 +174,8 @@ struct Builder {
 }
 
 impl Builder {
-    fn add(&mut self, shape: Shape) {
-        match shape {
+    fn add(&mut self, shape: &Shape) {
+        match *shape {
             Shape::Line(l) => {
                 self.segment(l.start(), l.end(), false);
                 self.dot_if_tiny(l.start(), l.end());
@@ -203,7 +203,15 @@ impl Builder {
             Shape::Ellipse(e) => {
                 for w in e.flatten().windows(2) {
                     if let Ok(chord) = arq_geometry::Line::new(w[0], w[1]) {
-                        self.add(Shape::Line(chord));
+                        self.add(&Shape::Line(chord));
+                    }
+                }
+            }
+            // And a spline, by the codec's own points (ADR 0042).
+            Shape::Spline(ref s) => {
+                for w in s.flatten().windows(2) {
+                    if let Ok(chord) = arq_geometry::Line::new(w[0], w[1]) {
+                        self.add(&Shape::Line(chord));
                     }
                 }
             }

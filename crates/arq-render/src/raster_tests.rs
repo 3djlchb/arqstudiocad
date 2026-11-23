@@ -477,3 +477,46 @@ fn an_ellipse_draws_the_pixels_its_chords_drew() {
         );
     }
 }
+
+/// A non-uniform cubic spline, as one exact shape and as its chords.
+fn spline_and_chords() -> (Scene, Scene) {
+    let points = vec![
+        p(-30.0, -10.0),
+        p(-10.0, 25.0),
+        p(5.0, -20.0),
+        p(20.0, 18.0),
+        p(35.0, 0.0),
+    ];
+    let knots = vec![0.0, 0.0, 0.0, 0.0, 0.35, 1.0, 1.0, 1.0, 1.0];
+    let s = arq_geometry::Spline::new(3, points, vec![], knots, false).unwrap();
+    let color = Color::Index(2);
+    let chords = s
+        .flatten()
+        .windows(2)
+        .filter_map(|w| Line::new(w[0], w[1]).ok())
+        .map(|l| arq_core::DrawItem {
+            shape: arq_core::Shape::Line(l),
+            color,
+        })
+        .collect();
+    let exact = vec![arq_core::DrawItem {
+        shape: arq_core::Shape::Spline(std::sync::Arc::new(s)),
+        color,
+    }];
+    (Scene::from_items(exact), Scene::from_items(chords))
+}
+
+#[test]
+fn a_spline_draws_the_pixels_its_chords_drew() {
+    // ADR 0042: a spline is one exact shape, drawn chord by chord.
+    let (exact, chords) = spline_and_chords();
+    let light = Style {
+        background: [250, 250, 250],
+    };
+    for style in [DARK, light] {
+        assert_eq!(
+            render(&exact, &camera(), style),
+            render(&chords, &camera(), style)
+        );
+    }
+}

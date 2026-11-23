@@ -121,6 +121,9 @@ impl Document {
                             Shape::Circle(c) => Shape::Circle(t.apply_circle(c)?),
                             Shape::Arc(a) => Shape::Arc(t.apply_arc(a)?),
                             Shape::Ellipse(e) => Shape::Ellipse(e.transformed(t)?),
+                            Shape::Spline(s) => {
+                                Shape::Spline(std::sync::Arc::new(s.transformed(t)?))
+                            }
                             Shape::Point(p) => Shape::Point(t.apply_point(p)),
                             Shape::Text(b) => Shape::Text(Bounds2::new(
                                 t.apply_point(b.min()),

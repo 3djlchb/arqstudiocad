@@ -444,10 +444,14 @@ fn a_hatch_with_rational_and_mirrored_curved_edges() {
             "0",
         ],
     );
-    let curve: Vec<Point2> = lines(&shapes(&spline))
+    // The edge is a spline shape now (ADR 0042), drawn by these points.
+    let curve: Vec<Point2> = shapes(&spline)
         .into_iter()
-        .filter(|((ax, ay), (bx, by))| (ax + ay - 1.0).abs() > 1e-9 || (bx + by - 1.0).abs() > 1e-9)
-        .flat_map(|(a, b)| [p(a.0, a.1), p(b.0, b.1)])
+        .filter_map(|item| match item.shape {
+            Shape::Spline(s) => Some(s.flatten().to_vec()),
+            _ => None,
+        })
+        .flatten()
         .collect();
     assert!(curve.len() > 4, "{curve:?}");
     for q in &curve {
@@ -492,7 +496,7 @@ fn a_mirrored_hatch_is_drawn_where_it_is() {
     );
     let Some(Shape::Arc(arc)) = items
         .iter()
-        .map(|i| i.shape)
+        .map(|i| i.shape.clone())
         .find(|s| matches!(s, Shape::Arc(_)))
     else {
         panic!("{items:?}")
@@ -720,7 +724,7 @@ fn texts_points_and_unknown_ids() {
         ],
     );
     let all = shapes(&doc);
-    match all[0].shape {
+    match all[0].shape.clone() {
         // Its box picks it; "NOTA" at height 2.5 has no descenders.
         Shape::Text(b) => assert!(near(b.min(), p(20.0, 5.0)) && b.height() > 1.0, "{b:?}"),
         other => panic!("not a text box: {other:?}"),
@@ -735,7 +739,7 @@ fn texts_points_and_unknown_ids() {
     assert_eq!(items[1].shape, Shape::Point(p(3.0, 4.0)));
     assert_eq!(items[1].color, Color::Index(1), "MUROS");
     assert!(matches!(items[2].shape, Shape::Circle(c) if (c.radius() - 2.0).abs() < 1e-12));
-    match items[3].shape {
+    match items[3].shape.clone() {
         Shape::Arc(a) => assert!((a.end_angle() - PI / 2.0).abs() < 1e-12),
         other => panic!("not an arc: {other:?}"),
     }
@@ -1406,4 +1410,206 @@ fn an_ellipse_seen_from_below_turns_and_mirrors_where_it_is_drawn() {
         }
         assert!((after.sweep() - before.sweep()).abs() < 1e-12);
     }
+}
+
+/// A SPLINE entity's DXF codes: normal z `nz`, flags `flags`, degree,
+/// knots, control points (x, y at height `z`) and weights (none, or one a
+/// point).
+fn spline_codes(
+    nz: &str,
+    flags: i32,
+    degree: usize,
+    knots: &[f64],
+    points: &[(f64, f64)],
+    z: f64,
+    weights: &[f64],
+) -> Vec<String> {
+    let mut c: Vec<String> = ["0", "SPLINE", "8", "0", "210", "0", "220", "0", "230", nz]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    let mut push = |code: &str, value: String| {
+        c.push(code.to_owned());
+        c.push(value);
+    };
+    push("70", flags.to_string());
+    push("71", degree.to_string());
+    push("72", knots.len().to_string());
+    push("73", points.len().to_string());
+    push("74", "0".to_owned());
+    for k in knots {
+        push("40", format!("{k:?}"));
+    }
+    for w in weights {
+        push("41", format!("{w:?}"));
+    }
+    for (x, y) in points {
+        push("10", format!("{x:?}"));
+        push("20", format!("{y:?}"));
+        push("30", format!("{z:?}"));
+    }
+    c
+}
+
+fn spline_doc(codes: &[String]) -> Document {
+    let refs: Vec<&str> = codes.iter().map(String::as_str).collect();
+    dxf(LAYERS, &[], &[&refs])
+}
+
+#[test]
+fn a_spline_in_the_plan_draws_the_codecs_own_chords() {
+    // Non-uniform cubic, closed, rational and seen from below: the exact
+    // shape's chords are the codec's own segments, point for point (ADR
+    // 0042), which splines out of the plan still draw.
+    let points = [
+        (0.0, 0.0),
+        (1.0, 3.0),
+        (3.5, 3.2),
+        (4.0, 0.5),
+        (6.0, -1.0),
+        (7.3, 2.0),
+    ];
+    let cubic = [0.0, 0.0, 0.0, 0.0, 0.3, 0.45, 1.0, 1.0, 1.0, 1.0];
+    let quadratic = [0.0, 0.0, 0.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0];
+    let cases = [
+        spline_codes("1", 8, 3, &cubic, &points, 0.0, &[]),
+        spline_codes("1", 9, 3, &cubic, &points, 2.5, &[]),
+        spline_codes(
+            "1",
+            12,
+            2,
+            &quadratic,
+            &points,
+            0.0,
+            &[1.0, 0.5, 2.0, 1.0, 0.7, 1.0],
+        ),
+        spline_codes("-1", 8, 3, &cubic, &points, -4.0, &[]),
+    ];
+    for codes in &cases {
+        let doc = spline_doc(codes);
+        let id = doc.entities()[0].id();
+        let items = doc.drawing(id).unwrap();
+        let [item] = &items[..] else {
+            panic!("{items:?}")
+        };
+        let Shape::Spline(spline) = &item.shape else {
+            panic!("{item:?}")
+        };
+        let ours: Vec<((f64, f64), (f64, f64))> = spline
+            .flatten()
+            .windows(2)
+            .filter(|w| w[0] != w[1])
+            .map(|w| ((w[0].x(), w[0].y()), (w[1].x(), w[1].y())))
+            .collect();
+        let e = doc.cad().get_entity(crate::translate::handle(id)).unwrap();
+        let codecs: Vec<((f64, f64), (f64, f64))> = e
+            .flatten()
+            .into_iter()
+            .filter_map(|part| match part {
+                EntityType::Line(l) => Some(((l.start.x, l.start.y), (l.end.x, l.end.y))),
+                _ => None,
+            })
+            .collect();
+        assert!(!ours.is_empty());
+        assert_eq!(ours, codecs, "bit for bit");
+    }
+}
+
+#[test]
+fn a_tilted_spline_is_drawn_as_the_codec_draws_it() {
+    // Its control points at two heights: out of the plan, its old segments.
+    let mut codes = spline_codes(
+        "1",
+        8,
+        2,
+        &[0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        &[(0.0, 0.0), (1.0, 2.0), (2.0, 0.0)],
+        0.0,
+        &[],
+    );
+    let last_z = codes.len() - 1;
+    codes[last_z] = "3.0".to_owned();
+    let doc = spline_doc(&codes);
+    let items = doc.drawing(doc.entities()[0].id()).unwrap();
+    assert!(items.len() > 1 && items.iter().all(|i| matches!(i.shape, Shape::Line(_))));
+}
+
+#[test]
+fn a_spline_moved_whole_carries_its_fit_points_and_tangents() {
+    let mut codes = spline_codes(
+        "1",
+        8,
+        2,
+        &[0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        &[(0.0, 0.0), (1.0, 2.0), (2.0, 0.0)],
+        1.5,
+        &[],
+    );
+    let fit_count = codes.iter().position(|c| c == "74").unwrap() + 1;
+    codes[fit_count] = "2".to_owned();
+    for (code, value) in [
+        ("11", "0.0"),
+        ("21", "0.0"),
+        ("31", "1.5"),
+        ("11", "2.0"),
+        ("21", "0.0"),
+        ("31", "1.5"),
+        ("12", "1.0"),
+        ("22", "1.0"),
+        ("32", "0.0"),
+        ("13", "1.0"),
+        ("23", "-1.0"),
+        ("33", "0.0"),
+    ] {
+        codes.push(code.to_owned());
+        codes.push(value.to_owned());
+    }
+    let mut doc = spline_doc(&codes);
+    let id = doc.entities()[0].id();
+    let t = arq_geometry::Transform2::rotation(Point2::ORIGIN, std::f64::consts::FRAC_PI_2)
+        .unwrap()
+        .then(arq_geometry::Transform2::translation(
+            arq_geometry::Vector2::new(10.0, 0.0).unwrap(),
+        ));
+    doc.transform_entity(id, t).unwrap();
+    let EntityType::Spline(sp) = doc.cad().get_entity(crate::translate::handle(id)).unwrap() else {
+        panic!()
+    };
+    let xy = |v: Vector3| {
+        (
+            (v.x * 1e9).round() / 1e9 + 0.0,
+            (v.y * 1e9).round() / 1e9 + 0.0,
+        )
+    };
+    assert_eq!(
+        sp.fit_points.iter().map(|&v| xy(v)).collect::<Vec<_>>(),
+        [(10.0, 0.0), (10.0, 2.0)]
+    );
+    assert!(sp.fit_points.iter().all(|v| v.z == 1.5), "at its height");
+    assert_eq!(
+        (xy(sp.begin_tangent), xy(sp.end_tangent)),
+        ((-1.0, 1.0), (1.0, 1.0))
+    );
+}
+
+#[test]
+fn a_spline_our_geometry_refuses_is_drawn_by_the_codec_and_not_moved() {
+    // In the plan, but its knots all one value: no span to draw.
+    let codes = spline_codes(
+        "1",
+        8,
+        2,
+        &[0.0; 6],
+        &[(0.0, 0.0), (1.0, 2.0), (2.0, 0.0)],
+        0.0,
+        &[],
+    );
+    let doc = spline_doc(&codes);
+    let id = doc.entities()[0].id();
+    let items = doc.drawing(id).unwrap();
+    assert!(
+        items.iter().all(|i| !matches!(i.shape, Shape::Spline(_))),
+        "{items:?}"
+    );
+    assert!(!doc.entity(id).unwrap().is_transformable());
 }

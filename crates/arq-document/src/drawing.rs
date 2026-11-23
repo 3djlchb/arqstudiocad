@@ -19,6 +19,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::f64::consts::TAU;
+use std::sync::Arc as Shared;
 
 use acadrust::EntityType;
 use acadrust::entities::{BoundaryEdge, Ellipse, Hatch, Insert, LwPolyline, Spline};
@@ -39,8 +40,9 @@ const MAX_DEPTH: usize = 32;
 /// ACI 7, drawn white on dark backgrounds and black on light ones.
 const DEFAULT_COLOR: Color = Color::Index(7);
 
-/// One shape to draw, in world coordinates seen in plan.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// One shape to draw, in world coordinates seen in plan. Not `Copy`: a
+/// spline is shared, cloned by a count (ADR 0042).
+#[derive(Clone, Debug, PartialEq)]
 pub enum Shape {
     /// A straight segment.
     Line(Line),
@@ -64,12 +66,16 @@ pub enum Shape {
     /// and snapped to exactly; drawn by [`arq_geometry::Ellipse::flatten`]'s
     /// points, as ellipses have always been.
     Ellipse(arq_geometry::Ellipse),
+    /// A spline lying in the plan (ADR 0042): picked and snapped to
+    /// exactly; drawn by [`arq_geometry::Spline::flatten`]'s points, the
+    /// codec's own, as splines have always been.
+    Spline(Shared<arq_geometry::Spline>),
 }
 
 impl Shape {
     /// The box around the shape.
-    pub fn bounds(self) -> Bounds2 {
-        match self {
+    pub fn bounds(&self) -> Bounds2 {
+        match *self {
             Shape::Line(l) => l.bounds(),
             Shape::Circle(c) => c.bounds(),
             Shape::Arc(a) => a.bounds(),
@@ -77,13 +83,14 @@ impl Shape {
             Shape::Text(b) | Shape::Placeholder(b) => b,
             Shape::Triangle([a, b, c]) => Bounds2::new(a, b).including(c),
             Shape::Ellipse(e) => e.bounds(),
+            Shape::Spline(ref s) => s.bounds(),
         }
     }
 }
 
 /// A shape and the color to draw it in: an ACI index or RGB, never
 /// ByLayer or ByBlock.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DrawItem {
     /// What to draw.
     pub shape: Shape,
@@ -443,6 +450,14 @@ impl<'a> Painter<'a> {
                 }));
             }
             EntityType::Ellipse(el) => outline_ellipse(el, color, out),
+            EntityType::Spline(sp) => match plan_spline(sp) {
+                Some(spline) => out.push(DrawItem {
+                    shape: Shape::Spline(Shared::new(spline)),
+                    color,
+                }),
+                // Out of the plan, or not one we read: as the codec draws it.
+                None => self.emit_parts(e, ctx, out, color),
+            },
             EntityType::Hatch(h) => self.outline_hatch(h, e, ctx, color, out),
             EntityType::Solid3D(_)
             | EntityType::Region(_)
@@ -860,6 +875,65 @@ fn segment(a: (f64, f64), b: (f64, f64)) -> Option<Shape> {
     })
 }
 
+/// A spline lying in the plan, as the codec reads it to draw it: its
+/// control points all at one height, its degree clamped below their count,
+/// its knots when usable (else clamped uniform ones), its weights when it
+/// is rational. None for one out of the plan, of fewer than two control
+/// points (drawn by its fit points), or that our geometry refuses, all
+/// drawn as before (ADR 0042).
+pub(crate) fn plan_spline(sp: &Spline) -> Option<arq_geometry::Spline> {
+    let (degree, points, weights, knots) = plan_spline_parts(sp)?;
+    arq_geometry::Spline::new(degree, points, weights, knots, sp.flags.closed).ok()
+}
+
+/// Whether [`plan_spline`] reads `sp`, without drawing it.
+pub(crate) fn spline_in_plan(sp: &Spline) -> bool {
+    plan_spline_parts(sp).is_some_and(|(degree, points, weights, knots)| {
+        arq_geometry::Spline::check(degree, &points, &weights, &knots).is_ok()
+    })
+}
+
+/// What [`plan_spline`] makes a spline of: its degree, its control points
+/// in the plan, its weights and its knots.
+/// A spline's degree, control points in the plan, weights and knots.
+type SplineParts = (usize, Vec<Point2>, Vec<f64>, Vec<f64>);
+
+fn plan_spline_parts(sp: &Spline) -> Option<SplineParts> {
+    let n = sp.control_points.len();
+    if n < 2 {
+        return None;
+    }
+    let z = sp.control_points[0].z;
+    if sp
+        .control_points
+        .iter()
+        .any(|c| (c.z - z).abs() > 1e-9 * (1.0 + z.abs()))
+    {
+        return None;
+    }
+    let degree = usize::try_from(sp.degree)
+        .unwrap_or(3)
+        .max(1)
+        .clamp(1, n - 1);
+    let usable = sp.knots.len() == n + degree + 1 && sp.knots.windows(2).all(|w| w[1] >= w[0]);
+    let knots = if usable {
+        sp.knots.clone()
+    } else {
+        arq_geometry::Spline::clamped_knots(degree, n)
+    };
+    let points = sp
+        .control_points
+        .iter()
+        .map(|c| Point2::new(c.x, c.y).ok())
+        .collect::<Option<Vec<_>>>()?;
+    let weights = if sp.weights.len() == n {
+        sp.weights.clone()
+    } else {
+        Vec::new()
+    };
+    Some((degree, points, weights, knots))
+}
+
 /// An ellipse seen in plan: itself when it lies in the plan, else segments
 /// between points on it.
 fn outline_ellipse(el: &Ellipse, color: Color, out: &mut Vec<DrawItem>) {
@@ -1073,7 +1147,7 @@ fn polyline_walls(p: &LwPolyline, raised: &[SpaceItem], color: Color) -> Vec<Spa
 fn raised(item: DrawItem, z: f64) -> Option<SpaceItem> {
     let at = |x: f64, y: f64| Point3::new(x, y, z).ok();
     let up = Vector3::UNIT_Z;
-    let points: Vec<Point3> = match item.shape {
+    let points: Vec<Point3> = match &item.shape {
         // A fill is drawn in plan only; in space the curves stand for it.
         Shape::Triangle(_) => return None,
         Shape::Line(l) => [l.start(), l.end()]
@@ -1084,6 +1158,11 @@ fn raised(item: DrawItem, z: f64) -> Option<SpaceItem> {
         Shape::Ellipse(e) => e
             .flatten()
             .into_iter()
+            .filter_map(|p| at(p.x(), p.y()))
+            .collect(),
+        Shape::Spline(s) => s
+            .flatten()
+            .iter()
             .filter_map(|p| at(p.x(), p.y()))
             .collect(),
         Shape::Circle(c) => {

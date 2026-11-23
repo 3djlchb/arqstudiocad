@@ -27,14 +27,14 @@ pub fn outline(scene: &Scene, camera: &Camera, ids: &[EntityId]) -> Vec<Polyline
         ids.iter()
             .filter_map(|&id| scene.items(id))
             .flatten()
-            .map(|item| item.shape),
+            .map(|item| &item.shape),
         camera,
     )
 }
 
 /// Transient shapes, flattened exactly as selected scene entities.
 pub fn shapes_outline(shapes: &[Shape], camera: &Camera) -> Vec<Polyline> {
-    outline_shapes(shapes.iter().copied(), camera)
+    outline_shapes(shapes.iter(), camera)
 }
 
 /// Maximum work contributed by a rectangular array overlay. Whole copied
@@ -71,7 +71,7 @@ pub fn rectangular_array_outline(
     let mut vertices = 0;
     for &id in ids {
         for item in scene.items(id).into_iter().flatten() {
-            for path in shapes_outline(&[item.shape], camera) {
+            for path in shapes_outline(std::slice::from_ref(&item.shape), camera) {
                 if path.len() > ARRAY_PREVIEW_VERTICES - vertices {
                     return Ok(result);
                 }
@@ -107,11 +107,11 @@ pub fn rectangular_array_outline(
     Ok(result)
 }
 
-fn outline_shapes(shapes: impl Iterator<Item = Shape>, camera: &Camera) -> Vec<Polyline> {
+fn outline_shapes<'a>(shapes: impl Iterator<Item = &'a Shape>, camera: &Camera) -> Vec<Polyline> {
     let screen = |p: arq_geometry::Point2| camera.to_screen(p.x(), p.y());
     let mut out = Vec::new();
     for shape in shapes {
-        match shape {
+        match *shape {
             Shape::Line(l) => out.push(vec![screen(l.start()), screen(l.end())]),
             Shape::Circle(c) => out.push(arc(
                 camera,
@@ -141,6 +141,14 @@ fn outline_shapes(shapes: impl Iterator<Item = Shape>, camera: &Camera) -> Vec<P
             // Chord by chord, as ellipses have always been drawn (ADR 0040).
             Shape::Ellipse(e) => {
                 for w in e.flatten().windows(2) {
+                    if w[0] != w[1] {
+                        out.push(vec![screen(w[0]), screen(w[1])]);
+                    }
+                }
+            }
+            // And splines, by the codec's own points (ADR 0042).
+            Shape::Spline(ref s) => {
+                for w in s.flatten().windows(2) {
                     if w[0] != w[1] {
                         out.push(vec![screen(w[0]), screen(w[1])]);
                     }

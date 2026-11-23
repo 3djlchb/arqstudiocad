@@ -85,7 +85,7 @@ impl Document {
             .filter(|(_, items)| {
                 items
                     .iter()
-                    .any(|item| touches_polygon(item.shape, polygon))
+                    .any(|item| touches_polygon(&item.shape, polygon))
             })
             .map(|(id, _)| id)
             .collect()
@@ -125,7 +125,7 @@ impl Document {
             }
             let point = items
                 .into_iter()
-                .filter_map(|item| curve(item.shape))
+                .filter_map(|item| curve(&item.shape))
                 .flat_map(|g| intersection_points(fence.into(), g, TOL))
                 .map(|snap| snap.point)
                 .min_by(|a, b| start.distance_to(*a).total_cmp(&start.distance_to(*b)));
@@ -203,11 +203,21 @@ impl Document {
         // The curves the cursor rests on, closest first.
         let mut near: Vec<(Geometry2, f64)> = shapes
             .iter()
-            .filter_map(|&shape| curve(shape))
+            .filter_map(curve)
             .map(|g| (g, g.distance_to(cursor)))
             .filter(|(_, d)| *d <= aperture)
             .collect();
         near.sort_by(|a, b| a.1.total_cmp(&b.1));
+        // Splines the cursor rests on, apart: no `Geometry2` yet (ADR 0042).
+        let mut splines: Vec<(&arq_geometry::Spline, f64)> = shapes
+            .iter()
+            .filter_map(|shape| match shape {
+                Shape::Spline(s) => Some((s.as_ref(), s.distance_to(cursor))),
+                _ => None,
+            })
+            .filter(|(_, d)| *d <= aperture)
+            .collect();
+        splines.sort_by(|a, b| a.1.total_cmp(&b.1));
 
         let within = |p: &SnapPoint| p.point.distance_to(cursor) <= aperture;
         let closest = |points: Vec<SnapPoint>| {
@@ -221,6 +231,7 @@ impl Document {
         let mut points: Vec<SnapPoint> = near
             .iter()
             .flat_map(|(g, _)| key_points(*g))
+            .chain(splines.iter().flat_map(|(s, _)| spline_ends(s)))
             .filter(|p| p.kind != SnapKind::Center && on(p.kind) && within(p))
             .collect();
         if on(SnapKind::Intersection) {
@@ -258,10 +269,36 @@ impl Document {
         }
 
         if on(SnapKind::Nearest) {
-            return near.first().map(|(g, _)| nearest_point(*g, cursor));
+            let curve = near.first().map(|(g, d)| (nearest_point(*g, cursor), *d));
+            let spline = splines.first().map(|(s, d)| {
+                let point = SnapPoint {
+                    kind: SnapKind::Nearest,
+                    point: s.closest_point(cursor),
+                };
+                (point, *d)
+            });
+            return match (curve, spline) {
+                (Some(c), Some(s)) => Some(if s.1 < c.1 { s.0 } else { c.0 }),
+                (c, s) => c.or(s).map(|(p, _)| p),
+            };
         }
         None
     }
+}
+
+/// A spline's own snap points: the ends of an open one (ADR 0042).
+fn spline_ends(spline: &arq_geometry::Spline) -> Vec<SnapPoint> {
+    if spline.is_closed() {
+        return Vec::new();
+    }
+    let (a, b) = spline.ends();
+    [a, b]
+        .into_iter()
+        .map(|point| SnapPoint {
+            kind: SnapKind::Endpoint,
+            point,
+        })
+        .collect()
 }
 
 /// [`Document::pick`] among shapes drawn elsewhere: in a view's plane
@@ -278,7 +315,7 @@ pub fn pick_among<'a>(
     for (id, items) in drawings {
         let Some(d) = items
             .iter()
-            .map(|item| distance(item.shape, at))
+            .map(|item| distance(&item.shape, at))
             .min_by(f64::total_cmp)
         else {
             continue;
@@ -303,37 +340,47 @@ pub fn select_among<'a>(
         .filter(|(_, items)| !items.is_empty())
         .filter(|(_, items)| {
             if crossing {
-                items.iter().any(|item| touches(item.shape, area))
+                items.iter().any(|item| touches(&item.shape, area))
             } else {
                 items
                     .iter()
-                    .all(|item| area.contains(shape_bounds(item.shape), TOL))
+                    .all(|item| area.contains(item.shape.bounds(), TOL))
             }
         })
         .map(|(id, _)| id)
         .collect()
 }
 
-/// The geometry of a shape that is a curve.
-fn curve(shape: Shape) -> Option<Geometry2> {
-    match shape {
+/// The geometry of a shape that is a curve; a spline is none yet (ADR
+/// 0042), picked and selected by its own points.
+fn curve(shape: &Shape) -> Option<Geometry2> {
+    match *shape {
         Shape::Line(l) => Some(l.into()),
         Shape::Circle(c) => Some(c.into()),
         Shape::Arc(a) => Some(a.into()),
         Shape::Ellipse(e) => Some(e.into()),
-        Shape::Point(_) | Shape::Text(_) | Shape::Placeholder(_) | Shape::Triangle(_) => None,
+        Shape::Point(_)
+        | Shape::Text(_)
+        | Shape::Placeholder(_)
+        | Shape::Triangle(_)
+        | Shape::Spline(_) => None,
     }
 }
 
-/// The box of a shape.
-fn shape_bounds(shape: Shape) -> Bounds2 {
-    shape.bounds()
+/// A spline's chords, as it is drawn: what windows and polygons cross.
+fn chords(spline: &arq_geometry::Spline) -> impl Iterator<Item = Geometry2> + '_ {
+    let points = spline.flatten();
+    (0..points.len().saturating_sub(1)).filter_map(move |i| {
+        Line::new(points[i], points[i + 1])
+            .ok()
+            .map(Geometry2::from)
+    })
 }
 
 /// How far a shape is from `at`: to the curve, the point, or a box (zero
 /// inside it).
-fn distance(shape: Shape, at: Point2) -> f64 {
-    match shape {
+fn distance(shape: &Shape, at: Point2) -> f64 {
+    match *shape {
         Shape::Point(p) => p.distance_to(at),
         Shape::Text(b) | Shape::Placeholder(b) => {
             let dx = (b.min().x() - at.x()).max(at.x() - b.max().x()).max(0.0);
@@ -347,18 +394,18 @@ fn distance(shape: Shape, at: Point2) -> f64 {
             .filter_map(|(p, q)| Line::new(p, q).ok())
             .map(|l| l.distance_to(at))
             .fold(f64::INFINITY, f64::min),
+        Shape::Spline(ref s) => s.distance_to(at),
         _ => curve(shape).map_or(f64::INFINITY, |g| g.distance_to(at)),
     }
 }
 
 /// Whether a shape touches `area`: a point inside it, a box overlapping it,
 /// a curve with a point inside it or crossing one of its edges.
-fn touches(shape: Shape, area: Bounds2) -> bool {
-    let bounds = shape_bounds(shape);
-    if !area.intersects(bounds, TOL) {
+fn touches(shape: &Shape, area: Bounds2) -> bool {
+    if !area.intersects(shape.bounds(), TOL) {
         return false;
     }
-    if let Shape::Triangle(t) = shape {
+    if let Shape::Triangle(t) = *shape {
         // Inside one another, or an edge crossing.
         return t.iter().any(|&p| area.contains_point(p, TOL))
             || area.corners().iter().any(|&p| in_triangle(t, p))
@@ -370,6 +417,16 @@ fn touches(shape: Shape, area: Bounds2) -> bool {
                         .into_iter()
                         .any(|edge| !arq_geometry::intersect(side, edge, TOL).is_empty())
                 });
+    }
+    if let Shape::Spline(s) = shape {
+        // Its chords: one inside, or crossing an edge.
+        let edges = edges(area);
+        return chords(s).any(|chord| {
+            area.contains_point(chord.point_at(0.0), TOL)
+                || edges
+                    .iter()
+                    .any(|&edge| !arq_geometry::intersect(chord, edge, TOL).is_empty())
+        });
     }
     let Some(g) = curve(shape) else {
         return true; // a point or box whose box meets the area
@@ -383,14 +440,14 @@ fn touches(shape: Shape, area: Bounds2) -> bool {
 }
 
 /// Polygon counterpart of `touches`, using exact curves and the same text boxes.
-fn touches_polygon(shape: Shape, polygon: &SelectionPolygon) -> bool {
+fn touches_polygon(shape: &Shape, polygon: &SelectionPolygon) -> bool {
     if !polygon.bounds().intersects(shape.bounds(), TOL) {
         return false;
     }
     if let Some(curve) = curve(shape) {
         return polygon.touches_curve(curve, TOL);
     }
-    match shape {
+    match *shape {
         Shape::Point(point) => polygon.contains(point, TOL),
         Shape::Text(bounds) | Shape::Placeholder(bounds) => {
             bounds
@@ -420,6 +477,7 @@ fn touches_polygon(shape: Shape, polygon: &SelectionPolygon) -> bool {
                 .filter_map(|(a, b)| Line::new(a, b).ok())
                 .any(|edge| polygon.touches_curve(edge.into(), TOL))
         }
+        Shape::Spline(ref s) => chords(s).any(|chord| polygon.touches_curve(chord, TOL)),
         _ => unreachable!("curves handled above"),
     }
 }

@@ -371,7 +371,7 @@ const DRAWN_WHOLE: [&str; 13] = [
 ];
 
 fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
-    let mut shapes = [0usize; 8]; // line, circle, arc, point, text, placeholder, fill, ellipse
+    let mut shapes = [0usize; 9]; // line, circle, arc, point, text, placeholder, fill, ellipse, spline
     let mut placeholder_kinds: Vec<&str> = Vec::new();
     let mut problems = Vec::new();
     for (id, items) in doc.drawing_all() {
@@ -380,7 +380,7 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
             .layer_by_name(entity.layer())
             .is_none_or(|l| l.is_visible() && !l.is_frozen());
         for item in &items {
-            let slot = match item.shape {
+            let slot = match &item.shape {
                 Shape::Line(_) => 0,
                 Shape::Circle(_) => 1,
                 Shape::Arc(_) => 2,
@@ -402,6 +402,7 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
                 Shape::Triangle(_) => 6,
                 // An ellipse in the plan (ADR 0040).
                 Shape::Ellipse(_) => 7,
+                Shape::Spline(_) => 8,
             };
             shapes[slot] += 1;
             if matches!(item.color, Color::ByLayer | Color::ByBlock | Color::None) {
@@ -413,7 +414,7 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
             problems.push(format!("entity {id} ({}) draws nothing", entity.kind()));
         }
     }
-    let [l, c, a, pt, t, ph, fills, ellipses] = shapes;
+    let [l, c, a, pt, t, ph, fills, ellipses, splines] = shapes;
     let mut line = format!(
         "draws {} shapes: {l} lines, {c} circles, {a} arcs, {pt} points, {t} texts, {ph} placeholders",
         l + c + a + pt + t + ph
@@ -423,6 +424,9 @@ fn drawing_coverage(doc: &Document) -> (String, Vec<String>) {
     }
     if ellipses > 0 {
         let _ = write!(line, ", and {ellipses} ellipses");
+    }
+    if splines > 0 {
+        let _ = write!(line, ", and {splines} splines");
     }
     if !placeholder_kinds.is_empty() {
         let _ = write!(line, " ({})", placeholder_kinds.join(", "));

@@ -263,3 +263,38 @@ fn an_ellipse_keeps_the_vertices_its_chords_kept() {
     assert_eq!(a.ends, b.ends);
     assert!(!a.vertices.is_empty());
 }
+
+#[test]
+fn a_spline_keeps_the_vertices_its_chords_kept() {
+    // ADR 0042: the GPU gets the very lines, dots and ends of the chords.
+    let p = |x: f64, y: f64| Point2::new(x, y).unwrap();
+    let points = vec![
+        p(-30.0, -10.0),
+        p(-10.0, 25.0),
+        p(5.0, -20.0),
+        p(20.0, 18.0),
+        p(35.0, 0.0),
+    ];
+    let knots = vec![0.0, 0.0, 0.0, 0.0, 0.35, 1.0, 1.0, 1.0, 1.0];
+    let s = arq_geometry::Spline::new(3, points, vec![], knots, false).unwrap();
+    let color = Color::Index(2);
+    let chords: Vec<DrawItem> = s
+        .flatten()
+        .windows(2)
+        .filter_map(|w| arq_geometry::Line::new(w[0], w[1]).ok())
+        .map(|l| DrawItem {
+            shape: Shape::Line(l),
+            color,
+        })
+        .collect();
+    let exact = vec![DrawItem {
+        shape: Shape::Spline(std::sync::Arc::new(s)),
+        color,
+    }];
+    let a = Retained::build(&Scene::from_items(exact), &camera(), DARK).unwrap();
+    let b = Retained::build(&Scene::from_items(chords), &camera(), DARK).unwrap();
+    assert_eq!(a.vertices, b.vertices);
+    assert_eq!(a.dots, b.dots);
+    assert_eq!(a.ends, b.ends);
+    assert!(!a.vertices.is_empty());
+}

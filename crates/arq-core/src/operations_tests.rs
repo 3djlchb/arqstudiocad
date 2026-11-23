@@ -2017,10 +2017,10 @@ fn matchprop_gives_the_source_properties_in_one_step_and_skips_locked_targets() 
 
 fn drawn_ellipse(cad: &CadDocument, id: EntityId) -> Ellipse {
     let items = cad.document().drawing(id).unwrap();
-    let [item] = items[..] else {
+    let [item] = &items[..] else {
         panic!("{items:?}")
     };
-    let arq_document::Shape::Ellipse(e) = item.shape else {
+    let arq_document::Shape::Ellipse(e) = item.shape.clone() else {
         panic!("{item:?}")
     };
     e
@@ -2709,4 +2709,83 @@ fn elliptical_arcs_join_many_at_once_and_close_into_their_ellipse() {
     let other = red_ellipse(&mut cad, 1.0, 2.0);
     let (joined, _) = cad.join_entities(Some(arc), &[other]).unwrap();
     assert_eq!(joined.joined, 0);
+}
+
+#[test]
+fn a_spline_in_the_plan_moves_turns_scales_and_mirrors_as_a_whole() {
+    let codes: Vec<String> = {
+        let mut c: Vec<String> = [
+            "0", "SPLINE", "8", "0", "210", "0", "220", "0", "230", "1", "70", "8", "71", "3",
+            "72", "8", "73", "4", "74", "0",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        for k in [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] {
+            c.extend(["40".to_owned(), format!("{k:?}")]);
+        }
+        for (x, y) in [(0.0, 0.0), (2.0, 3.0), (4.0, 3.0), (6.0, 0.0)] {
+            c.extend([
+                "10".to_owned(),
+                format!("{x:?}"),
+                "20".to_owned(),
+                format!("{y:?}"),
+                "30".to_owned(),
+                "1.5".to_owned(),
+            ]);
+        }
+        c
+    };
+    let dxf = format!(
+        "0\nSECTION\n2\nENTITIES\n{}\n0\nENDSEC\n0\nEOF\n",
+        codes.join("\n")
+    );
+    let drawn = |cad: &CadDocument, id: EntityId| -> Vec<Point2> {
+        let items = cad.document().drawing(id).unwrap();
+        let [item] = &items[..] else {
+            panic!("{items:?}")
+        };
+        let arq_document::Shape::Spline(s) = &item.shape else {
+            panic!("{item:?}")
+        };
+        s.flatten().to_vec()
+    };
+    let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
+    type Op = fn(&mut CadDocument, EntityId);
+    let ops: [(Op, Transform2); 4] = [
+        (
+            |cad, id| drop(cad.move_entities(&[id], v(4.0, -1.0)).unwrap()),
+            Transform2::translation(v(4.0, -1.0)),
+        ),
+        (
+            |cad, id| drop(cad.rotate_entities(&[id], p(1.0, 1.0), 0.7).unwrap()),
+            Transform2::rotation(p(1.0, 1.0), 0.7).unwrap(),
+        ),
+        (
+            |cad, id| drop(cad.scale_entities(&[id], p(0.0, 0.0), 2.5).unwrap()),
+            Transform2::scaling(p(0.0, 0.0), 2.5).unwrap(),
+        ),
+        (
+            |cad, id| {
+                let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
+                drop(cad.mirror_entities(&[id], axis).unwrap())
+            },
+            Transform2::mirror(axis),
+        ),
+    ];
+    for (op, t) in ops {
+        let doc = arq_document::Document::from_dxf_bytes(dxf.clone().into_bytes()).unwrap();
+        let mut cad = CadDocument::from_document(doc);
+        let id = cad.document().entities()[0].id();
+        assert!(cad.document().entity(id).unwrap().is_transformable());
+        let before = drawn(&cad, id);
+        op(&mut cad, id);
+        let after = drawn(&cad, id);
+        assert_eq!(before.len(), after.len());
+        for (a, b) in before.iter().zip(&after) {
+            assert!(near(t.apply_point(*a), *b), "{t:?}: {a:?} -> {b:?}");
+        }
+        cad.undo().unwrap();
+        assert_eq!(drawn(&cad, id), before);
+    }
 }

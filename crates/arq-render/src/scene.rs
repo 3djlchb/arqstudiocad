@@ -255,19 +255,19 @@ fn projected(items: &[SpaceItem], view: View) -> Vec<DrawItem> {
 fn entry(id: EntityId, items: Vec<DrawItem>) -> Entry {
     let bounds = items
         .iter()
-        .map(|i| shape_bounds(i.shape))
+        .map(|i| shape_bounds(&i.shape))
         .reduce(Bounds2::union);
     Entry { id, items, bounds }
 }
 
-pub(crate) fn shape_bounds(shape: Shape) -> Bounds2 {
-    match shape {
+pub(crate) fn shape_bounds(shape: &Shape) -> Bounds2 {
+    match *shape {
         Shape::Line(l) => l.bounds(),
         Shape::Circle(c) => c.bounds(),
         Shape::Arc(a) => a.bounds(),
         Shape::Point(p) => Bounds2::from_point(p),
         Shape::Text(b) | Shape::Placeholder(b) => b,
-        Shape::Triangle(_) | Shape::Ellipse(_) => shape.bounds(),
+        Shape::Triangle(_) | Shape::Ellipse(_) | Shape::Spline(_) => shape.bounds(),
     }
 }
 
