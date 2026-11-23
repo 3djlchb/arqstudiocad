@@ -125,4 +125,9 @@ The approved development diagnostic measured after/before ratios of 0.451227
 with alignment and 0.692498 without, with no monitored heavy-process overlap.
 Exact commits, fixture, environment and limits are recorded in
 [testing and performance](../TESTING_AND_PERFORMANCE.md). These operation-only
-results leave real reference-machine interaction acceptance pending.
+results left real reference-machine interaction acceptance pending. It was
+done on 2026-11-23 with the plan agreed first: the diagnostic gave 0.507
+aligned and 0.748 kept on the floor, and in the main window 10,000 copies
+were on screen in 129-141 ms and 100,000 in 613-697 ms, panned and zoomed
+at the display's rate on the GPU and within 18 ms on the CPU
+([report](../testing/reference-machine/2026-11-23/path-array.txt)).
