@@ -230,3 +230,41 @@ fn two_splines_are_equal_by_their_data_not_by_what_they_computed() {
     .unwrap();
     assert_ne!(a, other, "knots");
 }
+
+#[test]
+fn its_own_vertices_leave_out_what_a_closed_one_repeats() {
+    let points = vec![
+        p(0.0, 0.0),
+        p(3.0, 4.0),
+        p(7.0, 1.0),
+        p(9.0, 6.0),
+        p(14.0, 5.0),
+    ];
+    let open = Spline::by_vertices(3, points.clone(), false).unwrap();
+    assert_eq!(open.own_vertices(), points.as_slice());
+    let periodic = Spline::by_vertices(3, points.clone(), true).unwrap();
+    assert_eq!(
+        periodic.own_vertices(),
+        points.as_slice(),
+        "its three repeated left out"
+    );
+    // Clamped round to its first point: the last left out.
+    let mut round = points.clone();
+    round.push(points[0]);
+    let clamped = Spline::new(3, round, Vec::new(), Spline::clamped_knots(3, 6), true).unwrap();
+    assert_eq!(clamped.own_vertices(), points.as_slice());
+    // A vertex moved: the copies with it; past its own, refused.
+    let moved = periodic.with_vertex(1, p(3.0, 5.0)).unwrap();
+    assert_eq!(moved.points()[1], p(3.0, 5.0));
+    assert_eq!(moved.points()[6], p(3.0, 5.0), "its copy");
+    assert_eq!(moved.knots(), periodic.knots());
+    let moved = clamped.with_vertex(0, p(1.0, 1.0)).unwrap();
+    assert_eq!(
+        (moved.points()[0], moved.points()[5]),
+        (p(1.0, 1.0), p(1.0, 1.0))
+    );
+    assert_eq!(
+        open.with_vertex(5, p(0.0, 0.0)),
+        Err(GeometryError::OutOfRange { what: "vertex" })
+    );
+}

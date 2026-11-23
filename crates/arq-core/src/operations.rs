@@ -1147,6 +1147,19 @@ impl CadDocument {
         })
     }
 
+    /// Puts point `index` of spline `id`, a fit point or a vertex of its own,
+    /// at `point` (its grip, its Properties; ADR 0043 D4): one GRIP step.
+    pub fn set_spline_point(
+        &mut self,
+        id: EntityId,
+        index: usize,
+        point: Point2,
+    ) -> CadResult<ChangeSet> {
+        self.edit_entities("GRIP", &[id], |doc, _| {
+            Ok(doc.set_spline_point(id, index, point)?)
+        })
+    }
+
     /// Explodes selected block references into their transformed contents.
     pub fn explode_entities(&mut self, ids: &[EntityId]) -> CadResult<(Vec<EntityId>, ChangeSet)> {
         let ids = distinct(ids);

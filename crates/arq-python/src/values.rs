@@ -578,6 +578,30 @@ impl CadSpline {
         self.spline.is_closed()
     }
 
+    /// Its length along the curve.
+    #[getter]
+    fn length(&self) -> f64 {
+        self.spline.length()
+    }
+
+    /// Its own control vertices: those a closed one repeats at its end left
+    /// out, as its grips show them.
+    #[getter]
+    fn vertices(&self) -> Vec<(f64, f64)> {
+        self.spline.own_vertices().iter().copied().map(xy).collect()
+    }
+
+    /// How its fit points' knots are spaced, `"chord"`, `"square_root"` or
+    /// `"uniform"`; None when made by its vertices.
+    #[getter]
+    fn knots_method(&self) -> Option<&'static str> {
+        self.fit.as_ref().map(|f| match f.knots() {
+            SplineKnots::Chord => "chord",
+            SplineKnots::SquareRoot => "square_root",
+            SplineKnots::Uniform => "uniform",
+        })
+    }
+
     /// The points it is drawn by, its ends included.
     fn points(&self) -> Vec<(f64, f64)> {
         self.spline.flatten().iter().copied().map(xy).collect()

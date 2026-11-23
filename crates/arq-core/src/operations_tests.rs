@@ -2958,3 +2958,19 @@ fn join_takes_no_spline_until_its_delivery_and_changes_nothing() {
     );
     assert_eq!(cad.document().entities(), before);
 }
+
+#[test]
+fn a_spline_point_moved_is_one_grip_step() {
+    let (mut cad, spline) = bezier_spline();
+    let before = cad.document().entity(spline).unwrap();
+    cad.set_spline_point(spline, 1, p(2.0, 5.0)).unwrap();
+    assert_eq!(cad.undo_name(), Some("GRIP"));
+    let arq_document::Shape::Spline(s) = &cad.document().drawing(spline).unwrap()[0].shape else {
+        panic!()
+    };
+    assert_eq!(s.points()[1], p(2.0, 5.0));
+    cad.undo().unwrap();
+    assert_eq!(cad.document().entity(spline).unwrap(), before);
+    assert!(cad.set_spline_point(spline, 7, p(0.0, 0.0)).is_err());
+    assert_eq!(cad.document().entity(spline).unwrap(), before);
+}

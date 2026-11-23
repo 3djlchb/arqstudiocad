@@ -195,20 +195,10 @@ impl Document {
             )?;
             return Ok(StretchPlan::Fit(moved, z));
         }
-        // How many points a closed one repeats at its end: its degree when
-        // periodic, its first when clamped round to it.
+        // The points a closed one repeats at its end follow their own.
         let (p, points) = (spline.degree(), spline.points());
         let n = points.len();
-        let repeated = if !spline.is_closed() {
-            0
-        } else if n > p && points[n - p..] == points[..p] {
-            p
-        } else if points[n - 1] == points[0] {
-            1
-        } else {
-            0
-        };
-        let own = n - repeated;
+        let own = spline.own_vertices().len();
         let hits: Vec<bool> = points[..own].iter().map(|&q| inside(q)).collect();
         if let Some(plan) = decide(&hits) {
             return Ok(plan);
@@ -230,6 +220,69 @@ impl Document {
             stretched.into(),
             z,
         )?))
+    }
+
+    /// The fit spline `id` keeps, when it is a spline lying in the plan
+    /// made through fit points; none otherwise (ADR 0043 D4).
+    pub fn spline_fit(&self, id: EntityId) -> Option<arq_geometry::SplineFit> {
+        self.entity(id)?.plan()?;
+        match self.cad().get_entity(handle(id))? {
+            EntityType::Spline(sp) => crate::drawing::spline_fit(sp),
+            _ => None,
+        }
+    }
+
+    /// Spline `id` with its point `index` at `to`, as its grip leaves it
+    /// (ADR 0043 D4), changing nothing: a fit point moved and the fit it
+    /// makes, or a vertex of its own moved, the copies a closed one repeats
+    /// with it; and its height. Refused where no spline would be.
+    pub fn spline_with_point(
+        &self,
+        id: EntityId,
+        index: usize,
+        to: Point2,
+    ) -> DocumentResult<(arq_geometry::Spline, Option<arq_geometry::SplineFit>, f64)> {
+        let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
+        let Some(plan) = e.plan() else {
+            return Err(DocumentError::NotEditable { id, kind: e.kind() });
+        };
+        let Geometry2::Spline(spline) = plan.geometry() else {
+            return Err(DocumentError::KindMismatch { id, kind: e.kind() });
+        };
+        if let Some(fit) = self.spline_fit(id) {
+            let mut points = fit.points().to_vec();
+            let slot = points
+                .get_mut(index)
+                .ok_or(GeometryError::OutOfRange { what: "fit point" })?;
+            *slot = to;
+            let moved = arq_geometry::SplineFit::new(
+                points,
+                fit.knots(),
+                fit.start_tangent(),
+                fit.end_tangent(),
+                fit.is_closed(),
+            )?;
+            return Ok((moved.spline()?, Some(moved), plan.elevation()));
+        }
+        Ok((spline.with_vertex(index, to)?, None, plan.elevation()))
+    }
+
+    /// Puts point `index` of spline `id` at `to`, as its grip does (ADR 0043
+    /// D4), [`Document::spline_with_point`] written.
+    pub fn set_spline_point(
+        &mut self,
+        id: EntityId,
+        index: usize,
+        to: Point2,
+    ) -> DocumentResult<()> {
+        let (spline, fit, z) = self.spline_with_point(id, index, to)?;
+        match fit {
+            Some(fit) => self.set_fit_spline(id, &fit, z),
+            None => {
+                let plan = PlanGeometry::at_elevation(spline.into(), z)?;
+                self.set_plan_geometry(id, plan)
+            }
+        }
     }
 
     /// Writes `fit`'s spline into SPLINE `id` at height `z`: its control

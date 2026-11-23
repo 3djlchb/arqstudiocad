@@ -25,6 +25,10 @@ pub enum GripKind {
     Insertion,
     /// A polyline's first vertex.
     Vertex,
+    /// A spline's fit point (ADR 0043 D4).
+    FitPoint,
+    /// A spline's control vertex.
+    ControlVertex,
 }
 
 impl GripKind {
@@ -37,6 +41,8 @@ impl GripKind {
             Self::Quadrant => "QUA",
             Self::Insertion => "INS",
             Self::Vertex => "VTX",
+            Self::FitPoint => "FIT",
+            Self::ControlVertex => "CV",
         }
     }
 }
@@ -50,7 +56,8 @@ pub struct Grip {
     pub kind: GripKind,
     /// Where it is, in world coordinates.
     pub point: Point2,
-    /// Zero-based polyline vertex, or `None` for other grip kinds.
+    /// Zero-based polyline vertex, spline fit point or control vertex, or
+    /// `None` for other grip kinds.
     pub vertex_index: Option<usize>,
 }
 
@@ -115,8 +122,20 @@ impl Document {
                     add(GripKind::End, a.end_point(), None);
                     add(GripKind::Center, a.center(), None);
                 }
-                // Its grips come in ADR 0043's third delivery.
-                Some(Geometry2::Spline(_)) => {}
+                // Its fit points when it has them, else its own vertices,
+                // each by its number (ADR 0043 D4, as AutoCAD).
+                Some(Geometry2::Spline(s)) => match self.spline_fit(id) {
+                    Some(fit) => {
+                        for (i, &q) in fit.points().iter().enumerate() {
+                            add(GripKind::FitPoint, q, Some(i));
+                        }
+                    }
+                    None => {
+                        for (i, &q) in s.own_vertices().iter().enumerate() {
+                            add(GripKind::ControlVertex, q, Some(i));
+                        }
+                    }
+                },
                 None if e.is_transformable() => {
                     if let Some(acadrust::EntityType::LwPolyline(polyline)) =
                         self.cad().get_entity(handle(id))

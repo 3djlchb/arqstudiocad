@@ -151,6 +151,43 @@ impl Spline {
         &self.weights
     }
 
+    /// Its own control vertices: all of them but the ones a closed spline
+    /// repeats at its end, its degree's when periodic, its first when
+    /// clamped round to it. What its grips show and STRETCH moves.
+    pub fn own_vertices(&self) -> &[Point2] {
+        let (p, points) = (self.degree, &self.points);
+        let n = points.len();
+        let repeated = if !self.closed {
+            0
+        } else if n > p && points[n - p..] == points[..p] {
+            p
+        } else if points[n - 1] == points[0] {
+            1
+        } else {
+            0
+        };
+        &points[..n - repeated]
+    }
+
+    /// Its control points with vertex `index` of [`Spline::own_vertices`]
+    /// put at `to`, the copies a closed one repeats with it.
+    pub fn with_vertex(&self, index: usize, to: Point2) -> GeometryResult<Self> {
+        let own = self.own_vertices().len();
+        if index >= own {
+            return Err(GeometryError::OutOfRange { what: "vertex" });
+        }
+        let points = (0..self.points.len())
+            .map(|i| if i % own == index { to } else { self.points[i] })
+            .collect();
+        Self::new(
+            self.degree,
+            points,
+            self.weights.clone(),
+            self.knots.clone(),
+            self.closed,
+        )
+    }
+
     /// Whether DWG calls it closed.
     pub fn is_closed(&self) -> bool {
         self.closed
