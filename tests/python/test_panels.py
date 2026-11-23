@@ -19,6 +19,7 @@ from arqstudiocad.core import (
     CadDocument,
     CadEllipse,
     CadLine,
+    CadSpline,
 )
 from arqstudiocad.events import WorkFinished, WorkStarted
 from arqstudiocad.i18n import set_language
@@ -574,3 +575,42 @@ def test_selected_ellipse_properties_show_and_edit_it_as_autocad(window: MainWin
     property_item(window, "Radius ratio").setText(1, "2")
     assert geometry().ratio == 0.5
     assert last_line(window).startswith("Error: ")
+
+
+def test_selected_spline_properties_show_it_and_edit_a_point(window: MainWindow) -> None:
+    # Through (0,0), (3,4), (7,1), (9,6), its knots by square roots.
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    points = [(0.0, 0.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)]
+    spline_id, changes = document.add_spline(CadSpline.through(points, "square_root"))
+    window.session.report(document, changes)
+    window.session.select(document, [spline_id])
+    panel = window.properties_panel
+    rows = dict(panel.rows())
+    assert (rows["Method"], rows["Degree"], rows["Closed"]) == ("Fit", "3", "No")
+    assert rows["Knots"] == "Square root"
+    assert (rows["Fit point"], rows["X"], rows["Y"]) == ("1", "0", "0")
+    spline = document.spline(spline_id)
+    assert spline is not None and float(rows["Length"]) == pytest.approx(spline.length)
+    # The third fit point, moved by its Y.
+    panel.grid.property_edited.emit("spline.point", 2)
+    rows = dict(panel.rows())
+    assert (rows["Fit point"], rows["X"], rows["Y"]) == ("3", "7", "1")
+    property_item(window, "Y").setText(1, "-1")
+    moved = document.spline(spline_id)
+    assert moved is not None and moved.fit_points[2] == (7.0, -1.0)
+    assert document.undo_history[-1] == "PROPERTIES"
+    assert dict(panel.rows())["Fit point"] == "3", "the same point still shown"
+    # Another selection starts again at the first.
+    other, changes = document.add_spline(CadSpline.by_vertices(points, 2))
+    window.session.report(document, changes)
+    window.session.clear_selection(document)
+    window.session.select(document, [other])
+    rows = dict(panel.rows())
+    assert (rows["Method"], rows["Degree"], rows["Control vertex"]) == ("CV", "2", "1")
+    assert "Knots" not in rows
+    # Two splines: what they share, no point.
+    window.session.select(document, [spline_id])
+    rows = dict(panel.rows())
+    assert rows["Method"] == "*Varies*" and "X" not in rows

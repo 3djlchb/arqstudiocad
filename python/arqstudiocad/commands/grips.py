@@ -9,8 +9,9 @@ then ends), Undo takes back the last copy, eXit ends. Stretch moves a
 line's end, changes a circle's radius by a quadrant, reshapes an arc by an
 end (through its midpoint and other end), sets an ellipse's semi-axis by
 the end of its axis and slides an elliptical arc's end along it (ADR 0041),
-moves an entity by its midpoint, center or insertion point, and moves one
-polyline vertex at a time. Move,
+moves an entity by its midpoint, center or insertion point, moves one
+polyline vertex at a time, and a spline's fit point (the spline fitted
+again) or control vertex (ADR 0043 D4). Move,
 Rotate, Scale and Mirror apply to every selected entity that can be transformed.
 A grip edit is one
 undo step and keeps the selection.
@@ -48,6 +49,10 @@ MODES = ("STRETCH", "MOVE", "ROTATE", "SCALE", "MIRROR")
 
 #: Grips that move their entity when stretched.
 MOVING = {"MID", "CEN", "INS", "VTX"}
+
+#: Grips that move one point of their entity: a polyline's vertex, a
+#: spline's fit point or control vertex.
+POINTS = {"VTX", "FIT", "CV"}
 
 
 def shown_grips(session: Session, document: CadDocument) -> list[CadGrip]:
@@ -117,7 +122,7 @@ def _ask(
     if mode == "STRETCH":
         # The generic drag overlay translates whole entities. A vertex grip
         # edits one point, so do not show a misleading whole-polyline preview.
-        drag = Drag("move", (grip.entity_id,)) if grip.kind in MOVING - {"VTX"} else None
+        drag = Drag("move", (grip.entity_id,)) if grip.kind in MOVING - POINTS else None
         message = tr("** STRETCH ** Specify stretch point")
         return ctx.point(message, base=base, options=options, optional=True, drag=drag)
     if mode == "MOVE":
@@ -178,7 +183,15 @@ def _stretch(
 ) -> list[int] | None:
     entity_id = grip.entity_id
     shape = None
-    if grip.kind not in MOVING:
+    if grip.kind in ("FIT", "CV"):
+        # Checked first: a refusal within the grip edit's group undoes it.
+        assert grip.vertex_index is not None
+        try:
+            document.spline_with_point(entity_id, grip.vertex_index, target)
+        except InvalidGeometryError:
+            ctx.message(tr("The object cannot take that shape."))
+            return None
+    if grip.kind not in MOVING | POINTS:
         geometry = document.get_entity(entity_id).geometry
         # An arc keeps its midpoint, as the core puts it.
         mid = next((g.point for g in document.grips([entity_id]) if g.kind == "MID"), target)
@@ -193,6 +206,9 @@ def _stretch(
     if grip.kind == "VTX":
         assert grip.vertex_index is not None
         changes = document.set_polyline_vertex(entity_id, grip.vertex_index, target)
+    elif grip.kind in ("FIT", "CV"):
+        assert grip.vertex_index is not None
+        changes = document.set_spline_point(entity_id, grip.vertex_index, target)
     elif shape is None:
         offset = (target[0] - grip.point[0], target[1] - grip.point[1])
         changes = document.move_entities([entity_id], offset)
