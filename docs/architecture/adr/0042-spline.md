@@ -1,6 +1,6 @@
 # 0042. The spline: an exact shape in the drawing, made by SPLINE
 
-Date: 2026-11-22 · Status: Accepted (maintainer, 2026-11-22)
+Date: 2026-11-22 · Status: Accepted (maintainer, 2026-11-22; fitting, 2026-11-23)
 
 ## Context
 
@@ -47,9 +47,13 @@ shape. It is held in an `Arc`, so `Shape` and `DrawItem` stop being
 `Copy`: cloning one is cloning a count, and the renderers take shapes by
 reference.
 
+A spline of fit points alone, as DWG keeps one made through them, is
+drawn as SPLINE makes it through them (D4), when its fit points lie at one
+height and its tangents in the plan. Until now it was drawn as segments
+between its fit points.
+
 Any other spline keeps the codec's segments:
 - one out of the plan;
-- one of fit points only;
 - one our geometry refuses.
 
 Splines inside blocks and in hatch boundaries come to it the same way.
@@ -87,17 +91,35 @@ Tests compare, bit for bit:
   An exact box for every entity read made a drawing of 20,000 splines
   open 1.65 times and save 4 times slower, since it is computed again
   whenever the entity is read and checked.
-- **Made:** SPLINE, its own pull request, makes one by AutoCAD's two
-  methods:
+- **Made:** SPLINE makes one by AutoCAD's two methods:
   - **Fit:** through the points, with Knots (Chord, Square root,
-    Uniform), optional start and end tangents, Close and Undo. It uses
-    the global cubic interpolation of Piegl and Tiller's *The NURBS Book*
-    with that parameterization, free ends when no tangent is given, and
-    writes both the fit points and the control points.
+    Uniform), optional start and end tangents, Close and Undo.
   - **CV:** by control vertices, with Degree 1 to 10, Close and Undo.
 
   Tolerance and Object come later. How close the fit is to AutoCAD's, the
   Windows comparison will tell.
+- **Fitted** (maintainer, 2026-11-23), as AutoCAD and BricsCAD are known
+  to fit (ezdxf's `fit_points_to_cad_cv`, after *The NURBS Book* §9.2):
+  - always cubic, global interpolation, the fit points' parameters its
+    inner knots, the ends repeated four times;
+  - the parameters, the running chord lengths, their square roots, or one
+    a point; the knots are those parameters, not scaled to one;
+  - an end with a tangent leaves along it, its speed the fit points'
+    chord length over the parameters' run; one without, with no
+    curvature;
+  - closed: periodic, smooth where it closes, its control points wrapped
+    by three and its knots running on by the period. This is our own;
+    the Windows comparison will tell whether AutoCAD's is the same.
+
+  The system is tridiagonal, solved with partial pivoting; a closed one is
+  cyclic, by Sherman and Morrison.
+- **Kept:** a spline made through fit points keeps its fit points, knots
+  method and tangents, and the control points and knots it was fitted to;
+  a closed one is marked closed and periodic. DWG keeps only the fit
+  points, so read again it is fitted again from them, to the same bits:
+  it draws the same and the check after saving finds nothing lost. One
+  made by vertices is periodic when closed, its knots uniform, its degree
+  at most one fewer than its points.
 
 ### D5 — Later, each in a pull request
 
@@ -113,7 +135,9 @@ With it comes the ellipse's OFFSET, which AutoCAD makes a spline.
 ## Consequences
 
 - Imported splines gain correct snaps and transforms; until now they could
-  not be transformed at all. Their drawn box is exact, their entity's box
+  not be transformed at all. Those of fit points alone, as AutoCAD saves
+  one made through fit points in DWG, are drawn as curves, no longer as
+  segments between their fit points. Their drawn box is exact, their entity's box
   the control points'.
 - `Shape` has one more variant, held by reference count. Code that copied
   shapes clones or borrows them instead.
