@@ -1,0 +1,64 @@
+Where opening a large drawing goes, reference machine, 2026-11-22
+
+Machine: i7-2600, GT 730 on nouveau, LMDE 7, kernel 6.12.118, Rust
+1.99.0, Python 3.13.5; main at 957366b, built by `uv sync`. Firefox
+and VLC open, idle; nothing heavy running.
+
+Follows 2026-11-20's large-drawing-open.txt, which found that opening
+the document on the worker thread (CadApplication.open_document) was
+65-73% of a 100,000-line DXF's request to first paint, and left it to
+break down.
+
+Method: temporary timers (Instant, printed to stderr when an environment
+variable is set; not committed) around each step of the open, in fresh
+processes, the drawing generated: 100,000 LINEs, line i from
+(i mod 500, i div 500) to (+0.5, +0.5), as reference_machine_report.sh
+times it; for DWG, the same drawing saved by the application (1.6 MB).
+Medians of 5-7 processes; the total is timed in Python around
+open_document.
+
+  Step (where)                                 DXF 5.9 MB   DWG 1.6 MB
+  Read the file (fs::read)                          1.9          0.7
+  Copy the bytes before the strict read             2.0          0.9
+  Engine decode, acadrust (reading::read)         308.7        132.7
+  Our document (Document::from_cad)                28.9         30.3
+  Spatial index (SpatialIndex::from_document)      82.9         75.8
+    each entity's bounds                           17.0         16.8
+    two hash maps, 100,000 entries each            23.0         23.8
+    R*-tree bulk load                              33.8         35.8
+  Total, from Python                              418.5        243.4
+
+The engine's decode is 74% of a DXF's open and 55% of a DWG's; it is the
+third-party reader (the project's fork of acadrust) and needs a profiler
+to break down further: `perf` is not installed on this machine. Our own
+code, the document and the index, is 26% of the DXF and 43% of the DWG.
+
+Tried and kept:
+- The two maps sized once (HashMap::with_capacity): their filling went
+  from 23.8 to 13.2 ms. A faster hash was not used: entity ids come from
+  files, and a plain hash would let a crafted file collide them.
+- The bytes shared by the strict and the recovery read (an Arc) instead
+  of copied before the strict one: 0.9-2.0 ms.
+
+Tried and dropped: larger R*-tree nodes (7-16 instead of 3-6): the bulk
+load stayed at about 38 ms.
+
+Results, the index alone (Criterion, `cargo bench -p arq-core --bench
+query -- open/`, 100,000 generated entities, 10 samples), run fix, base,
+fix:
+
+  fix   [66.497 ms 67.374 ms 67.967 ms]
+  base  [79.906 ms 80.622 ms 81.442 ms]
+  fix   [66.676 ms 67.070 ms 67.591 ms]    fix / base 0.834
+
+And the whole open from Python, base main (9dd05c4, same code on this
+path) against the change, two passes alternating, medians of 5
+processes each:
+
+  DWG   base 245.9, 238.1 ms   fix 230.8, 228.8 ms   about 0.95
+  DXF   base 395.7, 402.3 ms   fix 386.5, 396.5 ms   about 0.98
+
+Left for later: the engine's decode (a profiler on this machine, or
+timers in the fork), the R*-tree bulk load, and the GUI thread's part
+after the open (scene and GPU attachment, about 130 ms, 2026-11-15 and
+2026-11-20).

@@ -21,6 +21,11 @@ fn p(x: f64, y: f64) -> Point2 {
 
 /// A grid of lines, circles and arcs, built without transactions.
 fn drawing() -> CadDocument {
+    CadDocument::from_document(plain_drawing())
+}
+
+/// The same grid as a plain document, before any index is built.
+fn plain_drawing() -> Document {
     let mut doc = Document::new();
     let layer = doc.current_layer().id();
     for i in 0..SIDE * SIDE {
@@ -38,7 +43,27 @@ fn drawing() -> CadDocument {
         };
         doc.add_entity(PlanGeometry::new(g), layer).expect("add");
     }
-    CadDocument::from_document(doc)
+    doc
+}
+
+/// What opening a drawing adds after reading it: the spatial index of its
+/// 100,000 entities, built once (`CadDocument::from_document`).
+fn index_build(c: &mut Criterion) {
+    use criterion::BatchSize;
+    use std::time::Duration;
+    let mut group = c.benchmark_group("open");
+    group
+        .sample_size(10)
+        .warm_up_time(Duration::from_secs(1))
+        .measurement_time(Duration::from_secs(5));
+    group.bench_function("index 100k entities", |b| {
+        b.iter_batched(
+            plain_drawing,
+            |doc| black_box(CadDocument::from_document(doc)),
+            BatchSize::PerIteration,
+        )
+    });
+    group.finish();
 }
 
 fn queries(c: &mut Criterion) {
@@ -261,5 +286,5 @@ fn stretch_polygon(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, queries, quick_edits, stretch_polygon);
+criterion_group!(benches, queries, quick_edits, stretch_polygon, index_build);
 criterion_main!(benches);

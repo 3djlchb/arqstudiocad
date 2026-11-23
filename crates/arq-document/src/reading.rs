@@ -12,6 +12,7 @@
 use std::io::Cursor;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
+use std::sync::Arc;
 
 use acadrust::io::dwg::DwgReadOptions;
 use acadrust::io::dxf::DxfReaderConfiguration;
@@ -96,6 +97,8 @@ fn add_missing_layer_zero(read: &mut Read) -> Result<(), String> {
 
 /// The engine's read, strict and then in recovery mode (see the module).
 fn read_engine(bytes: Vec<u8>, format: FileFormat, path: &Path) -> DocumentResult<Read> {
+    // Shared by both reads: the strict one no longer copies the file first.
+    let bytes = Shared(Arc::new(bytes));
     let mut problems = match attempt(bytes.clone(), format, false) {
         Ok(outcome) => {
             let problems = damage(&outcome.stats, format);
@@ -160,8 +163,19 @@ fn damaged(path: &Path, problems: Vec<String>) -> DocumentError {
     }
 }
 
+/// A file's bytes, shared by the strict read and the recovery read without
+/// a copy: the engine's readers each want a stream of their own.
+#[derive(Clone)]
+struct Shared(Arc<Vec<u8>>);
+
+impl AsRef<[u8]> for Shared {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 /// One read; an engine panic becomes an error like any other.
-fn attempt(bytes: Vec<u8>, format: FileFormat, failsafe: bool) -> Result<ReadOutcome, String> {
+fn attempt(bytes: Shared, format: FileFormat, failsafe: bool) -> Result<ReadOutcome, String> {
     let read = move || match format {
         FileFormat::Dwg => {
             let options = if failsafe {
