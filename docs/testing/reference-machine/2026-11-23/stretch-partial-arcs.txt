@@ -1,0 +1,77 @@
+STRETCH of partial arcs (#200), reference machine acceptance, 2026-11-23
+
+LMDE 7, Linux 6.12.118, Intel Core i7-2600, GeForce GT 730 on nouveau,
+Mesa 25.0.7 (OpenGL 4.3), X11 (Cinnamon) at 1920 x 1080 and 60 Hz.
+Desktop idle (no browser, video or streaming program; load 0.28 at the
+start). Series 17:59-18:07, no other heavy process.
+
+Plan agreed with the maintainer before measuring, as
+docs/testing/stretch-partial-arcs-windows.md asks:
+  base       626a78fc7bbbdc391550690adbe6a29c4827190e  main before #200
+  candidate  763c69cd9aa0d7d12d4a8da34eb1f111169173fc  the merge of #200
+  main       bc1f6a97748b64f083e2ec08e5345fb15b07fca6  main today
+Release builds (uv sync), each in its own detached copy. Accepted when:
+  - the controls (whole arcs, lines) stay within +-5% of the base;
+  - partial arcs take at most 33 ms a CPU cursor frame (two refreshes)
+    and keep the display's rate on the GPU;
+  - the commit moves the selected end by the displacement, the other end
+    stays, and undo restores the drawing.
+
+Harnesses, kept outside the repository (SHA-256):
+  stretch_arcs.py         6c955106d1f8f21037a8efc559c7aab7e8366818b0b597771250f93509f13ac1
+  stretch_arcs_series.sh  5828ecbfdc936866ffe30dac0a7e94fd04b83d591085bbaa171a973955254f72
+stretch_arcs.py is stretch_cases.py of 2026-11-19 with these cases.
+
+Method as in 2026-11-19/cursor-frames.txt: the real MainWindow,
+1366 x 740 (a 1098 x 347 viewport), the renderer it chooses (OpenGL on
+the GT 730) or the CPU through safe mode; 100000 generated entities on a
+3-unit grid at 20 pixels a unit; synthetic QMouseEvent moves on a loop,
+each sample a move plus a repaint, 60 samples after 3 warm-ups; "command"
+at STRETCH's displacement prompt after base point 0,0. Each run had a
+fresh XDG_CONFIG_HOME and QSettings folder, LANG=C.UTF-8,
+QT_QPA_PLATFORM=xcb. Three rounds, the three commits and both renderers
+alternated within each round. The 100 entities of row 50 (y = 150,
+x = 3k):
+  partial  ARCs, center (x+0.5,150), radius 0.5, 0 to 180 degrees; a
+           crossing box of +-0.1 around each start (x+1,150).
+  whole    the same ARCs, each wholly inside a crossing box.
+  lines    LINEs (x,150)-(x+1,150), a crossing box around each end.
+Then STRETCH 0,0 -> 2,3 was committed, checked and undone.
+
+Cursor frames at the displacement prompt, ms, median of each run's
+median (the three runs; p95 at most):
+
+CPU       base                 candidate            main
+partial   3.52 (*)             5.28 (5.22-5.44)     5.32 (5.26-5.38)
+          p95 <= 4.03          p95 <= 5.60          p95 <= 5.59
+whole     5.11 (5.08-5.29)     5.27 (5.19-5.36)     5.24 (5.14-5.27)
+lines     4.37 (4.34-4.43)     4.45 (4.44-4.47)     4.45 (4.40-4.72)
+
+GPU       base                 candidate            main
+partial   16.25 (*)            15.87 (14.88-15.88)  15.88 (15.07-15.88)
+whole     15.30 (14.91-15.82)  15.83 (15.52-15.83)  15.77 (14.98-15.83)
+lines     16.11 (16.07-16.12)  16.10 (15.57-16.12)  16.12 (16.11-16.12)
+
+(*) The base does not stretch an arc with one end selected: nothing is
+previewed (9 outline strokes, the cursor's, against 109 with the
+preview), nothing is committed. Its time is the cursor alone, not a
+comparison.
+
+On the GPU every frame is paced by the display (16.4-16.7 ms with no
+command); the medians below one refresh only show where a frame lands
+in the vsync, not work.
+
+Result of the commit, identical in all three runs of every case:
+  partial  candidate and main: start +(2,3), end unchanged; base: none
+  whole    all: both ends +(2,3)
+  lines    all: end +(2,3), start unchanged
+  undo restored every drawing; the commit was one undo step.
+
+Verdict, against the agreed criteria:
+  - controls: CPU whole +3.1% (candidate) and +2.5% (main), lines +1.8%
+    and +1.8%; GPU at the display's rate. Within +-5%: accepted.
+  - partial arcs: 5.3 ms a CPU frame (limit 33), the display's rate on
+    the GPU: accepted. Previewing them costs 1.8 ms more than the cursor
+    alone, about what 100 whole arcs cost.
+  - commit and undo: accepted.
+Not covered: a hand on a real mouse, and ProgeCAD reopening (Windows).
