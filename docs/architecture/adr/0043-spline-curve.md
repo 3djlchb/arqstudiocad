@@ -128,7 +128,13 @@ with no new library.
 
 1. D1–D3: the curve, its length, intersections, snaps and crossings, TRIM
    cutting at splines. `Geometry2` and `PlanGeometry` stop being `Copy`.
-2. TRIM and BREAK of splines, and EXTEND's refusal.
+2. TRIM and BREAK of splines, and EXTEND's refusal. Done (2026-11-23):
+   they reach a spline through a curve of its own,
+   `Document::spline_curve` and `set_spline_curve`, as the ellipse's
+   second delivery did, until the third folds it into `Entity::plan`; a
+   piece across where a closed spline closes is its two pieces joined; a
+   closed curve's span goes round by its own period, a spline's no longer
+   `TAU`.
 3. Plan geometry, STRETCH, grips and Properties; two pull requests if it
    is large, as the ellipse's was.
 4. JOIN of splines.
