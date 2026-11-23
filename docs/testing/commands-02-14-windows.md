@@ -123,6 +123,13 @@ again: 23 cases, 67 files reopened.
 - **Ours** refuses it, by its design, and changes nothing.
 - **Decision.** The maintainer chose to keep the refusal (2026-11-20). ProgeCAD's rule is not evident, and changes the whole ellipse.
 
+## To run: JOIN of elliptical arcs (EL13–EL15)
+
+Added on 2026-11-22 with JOIN of one ellipse's arcs (ADR 0041): from a
+source arc across a gap, many at once round to the whole ellipse, and
+Close. What ours gives is in
+[ELLIPSE's design](../design/ellipse-command.md#windows-comparison-to-run).
+
 ## To run by hand: ELLIPSE grips and Properties
 
 Added on 2026-11-20 with the ellipse's grips and Properties (ADR 0041). By

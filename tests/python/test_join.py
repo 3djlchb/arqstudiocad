@@ -9,7 +9,7 @@ from pytestqt.qtbot import QtBot
 from test_trim import Harness
 from ui_fakes import QuietUi
 
-from arqstudiocad.core import CadArc, CadCircle
+from arqstudiocad.core import CadArc, CadCircle, CadEllipse
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.ribbon import RibbonGroupWidget
 
@@ -78,7 +78,7 @@ def test_join_leaves_the_drawing_alone_when_nothing_can_join() -> None:
     before = h.document.undo_history
     h.run("JOIN")
     choose(h, [circle])
-    assert h.messages()[-1] == "JOIN joins lines, arcs and open polylines."
+    assert h.messages()[-1] == "JOIN joins lines, arcs, elliptical arcs and open polylines."
     h.run("JOIN")
     choose(h, [source])
     choose(h, [other])
@@ -177,3 +177,28 @@ def test_join_many_at_once_makes_a_polyline_of_lines_that_touch() -> None:
     kinds = [e.kind for e in h.document.get_entities()]
     assert kinds == ["LWPOLYLINE"]
     assert h.messages()[-1] == "Joined: 1, into 1."
+
+
+def test_join_from_an_elliptical_arc_takes_its_ellipses_arcs_and_closes() -> None:
+    h = Harness()
+    source, _ = h.document.add_ellipse(CadEllipse((0, 0), (5, 0), 0.6, 0.0, 1.0))
+    rest, _ = h.document.add_ellipse(CadEllipse((0, 0), (5, 0), 0.6, 1.0, 2.0))
+    h.run("JOIN")
+    choose(h, [source])
+    assert h.prompt().text == "Select elliptical arcs to join to source [Close(L)]:"
+    choose(h, [rest])
+    joined = h.document.get_entity(source).geometry
+    assert isinstance(joined, CadEllipse) and not joined.is_full
+    assert (joined.end_param - joined.start_param) == pytest.approx(2.0)
+    assert h.messages()[-1] == "Joined to the source: 1."
+    # Close: the whole ellipse.
+    h.run("JOIN")
+    choose(h, [source])
+    h.run("L")
+    whole = h.document.get_entity(source).geometry
+    assert isinstance(whole, CadEllipse) and whole.is_full
+    assert h.messages()[-1] == "The elliptical arc is now an ellipse."
+    # A whole ellipse is no source.
+    h.run("JOIN")
+    choose(h, [source])
+    assert h.messages()[-1] == "JOIN joins lines, arcs, elliptical arcs and open polylines."

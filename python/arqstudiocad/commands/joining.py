@@ -1,9 +1,10 @@
 """JOIN, following AutoCAD 2021's (``docs/design/join-command.md``).
 
 One object selected is the source: a line takes collinear lines, an arc the
-arcs of its circle, an open polyline the lines, arcs and polylines whose
-ends touch it. Several selected at once are joined together: chains of
-touching ends, and lines and arcs of one line or circle.
+arcs of its circle, an elliptical arc the arcs of its ellipse (ADR 0041),
+an open polyline the lines, arcs and polylines whose ends touch it. Several
+selected at once are joined together: chains of touching ends, and lines
+and arcs of one line, circle or ellipse.
 """
 
 from collections.abc import Generator
@@ -18,11 +19,12 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import Ids, done_selecting
-from arqstudiocad.core import CadDocument, CadError
+from arqstudiocad.core import CadDocument, CadEllipse, CadError
 from arqstudiocad.i18n import tr
 
-#: What can join, and be a source; a polyline when it is open.
-JOINABLE = ("LINE", "ARC", "LWPOLYLINE")
+#: What can join, and be a source; a polyline when it is open, an ellipse
+#: when it is an arc.
+JOINABLE = ("LINE", "ARC", "ELLIPSE", "LWPOLYLINE")
 
 
 def join(ctx: CommandContext) -> CommandScript:
@@ -43,8 +45,9 @@ def join(ctx: CommandContext) -> CommandScript:
     source = chosen[0]
     entity = document.get_entity(source)
     in_plan = entity.kind == "LWPOLYLINE" or entity.geometry is not None
-    if entity.kind not in JOINABLE or not in_plan:
-        ctx.message(tr("JOIN joins lines, arcs and open polylines."))
+    whole = isinstance(entity.geometry, CadEllipse) and entity.geometry.is_full
+    if entity.kind not in JOINABLE or not in_plan or whole:
+        ctx.message(tr("JOIN joins lines, arcs, elliptical arcs and open polylines."))
         return
     if entity.kind == "LWPOLYLINE" and dict(entity.details).get("Closed") == "true":
         ctx.message(tr("A closed polyline cannot be joined."))
@@ -52,6 +55,9 @@ def join(ctx: CommandContext) -> CommandScript:
     options: list[Option] = []
     if entity.kind == "ARC":
         message = tr("Select arcs to join to source")
+        options = [Option("L", tr("Close"))]
+    elif entity.kind == "ELLIPSE":
+        message = tr("Select elliptical arcs to join to source")
         options = [Option("L", tr("Close"))]
     elif entity.kind == "LINE":
         message = tr("Select lines to join to source")
@@ -65,7 +71,10 @@ def join(ctx: CommandContext) -> CommandScript:
             ctx.message(tr("Error: {message}", message=str(error)))
             return
         ctx.session.report(document, changes)
-        ctx.message(tr("The arc is now a circle."))
+        if entity.kind == "ELLIPSE":
+            ctx.message(tr("The elliptical arc is now an ellipse."))
+        else:
+            ctx.message(tr("The arc is now a circle."))
         return
     assert not isinstance(others, str)
     _join(ctx, document, source, others)

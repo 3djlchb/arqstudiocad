@@ -23,9 +23,13 @@ as BREAK and STRETCH today.
    answers this prompt. Unlike AutoCAD, where one pick makes the source at
    once, Enter follows that pick: the viewport's selection serves both.
 2. With a source: `Select lines to join to source:`, `Select arcs to
-   join to source [Close(L)]:` for a source arc, or `Select objects to
-   join to source:` for a source polyline; any selection method, Enter
-   ending it. Close turns the source arc into its circle.
+   join to source [Close(L)]:` for a source arc, `Select elliptical arcs
+   to join to source [Close(L)]:` for a source elliptical arc (since
+   2026-11-22, ADR 0041; its rules in
+   [ELLIPSE's design](ellipse-command.md)), or `Select objects to join to
+   source:` for a source polyline; any selection method, Enter ending it.
+   Close turns the source arc into its circle, an elliptical arc into its
+   ellipse.
 
 ### With a source object
 

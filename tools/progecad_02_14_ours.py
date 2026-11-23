@@ -304,6 +304,19 @@ def el12(doc: CadDocument) -> None:
     doc.stretch_entities([target], (1, 0), [(target, CadBounds2((4, -1), (6, 1)))])
 
 
+def el13(doc: CadDocument) -> None:
+    source = ell(doc, 0.0, 1.0)
+    doc.join_entities(source, [ell(doc, 1.5, 2.5), ell(doc, 2.5, 3.0)])
+
+
+def el14(doc: CadDocument) -> None:
+    doc.join_entities(None, [ell(doc, 0.0, 2.0), ell(doc, 2.0, 4.0), ell(doc, 4.0, 0.0)])
+
+
+def el15(doc: CadDocument) -> None:
+    doc.close_arc(ell(doc, 0.0, 1.0))
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -349,6 +362,9 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("EL10-stretch-ellipse-whole", el10),
     ("EL11-stretch-ellipse-arc-both-ends", el11),
     ("EL12-stretch-ellipse-arc-one-end", el12),
+    ("EL13-join-elliptical-arcs-gap", el13),
+    ("EL14-join-elliptical-arcs-whole", el14),
+    ("EL15-join-elliptical-arc-close", el15),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),
