@@ -25,7 +25,9 @@ impl Geometry2 {
             });
         }
         match *self {
-            Self::Ellipse(_) => Err(GeometryError::OutOfRange { what: "curve" }),
+            // An ellipse's and a spline's offset is a spline, made in
+            // ADR 0043's fifth delivery.
+            Self::Ellipse(_) | Self::Spline(_) => Err(GeometryError::OutOfRange { what: "curve" }),
             Self::Line(l) => {
                 let side = side_of_line(l, toward, tol)?;
                 let shift = l.direction().perp() * (side * distance);
@@ -55,7 +57,9 @@ impl Geometry2 {
             Self::Line(l) => l.direction().cross(through - l.start()).abs(),
             Self::Circle(c) => (c.center().distance_to(through) - c.radius()).abs(),
             Self::Arc(a) => (a.center().distance_to(through) - a.radius()).abs(),
-            Self::Ellipse(_) => return Err(GeometryError::OutOfRange { what: "curve" }),
+            Self::Ellipse(_) | Self::Spline(_) => {
+                return Err(GeometryError::OutOfRange { what: "curve" });
+            }
         };
         if distance <= tol.linear() {
             return Err(GeometryError::OutOfRange { what: "side" });

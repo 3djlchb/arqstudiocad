@@ -227,6 +227,7 @@ impl Transform2 {
             Geometry2::Circle(c) => self.apply_circle(c)?.into(),
             Geometry2::Arc(a) => self.apply_arc(a)?.into(),
             Geometry2::Ellipse(e) => e.transformed(self)?.into(),
+            Geometry2::Spline(ref s) => s.transformed(self)?.into(),
         })
     }
 

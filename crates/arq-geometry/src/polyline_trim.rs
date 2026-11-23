@@ -383,7 +383,7 @@ pub fn extend_polyline(
             out[index].1 = s.bulge.signum() * (a.sweep() / 4.0).tan();
         }
         // A segment grows as a line or an arc.
-        Geometry2::Circle(_) | Geometry2::Ellipse(_) => return Ok(None),
+        Geometry2::Circle(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => return Ok(None),
     }
     Ok(Some(out))
 }

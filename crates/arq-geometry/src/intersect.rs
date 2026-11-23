@@ -19,6 +19,7 @@ use crate::arc::Arc;
 use crate::circle::Circle;
 use crate::ellipse::Ellipse;
 use crate::geometry::Geometry2;
+use crate::intersect_spline::{spline_curve, spline_spline};
 use crate::line::Line;
 use crate::point::Point2;
 use crate::roots::{TrigPoly, Zero};
@@ -50,7 +51,11 @@ impl Intersections {
         self.points.is_empty() && self.overlaps.is_empty()
     }
 
-    fn push_point(&mut self, p: Point2, tol: Tolerance) {
+    pub(crate) fn push_overlap(&mut self, g: Geometry2) {
+        self.overlaps.push(g);
+    }
+
+    pub(crate) fn push_point(&mut self, p: Point2, tol: Tolerance) {
         if !self.points.iter().any(|q| q.approx_eq(p, tol)) {
             self.points.push(p);
         }
@@ -61,6 +66,10 @@ impl Intersections {
 pub fn intersect(a: &Geometry2, b: &Geometry2, tol: Tolerance) -> Intersections {
     let mut out = Intersections::default();
     match (a, b) {
+        (Geometry2::Spline(x), Geometry2::Spline(y)) => spline_spline(x, y, tol, &mut out),
+        (Geometry2::Spline(s), other) | (other, Geometry2::Spline(s)) => {
+            spline_curve(s, other, tol, &mut out)
+        }
         (&Geometry2::Line(l1), &Geometry2::Line(l2)) => line_line(l1, l2, tol, &mut out),
         (&Geometry2::Line(l), &Geometry2::Ellipse(e))
         | (&Geometry2::Ellipse(e), &Geometry2::Line(l)) => line_ellipse(l, e, tol, &mut out),
@@ -93,8 +102,8 @@ impl Round {
                 circle: a.circle(),
                 arc: Some(a),
             },
-            Geometry2::Line(_) | Geometry2::Ellipse(_) => {
-                unreachable!("lines and ellipses are handled separately")
+            Geometry2::Line(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
+                unreachable!("lines, ellipses and splines are handled separately")
             }
         }
     }
@@ -249,7 +258,9 @@ fn as_ellipse(g: &Geometry2) -> Ellipse {
             a.start_angle(),
             a.end_angle(),
         ),
-        Geometry2::Line(_) => unreachable!("lines are handled separately"),
+        Geometry2::Line(_) | Geometry2::Spline(_) => {
+            unreachable!("lines and splines are handled separately")
+        }
     }
     .expect("a circle's ellipse is valid")
 }

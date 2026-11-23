@@ -107,6 +107,13 @@ pub fn key_points(g: &Geometry2) -> Vec<SnapPoint> {
                 out.push(SnapPoint::new(SnapKind::Quadrant, q));
             }
         }
+        // An open spline's ends (ADR 0042 D2).
+        Geometry2::Spline(ref s) if !s.is_closed() => {
+            let (a, b) = s.ends();
+            out.push(SnapPoint::new(SnapKind::Endpoint, a));
+            out.push(SnapPoint::new(SnapKind::Endpoint, b));
+        }
+        Geometry2::Spline(_) => {}
     }
     out
 }
@@ -140,6 +147,7 @@ pub fn intersection_points(a: &Geometry2, b: &Geometry2, tol: Tolerance) -> Vec<
 pub fn perpendicular_points(g: &Geometry2, from: Point2, tol: Tolerance) -> Vec<SnapPoint> {
     let points: Vec<Point2> = match *g {
         Geometry2::Ellipse(e) => ellipse_perpendiculars(e, from, tol),
+        Geometry2::Spline(ref s) => crate::intersect_spline::spline_perpendiculars(s, from),
         Geometry2::Line(l) => {
             let v = l.vector();
             let t = (from - l.start()).dot(v) / v.length_squared();
@@ -183,6 +191,12 @@ pub fn tangent_points(g: &Geometry2, from: Point2, tol: Tolerance) -> Vec<SnapPo
                 .map(|p| SnapPoint::new(SnapKind::Tangent, p))
                 .collect();
         }
+        Geometry2::Spline(ref s) => {
+            return crate::intersect_spline::spline_tangents(s, from, tol)
+                .into_iter()
+                .map(|p| SnapPoint::new(SnapKind::Tangent, p))
+                .collect();
+        }
         Geometry2::Circle(_) | Geometry2::Arc(_) => {}
     }
     let (center, radius) = round(g);
@@ -212,7 +226,9 @@ fn round(g: &Geometry2) -> (Point2, f64) {
     match *g {
         Geometry2::Circle(c) => (c.center(), c.radius()),
         Geometry2::Arc(a) => (a.center(), a.radius()),
-        Geometry2::Line(_) | Geometry2::Ellipse(_) => unreachable!("a circle or an arc"),
+        Geometry2::Line(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
+            unreachable!("a circle or an arc")
+        }
     }
 }
 
@@ -310,6 +326,10 @@ pub fn tangent_direction(g: &Geometry2, at: Point2) -> Vector2 {
         }
         Geometry2::Ellipse(e) => e
             .derivative_at(e.param_of(at))
+            .normalized()
+            .unwrap_or(Vector2::X),
+        Geometry2::Spline(ref s) => s
+            .derivative_at(s.closest_param(at))
             .normalized()
             .unwrap_or(Vector2::X),
     }
