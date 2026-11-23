@@ -559,9 +559,7 @@ impl CadDocument {
                 let cutters = edge_curves(doc, id, edges);
                 return Ok(doc.trim_polyline(id, at, &cutters, erase_uncut)?);
             }
-            let plan = e
-                .plan()
-                .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
+            let plan = curve_plan(doc, &e)?;
             let curve = plan.geometry();
             let cutters = edge_curves(doc, id, edges);
             let cuts = cutting_points(&curve, &cutters, tol);
@@ -799,10 +797,7 @@ impl CadDocument {
             if entity.kind() == "LWPOLYLINE" {
                 return Ok(doc.break_polyline(id, first, second)?);
             }
-            let plan = entity.plan().ok_or(DocumentError::NotEditable {
-                id,
-                kind: entity.kind(),
-            })?;
+            let plan = curve_plan(doc, &entity)?;
             let pieces = break_curve(&plan.geometry(), first, second, Tolerance::DEFAULT)
                 .map_err(DocumentError::from)?;
             replace_curve_pieces(doc, id, plan, &pieces)
@@ -1649,6 +1644,30 @@ fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> 
         .collect()
 }
 
+/// What TRIM and BREAK cut of `e`: its plan geometry, or a spline lying in
+/// the plan (ADR 0043 D4).
+fn curve_plan(doc: &Document, e: &arq_document::Entity) -> CadResult<PlanGeometry> {
+    e.plan()
+        .or_else(|| doc.spline_curve(e.id()))
+        .ok_or_else(|| {
+            DocumentError::NotEditable {
+                id: e.id(),
+                kind: e.kind(),
+            }
+            .into()
+        })
+}
+
+/// Writes `plan` into `id`: a spline as a SPLINE, any other curve as its
+/// plan geometry.
+fn write_curve(doc: &mut Document, id: EntityId, plan: PlanGeometry) -> CadResult<()> {
+    match plan.geometry() {
+        Geometry2::Spline(_) => doc.set_spline_curve(id, plan)?,
+        _ => doc.set_plan_geometry(id, plan)?,
+    }
+    Ok(())
+}
+
 /// Applies already-computed pieces using the existing document writers.
 fn replace_curve_pieces(
     doc: &mut Document,
@@ -1663,11 +1682,11 @@ fn replace_curve_pieces(
             left.push(doc.circle_to_arc(id, *arc)?);
         }
         (_, [first, rest @ ..]) => {
-            doc.set_plan_geometry(id, plan.with_geometry(first.clone()))?;
+            write_curve(doc, id, plan.with_geometry(first.clone()))?;
             left.push(id);
             for piece in rest {
                 let copy = doc.copy_entity(id)?;
-                doc.set_plan_geometry(copy, plan.with_geometry(piece.clone()))?;
+                write_curve(doc, copy, plan.with_geometry(piece.clone()))?;
                 left.push(copy);
             }
         }

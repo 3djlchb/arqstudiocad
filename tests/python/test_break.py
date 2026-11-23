@@ -82,8 +82,8 @@ def test_break_unsupported_entities_and_invalid_points_leave_no_edit() -> None:
     h.run("BREAK")
     h.runner.answer_entity(unsupported, (3, 0))
     assert (
-        h.messages()[-1]
-        == "BREAK currently supports lines, arcs, circles, ellipses and lightweight polylines."
+        h.messages()[-1] == "BREAK currently supports lines, arcs, circles, ellipses, splines and "
+        "lightweight polylines."
     )
     assert h.prompt().entity
     h.runner.answer_entity(circle, (25, 0))

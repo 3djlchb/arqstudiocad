@@ -812,3 +812,21 @@ fn a_spline_gives_intersection_perpendicular_and_tangent_snaps() {
     assert_eq!(touch.kind, Tangent);
     assert!(near(touch.point, bezier(u)), "{touch:?}");
 }
+
+#[test]
+fn a_fence_meets_a_spline_to_trim() {
+    // TRIM's fences pick a spline in the plan too (ADR 0043 D4).
+    let doc = splines();
+    let id = doc.entities()[0].id();
+    let ids: Vec<EntityId> = doc.entities().iter().map(|e| e.id()).collect();
+    let hits = doc.fence_candidates(p(3.0, -1.0), p(3.0, 5.0), &ids);
+    let [(hit, point)] = hits[..] else {
+        panic!("{hits:?}")
+    };
+    assert_eq!(hit, id);
+    assert!(near(point, p(3.0, 2.25)), "{point:?}");
+    assert!(
+        doc.trim_search_bounds(id).is_ok(),
+        "Quick TRIM's broad phase too"
+    );
+}

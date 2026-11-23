@@ -230,3 +230,41 @@ def test_spline_refuses_other_views_before_asking() -> None:
     h.run("SPLINE")
     assert h.runner.active is None
     assert h.messages()[-1] == "Use PLAN to switch to the Top view before using SPLINE."
+
+
+def spline_ends(h: Harness, entity_id: int) -> list[tuple[float, float]]:
+    """The ends of spline `entity_id`, rounded."""
+    curve = h.document.spline_curve(entity_id)
+    assert curve is not None
+    first, *_, last = curve.points()
+    return [(round(first[0], 9), round(first[1], 9)), (round(last[0], 9), round(last[1], 9))]
+
+
+def test_trim_and_break_cut_a_spline() -> None:
+    # The Bezier from (0,0) by (2,3) and (4,3) to (6,0), x = 6u, cut by
+    # x = 2 and x = 4 where it is at height 2 (ADR 0043 D4).
+    h = Harness()
+    bezier = CadSpline.by_vertices([(0, 0), (2, 3), (4, 3), (6, 0)])
+    spline, _ = h.document.add_spline(bezier)
+    assert h.document.spline_curve(spline) is not None
+    h.line((2.0, -9.0), (2.0, 9.0))
+    h.line((4.0, -9.0), (4.0, 9.0))
+    h.run("TRIM")
+    h.runner.answer_entity(spline, (3.0, 2.25))
+    h.run("")
+    assert h.document.undo_history[-1] == "TRIM"
+    pieces = [e for e in h.document.get_entities() if e.kind == "SPLINE"]
+    assert len(pieces) == 2
+    ends = sorted(end for e in pieces for end in spline_ends(h, e.id))
+    assert ends == [(0.0, 0.0), (2.0, 2.0), (4.0, 2.0), (6.0, 0.0)]
+    h.run("UNDO")
+    assert len([e for e in h.document.get_entities() if e.kind == "SPLINE"]) == 1
+    h.run("BREAK")
+    h.runner.answer_entity(spline, (2.0, 2.0))
+    h.run("4,2")
+    assert h.document.undo_history[-1] == "BREAK"
+    assert len([e for e in h.document.get_entities() if e.kind == "SPLINE"]) == 2
+    # EXTEND still refuses it.
+    h.run("EXTEND")
+    h.runner.answer_entity(spline, (1.9, 1.9))
+    assert h.messages()[-1] == "Cannot extend that object."
