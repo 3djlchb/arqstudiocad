@@ -309,3 +309,17 @@ fn a_spline_of_fit_points_alone_moves_whole() {
         assert!(a.distance_to(*b) < 1e-9, "{a:?} {b:?}");
     }
 }
+
+#[test]
+fn a_spline_written_as_plan_geometry_is_a_spline_drawn_as_it() {
+    // As the model writes curves it owns (ADR 0043 D4), at its height.
+    let mut doc = Document::new();
+    let layer = doc.current_layer().id();
+    let s = Spline::by_vertices(3, wave(), true).unwrap();
+    let plan = crate::PlanGeometry::at_elevation(s.clone().into(), 2.5).unwrap();
+    let id = doc.add_entity(plan, layer).unwrap();
+    let sp = codec(&doc, id);
+    assert_eq!(sp.control_points, at(s.points(), 2.5));
+    assert!(sp.flags.closed && sp.flags.periodic);
+    assert_eq!(drawn(&doc, id).flatten(), s.flatten());
+}

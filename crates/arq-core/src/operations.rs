@@ -440,7 +440,7 @@ impl CadDocument {
     ) -> CadResult<(Option<EntityId>, ChangeSet)> {
         let tol = Tolerance::DEFAULT;
         self.corner("FILLET", a, b, |ga, gb| {
-            arq_geometry::fillet(ga, pa, gb, pb, radius, trim, tol)
+            arq_geometry::fillet(&ga, pa, &gb, pb, radius, trim, tol)
         })
     }
 
@@ -515,7 +515,7 @@ impl CadDocument {
                         .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?,
                 );
             }
-            let (plan_a, plan_b) = (plans[0], plans[1]);
+            let (plan_a, plan_b) = (plans[0].clone(), plans[1].clone());
             let corner = make(plan_a.geometry(), plan_b.geometry()).map_err(DocumentError::from)?;
             if let Some(g) = corner.first {
                 doc.set_plan_geometry(a, plan_a.with_geometry(g))?;
@@ -564,8 +564,8 @@ impl CadDocument {
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
             let curve = plan.geometry();
             let cutters = edge_curves(doc, id, edges);
-            let cuts = cutting_points(curve, &cutters, tol);
-            let pieces = match trim(curve, &cuts, at, tol).map_err(DocumentError::from)? {
+            let cuts = cutting_points(&curve, &cutters, tol);
+            let pieces = match trim(&curve, &cuts, at, tol).map_err(DocumentError::from)? {
                 Some(pieces) => pieces,
                 None if erase_uncut => Vec::new(),
                 None => {
@@ -694,7 +694,7 @@ impl CadDocument {
                         doc.arc_to_circle(join.source)?
                     }
                     Made::Curve(plan, result) => {
-                        doc.set_plan_geometry(join.source, plan.with_geometry(*result))?;
+                        doc.set_plan_geometry(join.source, plan.with_geometry(result.clone()))?;
                         join.source
                     }
                     Made::Polyline(chain, height) => {
@@ -803,7 +803,7 @@ impl CadDocument {
                 id,
                 kind: entity.kind(),
             })?;
-            let pieces = break_curve(plan.geometry(), first, second, Tolerance::DEFAULT)
+            let pieces = break_curve(&plan.geometry(), first, second, Tolerance::DEFAULT)
                 .map_err(DocumentError::from)?;
             replace_curve_pieces(doc, id, plan, &pieces)
         })
@@ -838,7 +838,7 @@ impl CadDocument {
                 .plan()
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
             let boundaries = edge_curves(doc, id, edges);
-            let grown = extend(plan.geometry(), &boundaries, at, tol)
+            let grown = extend(&plan.geometry(), &boundaries, at, tol)
                 .map_err(DocumentError::from)?
                 .ok_or(DocumentError::from(GeometryError::OutOfRange {
                     what: "boundary edge",
@@ -892,7 +892,7 @@ impl CadDocument {
             let plan = e
                 .plan()
                 .ok_or(DocumentError::NotEditable { id, kind: e.kind() })?;
-            Ok(doc.set_plan_geometry(id, plan.with_geometry(geometry))?)
+            Ok(doc.set_plan_geometry(id, plan.with_geometry(geometry.clone()))?)
         })
     }
 
@@ -1351,7 +1351,7 @@ fn piece(doc: &Document, id: EntityId) -> Option<Piece> {
         let plan = e.plan()?;
         return Some(Piece {
             id,
-            plan: Some(plan),
+            plan: Some(plan.clone()),
             path: None,
             height: plan.elevation(),
         });
@@ -1368,17 +1368,17 @@ fn piece(doc: &Document, id: EntityId) -> Option<Piece> {
 /// A source line or arc joined with the lines, or the arcs, of `others` it
 /// takes; None when it takes none.
 fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
-    let plan = source.plan?;
+    let plan = source.plan.clone()?;
     let curves: Vec<(EntityId, Geometry2)> = others
         .iter()
-        .filter_map(|p| p.plan.map(|plan| (p.id, plan.geometry())))
+        .filter_map(|p| p.plan.as_ref().map(|plan| (p.id, plan.geometry())))
         .collect();
     let (result, taken) = match plan.geometry() {
         Geometry2::Line(line) => {
             let (ids, lines): (Vec<EntityId>, Vec<Line>) = curves
                 .iter()
-                .filter_map(|&(id, g)| match g {
-                    Geometry2::Line(l) => Some((id, l)),
+                .filter_map(|(id, g)| match *g {
+                    Geometry2::Line(l) => Some((*id, l)),
                     _ => None,
                 })
                 .unzip();
@@ -1389,8 +1389,8 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
         Geometry2::Arc(arc) => {
             let (ids, arcs): (Vec<EntityId>, Vec<Arc>) = curves
                 .iter()
-                .filter_map(|&(id, g)| match g {
-                    Geometry2::Arc(a) => Some((id, a)),
+                .filter_map(|(id, g)| match *g {
+                    Geometry2::Arc(a) => Some((*id, a)),
                     _ => None,
                 })
                 .unzip();
@@ -1400,15 +1400,16 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
         Geometry2::Ellipse(ellipse) => {
             let (ids, arcs): (Vec<EntityId>, Vec<arq_geometry::Ellipse>) = curves
                 .iter()
-                .filter_map(|&(id, g)| match g {
-                    Geometry2::Ellipse(e) => Some((id, e)),
+                .filter_map(|(id, g)| match *g {
+                    Geometry2::Ellipse(e) => Some((*id, e)),
                     _ => None,
                 })
                 .unzip();
             let (joined, taken) = join_elliptical_arcs(ellipse, &arcs, tol);
             (joined, taken.into_iter().map(|i| ids[i]).collect())
         }
-        Geometry2::Circle(_) => return None,
+        // Splines are joined in ADR 0043's fourth delivery.
+        Geometry2::Circle(_) | Geometry2::Spline(_) => return None,
     };
     (!taken.is_empty()).then_some(Join {
         source: source.id,
@@ -1433,7 +1434,7 @@ fn join_chain(first: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
         .map(|&i| {
             let p = &others[i];
             let path = p.path.clone().expect("chainable");
-            match (width, p.plan) {
+            match (width, p.plan.clone()) {
                 (Some(w), Some(_)) => JoinPath {
                     widths: vec![(w, w); path.widths.len()],
                     ..path
@@ -1504,7 +1505,7 @@ fn join_many(level: &[Piece], tol: Tolerance) -> Vec<Join> {
         .collect();
     let curves: Vec<Geometry2> = left
         .iter()
-        .filter_map(|p| p.plan)
+        .filter_map(|p| p.plan.clone())
         .map(|p| p.geometry())
         .collect();
     for group in join_groups(&curves, tol) {
@@ -1556,7 +1557,7 @@ fn extension_query_area(
     padding: f64,
 ) -> Option<arq_geometry::Bounds2> {
     match curve {
-        Geometry2::Circle(_) => None,
+        Geometry2::Circle(_) | Geometry2::Spline(_) => None,
         Geometry2::Ellipse(e) if e.is_full() => None,
         Geometry2::Arc(arc) => {
             // A partial arc may have finite bounds even if its supporting
@@ -1573,7 +1574,7 @@ fn extension_query_area(
         // An elliptical arc grows round its whole ellipse.
         Geometry2::Ellipse(e) => round_query_area(e.whole().bounds(), padding),
         Geometry2::Line(line) => {
-            let at_end = arq_geometry::extends_at_end(curve, pick);
+            let at_end = arq_geometry::extends_at_end(&curve, pick);
             let tip = if at_end { line.end() } else { line.start() };
             let direction = line.vector().normalized().ok()? * if at_end { 1.0 } else { -1.0 };
             let extent = extent.expanded(padding).ok()?;
@@ -1617,8 +1618,9 @@ fn round_query_area(bounds: arq_geometry::Bounds2, padding: f64) -> Option<arq_g
         .ok()
 }
 
-/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs, circles
-/// and ellipses `edges` draw (every entity drawn but `target` when None),
+/// The curves TRIM cuts at and EXTEND reaches: the lines, arcs, circles,
+/// ellipses and splines `edges` draw (every entity drawn but `target` when
+/// None),
 /// those inside blocks and polylines included; texts never.
 fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> Vec<Geometry2> {
     let ids: Vec<EntityId> = match edges {
@@ -1641,6 +1643,7 @@ fn edge_curves(doc: &Document, target: EntityId, edges: Option<&[EntityId]>) -> 
             arq_document::Shape::Arc(a) => Some(Geometry2::Arc(a)),
             arq_document::Shape::Circle(c) => Some(Geometry2::Circle(c)),
             arq_document::Shape::Ellipse(e) => Some(Geometry2::Ellipse(e)),
+            arq_document::Shape::Spline(s) => Some(Geometry2::Spline(s)),
             _ => None,
         })
         .collect()
@@ -1660,11 +1663,11 @@ fn replace_curve_pieces(
             left.push(doc.circle_to_arc(id, *arc)?);
         }
         (_, [first, rest @ ..]) => {
-            doc.set_plan_geometry(id, plan.with_geometry(*first))?;
+            doc.set_plan_geometry(id, plan.with_geometry(first.clone()))?;
             left.push(id);
             for piece in rest {
                 let copy = doc.copy_entity(id)?;
-                doc.set_plan_geometry(copy, plan.with_geometry(*piece))?;
+                doc.set_plan_geometry(copy, plan.with_geometry(piece.clone()))?;
                 left.push(copy);
             }
         }

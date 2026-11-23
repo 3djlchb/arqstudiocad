@@ -148,3 +148,12 @@ Added on 2026-11-23 with the SPLINE command (ADR 0042):
 - by control vertices, open and closed.
 
 What ours gives is in [SPLINE's design](../design/spline-command.md#windows-comparison).
+
+## To run: the spline as a curve (SC1–SC4)
+
+Added on 2026-11-23 with the spline as a curve (ADR 0043):
+- a line trimmed at a spline, and extended to one;
+- the spline itself trimmed and extended, which ours refuses until
+  ProgeCAD shows its rule.
+
+What ours gives is in [SPLINE's design](../design/spline-command.md#the-spline-as-a-curve-adr-0043).

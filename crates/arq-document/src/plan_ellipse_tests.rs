@@ -86,10 +86,10 @@ fn an_ellipse_seen_from_below_is_edited_in_the_world_and_kept_below() {
     );
     // Grown at (10,-2), counterclockwise backwards in the world, to x = 7.
     let wall: Geometry2 = Line::new(p(7.0, -9.0), p(7.0, 9.0)).unwrap().into();
-    let grown = extend(plan.geometry(), &[wall], p(10.0, -2.0), Tolerance::DEFAULT)
+    let grown = extend(&plan.geometry(), &[wall], p(10.0, -2.0), Tolerance::DEFAULT)
         .unwrap()
         .unwrap();
-    doc.set_plan_geometry(id, plan.with_geometry(grown))
+    doc.set_plan_geometry(id, plan.with_geometry(grown.clone()))
         .unwrap();
     let y = -2.0 * (1.0 - 9.0 / 16.0f64).sqrt();
     let (a, b) = drawn(&doc, id).ends().unwrap();

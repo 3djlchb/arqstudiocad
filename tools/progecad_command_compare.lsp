@@ -347,6 +347,15 @@
 
 (defun arq:ln (doc a b) (vla-AddLine (vla-get-ModelSpace doc) (arq:v a) (arq:v b)))
 (defun arq:circ (doc c r) (vla-AddCircle (vla-get-ModelSpace doc) (arq:v c) r))
+;;; A cubic SPLINE by its four control points pts, clamped (a Bezier);
+;;; returned.
+(defun arq:spl (doc pts)
+  (entmake (append (list '(0 . "SPLINE") '(100 . "AcDbEntity") '(8 . "0") '(100 . "AcDbSpline")
+                         '(210 0.0 0.0 1.0) '(70 . 8) '(71 . 3) '(72 . 8) '(73 . 4) '(74 . 0)
+                         '(42 . 1.0e-10) '(43 . 1.0e-10))
+                   (mapcar '(lambda (k) (cons 40 k)) '(0.0 0.0 0.0 0.0 1.0 1.0 1.0 1.0))
+                   (mapcar '(lambda (p) (list 10 (float (car p)) (float (cadr p)) 0.0)) pts)))
+  (vlax-ename->vla-object (entlast)))
 ;;; An ELLIPSE about c, its major semi-axis the vector major, cut to the
 ;;; parameters p0 to p1 (radians) unless they are nil; returned.
 (defun arq:ell (doc c major ratio p0 p1 / e)
@@ -515,6 +524,13 @@
   (arq:command-case "EL15-join-elliptical-arc-close" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 1.0)) '(command "_.JOIN" (arq:en (car arq:o)) "" "_L") dir log)
   (arq:command-case "EL12-stretch-ellipse-arc-one-end" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 (/ pi 2))) '(command "_.STRETCH" "_C" '(6 1) '(4 -1) "" '(0 0) '(1 0)) dir log)
   (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
+  ;; SC1-SC4: a spline as a curve (ADR 0043), the Bezier from (0,0) by
+  ;; (2,3) and (4,3) to (6,0). SC3 and SC4 edit the spline itself, which
+  ;; ours refuses until compared: what ProgeCAD does decides.
+  (arq:command-case "SC1-trim-line-at-spline" '(list (arq:ln doc '(-1 1) '(7 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.TRIM" '(3 1) "") dir log)
+  (arq:command-case "SC2-extend-line-to-spline" '(list (arq:ln doc '(-5 1) '(-2 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(arq:extend (cadr arq:o) '(-2.5 1)) dir log)
+  (arq:command-case "SC3-trim-spline-middle" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(2 -9) '(2 9)) (arq:ln doc '(4 -9) '(4 9))) '(command "_.TRIM" '(3 2.25) "") dir log)
+  (arq:command-case "SC4-extend-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(8 -9) '(8 9))) '(arq:extend (cadr arq:o) '(5.8824 0.1764)) dir log)
   ;; SPLINE (docs/design/spline-command.md): through (0,0) (3,4) (7,1)
   ;; (9,6). Prompts as AutoCAD 2021's; a case whose prompts ProgeCAD does
   ;; not have logs its command error. SP2b gives the tangents as older

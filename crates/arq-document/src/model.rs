@@ -24,7 +24,7 @@ use crate::layers::{Layer, LayerId, read_layer};
 use crate::translate::{color_from_codec, handle, plan_of};
 
 /// What the model owns of a LINE, CIRCLE or ARC.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct OwnedEntity {
     pub(crate) layer: LayerId,
     pub(crate) color: Color,
@@ -130,7 +130,7 @@ impl Document {
         entity.layer = layer.name().to_owned();
         entity.color = owned.color;
         entity.bounds = Some(owned.plan.geometry().bounds());
-        entity.plan = Some(owned.plan);
+        entity.plan = Some(owned.plan.clone());
         entity.transformable = true;
         Some(entity)
     }

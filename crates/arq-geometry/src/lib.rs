@@ -48,7 +48,7 @@
 //! let column = Circle::new(Point2::ORIGIN, 5.0)?;
 //!
 //! // Where the wall crosses the column: (-4, 3) and (4, 3).
-//! let found = intersect(wall.into(), column.into(), tol);
+//! let found = intersect(&wall.into(), &column.into(), tol);
 //! assert_eq!(found.points().len(), 2);
 //!
 //! // Rotate the wall a quarter turn around the origin (ROTATE 90).
@@ -56,7 +56,7 @@
 //! assert!(turned.start().approx_eq(Point2::new(-3.0, -10.0)?, tol));
 //!
 //! // Tangent points from (0, 10) to the column, for a TAN snap.
-//! let tangents = snap::tangent_points(column.into(), Point2::new(0.0, 10.0)?, tol);
+//! let tangents = snap::tangent_points(&column.into(), Point2::new(0.0, 10.0)?, tol);
 //! assert_eq!(tangents.len(), 2);
 //!
 //! // Any curve through one type.
@@ -81,6 +81,7 @@ mod error;
 mod fillet;
 mod geometry;
 mod intersect;
+mod intersect_spline;
 mod join;
 mod line;
 mod offset;
@@ -98,6 +99,7 @@ mod roots;
 mod selection_polygon;
 pub mod snap;
 mod spline;
+mod spline_curve;
 mod spline_fit;
 mod tolerance;
 mod transform;

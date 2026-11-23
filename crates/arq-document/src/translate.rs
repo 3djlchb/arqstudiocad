@@ -13,7 +13,7 @@ use crate::text_layout::{HAlign, Layout, TextFrame, VAlign, layout, plain_mtext}
 /// Our view of a codec entity.
 pub(crate) fn read_entity(e: &EntityType) -> Entity {
     let plan = plan_of(e);
-    let bounds = bounds_with(e, plan);
+    let bounds = bounds_with(e, plan.clone());
     let common = e.common();
     Entity {
         id: e.as_entity().handle().value(),
@@ -28,9 +28,9 @@ pub(crate) fn read_entity(e: &EntityType) -> Entity {
         lineweight: lineweight_text(common.line_weight),
         details: details(e),
         bounds,
+        transformable: plan.is_some() || is_whole_transformable(e),
         plan,
         text: text_data(e),
-        transformable: plan.is_some() || is_whole_transformable(e),
     }
 }
 
@@ -962,6 +962,9 @@ pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
             crate::drawing::write_plan_ellipse(&mut el, g);
             EntityType::Ellipse(el)
         }
+        Geometry2::Spline(g) => EntityType::Spline(
+            crate::entities::new_spline(&g, z).expect("a plan geometry's elevation is finite"),
+        ),
     };
     e.common_mut().layer = layer.to_owned();
     e

@@ -103,3 +103,28 @@ command error. To confirm:
 - the CV knots.
 
 **To run.**
+
+## The spline as a curve (ADR 0043)
+
+Delivery 1, on 2026-11-23: a spline lying in the plan is a `Geometry2`
+curve.
+- **Snaps:** it gives the Intersection snap with every curve, the
+  Perpendicular snap and the Tangent snap. Its ends and nearest point snap
+  as before.
+- **Selection:** a crossing window or polygon meets the curve itself, no
+  longer its chords.
+- **As an edge:** TRIM cuts lines, arcs, circles, ellipses and polylines
+  at it, and EXTEND grows them to it.
+- **Refused for now:** the spline itself is not yet trimmed, broken or
+  extended (deliveries 2 and later).
+
+Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
+
+| Case | Command | Ours |
+|---|---|---|
+| SC1 | TRIM (Quick) the line (−1,1)–(7,1) at (3,1) | two lines, to x = 3 − √5 and from x = 3 + √5 |
+| SC2 | EXTEND the line (−5,1)–(−2,1) to the spline | to (3 − √5, 1) |
+| SC3 | TRIM (Quick) the spline at its top, cut by x = 2 and x = 4 | refused, unchanged: what ProgeCAD makes decides delivery 2 |
+| SC4 | EXTEND the spline at its end (6,0) to x = 8 | refused, unchanged: what ProgeCAD makes decides EXTEND's rule |
+
+**To run.**

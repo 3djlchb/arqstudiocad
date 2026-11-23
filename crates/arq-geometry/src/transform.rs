@@ -221,12 +221,13 @@ impl Transform2 {
     }
 
     /// Image of any curve.
-    pub fn apply(self, g: Geometry2) -> GeometryResult<Geometry2> {
-        Ok(match g {
+    pub fn apply(self, g: &Geometry2) -> GeometryResult<Geometry2> {
+        Ok(match *g {
             Geometry2::Line(l) => self.apply_line(l)?.into(),
             Geometry2::Circle(c) => self.apply_circle(c)?.into(),
             Geometry2::Arc(a) => self.apply_arc(a)?.into(),
             Geometry2::Ellipse(e) => e.transformed(self)?.into(),
+            Geometry2::Spline(ref s) => s.transformed(self)?.into(),
         })
     }
 
@@ -417,7 +418,7 @@ mod tests {
     fn an_ellipse_is_carried_as_a_whole() {
         let e = crate::Ellipse::new(p(1.0, 2.0), v(3.0, 1.0), 0.5, 0.4, 2.6).unwrap();
         let t = Transform2::rotation(p(0.0, 0.0), 0.7).unwrap();
-        let Geometry2::Ellipse(moved) = t.apply(e.into()).unwrap() else {
+        let Geometry2::Ellipse(moved) = t.apply(&e.into()).unwrap() else {
             panic!()
         };
         assert_eq!(moved, e.transformed(t).unwrap());

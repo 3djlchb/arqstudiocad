@@ -724,7 +724,7 @@ fn a_spline_snaps_to_its_ends_and_nearest_point_not_its_chords() {
 }
 
 #[test]
-fn a_spline_is_picked_by_its_curve_and_selected_by_its_chords() {
+fn a_spline_is_picked_and_selected_by_its_curve() {
     let doc = splines();
     let id = doc.entities()[0].id();
     assert_eq!(doc.pick(p(3.0, 2.3), 0.1), Some(id));
@@ -747,4 +747,68 @@ fn a_spline_is_picked_by_its_curve_and_selected_by_its_chords() {
     assert_eq!((b.max().y(), b.max().x()), (3.0, 6.0));
     let drawn = doc.drawing(id).unwrap()[0].shape.bounds();
     assert!((drawn.max().y() - 2.25).abs() < 1e-9, "{drawn:?}");
+}
+
+/// The Bézier of `splines()`, from (0,0) by (2,3) and (4,3) to (6,0): x is
+/// 6u, y is 9u(1 − u).
+fn bezier(u: f64) -> Point2 {
+    p(6.0 * u, 9.0 * u * (1.0 - u))
+}
+
+#[test]
+fn a_spline_is_crossed_by_its_curve_not_its_chords() {
+    // Between two of its sixteen chords a span, the curve lies 0.0088
+    // above the chord: a window round the curve there, clear of the
+    // chord, selects it (ADR 0043 D3).
+    let doc = splines();
+    let id = doc.entities()[0].id();
+    let q = bezier(0.5 + 1.0 / 32.0);
+    let chord = bezier(0.5).lerp(bezier(0.5 + 1.0 / 16.0), 0.5);
+    assert!(q.y() - chord.y() > 0.008, "{q:?} {chord:?}");
+    let window = area(q.x() - 0.001, q.y() - 0.001, q.x() + 0.001, q.y() + 0.001);
+    assert_eq!(doc.select_window(window, true), [id]);
+    let polygon = arq_geometry::SelectionPolygon::new(
+        vec![
+            p(q.x() - 0.002, q.y() - 0.001),
+            p(q.x() + 0.002, q.y() - 0.001),
+            p(q.x(), q.y() + 0.002),
+        ],
+        arq_geometry::Tolerance::DEFAULT,
+    )
+    .unwrap();
+    assert_eq!(doc.select_polygon_candidates(&polygon, &[id]), [id]);
+    // Just under the curve, between it and the chord: nothing.
+    let below = area(q.x() - 0.001, q.y() - 0.006, q.x() + 0.001, q.y() - 0.004);
+    assert!(doc.select_window(below, true).is_empty());
+}
+
+#[test]
+fn a_spline_gives_intersection_perpendicular_and_tangent_snaps() {
+    let mut doc = splines();
+    let layer = doc.current_layer().id();
+    let line = arq_geometry::Line::new(p(-1.0, 1.0), p(7.0, 1.0)).unwrap();
+    doc.add_entity(crate::PlanGeometry::new(line.into()), layer)
+        .unwrap();
+    // y = 1 where u(1 − u) = 1/9.
+    let u = (1.0 - 5f64.sqrt() / 3.0) / 2.0;
+    let at = |cursor: Point2, modes: &[SnapKind], from: Option<Point2>| {
+        doc.snap(cursor, 0.3, modes, from)
+    };
+    let int = at(p(6.0 * u + 0.05, 1.05), &[Intersection], None).unwrap();
+    assert!(near(int.point, bezier(u)), "{int:?}");
+    // From (3,5) the perpendicular falls on its top, (3, 2.25).
+    let foot = at(p(3.0, 2.3), &[Perpendicular], Some(p(3.0, 5.0))).unwrap();
+    assert_eq!(foot.kind, Perpendicular);
+    assert!(near(foot.point, p(3.0, 2.25)), "{foot:?}");
+    // From (−3,0) a line touches where (B − from) × B′ = 0, that is
+    // u² + u − 1/2 = 0.
+    let u = (3f64.sqrt() - 1.0) / 2.0;
+    let touch = at(
+        bezier(u) + arq_geometry::Vector2::new(0.05, 0.05).unwrap(),
+        &[Tangent],
+        Some(p(-3.0, 0.0)),
+    )
+    .unwrap();
+    assert_eq!(touch.kind, Tangent);
+    assert!(near(touch.point, bezier(u)), "{touch:?}");
 }

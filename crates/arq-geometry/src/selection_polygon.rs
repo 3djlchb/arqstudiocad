@@ -33,7 +33,7 @@ impl SelectionPolygon {
         }
         for (i, &a) in edges.iter().enumerate() {
             for (j, &b) in edges.iter().enumerate().skip(i + 1) {
-                let hit = intersect(a.into(), b.into(), tol);
+                let hit = intersect(&a.into(), &b.into(), tol);
                 let adjacent = j == i + 1 || (i == 0 && j == edges.len() - 1);
                 if !hit.overlaps().is_empty() || (!adjacent && !hit.is_empty()) {
                     return Err(GeometryError::OutOfRange {
@@ -74,12 +74,12 @@ impl SelectionPolygon {
     }
 
     /// Whether an exact line, arc or circle meets the enclosed area or boundary.
-    pub fn touches_curve(&self, curve: Geometry2, tol: Tolerance) -> bool {
+    pub fn touches_curve(&self, curve: &Geometry2, tol: Tolerance) -> bool {
         self.contains(curve.point_at(0.0), tol)
             || self
                 .edges
                 .iter()
-                .any(|&edge| !intersect(curve, edge.into(), tol).is_empty())
+                .any(|&edge| !intersect(curve, &edge.into(), tol).is_empty())
     }
 }
 
@@ -170,7 +170,7 @@ mod tests {
                 assert!(!polygon.contains(p(5. + origin, 0. + origin), TOL));
                 assert!(
                     polygon.touches_curve(
-                        Line::new(p(-1. + origin, 0.5 + origin), p(5. + origin, 0.5 + origin))
+                        &Line::new(p(-1. + origin, 0.5 + origin), p(5. + origin, 0.5 + origin))
                             .unwrap()
                             .into(),
                         TOL
@@ -178,7 +178,7 @@ mod tests {
                 );
                 assert!(
                     !polygon.touches_curve(
-                        Circle::new(p(2. + origin, 2. + origin), 0.2)
+                        &Circle::new(p(2. + origin, 2. + origin), 0.2)
                             .unwrap()
                             .into(),
                         TOL

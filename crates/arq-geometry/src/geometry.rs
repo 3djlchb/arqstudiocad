@@ -1,5 +1,7 @@
 //! `Geometry2`: any 2D curve the core knows, behind one type.
 
+use std::sync::Arc as Shared;
+
 use crate::arc::Arc;
 use crate::bounds::Bounds2;
 use crate::circle::Circle;
@@ -7,6 +9,7 @@ use crate::ellipse::Ellipse;
 use crate::error::GeometryResult;
 use crate::line::Line;
 use crate::point::Point2;
+use crate::spline::Spline;
 use crate::tolerance::Tolerance;
 
 /// Which curve a [`Geometry2`] holds.
@@ -20,6 +23,8 @@ pub enum GeometryKind {
     Arc,
     /// An ellipse or an elliptical arc (ADR 0041).
     Ellipse,
+    /// A spline (ADR 0043).
+    Spline,
 }
 
 impl GeometryKind {
@@ -30,13 +35,15 @@ impl GeometryKind {
             Self::Circle => "CIRCLE",
             Self::Arc => "ARC",
             Self::Ellipse => "ELLIPSE",
+            Self::Spline => "SPLINE",
         }
     }
 }
 
 /// Any 2D curve. The rest of the core (document, selection, rendering)
 /// works with this type and never needs to know which curve it holds.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Not `Copy`: a spline is held by reference count (ADR 0043 D1).
+#[derive(Clone, Debug, PartialEq)]
 pub enum Geometry2 {
     /// A straight segment.
     Line(Line),
@@ -46,6 +53,8 @@ pub enum Geometry2 {
     Arc(Arc),
     /// An ellipse or an elliptical arc (ADR 0041).
     Ellipse(Ellipse),
+    /// A spline lying in the plan, shared (ADR 0043).
+    Spline(Shared<Spline>),
 }
 
 /// Calls the same method on whichever curve `self` holds.
@@ -56,82 +65,97 @@ macro_rules! each {
             Geometry2::Circle($g) => $body,
             Geometry2::Arc($g) => $body,
             Geometry2::Ellipse($g) => $body,
+            Geometry2::Spline($g) => $body,
         }
     };
 }
 
 impl Geometry2 {
     /// Which curve this is.
-    pub fn kind(self) -> GeometryKind {
+    pub fn kind(&self) -> GeometryKind {
         match self {
             Self::Line(_) => GeometryKind::Line,
             Self::Circle(_) => GeometryKind::Circle,
             Self::Arc(_) => GeometryKind::Arc,
             Self::Ellipse(_) => GeometryKind::Ellipse,
+            Self::Spline(_) => GeometryKind::Spline,
         }
     }
 
     /// Whether the curve ends where it starts (a circle, a whole ellipse).
-    pub fn is_closed(self) -> bool {
+    pub fn is_closed(&self) -> bool {
         match self {
             Self::Circle(_) => true,
             Self::Ellipse(e) => e.is_full(),
+            Self::Spline(s) => s.is_closed(),
             Self::Line(_) | Self::Arc(_) => false,
         }
     }
 
     /// First point, for open curves; `None` for a closed one.
-    pub fn start_point(self) -> Option<Point2> {
+    pub fn start_point(&self) -> Option<Point2> {
         match self {
             Self::Line(l) => Some(l.start()),
             Self::Arc(a) => Some(a.start_point()),
             Self::Ellipse(e) => e.ends().map(|(a, _)| a),
+            Self::Spline(s) => (!s.is_closed()).then(|| s.ends().0),
             Self::Circle(_) => None,
         }
     }
 
     /// Last point, for open curves; `None` for a closed one.
-    pub fn end_point(self) -> Option<Point2> {
+    pub fn end_point(&self) -> Option<Point2> {
         match self {
             Self::Line(l) => Some(l.end()),
             Self::Arc(a) => Some(a.end_point()),
             Self::Ellipse(e) => e.ends().map(|(_, b)| b),
+            Self::Spline(s) => (!s.is_closed()).then(|| s.ends().1),
             Self::Circle(_) => None,
         }
     }
 
     /// Length of the curve.
-    pub fn length(self) -> f64 {
+    pub fn length(&self) -> f64 {
         each!(self, g => g.length())
     }
 
     /// Bounding box.
-    pub fn bounds(self) -> Bounds2 {
+    pub fn bounds(&self) -> Bounds2 {
         each!(self, g => g.bounds())
     }
 
-    /// Point at normalized parameter `t` in `[0, 1]`.
-    pub fn point_at(self, t: f64) -> Point2 {
-        each!(self, g => g.point_at(t))
+    /// Point at normalized parameter `t` in `[0, 1]`: a spline's along its
+    /// own parameter, over its domain.
+    pub fn point_at(&self, t: f64) -> Point2 {
+        match self {
+            Self::Spline(s) => {
+                let (a, b) = s.domain();
+                s.point_at(a + (b - a) * t)
+            }
+            Self::Line(g) => g.point_at(t),
+            Self::Circle(g) => g.point_at(t),
+            Self::Arc(g) => g.point_at(t),
+            Self::Ellipse(g) => g.point_at(t),
+        }
     }
 
     /// Point at `distance` along the curve from its start.
-    pub fn point_at_distance(self, distance: f64) -> GeometryResult<Point2> {
+    pub fn point_at_distance(&self, distance: f64) -> GeometryResult<Point2> {
         each!(self, g => g.point_at_distance(distance))
     }
 
     /// Point of the curve closest to `p`.
-    pub fn closest_point(self, p: Point2) -> Point2 {
+    pub fn closest_point(&self, p: Point2) -> Point2 {
         each!(self, g => g.closest_point(p))
     }
 
     /// Shortest distance from `p` to the curve.
-    pub fn distance_to(self, p: Point2) -> f64 {
+    pub fn distance_to(&self, p: Point2) -> f64 {
         each!(self, g => g.distance_to(p))
     }
 
     /// Whether `p` lies on the curve, within `tol.linear()`.
-    pub fn contains_point(self, p: Point2, tol: Tolerance) -> bool {
+    pub fn contains_point(&self, p: Point2, tol: Tolerance) -> bool {
         each!(self, g => g.contains_point(p, tol))
     }
 }
@@ -157,6 +181,18 @@ impl From<Arc> for Geometry2 {
 impl From<Ellipse> for Geometry2 {
     fn from(e: Ellipse) -> Self {
         Self::Ellipse(e)
+    }
+}
+
+impl From<Spline> for Geometry2 {
+    fn from(s: Spline) -> Self {
+        Self::Spline(Shared::new(s))
+    }
+}
+
+impl From<Shared<Spline>> for Geometry2 {
+    fn from(s: Shared<Spline>) -> Self {
+        Self::Spline(s)
     }
 }
 

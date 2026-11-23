@@ -362,7 +362,7 @@ proptest! {
         (t, _) in transform(), l in line(), c in circle(), a in arc(), s in 0.0..=1.0f64,
     ) {
         for g in [Geometry2::from(l), c.into(), a.into()] {
-            let image = t.apply(g).unwrap();
+            let image = t.apply(&g).unwrap();
             prop_assert_eq!(image.kind(), g.kind());
             let q = t.apply_point(g.point_at(s));
             let tol = chain_tol(&[g.point_at(s), q, image.bounds().min(), image.bounds().max()]);
@@ -383,7 +383,7 @@ proptest! {
     #[test]
     fn intersection_points_lie_on_both_curves((base, a, b) in scene()) {
         let tol = tol_for(magnitude(base) + 300.0);
-        let found = intersect(a, b, TOL);
+        let found = intersect(&a, &b, TOL);
         for p in found.points() {
             prop_assert!(a.contains_point(*p, tol), "{p:?} not on {a:?}");
             prop_assert!(b.contains_point(*p, tol), "{p:?} not on {b:?}");
@@ -400,7 +400,7 @@ proptest! {
     #[test]
     fn intersection_is_symmetric((base, a, b) in scene()) {
         let tol = tol_for(magnitude(base) + 300.0);
-        let (ab, ba) = (intersect(a, b, TOL), intersect(b, a, TOL));
+        let (ab, ba) = (intersect(&a, &b, TOL), intersect(&b, &a, TOL));
         prop_assert!(same_points(&ab, &ba, tol), "{:?} vs {:?}", ab.points(), ba.points());
         prop_assert_eq!(ab.overlaps().len(), ba.overlaps().len());
     }
@@ -415,7 +415,7 @@ proptest! {
         let (u1, u2) = (Vector2::from_polar(l1, d1).unwrap(), Vector2::from_polar(l2, d2).unwrap());
         let a = Line::new(base - u1 * t1, base + u1 * (1.0 - t1)).unwrap();
         let b = Line::new(base - u2 * t2, base + u2 * (1.0 - t2)).unwrap();
-        let found = intersect(a.into(), b.into(), TOL);
+        let found = intersect(&a.into(), &b.into(), TOL);
         let tol = tol_for(magnitude(base) + 200.0);
         prop_assert_eq!(found.points().len(), 1);
         prop_assert!(found.points()[0].approx_eq(base, tol));
@@ -447,7 +447,7 @@ proptest! {
             if crossing.sin().abs() < 0.05 {
                 continue;
             }
-            let found = intersect(x, y, TOL);
+            let found = intersect(&x, &y, TOL);
             let hit = found.points().iter().any(|p| p.approx_eq(base, tol))
                 || !found.overlaps().is_empty();
             prop_assert!(hit, "{:?} and {:?} miss {:?}: {:?}", x, y, base, found);
@@ -457,7 +457,7 @@ proptest! {
     #[test]
     fn key_points_lie_on_the_curve((base, g, _) in scene()) {
         let tol = tol_for(magnitude(base) + 300.0);
-        for s in snap::key_points(g) {
+        for s in snap::key_points(&g) {
             if s.kind == SnapKind::Center {
                 continue;
             }
@@ -470,10 +470,10 @@ proptest! {
     fn perpendicular_points_make_a_right_angle((base, g, _) in scene(), from in point()) {
         let from = base + (from - Point2::ORIGIN) * 1e-5; // near the scene
         let tol = tol_for(magnitude(base) + 300.0);
-        for s in snap::perpendicular_points(g, from, TOL) {
+        for s in snap::perpendicular_points(&g, from, TOL) {
             prop_assert!(g.contains_point(s.point, tol));
             let Ok(to_from) = (from - s.point).normalized() else { continue };
-            let cos = to_from.dot(snap::tangent_direction(g, s.point));
+            let cos = to_from.dot(snap::tangent_direction(&g, s.point));
             prop_assert!(cos.abs() <= 1e-6, "angle off 90° by cos = {cos}");
         }
     }
@@ -484,7 +484,7 @@ proptest! {
     ) {
         // A point outside the circle has exactly two tangent points.
         let from = c.center() + Vector2::from_polar(c.radius() * extra, dir).unwrap();
-        let tangents = snap::tangent_points(c.into(), from, TOL);
+        let tangents = snap::tangent_points(&c.into(), from, TOL);
         prop_assert_eq!(tangents.len(), 2);
         let tol = tol_for(magnitude(c.center()) + c.radius() * 10.0);
         for s in tangents {

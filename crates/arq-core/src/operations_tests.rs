@@ -166,7 +166,7 @@ fn new_geometry_of_the_same_kind_keeps_the_entity() {
     let circle: Geometry2 = Circle::new(p(0.0, 0.0), 1.0).unwrap().into();
     // A line cannot become a circle; a text has no geometry to edit yet.
     for id in [line, text] {
-        let err = cad.set_entity_geometry(id, circle).unwrap_err();
+        let err = cad.set_entity_geometry(id, circle.clone()).unwrap_err();
         assert!(matches!(err, CadError::InvalidOperation(_)), "{err:?}");
     }
     cad.undo().unwrap();
@@ -2814,4 +2814,70 @@ fn a_spline_in_the_plan_moves_turns_scales_and_mirrors_as_a_whole() {
         cad.undo().unwrap();
         assert_eq!(drawn(&cad, id), before);
     }
+}
+
+/// A drawing of the Bézier spline from (0,0) by (2,3) and (4,3) to (6,0),
+/// read from DXF: x is 6u, y is 9u(1 − u).
+fn bezier_spline() -> (CadDocument, EntityId) {
+    let mut c: Vec<String> = [
+        "0", "SPLINE", "8", "0", "210", "0", "220", "0", "230", "1", "70", "8", "71", "3", "72",
+        "8", "73", "4", "74", "0",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+    for k in [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0] {
+        c.extend(["40".to_owned(), format!("{k:?}")]);
+    }
+    for (x, y) in [(0.0, 0.0), (2.0, 3.0), (4.0, 3.0), (6.0, 0.0)] {
+        c.extend([
+            "10".to_owned(),
+            format!("{x:?}"),
+            "20".to_owned(),
+            format!("{y:?}"),
+            "30".to_owned(),
+            "0.0".to_owned(),
+        ]);
+    }
+    let dxf = format!(
+        "0\nSECTION\n2\nENTITIES\n{}\n0\nENDSEC\n0\nEOF\n",
+        c.join("\n")
+    );
+    let doc = arq_document::Document::from_dxf_bytes(dxf.into_bytes()).unwrap();
+    let cad = CadDocument::from_document(doc);
+    let id = cad.document().entities()[0].id();
+    (cad, id)
+}
+
+#[test]
+fn trim_cuts_at_a_spline_and_extend_reaches_one() {
+    // y = 1 meets it where u(1 − u) = 1/9: x = 6u.
+    let root = 5f64.sqrt() / 3.0;
+    let (x1, x2) = (3.0 * (1.0 - root), 3.0 * (1.0 + root));
+    let (mut cad, spline) = bezier_spline();
+    let (line, _) = cad.add_line(p(-1.0, 1.0), p(7.0, 1.0)).unwrap();
+    let (left, _) = cad.trim_entity(line, p(3.0, 1.0), None, true).unwrap();
+    let mut ends: Vec<f64> = left
+        .iter()
+        .flat_map(|&id| {
+            let (a, b) = line_ends(&cad, id);
+            [a.x(), b.x()]
+        })
+        .collect();
+    ends.sort_by(f64::total_cmp);
+    assert_eq!(ends.len(), 4, "{ends:?}");
+    assert!(
+        (ends[1] - x1).abs() < 1e-9 && (ends[2] - x2).abs() < 1e-9,
+        "{ends:?}"
+    );
+    // A line along y = 1 from the left grows to it.
+    let (short, _) = cad.add_line(p(-5.0, 1.0), p(-2.0, 1.0)).unwrap();
+    cad.extend_entity(short, p(-2.0, 1.0), Some(&[spline]))
+        .unwrap();
+    let (_, end) = line_ends(&cad, short);
+    assert!(near(end, p(x1, 1.0)), "{end:?}");
+    // The spline itself is not trimmed yet (ADR 0043 D5).
+    let before = cad.document().entity(spline).unwrap().bounds();
+    assert!(cad.trim_entity(spline, p(3.0, 2.25), None, true).is_err());
+    assert_eq!(cad.document().entity(spline).unwrap().bounds(), before);
 }

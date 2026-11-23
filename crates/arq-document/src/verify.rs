@@ -264,7 +264,7 @@ fn same_bounds(a: Bounds2, b: Bounds2) -> bool {
         && near(a.max().y(), b.max().y())
 }
 
-fn option_eq<T: Copy>(a: Option<T>, b: Option<T>, eq: impl Fn(T, T) -> bool) -> bool {
+fn option_eq<T>(a: Option<T>, b: Option<T>, eq: impl Fn(T, T) -> bool) -> bool {
     match (a, b) {
         (Some(a), Some(b)) => eq(a, b),
         (None, None) => true,
@@ -282,7 +282,7 @@ fn same_plan(a: PlanGeometry, b: PlanGeometry) -> bool {
     if !near(a.elevation(), b.elevation()) {
         return false;
     }
-    match (ga, gb) {
+    match (&ga, &gb) {
         (Geometry2::Ellipse(x), Geometry2::Ellipse(y)) => {
             let angle = |u: f64, v: f64| {
                 let d = (u - v).rem_euclid(std::f64::consts::TAU);

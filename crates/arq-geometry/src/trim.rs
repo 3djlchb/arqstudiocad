@@ -9,6 +9,7 @@ use crate::ellipse::Ellipse;
 use crate::error::{GeometryError, GeometryResult};
 use crate::geometry::Geometry2;
 use crate::intersect::intersect;
+use crate::intersect_spline::{Carrier, spline_carrier};
 use crate::line::Line;
 use crate::point::Point2;
 use crate::tolerance::Tolerance;
@@ -19,8 +20,8 @@ pub const EXTEND_EDGE_RELATIVE_TOLERANCE: f64 = 1e-9;
 
 /// Where a curve stands at a point on it: a line's fraction from its start,
 /// an arc's turn from its start, a circle's angle.
-fn parameter(curve: Geometry2, p: Point2) -> f64 {
-    match curve {
+fn parameter(curve: &Geometry2, p: Point2) -> f64 {
+    match *curve {
         Geometry2::Line(l) => {
             let d = l.vector();
             (p - l.start()).dot(d) / d.length_squared()
@@ -29,23 +30,25 @@ fn parameter(curve: Geometry2, p: Point2) -> f64 {
         Geometry2::Circle(c) => (p - c.center()).angle().rem_euclid(TAU),
         Geometry2::Ellipse(e) if e.is_full() => e.param_of(p),
         Geometry2::Ellipse(e) => crate::angle::ccw_sweep(e.start_param(), e.param_of(p)),
+        Geometry2::Spline(_) => unreachable!("a spline is refused first"),
     }
 }
 
 /// The curve's whole span of parameters.
-fn span(curve: Geometry2) -> f64 {
-    match curve {
+fn span(curve: &Geometry2) -> f64 {
+    match *curve {
         Geometry2::Line(_) => 1.0,
         Geometry2::Arc(a) => a.sweep(),
         Geometry2::Circle(_) => TAU,
         Geometry2::Ellipse(e) => e.sweep(),
+        Geometry2::Spline(_) => unreachable!("a spline is refused first"),
     }
 }
 
 /// The part of `curve` between two of its parameters (`from` before `to`,
 /// a circle's going round through 2π); None when it has no length.
-fn piece(curve: Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometry2> {
-    match curve {
+fn piece(curve: &Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometry2> {
+    match *curve {
         Geometry2::Line(l) => Line::new(l.point_at(from), l.point_at(to))
             .ok()
             .filter(|n| n.length() > tol.linear())
@@ -74,15 +77,16 @@ fn piece(curve: Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geometr
             .filter(|n| n.length() > tol.linear())
             .map(Geometry2::Ellipse)
         }
+        Geometry2::Spline(_) => unreachable!("a spline is refused first"),
     }
 }
 
 /// The intersections of `curve` with `edges`, as AutoCAD's TRIM finds its
 /// cutting points: where each edge really crosses or touches it.
-pub fn cutting_points(curve: Geometry2, edges: &[Geometry2], tol: Tolerance) -> Vec<Point2> {
+pub fn cutting_points(curve: &Geometry2, edges: &[Geometry2], tol: Tolerance) -> Vec<Point2> {
     edges
         .iter()
-        .flat_map(|&e| intersect(curve, e, tol).points().to_vec())
+        .flat_map(|e| intersect(curve, e, tol).points().to_vec())
         .collect()
 }
 
@@ -93,11 +97,12 @@ pub fn cutting_points(curve: Geometry2, edges: &[Geometry2], tol: Tolerance) -> 
 /// then erases the whole object). A circle needs two cuts, and becomes the
 /// arc left between them.
 pub fn trim(
-    curve: Geometry2,
+    curve: &Geometry2,
     cuts: &[Point2],
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Vec<Geometry2>>> {
+    refuse_spline(curve)?;
     let total = span(curve);
     let at = parameter(curve, curve.closest_point(pick));
     let end_slack = tol.linear() / curve.length().max(tol.linear()) * total;
@@ -157,11 +162,12 @@ pub fn trim(
 /// order. Equal interior points split them without a gap. Circles lose the
 /// counterclockwise span from first to second; equal points are refused.
 pub fn break_curve(
-    curve: Geometry2,
+    curve: &Geometry2,
     first: Point2,
     second: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Vec<Geometry2>> {
+    refuse_spline(curve)?;
     let a = parameter(curve, curve.closest_point(first));
     let b = parameter(curve, curve.closest_point(second));
     if !a.is_finite() || !b.is_finite() {
@@ -205,17 +211,23 @@ pub fn break_curve(
 /// longer along itself, an arc further round its circle (never round onto
 /// itself). None when no edge lies that way. A circle cannot be extended.
 pub fn extend(
-    curve: Geometry2,
+    curve: &Geometry2,
     edges: &[Geometry2],
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Geometry2>> {
+    refuse_spline(curve)?;
     let at_end = extends_at_end(curve, pick);
     // Where the curve's line or circle meets each edge, on the edge.
     let reach: Vec<Point2> = edges
         .iter()
-        .flat_map(|&edge| {
+        .flat_map(|edge| {
             let found = match (curve, edge) {
+                // A spline edge, met by the curve's line, circle or whole
+                // ellipse (ADR 0043 D3).
+                (_, Geometry2::Spline(s)) => Carrier::of(curve)
+                    .map(|c| spline_carrier(s, c, tol))
+                    .unwrap_or_default(),
                 (Geometry2::Line(l), Geometry2::Line(e)) => {
                     line_line(l.start(), l.vector(), e.start(), e.vector())
                         .into_iter()
@@ -240,13 +252,13 @@ pub fn extend(
                     line_ellipse(l.start(), l.vector(), e.whole())
                 }
                 (Geometry2::Arc(a), Geometry2::Ellipse(_)) => {
-                    intersect(a.circle().into(), edge, tol).points().to_vec()
+                    intersect(&a.circle().into(), edge, tol).points().to_vec()
                 }
                 // An elliptical arc reaches round its whole ellipse.
                 (Geometry2::Ellipse(e), _) => {
-                    intersect(e.whole().into(), edge, tol).points().to_vec()
+                    intersect(&e.whole().into(), edge, tol).points().to_vec()
                 }
-                (Geometry2::Circle(_), _) => Vec::new(),
+                (Geometry2::Circle(_), _) | (Geometry2::Spline(_), _) => Vec::new(),
             };
             found
                 .into_iter()
@@ -254,8 +266,10 @@ pub fn extend(
                 .collect::<Vec<_>>()
         })
         .collect();
-    match curve {
-        Geometry2::Circle(_) => Err(GeometryError::OutOfRange { what: "curve" }),
+    match *curve {
+        Geometry2::Circle(_) | Geometry2::Spline(_) => {
+            Err(GeometryError::OutOfRange { what: "curve" })
+        }
         Geometry2::Ellipse(e) if e.is_full() => Err(GeometryError::OutOfRange { what: "curve" }),
         Geometry2::Ellipse(e) => {
             // Further round its ellipse from the end picked, short of
@@ -340,14 +354,23 @@ pub fn extend(
     }
 }
 
+/// A spline is not trimmed, broken or extended until ADR 0043's second
+/// delivery: refused, nothing changed.
+fn refuse_spline(curve: &Geometry2) -> GeometryResult<()> {
+    match curve {
+        Geometry2::Spline(_) => Err(GeometryError::OutOfRange { what: "curve" }),
+        _ => Ok(()),
+    }
+}
+
 /// Same end choice for the operation and its broad-phase query.
-pub fn extends_at_end(curve: Geometry2, pick: Point2) -> bool {
+pub fn extends_at_end(curve: &Geometry2, pick: Point2) -> bool {
     parameter(curve, curve.closest_point(pick)) > span(curve) / 2.0
 }
 
 /// Whether `q`, computed where two curves meet, lies on `edge`: within a
 /// hair, relative to the coordinates' size.
-fn on(edge: Geometry2, q: Point2) -> bool {
+fn on(edge: &Geometry2, q: Point2) -> bool {
     let scale = q.x().abs().max(q.y().abs()).max(1.0);
     edge.distance_to(q) <= EXTEND_EDGE_RELATIVE_TOLERANCE * scale
 }

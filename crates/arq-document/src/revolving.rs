@@ -176,7 +176,9 @@ fn revolution(
                     Arc::new(c, a.radius(), start, end).map_err(|_| Unrevolved::NotAProfile)?;
                 (Geometry2::Arc(arc), backward)
             }
-            Geometry2::Circle(_) | Geometry2::Ellipse(_) => return Err(Unrevolved::NotAProfile),
+            Geometry2::Circle(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
+                return Err(Unrevolved::NotAProfile);
+            }
         };
         half.push(ProfilePiece {
             curve: curve.0,

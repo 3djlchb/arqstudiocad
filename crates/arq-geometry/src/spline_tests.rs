@@ -188,3 +188,20 @@ fn bad_splines_are_refused() {
         [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0]
     );
 }
+
+#[test]
+fn a_closed_spline_s_nearest_point_is_found_across_where_it_closes() {
+    // Just before its end, which is its start: the nearest sample is the
+    // first, the nearest point on the other side.
+    let s = Spline::by_vertices(
+        2,
+        vec![p(0.0, 0.0), p(6.0, 1.0), p(8.0, 5.0), p(3.0, 7.0)],
+        true,
+    )
+    .unwrap();
+    let (_, b) = s.domain();
+    for back in [1e-9, 1e-6, 1e-3] {
+        let q = s.point_at(b - back);
+        assert!(s.distance_to(q) < 1e-12, "{back}: {}", s.distance_to(q));
+    }
+}

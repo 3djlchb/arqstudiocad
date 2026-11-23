@@ -40,8 +40,9 @@ impl Color {
 }
 
 /// The editable part of an entity drawn in plan: its 2D geometry in world
-/// coordinates, plus its elevation (Z), which edits preserve.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// coordinates, plus its elevation (Z), which edits preserve. Not `Copy`,
+/// as its geometry is not (ADR 0043 D1).
+#[derive(Clone, Debug, PartialEq)]
 pub struct PlanGeometry {
     geometry: Geometry2,
     elevation: f64,
@@ -67,19 +68,23 @@ impl PlanGeometry {
         })
     }
 
-    /// The 2D geometry in world coordinates.
-    pub fn geometry(self) -> Geometry2 {
-        self.geometry
+    /// The 2D geometry in world coordinates (a spline's shared, so cloning
+    /// it costs a reference count).
+    pub fn geometry(&self) -> Geometry2 {
+        self.geometry.clone()
     }
 
     /// Elevation (Z).
-    pub fn elevation(self) -> f64 {
+    pub fn elevation(&self) -> f64 {
         self.elevation
     }
 
     /// Same elevation, new geometry.
-    pub fn with_geometry(self, geometry: Geometry2) -> Self {
-        Self { geometry, ..self }
+    pub fn with_geometry(&self, geometry: Geometry2) -> Self {
+        Self {
+            geometry,
+            elevation: self.elevation,
+        }
     }
 }
 
@@ -263,7 +268,7 @@ impl Entity {
 
     /// Editable plan geometry; `None` for read-only entities.
     pub fn plan(&self) -> Option<PlanGeometry> {
-        self.plan
+        self.plan.clone()
     }
 
     /// A TEXT or MTEXT drawn in plan; `None` for anything else.

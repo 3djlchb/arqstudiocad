@@ -89,6 +89,7 @@ impl Document {
             Geometry2::Circle(circle) => Shape::Circle(circle),
             Geometry2::Arc(arc) => Shape::Arc(arc),
             Geometry2::Ellipse(ellipse) => Shape::Ellipse(ellipse),
+            Geometry2::Spline(spline) => Shape::Spline(spline),
         };
         match self.stretch_plan(id, areas, offset)? {
             StretchPlan::Unchanged => Ok(Vec::new()),
@@ -239,6 +240,10 @@ impl Document {
                     } else {
                         StretchPlan::Unchanged
                     });
+                }
+                // Its points stretched in ADR 0043's third delivery.
+                Geometry2::Spline(_) => {
+                    return Err(DocumentError::NotEditable { id, kind: "SPLINE" });
                 }
             }
         }
@@ -789,7 +794,7 @@ impl Document {
                 let path = match plan.geometry() {
                     Geometry2::Line(line) => JoinPath::line(line),
                     Geometry2::Arc(arc) => JoinPath::arc(arc),
-                    Geometry2::Circle(_) | Geometry2::Ellipse(_) => {
+                    Geometry2::Circle(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
                         unreachable!("a line or an arc")
                     }
                 };
@@ -1071,7 +1076,7 @@ impl Document {
     pub fn transform_entity(&mut self, id: EntityId, t: Transform2) -> DocumentResult<()> {
         let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         if let Some(plan) = e.plan() {
-            let moved = plan.with_geometry(t.apply(plan.geometry())?);
+            let moved = plan.with_geometry(t.apply(&plan.geometry())?);
             return self.set_plan_geometry(id, moved);
         }
         let raw = self
@@ -1532,7 +1537,7 @@ impl Document {
 /// A SPLINE of `spline`'s control points at `elevation`, its knots and
 /// weights, planar, in the World plane; periodic when closed, as AutoCAD
 /// makes a closed one.
-fn new_spline(
+pub(crate) fn new_spline(
     spline: &arq_geometry::Spline,
     elevation: f64,
 ) -> DocumentResult<acadrust::entities::Spline> {
@@ -1750,7 +1755,7 @@ mod tests {
         ];
         let ids: Vec<_> = shapes
             .iter()
-            .map(|g| doc.add_entity(plan(*g, 7.5), layer0(&doc)).unwrap())
+            .map(|g| doc.add_entity(plan(g.clone(), 7.5), layer0(&doc)).unwrap())
             .collect();
         assert_eq!(
             ids.len(),
@@ -1851,9 +1856,9 @@ mod tests {
         );
         let before = doc.entity(id).unwrap().plan().unwrap();
         let moved = Transform2::translation(Vector2::new(10.0, -1.0).unwrap())
-            .apply(before.geometry())
+            .apply(&before.geometry())
             .unwrap();
-        doc.set_plan_geometry(id, before.with_geometry(moved))
+        doc.set_plan_geometry(id, before.with_geometry(moved.clone()))
             .unwrap();
         let after = doc.entity(id).unwrap().plan().unwrap();
         for t in [0.0, 0.3, 1.0] {
@@ -1936,7 +1941,7 @@ mod tests {
             .unwrap();
         let circle = plan(Circle::new(p(0.0, 0.0), 1.0).unwrap(), 0.0);
         assert_eq!(
-            doc.set_plan_geometry(id, circle),
+            doc.set_plan_geometry(id, circle.clone()),
             Err(DocumentError::KindMismatch { id, kind: "LINE" })
         );
         assert_eq!(
@@ -1977,10 +1982,12 @@ mod tests {
                     Geometry2::Line(_) => EntityType::Line(acadrust::Line::from_coords(0.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
                     Geometry2::Circle(_) => { let mut c = acadrust::Circle::new(); c.radius = 1.0; c.normal = Vector3::new(0.0, 0.0, nz); EntityType::Circle(c) }
                     Geometry2::Arc(_) => codec_arc((0.0, 0.0, 0.0), 1.0, 0.0, 1.0, nz),
-                    Geometry2::Ellipse(_) => unreachable!("the strategy makes no ellipse"),
+                    Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
+                        unreachable!("the strategy makes no ellipse or spline")
+                    }
                 };
                 let id = add_raw(&mut doc, raw);
-                doc.set_plan_geometry(id, plan(g, z)).unwrap();
+                doc.set_plan_geometry(id, plan(g.clone(), z)).unwrap();
                 let back = doc.entity(id).unwrap().plan().unwrap();
                 let tol = Tolerance::new(1e-12 * (1.0 + 2e6), 1e-9).unwrap();
                 for t in [0.0, 0.37, 1.0] {

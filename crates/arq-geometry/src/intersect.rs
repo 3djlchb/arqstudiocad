@@ -19,6 +19,7 @@ use crate::arc::Arc;
 use crate::circle::Circle;
 use crate::ellipse::Ellipse;
 use crate::geometry::Geometry2;
+use crate::intersect_spline::{spline_curve, spline_spline};
 use crate::line::Line;
 use crate::point::Point2;
 use crate::roots::{TrigPoly, Zero};
@@ -50,7 +51,11 @@ impl Intersections {
         self.points.is_empty() && self.overlaps.is_empty()
     }
 
-    fn push_point(&mut self, p: Point2, tol: Tolerance) {
+    pub(crate) fn push_overlap(&mut self, g: Geometry2) {
+        self.overlaps.push(g);
+    }
+
+    pub(crate) fn push_point(&mut self, p: Point2, tol: Tolerance) {
         if !self.points.iter().any(|q| q.approx_eq(p, tol)) {
             self.points.push(p);
         }
@@ -58,16 +63,20 @@ impl Intersections {
 }
 
 /// Where `a` and `b` meet.
-pub fn intersect(a: Geometry2, b: Geometry2, tol: Tolerance) -> Intersections {
+pub fn intersect(a: &Geometry2, b: &Geometry2, tol: Tolerance) -> Intersections {
     let mut out = Intersections::default();
     match (a, b) {
-        (Geometry2::Line(l1), Geometry2::Line(l2)) => line_line(l1, l2, tol, &mut out),
-        (Geometry2::Line(l), Geometry2::Ellipse(e))
-        | (Geometry2::Ellipse(e), Geometry2::Line(l)) => line_ellipse(l, e, tol, &mut out),
-        (Geometry2::Ellipse(e), other) | (other, Geometry2::Ellipse(e)) => {
+        (Geometry2::Spline(x), Geometry2::Spline(y)) => spline_spline(x, y, tol, &mut out),
+        (Geometry2::Spline(s), other) | (other, Geometry2::Spline(s)) => {
+            spline_curve(s, other, tol, &mut out)
+        }
+        (&Geometry2::Line(l1), &Geometry2::Line(l2)) => line_line(l1, l2, tol, &mut out),
+        (&Geometry2::Line(l), &Geometry2::Ellipse(e))
+        | (&Geometry2::Ellipse(e), &Geometry2::Line(l)) => line_ellipse(l, e, tol, &mut out),
+        (&Geometry2::Ellipse(e), other) | (other, &Geometry2::Ellipse(e)) => {
             ellipse_ellipse(as_ellipse(other), e, tol, &mut out)
         }
-        (Geometry2::Line(l), round) | (round, Geometry2::Line(l)) => {
+        (&Geometry2::Line(l), round) | (round, &Geometry2::Line(l)) => {
             line_round(l, Round::of(round), tol, &mut out)
         }
         (r1, r2) => round_round(Round::of(r1), Round::of(r2), tol, &mut out),
@@ -83,8 +92,8 @@ struct Round {
 }
 
 impl Round {
-    fn of(g: Geometry2) -> Self {
-        match g {
+    fn of(g: &Geometry2) -> Self {
+        match *g {
             Geometry2::Circle(c) => Self {
                 circle: c,
                 arc: None,
@@ -93,8 +102,8 @@ impl Round {
                 circle: a.circle(),
                 arc: Some(a),
             },
-            Geometry2::Line(_) | Geometry2::Ellipse(_) => {
-                unreachable!("lines and ellipses are handled separately")
+            Geometry2::Line(_) | Geometry2::Ellipse(_) | Geometry2::Spline(_) => {
+                unreachable!("lines, ellipses and splines are handled separately")
             }
         }
     }
@@ -237,9 +246,9 @@ fn arc_arc_overlap(x: Arc, y: Arc, tol: Tolerance, out: &mut Intersections) {
 
 /// A circle or an arc as the ellipse it is, of ratio one; an ellipse as
 /// itself.
-fn as_ellipse(g: Geometry2) -> Ellipse {
+fn as_ellipse(g: &Geometry2) -> Ellipse {
     let x = |r: f64| crate::vector::Vector2::new(r, 0.0).expect("a radius is finite");
-    match g {
+    match *g {
         Geometry2::Ellipse(e) => Ok(e),
         Geometry2::Circle(c) => Ellipse::new(c.center(), x(c.radius()), 1.0, 0.0, 0.0),
         Geometry2::Arc(a) => Ellipse::new(
@@ -249,7 +258,9 @@ fn as_ellipse(g: Geometry2) -> Ellipse {
             a.start_angle(),
             a.end_angle(),
         ),
-        Geometry2::Line(_) => unreachable!("lines are handled separately"),
+        Geometry2::Line(_) | Geometry2::Spline(_) => {
+            unreachable!("lines and splines are handled separately")
+        }
     }
     .expect("a circle's ellipse is valid")
 }
@@ -438,60 +449,64 @@ mod tests {
     #[test]
     fn lines_crossing_parallel_and_apart() {
         assert_points(
-            &intersect(line(0.0, 0.0, 10.0, 10.0), line(0.0, 10.0, 10.0, 0.0), TOL),
+            &intersect(
+                &line(0.0, 0.0, 10.0, 10.0),
+                &line(0.0, 10.0, 10.0, 0.0),
+                TOL,
+            ),
             &[p(5.0, 5.0)],
         );
         assert!(
-            intersect(line(0.0, 0.0, 1.0, 1.0), line(0.0, 10.0, 10.0, 0.0), TOL).is_empty(),
+            intersect(&line(0.0, 0.0, 1.0, 1.0), &line(0.0, 10.0, 10.0, 0.0), TOL).is_empty(),
             "would cross beyond the segment"
         );
         assert!(
-            intersect(line(0.0, 0.0, 10.0, 0.0), line(0.0, 1.0, 10.0, 1.0), TOL).is_empty(),
+            intersect(&line(0.0, 0.0, 10.0, 0.0), &line(0.0, 1.0, 10.0, 1.0), TOL).is_empty(),
             "parallel"
         );
         assert_points(
-            &intersect(line(0.0, 0.0, 10.0, 0.0), line(5.0, 0.0, 5.0, 8.0), TOL),
+            &intersect(&line(0.0, 0.0, 10.0, 0.0), &line(5.0, 0.0, 5.0, 8.0), TOL),
             &[p(5.0, 0.0)],
         );
     }
 
     #[test]
     fn collinear_lines_overlap_touch_or_miss() {
-        let i = intersect(line(0.0, 0.0, 5.0, 0.0), line(2.0, 0.0, 9.0, 0.0), TOL);
+        let i = intersect(&line(0.0, 0.0, 5.0, 0.0), &line(2.0, 0.0, 9.0, 0.0), TOL);
         assert!(i.points().is_empty());
         let Geometry2::Line(piece) = i.overlaps()[0] else {
             panic!("expected a segment")
         };
         assert_eq!((piece.start(), piece.end()), (p(2.0, 0.0), p(5.0, 0.0)));
         assert_points(
-            &intersect(line(0.0, 0.0, 5.0, 0.0), line(5.0, 0.0, 9.0, 0.0), TOL),
+            &intersect(&line(0.0, 0.0, 5.0, 0.0), &line(5.0, 0.0, 9.0, 0.0), TOL),
             &[p(5.0, 0.0)],
         );
-        assert!(intersect(line(0.0, 0.0, 5.0, 0.0), line(6.0, 0.0, 9.0, 0.0), TOL).is_empty());
+        assert!(intersect(&line(0.0, 0.0, 5.0, 0.0), &line(6.0, 0.0, 9.0, 0.0), TOL).is_empty());
     }
 
     #[test]
     fn line_and_circle() {
         let c = circle(0.0, 0.0, 5.0);
         assert_points(
-            &intersect(line(-10.0, 3.0, 10.0, 3.0), c, TOL),
+            &intersect(&line(-10.0, 3.0, 10.0, 3.0), &c, TOL),
             &[p(-4.0, 3.0), p(4.0, 3.0)],
         );
         assert_points(
-            &intersect(line(-10.0, 5.0, 10.0, 5.0), c, TOL),
+            &intersect(&line(-10.0, 5.0, 10.0, 5.0), &c, TOL),
             &[p(0.0, 5.0)],
         );
-        assert!(intersect(line(-10.0, 6.0, 10.0, 6.0), c, TOL).is_empty());
+        assert!(intersect(&line(-10.0, 6.0, 10.0, 6.0), &c, TOL).is_empty());
         assert_points(
-            &intersect(line(0.0, 0.0, 10.0, 0.0), c, TOL),
+            &intersect(&line(0.0, 0.0, 10.0, 0.0), &c, TOL),
             &[p(5.0, 0.0)],
         );
         assert!(
-            intersect(line(-1.0, 0.0, 1.0, 0.0), c, TOL).is_empty(),
+            intersect(&line(-1.0, 0.0, 1.0, 0.0), &c, TOL).is_empty(),
             "entirely inside"
         );
         assert_points(
-            &intersect(c, line(-10.0, 3.0, 10.0, 3.0), TOL),
+            &intersect(&c, &line(-10.0, 3.0, 10.0, 3.0), TOL),
             &[p(-4.0, 3.0), p(4.0, 3.0)],
         );
     }
@@ -501,12 +516,12 @@ mod tests {
         // Upper half arc: only the crossing with y = 3 survives, not y = -3.
         let upper = arc(0.0, 0.0, 5.0, 0.0, 180.0);
         assert_points(
-            &intersect(line(-10.0, 3.0, 10.0, 3.0), upper, TOL),
+            &intersect(&line(-10.0, 3.0, 10.0, 3.0), &upper, TOL),
             &[p(-4.0, 3.0), p(4.0, 3.0)],
         );
-        assert!(intersect(line(-10.0, -3.0, 10.0, -3.0), upper, TOL).is_empty());
+        assert!(intersect(&line(-10.0, -3.0, 10.0, -3.0), &upper, TOL).is_empty());
         assert_points(
-            &intersect(line(3.0, -10.0, 3.0, 10.0), upper, TOL),
+            &intersect(&line(3.0, -10.0, 3.0, 10.0), &upper, TOL),
             &[p(3.0, 4.0)],
         );
     }
@@ -515,24 +530,24 @@ mod tests {
     fn circles_cross_touch_nest_and_coincide() {
         let c = circle(0.0, 0.0, 5.0);
         assert_points(
-            &intersect(c, circle(8.0, 0.0, 5.0), TOL),
+            &intersect(&c, &circle(8.0, 0.0, 5.0), TOL),
             &[p(4.0, 3.0), p(4.0, -3.0)],
         );
-        assert_points(&intersect(c, circle(10.0, 0.0, 5.0), TOL), &[p(5.0, 0.0)]);
-        assert_points(&intersect(c, circle(2.0, 0.0, 3.0), TOL), &[p(5.0, 0.0)]);
+        assert_points(&intersect(&c, &circle(10.0, 0.0, 5.0), TOL), &[p(5.0, 0.0)]);
+        assert_points(&intersect(&c, &circle(2.0, 0.0, 3.0), TOL), &[p(5.0, 0.0)]);
         assert!(
-            intersect(c, circle(20.0, 0.0, 5.0), TOL).is_empty(),
+            intersect(&c, &circle(20.0, 0.0, 5.0), TOL).is_empty(),
             "apart"
         );
         assert!(
-            intersect(c, circle(1.0, 0.0, 1.0), TOL).is_empty(),
+            intersect(&c, &circle(1.0, 0.0, 1.0), TOL).is_empty(),
             "nested"
         );
         assert!(
-            intersect(c, circle(0.0, 0.0, 3.0), TOL).is_empty(),
+            intersect(&c, &circle(0.0, 0.0, 3.0), TOL).is_empty(),
             "concentric"
         );
-        let same = intersect(c, circle(0.0, 0.0, 5.0), TOL);
+        let same = intersect(&c, &circle(0.0, 0.0, 5.0), TOL);
         assert_eq!(same.overlaps(), &[c]);
     }
 
@@ -540,8 +555,8 @@ mod tests {
     fn arcs_of_the_same_circle() {
         // Shared piece 60°..90°.
         let i = intersect(
-            arc(0.0, 0.0, 1.0, 0.0, 90.0),
-            arc(0.0, 0.0, 1.0, 60.0, 180.0),
+            &arc(0.0, 0.0, 1.0, 0.0, 90.0),
+            &arc(0.0, 0.0, 1.0, 60.0, 180.0),
             TOL,
         );
         let Geometry2::Arc(piece) = i.overlaps()[0] else {
@@ -551,32 +566,32 @@ mod tests {
         assert!((piece.end_angle() - FRAC_PI_2).abs() < 1e-12);
         // Two pieces: 0°..300° and 270°..30° share 270..300 and 0..30.
         let two = intersect(
-            arc(0.0, 0.0, 1.0, 0.0, 300.0),
-            arc(0.0, 0.0, 1.0, 270.0, 30.0),
+            &arc(0.0, 0.0, 1.0, 0.0, 300.0),
+            &arc(0.0, 0.0, 1.0, 270.0, 30.0),
             TOL,
         );
         assert_eq!(two.overlaps().len(), 2);
         // End to end: they only touch at 90°.
         assert_points(
             &intersect(
-                arc(0.0, 0.0, 1.0, 0.0, 90.0),
-                arc(0.0, 0.0, 1.0, 90.0, 180.0),
+                &arc(0.0, 0.0, 1.0, 0.0, 90.0),
+                &arc(0.0, 0.0, 1.0, 90.0, 180.0),
                 TOL,
             ),
             &[p(0.0, 1.0)],
         );
         assert!(
             intersect(
-                arc(0.0, 0.0, 1.0, 0.0, 45.0),
-                arc(0.0, 0.0, 1.0, 90.0, 180.0),
+                &arc(0.0, 0.0, 1.0, 0.0, 45.0),
+                &arc(0.0, 0.0, 1.0, 90.0, 180.0),
                 TOL
             )
             .is_empty()
         );
         // A piece plus a touching end: 0..270 and 180..360 share 180..270, touch at 0.
         let mixed = intersect(
-            arc(0.0, 0.0, 1.0, 0.0, 270.0),
-            arc(0.0, 0.0, 1.0, 180.0, 0.0),
+            &arc(0.0, 0.0, 1.0, 0.0, 270.0),
+            &arc(0.0, 0.0, 1.0, 180.0, 0.0),
             TOL,
         );
         assert_eq!(mixed.overlaps().len(), 1);
@@ -592,7 +607,7 @@ mod tests {
     #[test]
     fn circle_with_an_arc_on_it_overlaps_the_arc() {
         let a = arc(0.0, 0.0, 2.0, 30.0, 120.0);
-        let i = intersect(circle(0.0, 0.0, 2.0), a, TOL);
+        let i = intersect(&circle(0.0, 0.0, 2.0), &a, TOL);
         assert_eq!(i.overlaps(), &[a]);
         assert_eq!(i.overlaps()[0].kind(), GeometryKind::Arc);
     }
@@ -601,22 +616,22 @@ mod tests {
     fn arcs_on_different_circles() {
         let a = arc(0.0, 0.0, 5.0, 0.0, 90.0);
         let b = arc(8.0, 0.0, 5.0, 90.0, 270.0);
-        assert_points(&intersect(a, b, TOL), &[p(4.0, 3.0)]);
+        assert_points(&intersect(&a, &b, TOL), &[p(4.0, 3.0)]);
         let half = arc(0.0, 0.0, 5.0, 180.0, 360.0);
-        assert_points(&intersect(half, b, TOL), &[p(4.0, -3.0)]);
-        assert!(intersect(arc(0.0, 0.0, 5.0, 90.0, 180.0), b, TOL).is_empty());
+        assert_points(&intersect(&half, &b, TOL), &[p(4.0, -3.0)]);
+        assert!(intersect(&arc(0.0, 0.0, 5.0, 90.0, 180.0), &b, TOL).is_empty());
     }
 
     #[test]
     fn precise_at_survey_coordinates() {
         let (x, y) = (500_000.0, 9_800_000.0);
         let i = intersect(
-            line(x, y, x + 10.0, y + 10.0),
-            line(x, y + 10.0, x + 10.0, y),
+            &line(x, y, x + 10.0, y + 10.0),
+            &line(x, y + 10.0, x + 10.0, y),
             TOL,
         );
         assert_points(&i, &[p(x + 5.0, y + 5.0)]);
-        let j = intersect(circle(x, y, 5.0), circle(x + 8.0, y, 5.0), TOL);
+        let j = intersect(&circle(x, y, 5.0), &circle(x + 8.0, y, 5.0), TOL);
         assert_points(&j, &[p(x + 4.0, y + 3.0), p(x + 4.0, y - 3.0)]);
     }
 }

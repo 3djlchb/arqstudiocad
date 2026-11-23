@@ -13,7 +13,7 @@ use crate::transform::Transform2;
 const SEGMENTS: usize = 16;
 
 /// The highest degree evaluated: DWG's own limit.
-const MAX_DEGREE: usize = 25;
+pub(crate) const MAX_DEGREE: usize = 25;
 
 /// A NURBS curve in the plan: `degree`, a nondecreasing knot vector of
 /// `points + degree + 1` values, its control points and their weights
@@ -150,13 +150,13 @@ impl Spline {
         (self.knots[self.degree], self.knots[self.points.len()])
     }
 
-    fn weight(&self, i: usize) -> f64 {
+    pub(crate) fn weight_of(&self, i: usize) -> f64 {
         self.weights.get(i).copied().unwrap_or(1.0)
     }
 
     /// The span whose knots hold `u`, `degree..points`, the last for the
     /// domain's end.
-    fn span(&self, u: f64) -> usize {
+    pub(crate) fn span_of(&self, u: f64) -> usize {
         let (p, n) = (self.degree, self.points.len());
         let mut k = p;
         while k + 1 < n && self.knots[k + 1] <= u {
@@ -172,7 +172,7 @@ impl Spline {
         let mut d = [[0.0f64; 3]; MAX_DEGREE + 1];
         for (j, slot) in d.iter_mut().enumerate().take(p + 1) {
             let i = j + k - p;
-            let (c, w) = (self.points[i], self.weight(i));
+            let (c, w) = (self.points[i], self.weight_of(i));
             *slot = [c.x() * w, c.y() * w, w];
         }
         for r in 1..=p {
@@ -196,7 +196,7 @@ impl Spline {
     pub fn point_at(&self, u: f64) -> Point2 {
         let (a, b) = self.domain();
         let u = u.clamp(a, b);
-        self.eval(u, self.span(u))
+        self.eval(u, self.span_of(u))
     }
 
     /// Points along it to draw it by: sixteen segments in each span, as the
@@ -231,10 +231,11 @@ impl Spline {
     }
 
     /// The parameter of its point nearest `p`: the nearest of the drawn
-    /// points, then golden-section search between its neighbors.
+    /// points, then golden-section search between its neighbors. A closed
+    /// spline's first and last samples are neighbors across where it
+    /// closes, so both sides of that are searched.
     pub fn closest_param(&self, p: Point2) -> f64 {
         let samples = &self.samples;
-        let distance = |u: f64| self.point_at(u).distance_squared_to(p);
         let best = (0..samples.len())
             .min_by(|&a, &b| {
                 samples[a]
@@ -243,10 +244,23 @@ impl Spline {
                     .total_cmp(&samples[b].1.distance_squared_to(p))
             })
             .expect("a spline has samples");
-        let (mut lo, mut hi) = (
-            samples[best.saturating_sub(1)].0,
-            samples[(best + 1).min(samples.len() - 1)].0,
-        );
+        let last = samples.len() - 1;
+        let bracket = |i: usize| (samples[i.saturating_sub(1)].0, samples[(i + 1).min(last)].0);
+        let mut found = self.closest_between(p, bracket(best));
+        if self.closed && (best == 0 || best == last) {
+            let other = self.closest_between(p, bracket(if best == 0 { last } else { 0 }));
+            if self.point_at(other).distance_squared_to(p)
+                < self.point_at(found).distance_squared_to(p)
+            {
+                found = other;
+            }
+        }
+        found
+    }
+
+    /// The parameter of its point nearest `p` between `lo` and `hi`.
+    fn closest_between(&self, p: Point2, (mut lo, mut hi): (f64, f64)) -> f64 {
+        let distance = |u: f64| self.point_at(u).distance_squared_to(p);
         let (first, last) = (lo, hi);
         let golden = (5f64.sqrt() - 1.0) / 2.0;
         for _ in 0..100 {

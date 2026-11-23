@@ -16,7 +16,7 @@ use crate::vector::Vector2;
 /// What a FILLET or CHAMFER makes of two objects: each one's new geometry
 /// (None when trimming is off, or it is not changed), and the arc or
 /// segment joining them (None for a sharp corner, radius or distances 0).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Corner {
     /// The first object, trimmed or extended to the joint.
     pub first: Option<Geometry2>,
@@ -89,9 +89,9 @@ fn line_to(l: Line, side: Vector2, meet: Point2, to: Point2) -> GeometryResult<L
 /// a sharp corner: the two met where they cross. Refused for parallel
 /// lines, two arcs or a circle (later), and a radius too large for them.
 pub fn fillet(
-    a: Geometry2,
+    a: &Geometry2,
     pa: Point2,
-    b: Geometry2,
+    b: &Geometry2,
     pb: Point2,
     radius: f64,
     trim: bool,
@@ -103,13 +103,13 @@ pub fn fillet(
         });
     }
     match (a, b) {
-        (Geometry2::Line(la), Geometry2::Line(lb)) => {
+        (&Geometry2::Line(la), &Geometry2::Line(lb)) => {
             fillet_lines(la, pa, lb, pb, radius, trim, tol)
         }
-        (Geometry2::Line(l), Geometry2::Arc(arc)) => {
+        (&Geometry2::Line(l), &Geometry2::Arc(arc)) => {
             fillet_line_arc(l, pa, arc, pb, radius, trim, tol)
         }
-        (Geometry2::Arc(arc), Geometry2::Line(l)) => {
+        (&Geometry2::Arc(arc), &Geometry2::Line(l)) => {
             let c = fillet_line_arc(l, pb, arc, pa, radius, trim, tol)?;
             Ok(Corner {
                 first: c.second,
