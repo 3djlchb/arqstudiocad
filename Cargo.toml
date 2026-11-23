@@ -80,6 +80,8 @@ opt-level = 3
 # so a solid's void and a body's second lump survive.
 # An LWPOLYLINE's vertex widths (40/41) are written in DXF only when some
 # vertex has one, so a constant width (43) is read by every reader.
-# Immutable tag: arqstudiocad/on-ea66abe-lwpolyline-dxf-width.
+# A DXF text value is read without a second copy or three searches (14%
+# fewer instructions reading a 100,000-line DXF).
+# Immutable tag: arqstudiocad/on-ea66abe-dxf-text-read.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "81b8de18af11fadd2f884eba253cc4aed1a2f2bf" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "cc116a75467c2c52b2497422fdd974d75bae74d0" }
