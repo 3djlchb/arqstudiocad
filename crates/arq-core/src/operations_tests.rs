@@ -2643,3 +2643,70 @@ fn many_at_once_a_chain_from_a_polyline_of_one_width_gives_it_to_its_lines() {
     assert_eq!(joined.results, [polyline]);
     assert_eq!(path_widths(&cad, polyline), [(0.5, 0.5), (0.5, 0.5)]);
 }
+
+#[test]
+fn join_from_an_elliptical_arc_takes_its_ellipses_arcs_in_one_step() {
+    // About (10,0), semi-axes 4 and 2: 0 to 1, then 1.5 to 2.5 (a gap
+    // filled) and an arc of another ellipse, left.
+    let mut cad = CadDocument::new();
+    let source = red_ellipse(&mut cad, 0.0, 1.0);
+    let e = Ellipse::new(p(10.0, 0.0), v(4.0, 0.0), 0.5, 1.5, 2.5).unwrap();
+    let (next, _) = cad.add_ellipse(e).unwrap();
+    let f = Ellipse::new(p(10.0, 0.0), v(4.0, 0.0), 0.4, 3.0, 4.0).unwrap();
+    let (other, _) = cad.add_ellipse(f).unwrap();
+    let (line, _) = cad.add_line(p(14.0, 0.0), p(20.0, 0.0)).unwrap();
+    let (joined, changes) = cad
+        .join_entities(Some(source), &[next, other, line])
+        .unwrap();
+    assert_eq!(joined.results, [source], "its id kept");
+    assert_eq!((joined.joined, joined.discarded), (1, 2));
+    let arc = drawn_ellipse(&cad, source);
+    assert!(arc.start_param().abs() < 1e-12 && (arc.sweep() - 2.5).abs() < 1e-12);
+    assert_eq!(
+        cad.document().entity(source).unwrap().color(),
+        Color::Index(1)
+    );
+    assert!(cad.document().entity(next).is_none());
+    assert!(cad.document().entity(other).is_some() && cad.document().entity(line).is_some());
+    assert_eq!(changes.deleted(), [next]);
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    cad.undo().unwrap();
+    assert!((drawn_ellipse(&cad, source).sweep() - 1.0).abs() < 1e-12);
+    assert!(cad.document().entity(next).is_some());
+}
+
+#[test]
+fn elliptical_arcs_join_many_at_once_and_close_into_their_ellipse() {
+    // Three arcs going round: many at once, the whole ellipse in the
+    // first's entity; a polyline beside them chains none of them.
+    let mut cad = CadDocument::new();
+    let a = red_ellipse(&mut cad, 0.0, 2.0);
+    let b = red_ellipse(&mut cad, 2.0, 4.0);
+    let c = red_ellipse(&mut cad, 4.0, 0.0);
+    let (polyline, _) = cad
+        .add_polyline(&[(p(14.0, 0.0), 0.0), (p(20.0, 0.0), 0.0)], false)
+        .unwrap();
+    let (joined, _) = cad.join_entities(None, &[a, polyline, b, c]).unwrap();
+    assert_eq!(joined.results, [a]);
+    assert!(drawn_ellipse(&cad, a).is_full());
+    assert!(cad.document().entity(b).is_none() && cad.document().entity(c).is_none());
+    assert_eq!(path_points(&cad, polyline), [p(14.0, 0.0), p(20.0, 0.0)]);
+    // A polyline as the source takes none of an ellipse's arcs.
+    let mut cad = CadDocument::new();
+    let arc = red_ellipse(&mut cad, 0.0, 1.0);
+    let (source, _) = cad
+        .add_polyline(&[(p(20.0, 0.0), 0.0), (p(14.0, 0.0), 0.0)], false)
+        .unwrap();
+    let (joined, _) = cad.join_entities(Some(source), &[arc]).unwrap();
+    assert_eq!((joined.joined, joined.discarded), (0, 1));
+    // Close: an arc becomes its whole ellipse, its id kept; a whole one,
+    // and a whole one as a source, are refused.
+    let (closed, _) = cad.close_arc(arc).unwrap();
+    assert_eq!(closed, arc);
+    assert!(drawn_ellipse(&cad, arc).is_full());
+    assert_eq!(cad.undo_name(), Some("JOIN"));
+    assert!(cad.close_arc(arc).is_err());
+    let other = red_ellipse(&mut cad, 1.0, 2.0);
+    let (joined, _) = cad.join_entities(Some(arc), &[other]).unwrap();
+    assert_eq!(joined.joined, 0);
+}

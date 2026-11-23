@@ -15,7 +15,7 @@ use arq_document::{
 use arq_geometry::{
     Arc, Chain, Circle, CrossingArea, Ellipse, Geometry2, GeometryError, JoinPath, Line, Point2,
     Point3, SelectionPolygon, Tolerance, Transform2, Vector2, break_curve, chain_paths,
-    cutting_points, extend, join_arcs, join_groups, join_lines, trim,
+    cutting_points, extend, join_arcs, join_elliptical_arcs, join_groups, join_lines, trim,
 };
 
 use crate::error::{CadError, CadResult};
@@ -743,18 +743,33 @@ impl CadDocument {
     }
 
     /// Turns arc `id` into its full circle (JOIN's Close), every property
-    /// kept; returns the circle's id. Refused for anything but an arc drawn
-    /// in plan, and on a locked layer.
+    /// kept; returns the circle's id. An elliptical arc becomes its whole
+    /// ellipse, its id kept (ADR 0041 D4). Refused for anything else, a
+    /// whole ellipse included, for what is not drawn in plan, and on a
+    /// locked layer.
     pub fn close_arc(&mut self, id: EntityId) -> CadResult<(EntityId, ChangeSet)> {
         let e = self
             .document()
             .entity(id)
             .ok_or(CadError::EntityNotFound(id))?;
         check_unlocked(self.document(), &e)?;
-        if e.kind() != "ARC" || e.plan().is_none() {
-            return Err(DocumentError::NotEditable { id, kind: e.kind() }.into());
+        let refused = || DocumentError::NotEditable { id, kind: e.kind() };
+        match (e.kind(), e.plan()) {
+            ("ARC", Some(_)) => self.transact("JOIN", |doc| Ok(doc.arc_to_circle(id)?)),
+            ("ELLIPSE", Some(plan)) => {
+                let Geometry2::Ellipse(arc) = plan.geometry() else {
+                    return Err(refused().into());
+                };
+                if arc.is_full() {
+                    return Err(refused().into());
+                }
+                self.transact("JOIN", |doc| {
+                    doc.set_plan_geometry(id, plan.with_geometry(arc.whole().into()))?;
+                    Ok(id)
+                })
+            }
+            _ => Err(refused().into()),
         }
-        self.transact("JOIN", |doc| Ok(doc.arc_to_circle(id)?))
     }
 
     /// Removes a projected gap on a line, arc, circle or lightweight polyline.
@@ -1299,27 +1314,40 @@ enum Made {
     Polyline(Chain, f64),
 }
 
-/// A curve that can join: a line, an arc or an open lightweight polyline
-/// drawn in plan, not on a locked layer; its plan geometry when a line or an
-/// arc, its path and its height.
+/// A curve that can join: a line, an arc, an elliptical arc or an open
+/// lightweight polyline drawn in plan, not on a locked layer; its plan
+/// geometry when a line or an arc (elliptical or not), the path it chains
+/// by into a polyline (an elliptical arc has none: it joins only arcs of
+/// its ellipse, ADR 0041 D4), and its height.
 #[derive(Clone)]
 struct Piece {
     id: EntityId,
     plan: Option<PlanGeometry>,
-    path: JoinPath,
+    path: Option<JoinPath>,
     height: f64,
 }
 
 fn piece(doc: &Document, id: EntityId) -> Option<Piece> {
     let e = doc.entity(id)?;
-    if !matches!(e.kind(), "LINE" | "ARC" | "LWPOLYLINE") || check_unlocked(doc, &e).is_err() {
+    if !matches!(e.kind(), "LINE" | "ARC" | "ELLIPSE" | "LWPOLYLINE")
+        || check_unlocked(doc, &e).is_err()
+    {
         return None;
+    }
+    if e.kind() == "ELLIPSE" {
+        let plan = e.plan()?;
+        return Some(Piece {
+            id,
+            plan: Some(plan),
+            path: None,
+            height: plan.elevation(),
+        });
     }
     let (path, height) = doc.join_path(id).ok()?;
     Some(Piece {
         id,
         plan: e.plan(),
-        path,
+        path: Some(path),
         height,
     })
 }
@@ -1356,8 +1384,18 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
             let (joined, taken) = join_arcs(arc, &arcs, tol);
             (joined, taken.into_iter().map(|i| ids[i]).collect())
         }
-        // Elliptical arcs join in a later delivery (ADR 0041).
-        Geometry2::Circle(_) | Geometry2::Ellipse(_) => return None,
+        Geometry2::Ellipse(ellipse) => {
+            let (ids, arcs): (Vec<EntityId>, Vec<arq_geometry::Ellipse>) = curves
+                .iter()
+                .filter_map(|&(id, g)| match g {
+                    Geometry2::Ellipse(e) => Some((id, e)),
+                    _ => None,
+                })
+                .unzip();
+            let (joined, taken) = join_elliptical_arcs(ellipse, &arcs, tol);
+            (joined, taken.into_iter().map(|i| ids[i]).collect())
+        }
+        Geometry2::Circle(_) => return None,
     };
     (!taken.is_empty()).then_some(Join {
         source: source.id,
@@ -1371,21 +1409,32 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join>
 /// the lines and arcs chained on take it, as ProgeCAD gives them (case J3,
 /// maintainer, 2026-11-20); polylines keep their own.
 fn join_chain(first: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
+    let first_path = first.path.as_ref()?;
     let width = uniform_width(first, tol);
-    let paths: Vec<JoinPath> = others
+    // Only what has a path chains: an elliptical arc never does.
+    let chainable: Vec<usize> = (0..others.len())
+        .filter(|&i| others[i].path.is_some())
+        .collect();
+    let paths: Vec<JoinPath> = chainable
         .iter()
-        .map(|p| match (width, p.plan) {
-            (Some(w), Some(_)) => JoinPath {
-                widths: vec![(w, w); p.path.widths.len()],
-                ..p.path.clone()
-            },
-            _ => p.path.clone(),
+        .map(|&i| {
+            let p = &others[i];
+            let path = p.path.clone().expect("chainable");
+            match (width, p.plan) {
+                (Some(w), Some(_)) => JoinPath {
+                    widths: vec![(w, w); path.widths.len()],
+                    ..path
+                },
+                _ => path,
+            }
         })
         .collect();
-    let chain = chain_paths(&first.path, &paths, tol);
+    let mut chain = chain_paths(first_path, &paths, tol);
     if chain.taken.is_empty() {
         return None;
     }
+    // Taken as indices into `others`.
+    chain.taken = chain.taken.iter().map(|&k| chainable[k]).collect();
     let erased = chain.taken.iter().map(|&i| others[i].id).collect();
     Some(Join {
         source: first.id,
@@ -1397,11 +1446,10 @@ fn join_chain(first: &Piece, others: &[Piece], tol: Tolerance) -> Option<Join> {
 /// The width a piece has all along (none for a line or an arc, whose width
 /// is nothing); None for a varying width.
 fn uniform_width(piece: &Piece, tol: Tolerance) -> Option<f64> {
-    let (w, _) = *piece.path.widths.first()?;
+    let path = piece.path.as_ref()?;
+    let (w, _) = *path.widths.first()?;
     let same = |v: f64| (v - w).abs() <= tol.linear();
-    piece
-        .path
-        .widths
+    path.widths
         .iter()
         .all(|&(a, b)| same(a) && same(b))
         .then_some(w)
