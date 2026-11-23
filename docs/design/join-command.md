@@ -128,7 +128,7 @@ gives, read back from our DWG and DXF:
 
 | Case | Sources | Ours |
 |---|---|---|
-| J3 | open polyline (0,0)–(4,0), constant width 0.5, and line (4,0)–(4,3) | 3 vertices, open; widths 0.5/0.5, then 0/0; no constant width |
+| J3 | open polyline (0,0)–(4,0), constant width 0.5, and line (4,0)–(4,3) | 3 vertices, open; since 2026-11-22 every segment 0.5 wide, written as the constant width 0.5 (before: 0.5/0.5 then 0/0, no constant width); ProgeCAD writes 0.5 at each vertex, drawn the same, as in M2 |
 | J4 | polylines (0,0)–(4,0), width 0.2, and (8,0)–(4,0), width 0.8 | 3 vertices, open; widths 0.2/0.2, then 0.8/0.8 |
 | J5 | four lines of the rectangle (0,0)–(4,3), many at once | a closed polyline of 4 vertices |
 | J6 | open polyline (0,0)–(1,0), lines (1,0)–(2,1) and (1,0)–(2,−1) | the first line joins; the second is left |
@@ -138,6 +138,10 @@ Each difference found is the maintainer's to decide, as the earlier ones
 were.
 
 **Run on 2026-11-20** ([results](../testing/commands-02-14-windows.md#join-on-polylines-matchprop-and-ellipse-2026-11-20)): J4, J6 and J7 the same as
-ProgeCAD. J3 differs: ProgeCAD gives the joined line the polyline's width
-0.5, which the maintainer chose to match, in a pull request of its own. J5
+ProgeCAD. J3 differed: ProgeCAD gives the joined line the polyline's width
+0.5, which the maintainer chose to match, in a pull request of its own:
+since 2026-11-22 the lines and arcs chained onto a polyline of one width
+all along take it, from a source or as a chain's first selected; other
+polylines keep their own widths (J4), and a source of varying width gives
+none. J5
 is the same rectangle starting at another vertex, kept.

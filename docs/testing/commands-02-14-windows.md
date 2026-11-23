@@ -87,7 +87,7 @@ case reads back the same from our DWG and from our DXF.
 
 **JOIN of a constant width and a line (J3).**
 - **The difference.** ProgeCAD gives the joined line the polyline's width: vertices (0,0), (4,0) and (4,3) with widths 0.5/0.5, 0.5/0.5 and 0/0. Ours keeps the line's 0.
-- **Decision.** The maintainer chose to match ProgeCAD (2026-11-20), in a pull request of its own.
+- **Decision.** The maintainer chose to match ProgeCAD (2026-11-20), in a pull request of its own; done on 2026-11-22, ours now as ProgeCAD's.
 
 **JOIN of four lines many at once (J5).** The same closed rectangle, counterclockwise in both; ProgeCAD starts at (0,3), ours at (0,0). The maintainer chose to keep ours (2026-11-20).
 
