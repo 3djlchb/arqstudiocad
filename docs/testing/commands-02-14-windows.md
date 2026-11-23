@@ -149,6 +149,15 @@ Added on 2026-11-23 with the SPLINE command (ADR 0042):
 
 What ours gives is in [SPLINE's design](../design/spline-command.md#windows-comparison).
 
+## To run by hand: spline grips and Properties
+
+Added on 2026-11-23 with the spline's grips and Properties (ADR 0043). By
+hand, on a spline SPLINE makes through (0,0), (3,4), (7,1), (9,6) and on
+one by those vertices, compared with [SPLINE's design](../design/spline-command.md):
+- which grips show;
+- the fit point (7,1) taken to (7,−1), and the vertex (9,6) to (9,8);
+- the Properties panel's rows, and a point's X and Y edited.
+
 ## To run: the spline as a curve (SC1–SC7)
 
 Added on 2026-11-23 with the spline as a curve (ADR 0043):

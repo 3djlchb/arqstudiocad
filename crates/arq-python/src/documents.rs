@@ -1131,6 +1131,48 @@ impl CadDocument {
     }
 
     /// Moves one lightweight-polyline vertex to a plan point.
+    /// Puts point `index` of spline `entity_id` at `point`: a fit point,
+    /// the spline fitted again, or a vertex of its own (ADR 0043 D4).
+    fn set_spline_point(
+        &self,
+        entity_id: EntityId,
+        index: usize,
+        point: PyPoint,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_spline_point(entity_id, index, point.0))
+    }
+
+    /// Spline `entity_id` with its point `index` at `point`, as its grip
+    /// leaves it, changing nothing; refused where no spline would be.
+    fn spline_with_point(
+        &self,
+        entity_id: EntityId,
+        index: usize,
+        point: PyPoint,
+    ) -> PyResult<CadSpline> {
+        let (spline, fit, _) = self
+            .read(|cad| cad.document().spline_with_point(entity_id, index, point.0))?
+            .map_err(arq_core::CadError::from)
+            .py()?;
+        Ok(CadSpline { spline, fit })
+    }
+
+    /// Spline `entity_id` lying in the plan, with the fit it keeps when made
+    /// through fit points; None for anything else.
+    fn spline(&self, entity_id: EntityId) -> PyResult<Option<CadSpline>> {
+        self.read(|cad| {
+            let doc = cad.document();
+            let plan = doc.entity(entity_id)?.plan()?;
+            let Geometry2::Spline(s) = plan.geometry() else {
+                return None;
+            };
+            Some(CadSpline {
+                spline: std::sync::Arc::unwrap_or_clone(s),
+                fit: doc.spline_fit(entity_id),
+            })
+        })
+    }
+
     fn set_polyline_vertex(
         &self,
         entity_id: EntityId,

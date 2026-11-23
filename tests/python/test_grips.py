@@ -375,3 +375,54 @@ def test_an_elliptical_arc_end_slides_along_it() -> None:
     h.edit(h.grip(ellipse, "END", (55.0, 0.0)), "50,-9")
     back = h.geometry(ellipse)
     assert isinstance(back, CadEllipse) and back.points()[0] == pytest.approx((50.0, -3.0))
+
+
+# Splines (ADR 0043 D4)
+
+SPLINE_POINTS = [(0.0, 0.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)]
+
+
+def spline_harness(spline: CadSpline) -> tuple[Harness, int]:
+    """The harness with ``spline`` drawn, selected alone."""
+    h = Harness()
+    entity, _ = h.document.add_spline(spline)
+    h.session.select(h.document, [entity])
+    h.steps = len(h.document.undo_history)
+    return h, entity
+
+
+def test_a_fitted_spline_shows_its_fit_points_and_one_moved_fits_again() -> None:
+    fit = CadSpline.through(SPLINE_POINTS, "square_root", start_tangent=(1.0, 0.0))
+    h, spline = spline_harness(fit)
+    grips = [g for g in shown_grips(h.session, h.document) if g.entity_id == spline]
+    assert [g.kind for g in grips] == ["FIT"] * 4
+    assert [g.point for g in grips] == SPLINE_POINTS
+    assert [g.vertex_index for g in grips] == [0, 1, 2, 3]
+    h.edit(h.grip(spline, "FIT", (7.0, 1.0)), "7,-1")
+    moved = h.document.spline(spline)
+    assert moved is not None
+    assert moved.fit_points == [(0.0, 0.0), (3.0, 4.0), (7.0, -1.0), (9.0, 6.0)]
+    assert moved.knots_method == "square_root", "its knots method kept"
+    expected = CadSpline.through(moved.fit_points, "square_root", start_tangent=(1.0, 0.0))
+    assert moved.control_points == pytest.approx(expected.control_points)
+    assert h.new_steps() == ["GRIP"]
+    # Onto its neighbor: no spline, refused, asked again, nothing changed.
+    h.edit(h.grip(spline, "FIT", (9.0, 6.0)), "C", "7,-1")
+    assert h.messages()[-1] == "The object cannot take that shape."
+    h.runner.cancel()
+    assert len([e for e in h.document.get_entities() if e.kind == "SPLINE"]) == 1, "no copy left"
+
+
+def test_a_spline_by_vertices_shows_its_own_and_one_moved_moves_alone() -> None:
+    h, spline = spline_harness(CadSpline.by_vertices(SPLINE_POINTS, closed=True))
+    grips = [g for g in shown_grips(h.session, h.document) if g.entity_id == spline]
+    assert [g.kind for g in grips] == ["CV"] * 4, "its repeated vertices not shown"
+    h.edit(h.grip(spline, "CV", (0.0, 0.0)), "1,1")
+    moved = h.document.spline(spline)
+    assert moved is not None and moved.fit_points == []
+    assert moved.vertices == [(1.0, 1.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)]
+    assert moved.control_points[4] == (1.0, 1.0), "its copy too: still closed"
+    # Copy: the copy takes the edit, the original stays.
+    h.edit(h.grip(spline, "CV", (9.0, 6.0)), "C", "9,8", "")
+    splines = [h.document.spline(e.id) for e in h.document.get_entities() if e.kind == "SPLINE"]
+    assert sorted(s.vertices[3] for s in splines if s is not None) == [(9.0, 6.0), (9.0, 8.0)]

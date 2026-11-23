@@ -18,6 +18,7 @@ from arqstudiocad.core import (
     CadEntityInfo,
     CadError,
     CadLine,
+    CadSpline,
     CadText,
 )
 from arqstudiocad.currencies import format_amount, parse_amount, register_of
@@ -91,9 +92,11 @@ def selection_properties(
     document: CadDocument,
     entity_ids: Sequence[int],
     currency: str | None = None,
+    spline_point: int = 0,
 ) -> tuple[str, list[Section]]:
     """Builds editable properties for the selected entities; ``currency``
-    is the one a block's new cost will use, as chosen before it is typed."""
+    is the one a block's new cost will use, as chosen before it is typed;
+    ``spline_point`` the fit point or vertex of one spline shown."""
     entities = document.get_entities(entity_ids)
     if not entities:
         return tr("Drawing"), drawing_properties(document)
@@ -178,9 +181,67 @@ def selection_properties(
         and isinstance(geometries[0], (CadLine, CadCircle, CadArc, CadEllipse))
     ):
         sections.append(_geometry_section(entities, geometries))
+    elif len(kinds) == 1 and all(isinstance(g, CadSpline) for g in geometries):
+        sections.append(_spline_section(document, entities, spline_point))
     else:
         sections.append(_extent_section(entities))
     return caption, sections
+
+
+def _knots_name(knots: str | None) -> str:
+    names = {"chord": tr("Chord"), "square_root": tr("Square root"), "uniform": tr("Uniform")}
+    return names.get(knots or "", "")
+
+
+def _spline_section(
+    document: CadDocument, entities: Sequence[CadEntityInfo], point: int
+) -> Section:
+    """A spline's rows, as AutoCAD's (ADR 0043 D4): its method, degree,
+    closing and knots, and its length, shown; one spline's fit point or
+    control vertex, chosen by its number, its coordinates editable as its
+    grip is."""
+    splines = [document.spline(entity.id) for entity in entities]
+    shown = [s for s in splines if s is not None]
+    rows: list[tuple[str, str] | Property] = []
+
+    def text(values: list[str]) -> str:
+        value = _common(values)
+        return tr("*Varies*") if value == _VARIES else value
+
+    fitted = [s.fit_points != [] for s in shown]
+    rows.append((tr("Method"), text([tr("Fit") if f else tr("CV") for f in fitted])))
+    rows.append((tr("Degree"), _number_text(_common([float(s.degree) for s in shown]))))
+    rows.append((tr("Closed"), text([tr("Yes") if s.is_closed else tr("No") for s in shown])))
+    if shown and all(fitted):
+        rows.append((tr("Knots"), text([_knots_name(s.knots_method) for s in shown])))
+    if len(shown) == 1:
+        spline = shown[0]
+        points = spline.fit_points or spline.vertices
+        index = min(max(point, 0), len(points) - 1)
+        label = tr("Fit point") if spline.fit_points else tr("Control vertex")
+        rows.append(
+            Property(
+                "spline.point",
+                label,
+                str(index + 1),
+                choices=[Choice(str(i + 1), i) for i in range(len(points))],
+                choice_value=index,
+            )
+        )
+        for name, axis in (("X", 0), ("Y", 1)):
+            rows.append(
+                Property(
+                    f"spline.{axis}",
+                    tr(name),
+                    format_number(points[index][axis]),
+                    editable=True,
+                )
+            )
+    rows.append((tr("Length"), _number_text(_common([s.length for s in shown]))))
+    elevations = [entity.elevation for entity in entities]
+    if elevations and all(elevation is not None for elevation in elevations):
+        rows.append((tr("Elevation"), _number_text(_common(elevations))))
+    return Section("geometry", tr("Geometry"), rows)
 
 
 def selected_block(document: CadDocument, entities: Sequence[CadEntityInfo]) -> str | None:
@@ -639,6 +700,10 @@ class PropertiesPanel(QDockWidget):
         #: The currency a block's new cost will use, by block, chosen
         #: before the cost is typed.
         self._currency: dict[str, str] = {}
+        #: The fit point or vertex shown of one selected spline, and the
+        #: selection it was chosen for.
+        self._spline_point = 0
+        self._spline_for: tuple[int, ...] = ()
         self.retranslate()
 
     def retranslate(self) -> None:
@@ -659,7 +724,11 @@ class PropertiesPanel(QDockWidget):
             if selection:
                 block = selected_block(document, document.get_entities(selection))
                 currency = self._currency.get(block) if block is not None else None
-                caption, sections = selection_properties(document, selection, currency)
+                if selection != self._spline_for:
+                    self._spline_point, self._spline_for = 0, selection
+                caption, sections = selection_properties(
+                    document, selection, currency, self._spline_point
+                )
                 self.grid.show_sections(caption, sections)
             else:
                 self.grid.show_sections(tr("Drawing"), drawing_properties(document))
@@ -687,6 +756,12 @@ class PropertiesPanel(QDockWidget):
                     color = value
                     self._session.edit(document, lambda doc: doc.set_entity_color(ids, color))
                     remember_color(color)
+            elif key == "spline.point":
+                if isinstance(value, int):
+                    self._spline_point = value
+                    self.refresh()
+            elif key.startswith("spline."):
+                self._edit_spline_point(document, ids, int(key.split(".")[1]), str(value))
             elif key.startswith("geometry."):
                 self._edit_geometry(document, ids, key, str(value))
             elif key.startswith("text."):
@@ -712,6 +787,27 @@ class PropertiesPanel(QDockWidget):
             for entity in document.get_entities(ids):
                 geometry = _replace_geometry_value(entity.geometry, key, value)
                 document.set_entity_geometry(entity.id, geometry)
+        if group.changes is not None:
+            self._session.report(document, group.changes)
+
+    def _edit_spline_point(
+        self, document: CadDocument, ids: Sequence[int], axis: int, text: str
+    ) -> None:
+        """One coordinate of the spline's point shown, as its grip moves it
+        (ADR 0043 D4)."""
+        value = parse_number(text)
+        if value is None or not math.isfinite(value):
+            raise ValueError(text)
+        (entity_id,) = ids
+        spline = document.spline(entity_id)
+        if spline is None:
+            return
+        points = spline.fit_points or spline.vertices
+        index = min(self._spline_point, len(points) - 1)
+        moved = list(points[index])
+        moved[axis] = value
+        with document.group("PROPERTIES") as group:
+            document.set_spline_point(entity_id, index, (moved[0], moved[1]))
         if group.changes is not None:
             self._session.report(document, group.changes)
 

@@ -242,3 +242,72 @@ fn a_spline_with_none_inside_stays_and_with_all_moves_whole() {
     let (s, _) = plan_spline(&doc, id);
     assert!(near(s.ends().0, p(5.0, 0.0)));
 }
+
+#[test]
+fn a_spline_s_grips_are_its_fit_points_or_its_own_vertices() {
+    use crate::grips::GripKind;
+    let mut doc = Document::new();
+    let fit = SplineFit::new(wave(), SplineKnots::Chord, None, None, false).unwrap();
+    let fitted = doc.add_fit_spline(&fit, 0.0).unwrap();
+    let grips = doc.grips(&[fitted]);
+    assert!(grips.iter().all(|g| g.kind == GripKind::FitPoint));
+    assert_eq!(grips.iter().map(|g| g.point).collect::<Vec<_>>(), wave());
+    assert_eq!(
+        grips.iter().map(|g| g.vertex_index).collect::<Vec<_>>(),
+        (0..5).map(Some).collect::<Vec<_>>()
+    );
+    let closed = doc
+        .add_spline(&Spline::by_vertices(2, wave(), true).unwrap(), 0.0)
+        .unwrap();
+    let grips = doc.grips(&[closed]);
+    assert_eq!(grips.len(), 5, "its two repeated left out");
+    assert!(grips.iter().all(|g| g.kind == GripKind::ControlVertex));
+    assert_eq!(
+        (GripKind::FitPoint.name(), GripKind::ControlVertex.name()),
+        ("FIT", "CV")
+    );
+}
+
+#[test]
+fn a_spline_s_point_moved_by_its_number() {
+    let mut doc = Document::new();
+    let tangent = Vector2::new(0.0, 1.0).unwrap();
+    let fit = SplineFit::new(wave(), SplineKnots::Uniform, Some(tangent), None, false).unwrap();
+    let id = doc.add_fit_spline(&fit, 2.0).unwrap();
+    // Asked first, nothing changes.
+    let before = codec(&doc, id);
+    let (shown, kept, z) = doc.spline_with_point(id, 2, p(7.0, -1.0)).unwrap();
+    assert_eq!(codec(&doc, id), before);
+    assert_eq!(z, 2.0);
+    let kept = kept.expect("its fit");
+    assert_eq!(kept.points()[2], p(7.0, -1.0));
+    assert_eq!(
+        (kept.knots(), kept.start_tangent()),
+        (SplineKnots::Uniform, Some(tangent))
+    );
+    doc.set_spline_point(id, 2, p(7.0, -1.0)).unwrap();
+    assert_eq!(drawn(&doc, id).flatten(), shown.flatten());
+    assert_eq!(codec(&doc, id).fit_points[2].y, -1.0);
+    assert!(doc.check_model().is_empty());
+    // Onto its neighbor, or past its points: refused, nothing changed.
+    let now = codec(&doc, id);
+    assert!(doc.set_spline_point(id, 3, p(7.0, -1.0)).is_err());
+    assert!(doc.set_spline_point(id, 9, p(0.0, 0.0)).is_err());
+    assert_eq!(codec(&doc, id), now);
+    // By vertices: that vertex alone.
+    let cv = doc
+        .add_spline(&Spline::by_vertices(3, wave(), false).unwrap(), 0.0)
+        .unwrap();
+    doc.set_spline_point(cv, 4, p(15.0, 5.0)).unwrap();
+    let (s, _) = plan_spline(&doc, cv);
+    assert_eq!(s.points()[4], p(15.0, 5.0));
+    assert_eq!(s.points()[..4], wave()[..4]);
+    // Anything else is no spline.
+    let layer = doc.current_layer().id();
+    let line = arq_geometry::Line::new(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
+    let other = doc
+        .add_entity(crate::PlanGeometry::new(line.into()), layer)
+        .unwrap();
+    assert!(doc.spline_with_point(other, 0, p(0.0, 1.0)).is_err());
+    assert!(doc.spline_fit(other).is_none());
+}
