@@ -21,6 +21,7 @@ from arqstudiocad._core import (
     CadEllipse,
     CadLine,
     CadRectangle,
+    CadSpline,
 )
 
 SQUARE = [((0.0, 0.0), 0.0), ((10.0, 0.0), 0.0), ((10.0, 6.0), 0.0), ((0.0, 6.0), 0.0)]
@@ -253,6 +254,18 @@ def el4(doc: CadDocument) -> None:
     doc.add_ellipse(whole.arc((0, 0), math.radians(30), math.radians(120)))
 
 
+SPLINE_POINTS = [(0.0, 0.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)]
+
+
+def spline(made: CadSpline) -> Callable[[CadDocument], None]:
+    """A case drawing ``made``, as SPLINE draws it."""
+    return lambda doc: drop(doc.add_spline(made))
+
+
+def drop(_: object) -> None:
+    """Ignores a result."""
+
+
 def ell(doc: CadDocument, start: float = 0.0, end: float = 0.0) -> int:
     """About (0,0), semi-axes 5 and 3, from start to end (equal: whole)."""
     return doc.add_ellipse(CadEllipse((0, 0), (5, 0), 0.6, start, end))[0]
@@ -365,6 +378,25 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("EL13-join-elliptical-arcs-gap", el13),
     ("EL14-join-elliptical-arcs-whole", el14),
     ("EL15-join-elliptical-arc-close", el15),
+    ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
+    (
+        "SP2-spline-fit-tangents",
+        spline(CadSpline.through(SPLINE_POINTS, start_tangent=(0, 5), end_tangent=(3, 0))),
+    ),
+    (
+        "SP2b-spline-fit-tangents-after",
+        spline(CadSpline.through(SPLINE_POINTS, start_tangent=(0, 5), end_tangent=(3, 0))),
+    ),
+    (
+        "SP3-spline-fit-closed",
+        spline(CadSpline.through([(0, 0), (6, 1), (8, 5), (3, 7)], closed=True)),
+    ),
+    ("SP4-spline-fit-square-root", spline(CadSpline.through(SPLINE_POINTS, "square_root"))),
+    ("SP5-spline-cv", spline(CadSpline.by_vertices(SPLINE_POINTS))),
+    (
+        "SP6-spline-cv-closed-degree-2",
+        spline(CadSpline.by_vertices(SPLINE_POINTS, 2, closed=True)),
+    ),
     ("R1-rectang", rectang),
     ("R2-rectang-fillet", lambda doc: rectang(doc, fillet=1.0)),
     ("R3-rectang-chamfer", lambda doc: rectang(doc, chamfer=(1.0, 2.0))),

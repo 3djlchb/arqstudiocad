@@ -139,3 +139,12 @@ which grips show; the center grip moved; the grip at (5,0) taken to (8,1);
 the grip at (0,3) taken to (0,7), past the major; the quarter's end at
 (0,3) taken toward (−10,0). And the Properties panel's Start and End angle
 of the quarter, against the dump's `start-angle` and `end-angle`.
+
+## To run: SPLINE (SP1–SP6)
+
+Added on 2026-11-23 with the SPLINE command (ADR 0042):
+- by fit points, with Chord and Square root knots, with tangents, and
+  closed;
+- by control vertices, open and closed.
+
+What ours gives is in [SPLINE's design](../design/spline-command.md#windows-comparison).
