@@ -2,6 +2,8 @@
 //! 0042): its degree, knots, control points and, when rational, their
 //! weights. Drawn by the very points the codec has always drawn it by.
 
+use std::sync::OnceLock;
+
 use crate::bounds::Bounds2;
 use crate::error::{GeometryError, GeometryResult};
 use crate::point::Point2;
@@ -18,8 +20,10 @@ pub(crate) const MAX_DEGREE: usize = 25;
 /// A NURBS curve in the plan: `degree`, a nondecreasing knot vector of
 /// `points + degree + 1` values, its control points and their weights
 /// (all one when it is not rational). `closed` is DWG's flag: a closed
-/// spline is drawn back to its start.
-#[derive(Clone, Debug, PartialEq)]
+/// spline is drawn back to its start. What it is drawn by and its exact
+/// box are computed when first asked for, so a spline read, checked or
+/// compared costs little (ADR 0043 D4); two are equal by their data.
+#[derive(Clone, Debug)]
 pub struct Spline {
     degree: usize,
     knots: Vec<f64>,
@@ -27,10 +31,20 @@ pub struct Spline {
     weights: Vec<f64>,
     closed: bool,
     /// The parameters and points it is drawn by, computed once.
-    samples: Vec<(f64, Point2)>,
+    samples: OnceLock<Vec<(f64, Point2)>>,
     /// Those points, back to the start when closed.
-    drawn: Vec<Point2>,
-    bounds: Bounds2,
+    drawn: OnceLock<Vec<Point2>>,
+    bounds: OnceLock<Bounds2>,
+}
+
+impl PartialEq for Spline {
+    fn eq(&self, other: &Self) -> bool {
+        self.degree == other.degree
+            && self.knots == other.knots
+            && self.points == other.points
+            && self.weights == other.weights
+            && self.closed == other.closed
+    }
 }
 
 impl Spline {
@@ -50,24 +64,21 @@ impl Spline {
         // Not rational unless a weight says so, as the codec decides.
         let rational = weights.iter().any(|w| (*w - 1.0).abs() > 1e-12);
         let weights = if rational { weights } else { Vec::new() };
-        let mut spline = Self {
+        Ok(Self {
             degree,
             knots,
             points,
             weights,
             closed,
-            samples: Vec::new(),
-            drawn: Vec::new(),
-            bounds: Bounds2::from_point(Point2::ORIGIN),
-        };
-        spline.samples = spline.compute_samples();
-        let mut drawn: Vec<Point2> = spline.samples.iter().map(|(_, q)| *q).collect();
-        if closed && drawn.len() > 2 && drawn[0] != drawn[drawn.len() - 1] {
-            drawn.push(drawn[0]);
-        }
-        spline.drawn = drawn;
-        spline.bounds = spline.compute_bounds();
-        Ok(spline)
+            samples: OnceLock::new(),
+            drawn: OnceLock::new(),
+            bounds: OnceLock::new(),
+        })
+    }
+
+    /// The parameters and points it is drawn by, before it closes.
+    fn samples(&self) -> &[(f64, Point2)] {
+        self.samples.get_or_init(|| self.compute_samples())
     }
 
     /// Whether [`Spline::new`] takes these, without making the spline.
@@ -203,7 +214,13 @@ impl Spline {
     /// codec has always drawn splines, back to its start when closed.
     /// Computed once.
     pub fn flatten(&self) -> &[Point2] {
-        &self.drawn
+        self.drawn.get_or_init(|| {
+            let mut drawn: Vec<Point2> = self.samples().iter().map(|(_, q)| *q).collect();
+            if self.closed && drawn.len() > 2 && drawn[0] != drawn[drawn.len() - 1] {
+                drawn.push(drawn[0]);
+            }
+            drawn
+        })
     }
 
     /// The parameters and points of [`Spline::flatten`], before it closes.
@@ -235,7 +252,7 @@ impl Spline {
     /// spline's first and last samples are neighbors across where it
     /// closes, so both sides of that are searched.
     pub fn closest_param(&self, p: Point2) -> f64 {
-        let samples = &self.samples;
+        let samples = self.samples();
         let best = (0..samples.len())
             .min_by(|&a, &b| {
                 samples[a]
@@ -315,11 +332,11 @@ impl Spline {
     /// The smallest box holding it, computed once: its ends and where it
     /// turns in x or in y, found between the drawn points and refined.
     pub fn bounds(&self) -> Bounds2 {
-        self.bounds
+        *self.bounds.get_or_init(|| self.compute_bounds())
     }
 
     fn compute_bounds(&self) -> Bounds2 {
-        let samples = &self.samples;
+        let samples = self.samples();
         let mut points: Vec<Point2> = samples.iter().map(|(_, q)| *q).collect();
         // A turn between two samples: where x (or y) stops changing, by
         // Newton's method from the sample, the derivatives by central
