@@ -102,7 +102,7 @@ impl SplineFit {
             Some(_) if closed => Err(GeometryError::OutOfRange {
                 what: "spline tangent",
             }),
-            Some(t) => t.normalized().map(Some),
+            Some(t) => unit(t).map(Some),
             None => Ok(None),
         };
         Ok(Self {
@@ -287,6 +287,17 @@ impl Spline {
         points.extend_from_within(..p);
         let knots = (0..n + 2 * p + 1).map(|j| j as f64 - p as f64).collect();
         Spline::new(p, points, Vec::new(), knots, true)
+    }
+}
+
+/// `t`'s direction: `t` itself when it is already of unit length to a few
+/// bits, so a tangent read back as written, normalized, gives the same
+/// spline on every platform (`hypot` is not correctly rounded on all).
+fn unit(t: Vector2) -> GeometryResult<Vector2> {
+    if (t.length() - 1.0).abs() <= 4.0 * f64::EPSILON {
+        Ok(t)
+    } else {
+        t.normalized()
     }
 }
 

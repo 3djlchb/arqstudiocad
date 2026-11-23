@@ -502,3 +502,21 @@ fn tridiagonal_case(small: f64) {
         }
     }
 }
+
+#[test]
+fn a_unit_tangent_is_kept_to_the_bit() {
+    // Written normalized and read back, a tangent must give the same
+    // spline: normalizing it again may move it by a bit.
+    let mut moved = 0;
+    for k in 1..2000 {
+        let a = k as f64 * 0.0031;
+        let u = v(a.cos() * 3.0, a.sin() * 3.0).normalized().unwrap();
+        moved += usize::from(u.normalized().unwrap() != u);
+        let fit = SplineFit::new(wave(), SplineKnots::Chord, Some(u), Some(u), false).unwrap();
+        assert_eq!(fit.start_tangent(), Some(u));
+        assert_eq!(fit.end_tangent(), Some(u));
+    }
+    assert!(moved > 0, "some unit tangent moves when normalized again");
+    let long = SplineFit::new(wave(), SplineKnots::Chord, Some(v(0.0, 2.0)), None, false).unwrap();
+    assert_eq!(long.start_tangent(), Some(v(0.0, 1.0)));
+}
