@@ -1,11 +1,13 @@
 //! The CPU rasterizer: a scene seen through a camera, painted into an RGBA
-//! image with tiny-skia (ADR 0013, D5.3). It needs no GPU and no Qt, and is
+//! image: fills and dashes with tiny-skia, solid strokes as tiny-skia's own
+//! antialiased hairlines written straight into the pixels (`hairline`), the
+//! same pixels at a fraction of the time (ADR 0013, D5.3). It needs no GPU and no Qt, and is
 //! the guaranteed fallback of every renderer to come.
 //!
 //! Shapes outside the view are skipped by their boxes; segments are clipped
 //! to the view in `f64` before becoming `f32` pixels, so far-away geometry
 //! never reaches the painter with huge coordinates. Consecutive shapes of
-//! one color are stroked as one path.
+//! one color are filled, or dashed, as one path.
 //!
 //! What is drawn ([`trace`]) is kept apart from who paints it (a [`Sink`]),
 //! so the GPU renderer draws the very same segments.
@@ -16,6 +18,7 @@ use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, StrokeDash, Transf
 
 use crate::aci::aci_rgb_on;
 use crate::camera::Camera;
+use crate::hairline::Hairlines;
 use crate::scene::{Scene, shape_bounds};
 
 /// How far a flattened arc may stray from the true curve, in pixels.
@@ -298,8 +301,8 @@ pub(crate) fn ink(color: Color, style: Style) -> [u8; 3] {
     }
 }
 
-/// Segments of one color and style, collected into one tiny-skia path;
-/// triangles of that color into another, filled.
+/// Solid segments painted as they come; dashed ones collected into one
+/// tiny-skia path, and triangles of one color into another, filled.
 struct PixmapSink {
     pixmap: Pixmap,
     path: PathBuilder,
@@ -316,8 +319,19 @@ impl Sink for PixmapSink {
     }
 
     fn segment(&mut self, a: (f32, f32), b: (f32, f32)) {
-        self.path.move_to(a.0, a.1);
-        self.path.line_to(b.0, b.1);
+        if self.dashed {
+            self.path.move_to(a.0, a.1);
+            self.path.line_to(b.0, b.1);
+            return;
+        }
+        let Some(rgb) = self.rgb else {
+            return;
+        };
+        // A fill still pending is of this very color, so painting it over
+        // these pixels later changes none of them.
+        let (width, height) = (self.pixmap.width(), self.pixmap.height());
+        let shift = |p: (f32, f32)| (p.0 + MARGIN_PX, p.1 + MARGIN_PX);
+        Hairlines::new(self.pixmap.data_mut(), width, height, rgb).line(shift(a), shift(b));
     }
 
     fn triangle(&mut self, a: (f32, f32), b: (f32, f32), c: (f32, f32)) {
@@ -330,6 +344,11 @@ impl Sink for PixmapSink {
 
 impl PixmapSink {
     fn flush(&mut self) {
+        self.flush_fill();
+        self.flush_dashes();
+    }
+
+    fn flush_fill(&mut self) {
         let fill = std::mem::replace(&mut self.fill, PathBuilder::new());
         if let (Some(path), Some([r, g, b])) = (fill.finish(), self.rgb) {
             let mut paint = Paint::default();
@@ -344,6 +363,11 @@ impl PixmapSink {
                 None,
             );
         }
+    }
+
+    /// Dashed outlines, the one stroke still left to tiny-skia: few, and
+    /// its dashing is what the GPU's matches (`DASH_PX`).
+    fn flush_dashes(&mut self) {
         let builder = std::mem::replace(&mut self.path, PathBuilder::new());
         let (Some(path), Some([r, g, b])) = (builder.finish(), self.rgb) else {
             return;
@@ -352,12 +376,8 @@ impl PixmapSink {
         paint.set_color_rgba8(r, g, b, 255);
         paint.anti_alias = true;
         let stroke = Stroke {
-            width: 0.0, // hairline: one pixel at any zoom, the fastest path
-            dash: if self.dashed {
-                StrokeDash::new(DASH_PX.to_vec(), 0.0)
-            } else {
-                None
-            },
+            width: 0.0, // a hairline, as `Hairlines` draws the solid ones
+            dash: StrokeDash::new(DASH_PX.to_vec(), 0.0),
             ..Stroke::default()
         };
         self.pixmap.stroke_path(

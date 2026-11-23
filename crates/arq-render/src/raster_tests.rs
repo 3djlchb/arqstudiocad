@@ -520,3 +520,154 @@ fn a_spline_draws_the_pixels_its_chords_drew() {
         );
     }
 }
+
+/// The painter as it was before `Hairlines`: every stroke through
+/// tiny-skia, one path per color.
+struct TinySkia {
+    pixmap: Pixmap,
+    path: PathBuilder,
+    fill: PathBuilder,
+    rgb: Option<[u8; 3]>,
+    dashed: bool,
+}
+
+impl Sink for TinySkia {
+    fn style(&mut self, rgb: [u8; 3], dashed: bool) {
+        self.flush();
+        self.rgb = Some(rgb);
+        self.dashed = dashed;
+    }
+    fn segment(&mut self, a: (f32, f32), b: (f32, f32)) {
+        self.path.move_to(a.0, a.1);
+        self.path.line_to(b.0, b.1);
+    }
+    fn triangle(&mut self, a: (f32, f32), b: (f32, f32), c: (f32, f32)) {
+        self.fill.move_to(a.0, a.1);
+        self.fill.line_to(b.0, b.1);
+        self.fill.line_to(c.0, c.1);
+        self.fill.close();
+    }
+}
+
+impl TinySkia {
+    fn flush(&mut self) {
+        let Some([r, g, b]) = self.rgb else {
+            return;
+        };
+        let mut paint = Paint::default();
+        paint.set_color_rgba8(r, g, b, 255);
+        let shift = Transform::from_translate(MARGIN_PX, MARGIN_PX);
+        if let Some(fill) = std::mem::replace(&mut self.fill, PathBuilder::new()).finish() {
+            paint.anti_alias = false;
+            let rule = FillRule::Winding;
+            self.pixmap.fill_path(&fill, &paint, rule, shift, None);
+        }
+        if let Some(path) = std::mem::replace(&mut self.path, PathBuilder::new()).finish() {
+            paint.anti_alias = true;
+            let stroke = Stroke {
+                width: 0.0,
+                dash: StrokeDash::new(DASH_PX.to_vec(), 0.0).filter(|_| self.dashed),
+                ..Stroke::default()
+            };
+            self.pixmap.stroke_path(&path, &paint, &stroke, shift, None);
+        }
+    }
+
+    /// `scene` through `camera` as tiny-skia alone painted it.
+    fn render(scene: &Scene, camera: &Camera, style: Style) -> Image {
+        let (width, height) = camera.size();
+        let margin = MARGIN_PX as u32;
+        let mut pixmap = Pixmap::new(width + 2 * margin, height + 2 * margin).unwrap();
+        let [r, g, b] = style.background;
+        pixmap.fill(tiny_skia::Color::from_rgba8(r, g, b, 255));
+        let mut sink = TinySkia {
+            pixmap,
+            path: PathBuilder::new(),
+            fill: PathBuilder::new(),
+            rgb: None,
+            dashed: false,
+        };
+        trace(scene, camera, style, &mut sink);
+        sink.flush();
+        let full = sink.pixmap.take();
+        let (row, stride) = (width as usize * 4, (width + 2 * margin) as usize * 4);
+        let pixels = (0..height as usize)
+            .flat_map(|y| {
+                let start = (y + margin as usize) * stride + margin as usize * 4;
+                full[start..start + row].to_vec()
+            })
+            .collect();
+        Image {
+            width,
+            height,
+            pixels,
+        }
+    }
+}
+
+#[test]
+fn a_drawing_paints_the_pixels_tiny_skia_painted() {
+    let mut cad = CadDocument::new();
+    for i in 0..60 {
+        let (x, y) = ((i % 10) as f64 * 9.0 - 45.0, (i / 10) as f64 * 13.0 - 40.0);
+        let color = Color::Index((i % 7 + 1) as u8);
+        let (line, _) = cad.add_line(p(x, y), p(x + 7.3, y + 2.9)).unwrap();
+        let (circle, _) = cad
+            .add_circle(p(x + 3.0, y + 6.0), 2.2 + i as f64 * 0.01)
+            .unwrap();
+        cad.set_entity_color(&[line, circle], color).unwrap();
+        cad.add_arc(p(x + 4.0, y + 4.0), 3.1, 0.2, 2.9).unwrap();
+    }
+    cad.add_line(p(-48.0, 0.0), p(48.0, 0.0)).unwrap(); // level
+    cad.add_line(p(0.5, -48.0), p(0.5, 48.0)).unwrap(); // plumb
+    cad.add_line(p(-500.0, -400.0), p(600.0, 450.0)).unwrap(); // beyond the view
+    wide_frame(&mut cad, 4.0); // fills under strokes of the same color
+    let scene = scene_of(&cad);
+    let mut zoomed = Camera::new(300, 200);
+    zoomed.zoom_at(150.0, 100.0, 7.0);
+    let mut cameras = [Camera::new(300, 200), zoomed];
+    cameras[0].fit(scene.bounds().unwrap());
+    for camera in cameras {
+        for style in [
+            DARK,
+            Style {
+                background: [255, 255, 255],
+            },
+        ] {
+            let expected = TinySkia::render(&scene, &camera, style);
+            assert!(
+                expected
+                    .pixels
+                    .chunks(4)
+                    .any(|c| c[..3] != style.background)
+            );
+            assert!(
+                render(&scene, &camera, style) == expected,
+                "{camera:?} {style:?}"
+            );
+        }
+    }
+    // A band first, crossed by lines of its color: its fill, painted
+    // after them now, changes none of their pixels.
+    let mut cad = CadDocument::new();
+    wide_frame(&mut cad, 6.0);
+    cad.add_line(p(0.3, -45.0), p(2.9, 45.0)).unwrap();
+    let scene = scene_of(&cad);
+    let expected = TinySkia::render(&scene, &camera(), DARK);
+    assert!(
+        render(&scene, &camera(), DARK) == expected,
+        "fills under strokes"
+    );
+    // Dashed outlines, still tiny-skia's, between solid lines of their color.
+    let line = |x: f64| DrawItem {
+        shape: Shape::Line(Line::new(p(x, -30.0), p(x + 20.0, 25.0)).unwrap()),
+        color: Color::Index(4),
+    };
+    let dashed = |x: f64| DrawItem {
+        shape: Shape::Placeholder(arq_geometry::Bounds2::new(p(x, -20.3), p(x + 15.7, 10.4))),
+        color: Color::Index(4),
+    };
+    let scene = Scene::from_items(vec![line(-40.0), dashed(-35.0), line(-10.0), dashed(5.0)]);
+    let expected = TinySkia::render(&scene, &camera(), DARK);
+    assert!(render(&scene, &camera(), DARK) == expected);
+}
