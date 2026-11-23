@@ -12,7 +12,7 @@ from ui_fakes import QuietUi
 
 from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.builtin import builtin_registry
-from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadEllipse, CadLine
+from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadEllipse, CadLine, CadSpline
 from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
 from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
@@ -46,7 +46,7 @@ class Harness:
         entity_id, _ = self.document.add_line(a, b)
         return entity_id
 
-    def shapes(self) -> list[CadLine | CadCircle | CadArc | CadEllipse]:
+    def shapes(self) -> list[CadLine | CadCircle | CadArc | CadEllipse | CadSpline]:
         found = []
         for e in self.document.get_entities():
             g = self.document.get_entity(e.id).geometry

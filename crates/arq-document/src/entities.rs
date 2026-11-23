@@ -36,6 +36,8 @@ enum StretchPlan {
     Unchanged,
     Move,
     Curve(PlanGeometry),
+    /// A spline through fit points, some moved, fitted again at its height.
+    Fit(arq_geometry::SplineFit, f64),
     Polyline {
         path: WorldPolyline,
         targets: Vec<(usize, Point2)>,
@@ -67,6 +69,7 @@ impl Document {
             StretchPlan::Unchanged => Ok(()),
             StretchPlan::Move => self.transform_entity(id, Transform2::translation(offset)),
             StretchPlan::Curve(plan) => self.set_plan_geometry(id, plan),
+            StretchPlan::Fit(fit, z) => self.set_fit_spline(id, &fit, z),
             StretchPlan::Polyline { targets, .. } => {
                 for (index, point) in targets {
                     self.set_polyline_vertex(id, index, point)?;
@@ -94,6 +97,7 @@ impl Document {
         match self.stretch_plan(id, areas, offset)? {
             StretchPlan::Unchanged => Ok(Vec::new()),
             StretchPlan::Curve(plan) => Ok(vec![curve(plan.geometry())]),
+            StretchPlan::Fit(fit, _) => Ok(vec![Shape::Spline(std::sync::Arc::new(fit.spline()?))]),
             StretchPlan::Polyline { path, .. } => {
                 let count = if path.closed {
                     path.vertices.len()
@@ -142,6 +146,113 @@ impl Document {
                     .collect()
             }
         }
+    }
+
+    /// A spline stretched: through fit points, those inside moved and the
+    /// spline fitted again through them, its knots method and tangents
+    /// kept; by its vertices, those inside moved, the copies a closed one
+    /// repeats following their own. Left when none is inside, moved whole
+    /// when all are.
+    fn stretch_spline(
+        &self,
+        id: EntityId,
+        spline: &arq_geometry::Spline,
+        z: f64,
+        inside: &dyn Fn(Point2) -> bool,
+        offset: arq_geometry::Vector2,
+    ) -> DocumentResult<StretchPlan> {
+        let shift = |q: Point2| Point2::new(q.x() + offset.x(), q.y() + offset.y());
+        let decide = |hits: &[bool]| {
+            if !hits.contains(&true) {
+                Some(StretchPlan::Unchanged)
+            } else if !hits.contains(&false) {
+                Some(StretchPlan::Move)
+            } else {
+                None
+            }
+        };
+        let fit = match self.cad().get_entity(handle(id)) {
+            Some(EntityType::Spline(sp)) => crate::drawing::spline_fit(sp),
+            _ => None,
+        };
+        if let Some(fit) = fit {
+            let hits: Vec<bool> = fit.points().iter().map(|&q| inside(q)).collect();
+            if let Some(plan) = decide(&hits) {
+                return Ok(plan);
+            }
+            let points = fit
+                .points()
+                .iter()
+                .zip(&hits)
+                .map(|(&q, &hit)| if hit { shift(q) } else { Ok(q) })
+                .collect::<Result<Vec<_>, _>>()?;
+            let moved = arq_geometry::SplineFit::new(
+                points,
+                fit.knots(),
+                fit.start_tangent(),
+                fit.end_tangent(),
+                fit.is_closed(),
+            )?;
+            return Ok(StretchPlan::Fit(moved, z));
+        }
+        // How many points a closed one repeats at its end: its degree when
+        // periodic, its first when clamped round to it.
+        let (p, points) = (spline.degree(), spline.points());
+        let n = points.len();
+        let repeated = if !spline.is_closed() {
+            0
+        } else if n > p && points[n - p..] == points[..p] {
+            p
+        } else if points[n - 1] == points[0] {
+            1
+        } else {
+            0
+        };
+        let own = n - repeated;
+        let hits: Vec<bool> = points[..own].iter().map(|&q| inside(q)).collect();
+        if let Some(plan) = decide(&hits) {
+            return Ok(plan);
+        }
+        let moved = (0..n)
+            .map(|i| {
+                let q = points[i];
+                if hits[i % own] { shift(q) } else { Ok(q) }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let stretched = arq_geometry::Spline::new(
+            p,
+            moved,
+            spline.weights().to_vec(),
+            spline.knots().to_vec(),
+            spline.is_closed(),
+        )?;
+        Ok(StretchPlan::Curve(PlanGeometry::at_elevation(
+            stretched.into(),
+            z,
+        )?))
+    }
+
+    /// Writes `fit`'s spline into SPLINE `id` at height `z`: its control
+    /// points and knots, and its fit points, knots method and tangents.
+    fn set_fit_spline(
+        &mut self,
+        id: EntityId,
+        fit: &arq_geometry::SplineFit,
+        z: f64,
+    ) -> DocumentResult<()> {
+        let spline = fit.spline()?;
+        let e = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        let EntityType::Spline(sp) = e else {
+            let kind = e.as_entity().entity_type();
+            return Err(DocumentError::KindMismatch { id, kind });
+        };
+        crate::drawing::write_plan_spline(sp, &spline, z);
+        write_fit(sp, fit, z);
+        self.sync_entity(id);
+        Ok(())
     }
 
     fn stretch_plan(
@@ -241,9 +352,9 @@ impl Document {
                         StretchPlan::Unchanged
                     });
                 }
-                // Its points stretched in ADR 0043's third delivery.
-                Geometry2::Spline(_) => {
-                    return Err(DocumentError::NotEditable { id, kind: "SPLINE" });
+                // Its points inside moved (ADR 0043 D4).
+                Geometry2::Spline(spline) => {
+                    return self.stretch_spline(id, &spline, plan.elevation(), &inside, offset);
                 }
             }
         }
@@ -648,7 +759,7 @@ impl Document {
     pub fn trim_search_bounds(&self, id: EntityId) -> DocumentResult<Bounds2> {
         let entity = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         let tol = Tolerance::DEFAULT;
-        if let Some(plan) = entity.plan().or_else(|| self.spline_curve(id)) {
+        if let Some(plan) = entity.plan() {
             let curve = plan.geometry();
             let margin = match curve {
                 Geometry2::Arc(a) => a.radius() * tol.angular(),
@@ -1075,7 +1186,11 @@ impl Document {
     /// else is [`DocumentError::NotEditable`].
     pub fn transform_entity(&mut self, id: EntityId, t: Transform2) -> DocumentResult<()> {
         let e = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
-        if let Some(plan) = e.plan() {
+        // A spline moves whole, its fit points and tangents with it (ADR
+        // 0042 D4), not by its plan geometry, which holds no fit.
+        if let Some(plan) = e.plan()
+            && e.kind() != "SPLINE"
+        {
             let moved = plan.with_geometry(t.apply(&plan.geometry())?);
             return self.set_plan_geometry(id, moved);
         }
@@ -1087,10 +1202,15 @@ impl Document {
             let kind = raw.as_entity().entity_type();
             return Err(DocumentError::NotEditable { id, kind });
         }
-        // Kinds transformed whole are not owned by the model: nothing to sync.
+        let spline = matches!(raw, EntityType::Spline(_));
         transform_whole(raw, t);
         if let Some(history) = crate::acis::history_of(raw) {
             self.drop_history(history);
+        }
+        // Of the kinds transformed whole, the model owns splines in the plan
+        // only (ADR 0043 D4).
+        if spline {
+            self.sync_entity(id);
         }
         Ok(())
     }
@@ -1284,72 +1404,8 @@ impl Document {
         elevation: f64,
     ) -> DocumentResult<EntityId> {
         let mut sp = new_spline(&fit.spline()?, elevation)?;
-        let at = |p: Point2| Vector3::new(p.x(), p.y(), elevation);
-        let direction = |t: Option<arq_geometry::Vector2>| {
-            t.map_or(Vector3::ZERO, |d| Vector3::new(d.x(), d.y(), 0.0))
-        };
-        sp.fit_points = fit.points().iter().copied().map(at).collect();
-        sp.knot_parameterization = fit.knots().code();
-        sp.begin_tangent = direction(fit.start_tangent());
-        sp.end_tangent = direction(fit.end_tangent());
-        // By fit points, with their knot parameterization.
-        sp.dwg_flags1 = 1 | 8 | if fit.is_closed() { 4 } else { 0 };
+        write_fit(&mut sp, fit, elevation);
         self.add_spline_entity(sp)
-    }
-
-    /// A SPLINE lying in the plan as plan geometry, at its height: the
-    /// curve TRIM and BREAK cut (ADR 0043 D4), kept apart from
-    /// [`Entity::plan`](crate::Entity::plan) until the third delivery. None
-    /// for anything else, a spline out of the plan included.
-    pub fn spline_curve(&self, id: EntityId) -> Option<PlanGeometry> {
-        let EntityType::Spline(sp) = self.cad().get_entity(handle(id))? else {
-            return None;
-        };
-        let spline = crate::drawing::plan_spline(sp)?;
-        let z = sp
-            .control_points
-            .first()
-            .or(sp.fit_points.first())
-            .map_or(0.0, |c| c.z);
-        PlanGeometry::at_elevation(spline.into(), z).ok()
-    }
-
-    /// Writes `plan`, a spline, into SPLINE `id`: its control points at the
-    /// plan's height, its knots and weights, by its vertices. Its fit
-    /// points, their knots method and its tangents are dropped, as they no
-    /// longer describe it (ADR 0043 D4); its layer, color and the rest are
-    /// kept.
-    pub fn set_spline_curve(&mut self, id: EntityId, plan: PlanGeometry) -> DocumentResult<()> {
-        let Geometry2::Spline(spline) = plan.geometry() else {
-            return Err(DocumentError::KindMismatch { id, kind: "SPLINE" });
-        };
-        let fresh = new_spline(&spline, plan.elevation())?;
-        let e = self
-            .cad_mut()
-            .get_entity_mut(handle(id))
-            .ok_or(DocumentError::EntityNotFound(id))?;
-        let EntityType::Spline(sp) = e else {
-            let kind = e.as_entity().entity_type();
-            return Err(DocumentError::KindMismatch { id, kind });
-        };
-        sp.degree = fresh.degree;
-        sp.knots = fresh.knots;
-        sp.control_points = fresh.control_points;
-        sp.weights = fresh.weights;
-        sp.flags = fresh.flags;
-        sp.fit_points.clear();
-        sp.begin_tangent = Vector3::ZERO;
-        sp.end_tangent = Vector3::ZERO;
-        sp.knot_parameterization = 0;
-        sp.fit_tolerance = 0.0;
-        // By its vertices now; DWG's closed bit as AutoCAD sets it.
-        sp.dwg_flags1 &= !(1 | 4 | 8);
-        if sp.flags.closed {
-            sp.dwg_flags1 |= 4;
-        }
-        sp.dwg_scenario = None;
-        self.sync_entity(id);
-        Ok(())
     }
 
     fn add_spline_entity(
@@ -1592,6 +1648,21 @@ impl Document {
 /// A SPLINE of `spline`'s control points at `elevation`, its knots and
 /// weights, planar, in the World plane; periodic when closed, as AutoCAD
 /// makes a closed one.
+/// Writes `fit`'s fit points at height `z`, its knots method and tangents
+/// into `sp`, marked as made by fit points.
+fn write_fit(sp: &mut acadrust::entities::Spline, fit: &arq_geometry::SplineFit, z: f64) {
+    let at = |p: Point2| Vector3::new(p.x(), p.y(), z);
+    let direction = |t: Option<arq_geometry::Vector2>| {
+        t.map_or(Vector3::ZERO, |d| Vector3::new(d.x(), d.y(), 0.0))
+    };
+    sp.fit_points = fit.points().iter().copied().map(at).collect();
+    sp.knot_parameterization = fit.knots().code();
+    sp.begin_tangent = direction(fit.start_tangent());
+    sp.end_tangent = direction(fit.end_tangent());
+    // By fit points, with their knot parameterization.
+    sp.dwg_flags1 = 1 | 8 | if fit.is_closed() { 4 } else { 0 };
+}
+
 pub(crate) fn new_spline(
     spline: &arq_geometry::Spline,
     elevation: f64,
@@ -1633,6 +1704,10 @@ mod whole_tests;
 #[cfg(test)]
 #[path = "plan_ellipse_tests.rs"]
 mod plan_ellipse_tests;
+
+#[cfg(test)]
+#[path = "plan_spline_tests.rs"]
+mod plan_spline_tests;
 
 #[cfg(test)]
 mod tests {

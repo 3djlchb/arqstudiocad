@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from arqstudiocad.core import CadApplication, CadBounds2
+from arqstudiocad.core import CadApplication, CadBounds2, CadSpline
 
 
 def spline_dxf(path: Path) -> Path:
@@ -121,4 +121,5 @@ def test_a_read_spline_is_a_curve_to_snap_to_and_trim_at(tmp_path: Path) -> None
     boxes = [doc.get_entity(i).bounds for i in left]
     ends = sorted(x for b in boxes if b is not None for x in (b.min[0], b.max[0]))
     assert ends == pytest.approx([-1.0, x1, x2, 7.0])
-    assert doc.get_entity(spline.id).geometry is None, "not plan geometry yet (ADR 0043)"
+    geometry = doc.get_entity(spline.id).geometry
+    assert isinstance(geometry, CadSpline) and geometry.degree == 3, "plan geometry (ADR 0043)"

@@ -338,14 +338,14 @@ fn a_spline_piece_written_is_by_its_vertices_its_fit_dropped() {
     )
     .unwrap();
     let id = doc.add_fit_spline(&fit, 1.5).unwrap();
-    let plan = doc.spline_curve(id).unwrap();
+    let plan = doc.entity(id).unwrap().plan().unwrap();
     assert!((plan.elevation() - 1.5).abs() < 1e-12);
     let arq_geometry::Geometry2::Spline(whole) = plan.geometry() else {
         panic!()
     };
     let (a, b) = whole.domain();
     let piece = whole.between(a + 0.2 * (b - a), b).unwrap();
-    doc.set_spline_curve(id, plan.with_geometry(piece.clone().into()))
+    doc.set_plan_geometry(id, plan.with_geometry(piece.clone().into()))
         .unwrap();
     let sp = codec(&doc, id);
     assert!(sp.fit_points.is_empty());
@@ -357,14 +357,13 @@ fn a_spline_piece_written_is_by_its_vertices_its_fit_dropped() {
     );
     assert_eq!(sp.dwg_flags1, 0, "by its vertices");
     assert_eq!(drawn(&doc, id).flatten(), piece.flatten());
-    // Anything else is no spline curve, nor written as one.
+    // A line is not written as a spline, nor a spline as a line.
     let layer = doc.current_layer().id();
     let line = arq_geometry::Line::new(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
     let other = doc
         .add_entity(crate::PlanGeometry::new(line.into()), layer)
         .unwrap();
-    assert!(doc.spline_curve(other).is_none());
-    assert!(doc.set_spline_curve(other, plan).is_err());
+    assert!(doc.set_plan_geometry(other, plan).is_err());
     let not_a_spline = crate::PlanGeometry::new(line.into());
-    assert!(doc.set_spline_curve(id, not_a_spline).is_err());
+    assert!(doc.set_plan_geometry(id, not_a_spline).is_err());
 }

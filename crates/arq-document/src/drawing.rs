@@ -890,15 +890,49 @@ pub(crate) fn plan_spline(sp: &Spline) -> Option<arq_geometry::Spline> {
 
 /// Whether [`plan_spline`] reads `sp`, without drawing it.
 pub(crate) fn spline_in_plan(sp: &Spline) -> bool {
-    plan_spline_box(sp).is_some()
+    plan_spline_parts(sp).is_some_and(|(degree, points, weights, knots)| {
+        arq_geometry::Spline::check(degree, &points, &weights, &knots).is_ok()
+    })
 }
 
-/// The box of the control points [`plan_spline`] draws `sp` by, which
-/// holds the curve; none when it does not read `sp`.
-pub(crate) fn plan_spline_box(sp: &Spline) -> Option<arq_geometry::Bounds2> {
-    let (degree, points, weights, knots) = plan_spline_parts(sp)?;
-    arq_geometry::Spline::check(degree, &points, &weights, &knots).ok()?;
-    arq_geometry::Bounds2::from_points(points)
+/// The height a spline in the plan lies at: its control points', or its
+/// fit points' when it keeps no control points.
+pub(crate) fn spline_height(sp: &Spline) -> f64 {
+    sp.control_points
+        .first()
+        .or(sp.fit_points.first())
+        .map_or(0.0, |c| c.z)
+}
+
+/// Writes `g` into `sp` at height `z`, by its vertices: its control points,
+/// knots, weights and flags. Its fit points, their knots method and its
+/// tangents are dropped, as they no longer describe it (ADR 0043 D4); its
+/// layer, color, normal and the rest are kept.
+pub(crate) fn write_plan_spline(sp: &mut Spline, g: &arq_geometry::Spline, z: f64) {
+    sp.degree = i32::try_from(g.degree()).expect("a spline's degree is at most 25");
+    sp.knots = g.knots().to_vec();
+    sp.control_points = g
+        .points()
+        .iter()
+        .map(|p| Vector3::new(p.x(), p.y(), z))
+        .collect();
+    sp.weights = g.weights().to_vec();
+    sp.flags.closed = g.is_closed();
+    sp.flags.periodic = g.is_closed();
+    sp.flags.rational = !g.weights().is_empty();
+    sp.flags.planar = true;
+    sp.flags.linear = g.degree() == 1;
+    sp.fit_points.clear();
+    sp.begin_tangent = Vector3::ZERO;
+    sp.end_tangent = Vector3::ZERO;
+    sp.knot_parameterization = 0;
+    sp.fit_tolerance = 0.0;
+    // By its vertices now; DWG's closed bit as AutoCAD sets it.
+    sp.dwg_flags1 &= !(1 | 4 | 8);
+    if sp.flags.closed {
+        sp.dwg_flags1 |= 4;
+    }
+    sp.dwg_scenario = None;
 }
 
 /// A spline's degree, control points in the plan, weights and knots.

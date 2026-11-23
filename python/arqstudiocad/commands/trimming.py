@@ -29,7 +29,7 @@ from arqstudiocad.commands import (
     Prompt,
 )
 from arqstudiocad.commands.modify import done_selecting, select_objects
-from arqstudiocad.core import CadDocument, CadEllipse, CadError, InvalidGeometryError
+from arqstudiocad.core import CadDocument, CadEllipse, CadError, CadSpline, InvalidGeometryError
 from arqstudiocad.i18n import tr
 
 #: Quick ("Q") or Standard ("S"), shared by TRIM and EXTEND as AutoCAD's
@@ -179,9 +179,7 @@ def _trim_one(
 ) -> int:
     """Trims the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
-    # A spline lying in the plan too (ADR 0043 D4).
-    curve = entity.geometry is not None or document.spline_curve(picked.entity_id)
-    if not curve and entity.kind != "LWPOLYLINE":
+    if entity.geometry is None and entity.kind != "LWPOLYLINE":
         ctx.message(tr("Cannot trim that object."))
         return 0
     try:
@@ -206,6 +204,8 @@ def _extend_one(ctx: CommandContext, document: CadDocument, picked: Picked, edge
     closed = (polyline and dict(entity.details).get("Closed") == "true") or (
         isinstance(curve, CadEllipse) and curve.is_full
     )
+    # A spline is not extended until ProgeCAD shows the rule (ADR 0043 D4).
+    closed = closed or isinstance(curve, CadSpline)
     if (curve is None and not polyline) or entity.kind == "CIRCLE" or closed:
         ctx.message(tr("Cannot extend that object."))
         return 0

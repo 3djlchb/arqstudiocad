@@ -125,13 +125,10 @@ impl Document {
         let owned = self.model.entities.get(&id)?;
         let layer = self.model.layers.get(&owned.layer)?;
         let codec = self.cad().get_entity(handle(id))?;
-        let mut entity = crate::translate::read_entity(codec);
+        let mut entity = crate::translate::read_entity_with(codec, Some(owned.plan.clone()));
         entity.kind = owned.plan.geometry().kind().name();
         entity.layer = layer.name().to_owned();
         entity.color = owned.color;
-        entity.bounds = Some(owned.plan.geometry().bounds());
-        entity.plan = Some(owned.plan.clone());
-        entity.transformable = true;
         Some(entity)
     }
 

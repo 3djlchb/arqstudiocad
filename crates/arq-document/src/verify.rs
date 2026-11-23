@@ -294,6 +294,22 @@ fn same_plan(a: PlanGeometry, b: PlanGeometry) -> bool {
                 && near(x.sweep(), y.sweep())
                 && (x.is_full() || angle(x.start_param(), y.start_param()))
         }
+        // A spline by its data, as an ellipse: its box and length would be
+        // computed for every spline saved (ADR 0043 D4).
+        (Geometry2::Spline(x), Geometry2::Spline(y)) => {
+            let all = |a: &[f64], b: &[f64]| {
+                a.len() == b.len() && a.iter().zip(b).all(|(u, v)| near(*u, *v))
+            };
+            x.degree() == y.degree()
+                && x.is_closed() == y.is_closed()
+                && x.points().len() == y.points().len()
+                && x.points()
+                    .iter()
+                    .zip(y.points())
+                    .all(|(a, b)| a.approx_eq(*b, tol()))
+                && all(x.knots(), y.knots())
+                && all(x.weights(), y.weights())
+        }
         _ => {
             ga.kind() == gb.kind()
                 && option_eq(ga.start_point(), gb.start_point(), |x, y| {
