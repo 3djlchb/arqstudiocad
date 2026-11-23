@@ -30,7 +30,17 @@ fn parameter(curve: &Geometry2, p: Point2) -> f64 {
         Geometry2::Circle(c) => (p - c.center()).angle().rem_euclid(TAU),
         Geometry2::Ellipse(e) if e.is_full() => e.param_of(p),
         Geometry2::Ellipse(e) => crate::angle::ccw_sweep(e.start_param(), e.param_of(p)),
-        Geometry2::Spline(_) => unreachable!("a spline is refused first"),
+        // Along its own parameter from its start (ADR 0043 D4); a closed
+        // one's end, where its point nearest may be found, is its start.
+        Geometry2::Spline(ref s) => {
+            let (a, b) = s.domain();
+            let t = s.closest_param(p) - a;
+            if s.is_closed() {
+                t.rem_euclid(b - a)
+            } else {
+                t
+            }
+        }
     }
 }
 
@@ -41,7 +51,10 @@ fn span(curve: &Geometry2) -> f64 {
         Geometry2::Arc(a) => a.sweep(),
         Geometry2::Circle(_) => TAU,
         Geometry2::Ellipse(e) => e.sweep(),
-        Geometry2::Spline(_) => unreachable!("a spline is refused first"),
+        Geometry2::Spline(ref s) => {
+            let (a, b) = s.domain();
+            b - a
+        }
     }
 }
 
@@ -77,7 +90,20 @@ fn piece(curve: &Geometry2, from: f64, to: f64, tol: Tolerance) -> Option<Geomet
             .filter(|n| n.length() > tol.linear())
             .map(Geometry2::Ellipse)
         }
-        Geometry2::Spline(_) => unreachable!("a spline is refused first"),
+        // Cut exactly by knot insertion; round where a closed one closes.
+        Geometry2::Spline(ref s) => {
+            let a = s.domain().0;
+            let (u0, u1) = (a + from, a + to);
+            let piece = if s.is_closed() && u1 > s.domain().1 {
+                s.between_round(u0, u1)
+            } else {
+                s.between(u0, u1.min(s.domain().1))
+            };
+            piece
+                .ok()
+                .filter(|n| n.length() > tol.linear())
+                .map(Geometry2::from)
+        }
     }
 }
 
@@ -102,7 +128,6 @@ pub fn trim(
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Vec<Geometry2>>> {
-    refuse_spline(curve)?;
     let total = span(curve);
     let at = parameter(curve, curve.closest_point(pick));
     let end_slack = tol.linear() / curve.length().max(tol.linear()) * total;
@@ -131,7 +156,7 @@ pub fn trim(
             .unwrap_or(params[params.len() - 1]);
         // Left: from the cut after the pick round to the one before it.
         let to = if before <= after {
-            before + TAU
+            before + total
         } else {
             before
         };
@@ -167,7 +192,6 @@ pub fn break_curve(
     second: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Vec<Geometry2>> {
-    refuse_spline(curve)?;
     let a = parameter(curve, curve.closest_point(first));
     let b = parameter(curve, curve.closest_point(second));
     if !a.is_finite() || !b.is_finite() {
@@ -178,13 +202,13 @@ pub fn break_curve(
     let total = span(curve);
     let slack = tol.linear() / curve.length().max(tol.linear()) * total;
     if curve.is_closed() {
-        let removed = (b - a).rem_euclid(TAU);
-        if removed <= slack || TAU - removed <= slack {
+        let removed = (b - a).rem_euclid(total);
+        if removed <= slack || total - removed <= slack {
             return Err(GeometryError::OutOfRange {
                 what: "break points",
             });
         }
-        return piece(curve, b, b + TAU - removed, tol)
+        return piece(curve, b, b + total - removed, tol)
             .map(|arc| vec![arc])
             .ok_or(GeometryError::OutOfRange {
                 what: "break points",
@@ -354,8 +378,8 @@ pub fn extend(
     }
 }
 
-/// A spline is not trimmed, broken or extended until ADR 0043's second
-/// delivery: refused, nothing changed.
+/// A spline is not extended until the Windows comparison shows AutoCAD's
+/// rule (ADR 0043 D4): refused, nothing changed.
 fn refuse_spline(curve: &Geometry2) -> GeometryResult<()> {
     match curve {
         Geometry2::Spline(_) => Err(GeometryError::OutOfRange { what: "curve" }),

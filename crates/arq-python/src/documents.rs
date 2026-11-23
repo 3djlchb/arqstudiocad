@@ -1073,6 +1073,22 @@ impl CadDocument {
         }
     }
 
+    /// Entity `entity_id`'s curve when it is a spline lying in the plan,
+    /// which TRIM and BREAK cut (ADR 0043 D4); None for anything else.
+    fn spline_curve(&self, entity_id: EntityId) -> PyResult<Option<CadSpline>> {
+        self.read(|cad| {
+            cad.document()
+                .spline_curve(entity_id)
+                .and_then(|plan| match plan.geometry() {
+                    arq_geometry::Geometry2::Spline(s) => Some(CadSpline {
+                        spline: std::sync::Arc::unwrap_or_clone(s),
+                        fit: None,
+                    }),
+                    _ => None,
+                })
+        })
+    }
+
     /// Draws an arc on the current layer, counterclockwise from
     /// `start_angle` to `end_angle` (radians).
     fn add_arc(

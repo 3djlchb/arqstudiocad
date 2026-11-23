@@ -179,7 +179,9 @@ def _trim_one(
 ) -> int:
     """Trims the object picked; 1 when it changed, else 0 with why."""
     entity = document.get_entity(picked.entity_id)
-    if entity.geometry is None and entity.kind != "LWPOLYLINE":
+    # A spline lying in the plan too (ADR 0043 D4).
+    curve = entity.geometry is not None or document.spline_curve(picked.entity_id)
+    if not curve and entity.kind != "LWPOLYLINE":
         ctx.message(tr("Cannot trim that object."))
         return 0
     try:

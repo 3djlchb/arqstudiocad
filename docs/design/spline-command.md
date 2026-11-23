@@ -115,8 +115,18 @@ curve.
   longer its chords.
 - **As an edge:** TRIM cuts lines, arcs, circles, ellipses and polylines
   at it, and EXTEND grows them to it.
-- **Refused for now:** the spline itself is not yet trimmed, broken or
-  extended (deliveries 2 and later).
+- **TRIM and BREAK** (delivery 2, 2026-11-23) cut the spline itself
+  exactly, by knot insertion, as AutoCAD cuts a curve:
+  - a closed spline cut twice becomes the open piece left;
+  - an open one cut in the middle becomes two, the second a copy with
+    every property;
+  - BREAK takes away the span between its points, a closed spline's
+    counterclockwise from the first.
+
+  A piece keeps its control points and loses its fit points, which no
+  longer describe it. Fences and Quick TRIM see a spline as they see any
+  curve.
+- **EXTEND** refuses the spline itself until ProgeCAD shows its rule.
 
 Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 
@@ -124,7 +134,8 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 |---|---|---|
 | SC1 | TRIM (Quick) the line (−1,1)–(7,1) at (3,1) | two lines, to x = 3 − √5 and from x = 3 + √5 |
 | SC2 | EXTEND the line (−5,1)–(−2,1) to the spline | to (3 − √5, 1) |
-| SC3 | TRIM (Quick) the spline at its top, cut by x = 2 and x = 4 | refused, unchanged: what ProgeCAD makes decides delivery 2 |
+| SC3 | TRIM (Quick) the spline at its top, cut by x = 2 and x = 4 | two splines, (0,0)–(2,2) and (4,2)–(6,0), by their vertices; whether ProgeCAD keeps fit points to confirm |
 | SC4 | EXTEND the spline at its end (6,0) to x = 8 | refused, unchanged: what ProgeCAD makes decides EXTEND's rule |
+| SC5 | BREAK the spline, First (2,2), second (4,2) | the same two splines as SC3 |
 
 **To run.**

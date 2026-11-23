@@ -282,6 +282,10 @@ def sc3(doc: CadDocument) -> None:
     doc.trim_entity(target, (3, 2.25))
 
 
+def sc5(doc: CadDocument) -> None:
+    doc.break_entity(bezier(doc), (2, 2), (4, 2))
+
+
 def sc4(doc: CadDocument) -> None:
     target = bezier(doc)
     boundary = line(doc, (8, -9), (8, 9))
@@ -413,6 +417,7 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("SC2-extend-line-to-spline", sc2),
     ("SC3-trim-spline-middle", sc3),
     ("SC4-extend-spline", sc4),
+    ("SC5-break-spline", sc5),
     ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
     (
         "SP2-spline-fit-tangents",

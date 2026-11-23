@@ -120,7 +120,9 @@ impl Document {
             let Some(entity) = self.entity(id) else {
                 continue;
             };
-            if entity.plan().is_none() && entity.kind() != "LWPOLYLINE" {
+            // A spline in the plan too (ADR 0043 D4).
+            let curve_of = entity.plan().is_some() || self.spline_curve(id).is_some();
+            if !curve_of && entity.kind() != "LWPOLYLINE" {
                 continue;
             }
             let point = items

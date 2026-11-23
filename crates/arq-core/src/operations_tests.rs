@@ -2876,8 +2876,64 @@ fn trim_cuts_at_a_spline_and_extend_reaches_one() {
         .unwrap();
     let (_, end) = line_ends(&cad, short);
     assert!(near(end, p(x1, 1.0)), "{end:?}");
-    // The spline itself is not trimmed yet (ADR 0043 D5).
-    let before = cad.document().entity(spline).unwrap().bounds();
-    assert!(cad.trim_entity(spline, p(3.0, 2.25), None, true).is_err());
-    assert_eq!(cad.document().entity(spline).unwrap().bounds(), before);
+}
+
+/// The drawn ends of the spline `id`.
+fn spline_ends(cad: &CadDocument, id: EntityId) -> (Point2, Point2) {
+    let items = cad.document().drawing(id).unwrap();
+    let [item] = &items[..] else {
+        panic!("{items:?}")
+    };
+    let arq_document::Shape::Spline(s) = &item.shape else {
+        panic!("{item:?}")
+    };
+    s.ends()
+}
+
+#[test]
+fn trim_and_break_cut_a_spline_into_splines_as_one_step() {
+    // Cut by x = 2 and x = 4, where it is at height 2 (x = 6u).
+    let (mut cad, spline) = bezier_spline();
+    let (a, _) = cad.add_line(p(2.0, -9.0), p(2.0, 9.0)).unwrap();
+    let (b, _) = cad.add_line(p(4.0, -9.0), p(4.0, 9.0)).unwrap();
+    let before = cad.document().entity(spline).unwrap();
+    let (left, _) = cad
+        .trim_entity(spline, p(3.0, 2.25), Some(&[a, b]), false)
+        .unwrap();
+    assert_eq!(cad.undo_name(), Some("TRIM"));
+    let [first, second] = left[..] else {
+        panic!("{left:?}")
+    };
+    assert_eq!(first, spline, "the source keeps its id");
+    for id in [first, second] {
+        let e = cad.document().entity(id).unwrap();
+        assert_eq!((e.kind(), e.layer()), ("SPLINE", before.layer()));
+        assert_eq!(e.color(), before.color());
+    }
+    let (s0, s1) = spline_ends(&cad, first);
+    let (t0, t1) = spline_ends(&cad, second);
+    assert!(
+        near(s0, p(0.0, 0.0)) && near(s1, p(2.0, 2.0)),
+        "{s0:?} {s1:?}"
+    );
+    assert!(
+        near(t0, p(4.0, 2.0)) && near(t1, p(6.0, 0.0)),
+        "{t0:?} {t1:?}"
+    );
+    cad.undo().unwrap();
+    assert!(cad.document().entity(second).is_none());
+    assert_eq!(cad.document().entity(spline).unwrap(), before);
+    // BREAK between the same points: the same two.
+    let (pieces, _) = cad.break_entity(spline, p(2.0, 2.0), p(4.0, 2.0)).unwrap();
+    assert_eq!(cad.undo_name(), Some("BREAK"));
+    assert_eq!(pieces.len(), 2);
+    assert!(near(spline_ends(&cad, pieces[1]).0, p(4.0, 2.0)));
+    // EXTEND still refuses it, unchanged (ADR 0043 D4).
+    let (wall, _) = cad.add_line(p(8.0, -9.0), p(8.0, 9.0)).unwrap();
+    let kept = cad.document().entity(spline).unwrap();
+    assert!(
+        cad.extend_entity(spline, p(1.9, 1.9), Some(&[wall]))
+            .is_err()
+    );
+    assert_eq!(cad.document().entity(spline).unwrap(), kept);
 }

@@ -648,7 +648,7 @@ impl Document {
     pub fn trim_search_bounds(&self, id: EntityId) -> DocumentResult<Bounds2> {
         let entity = self.entity(id).ok_or(DocumentError::EntityNotFound(id))?;
         let tol = Tolerance::DEFAULT;
-        if let Some(plan) = entity.plan() {
+        if let Some(plan) = entity.plan().or_else(|| self.spline_curve(id)) {
             let curve = plan.geometry();
             let margin = match curve {
                 Geometry2::Arc(a) => a.radius() * tol.angular(),
@@ -1295,6 +1295,61 @@ impl Document {
         // By fit points, with their knot parameterization.
         sp.dwg_flags1 = 1 | 8 | if fit.is_closed() { 4 } else { 0 };
         self.add_spline_entity(sp)
+    }
+
+    /// A SPLINE lying in the plan as plan geometry, at its height: the
+    /// curve TRIM and BREAK cut (ADR 0043 D4), kept apart from
+    /// [`Entity::plan`](crate::Entity::plan) until the third delivery. None
+    /// for anything else, a spline out of the plan included.
+    pub fn spline_curve(&self, id: EntityId) -> Option<PlanGeometry> {
+        let EntityType::Spline(sp) = self.cad().get_entity(handle(id))? else {
+            return None;
+        };
+        let spline = crate::drawing::plan_spline(sp)?;
+        let z = sp
+            .control_points
+            .first()
+            .or(sp.fit_points.first())
+            .map_or(0.0, |c| c.z);
+        PlanGeometry::at_elevation(spline.into(), z).ok()
+    }
+
+    /// Writes `plan`, a spline, into SPLINE `id`: its control points at the
+    /// plan's height, its knots and weights, by its vertices. Its fit
+    /// points, their knots method and its tangents are dropped, as they no
+    /// longer describe it (ADR 0043 D4); its layer, color and the rest are
+    /// kept.
+    pub fn set_spline_curve(&mut self, id: EntityId, plan: PlanGeometry) -> DocumentResult<()> {
+        let Geometry2::Spline(spline) = plan.geometry() else {
+            return Err(DocumentError::KindMismatch { id, kind: "SPLINE" });
+        };
+        let fresh = new_spline(&spline, plan.elevation())?;
+        let e = self
+            .cad_mut()
+            .get_entity_mut(handle(id))
+            .ok_or(DocumentError::EntityNotFound(id))?;
+        let EntityType::Spline(sp) = e else {
+            let kind = e.as_entity().entity_type();
+            return Err(DocumentError::KindMismatch { id, kind });
+        };
+        sp.degree = fresh.degree;
+        sp.knots = fresh.knots;
+        sp.control_points = fresh.control_points;
+        sp.weights = fresh.weights;
+        sp.flags = fresh.flags;
+        sp.fit_points.clear();
+        sp.begin_tangent = Vector3::ZERO;
+        sp.end_tangent = Vector3::ZERO;
+        sp.knot_parameterization = 0;
+        sp.fit_tolerance = 0.0;
+        // By its vertices now; DWG's closed bit as AutoCAD sets it.
+        sp.dwg_flags1 &= !(1 | 4 | 8);
+        if sp.flags.closed {
+            sp.dwg_flags1 |= 4;
+        }
+        sp.dwg_scenario = None;
+        self.sync_entity(id);
+        Ok(())
     }
 
     fn add_spline_entity(
