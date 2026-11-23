@@ -267,18 +267,11 @@ fn a_spline_is_a_curve() {
 }
 
 #[test]
-fn trim_break_and_extend_refuse_a_spline_and_reach_one() {
-    use crate::{break_curve, extend, trim};
+fn extend_refuses_a_spline_and_reaches_one() {
+    use crate::{extend, trim};
     let c = circle(p(0.0, 0.0), 5.0);
     let edge = line((-9.0, 3.0), (9.0, 3.0));
     let refused = GeometryError::OutOfRange { what: "curve" };
-    let cuts = crate::cutting_points(&c, std::slice::from_ref(&edge), TOL);
-    assert_eq!(cuts.len(), 2, "TRIM finds where a spline is cut");
-    assert_eq!(trim(&c, &cuts, p(0.0, 5.0), TOL), Err(refused.clone()));
-    assert_eq!(
-        break_curve(&c, p(5.0, 0.0), p(0.0, 5.0), TOL),
-        Err(refused.clone())
-    );
     assert_eq!(
         extend(&c, std::slice::from_ref(&edge), p(5.0, 0.0), TOL),
         Err(refused)

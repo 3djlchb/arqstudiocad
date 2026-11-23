@@ -101,6 +101,7 @@ pub mod snap;
 mod spline;
 mod spline_curve;
 mod spline_fit;
+mod spline_split;
 mod tolerance;
 mod transform;
 mod transform3;
