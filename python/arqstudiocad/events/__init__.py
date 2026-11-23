@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Literal
 
 from arqstudiocad.core import CadBounds2, CadChangeSet
+from arqstudiocad.splines import SplineShape
 
 __all__ = [
     "ActiveDocumentChanged",
@@ -176,7 +177,15 @@ class Drag:
     to it."""
 
     kind: Literal[
-        "move", "rotate", "scale", "mirror", "rectangle", "stretch", "ellipse", "array_rect"
+        "move",
+        "rotate",
+        "scale",
+        "mirror",
+        "rectangle",
+        "stretch",
+        "ellipse",
+        "array_rect",
+        "spline",
     ]
     entity_ids: tuple[int, ...] = ()
     #: Whether a rubber band joins the base point to the cursor.
@@ -194,6 +203,9 @@ class Drag:
     ellipse: (
         tuple[tuple[float, float], tuple[float, float], float | None, float | None, bool] | None
     ) = None
+    #: SPLINE's (ADR 0042): its points so far and settings; the cursor
+    #: gives the next point or the end tangent.
+    spline: SplineShape | None = None
     #: Selection provenance captured once, rather than queried per mouse move.
     crossing: tuple[tuple[int, CadBounds2], ...] = ()
     polygons: tuple[tuple[int, tuple[tuple[float, float], ...]], ...] = ()
