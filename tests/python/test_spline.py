@@ -1,6 +1,8 @@
 """SPLINE read from a drawing (ADR 0042): an exact shape, snapped to its
 ends and nearest point, moved and mirrored whole, windowed by its curve."""
 
+import itertools
+import math
 from pathlib import Path
 
 import pytest
@@ -41,3 +43,62 @@ def test_a_read_spline_snaps_moves_and_has_its_exact_box(tmp_path: Path) -> None
     mirrored = doc.get_entity(spline.id).bounds
     assert mirrored is not None and mirrored.max[0] == pytest.approx(-10.0)
     assert doc.select_window(CadBounds2((-16.1, 0.9), (-9.9, 3.3)), False) == [spline.id]
+
+
+def test_a_spline_through_fit_points_passes_through_them_and_keeps_them(tmp_path: Path) -> None:
+    from arqstudiocad.core import CadSpline
+
+    points = [(0.0, 0.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)]
+    fit = CadSpline.through(points, "square_root", start_tangent=(0.0, 1.0))
+    assert fit.degree == 3 and not fit.is_closed
+    assert fit.fit_points == points
+    assert len(fit.control_points) == len(points) + 2
+    drawn = fit.points()
+    assert drawn[0] == points[0] and drawn[-1] == pytest.approx(points[-1])
+    # It leaves along the tangent: its first two control points upward.
+    (x0, y0), (x1, y1) = fit.control_points[:2]
+    assert x1 == pytest.approx(x0) and y1 > y0
+    # Its knots the running chord lengths, their square roots, or counts.
+    steps = [math.dist(a, b) for a, b in itertools.pairwise(points)]
+    chord = list(itertools.accumulate(steps))[:-1]
+    root = list(itertools.accumulate(math.sqrt(d) for d in steps))[:-1]
+    assert CadSpline.through(points, "chord").knots[4:-4] == pytest.approx(chord)
+    assert CadSpline.through(points, "square_root").knots[4:-4] == pytest.approx(root)
+    assert CadSpline.through(points, "uniform").knots[4:-4] == [1.0, 2.0]
+    closed = CadSpline.through(points, "uniform", closed=True)
+    assert closed.is_closed and closed.points()[-1] == closed.points()[0]
+    cv = CadSpline.by_vertices(points, degree=2)
+    assert cv.degree == 2 and cv.fit_points == [] and cv.control_points == points
+
+    doc = CadApplication().create_document("splines")
+    ids = [doc.add_spline(s)[0] for s in (fit, closed, cv)]
+    assert [doc.get_entity(i).kind for i in ids] == ["SPLINE"] * 3
+    path = tmp_path / "splines.dwg"
+    doc.save(path)
+    back = CadApplication().open_document(path)
+    assert [back.get_entity(i).bounds for i in ids] == [doc.get_entity(i).bounds for i in ids]
+    # The fitted ones keep their fit points (DXF group 74, their count).
+    text = tmp_path / "splines.dxf"
+    doc.save(text)
+    lines = [line.strip() for line in text.read_text().splitlines()]
+    fits, kind = [], ""
+    for code, value in zip(lines[::2], lines[1::2], strict=False):
+        kind = value if code == "0" else kind
+        if kind == "SPLINE" and code == "74":
+            fits.append(int(value))
+    assert fits == [4, 4, 0]
+    doc.undo()
+    assert len(doc.get_entities()) == 2
+
+
+def test_a_spline_it_cannot_make_is_refused() -> None:
+    from arqstudiocad.core import CadSpline, InvalidGeometryError
+
+    with pytest.raises(ValueError, match="knots"):
+        CadSpline.through([(0, 0), (1, 1)], "curly")  # type: ignore[arg-type]
+    with pytest.raises(InvalidGeometryError, match="fit points"):
+        CadSpline.through([(0, 0), (0, 0), (1, 1)])
+    with pytest.raises(InvalidGeometryError, match="tangent"):
+        CadSpline.through([(0, 0), (1, 1), (2, 0)], start_tangent=(1, 0), closed=True)
+    with pytest.raises(InvalidGeometryError, match="degree"):
+        CadSpline.by_vertices([(0, 0), (1, 1)], closed=True)

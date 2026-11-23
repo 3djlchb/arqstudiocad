@@ -1255,6 +1255,53 @@ impl Document {
         Ok(h.value())
     }
 
+    /// Draws `spline`, made by its control vertices (SPLINE's CV method,
+    /// ADR 0042 D4), in world plan coordinates, on the current layer at
+    /// `elevation`, in the World plane; returns its id.
+    pub fn add_spline(
+        &mut self,
+        spline: &arq_geometry::Spline,
+        elevation: f64,
+    ) -> DocumentResult<EntityId> {
+        let mut sp = new_spline(spline, elevation)?;
+        // Not by fit points; DWG's closed bit as AutoCAD sets it.
+        sp.dwg_flags1 = if spline.is_closed() { 4 } else { 0 };
+        self.add_spline_entity(sp)
+    }
+
+    /// Draws the spline through `fit`'s points (SPLINE's Fit method, ADR
+    /// 0042 D4), in world plan coordinates, on the current layer at
+    /// `elevation`, in the World plane: its control points and knots as
+    /// well as its fit points, knots method and tangents; returns its id.
+    pub fn add_fit_spline(
+        &mut self,
+        fit: &arq_geometry::SplineFit,
+        elevation: f64,
+    ) -> DocumentResult<EntityId> {
+        let mut sp = new_spline(&fit.spline()?, elevation)?;
+        let at = |p: Point2| Vector3::new(p.x(), p.y(), elevation);
+        let direction = |t: Option<arq_geometry::Vector2>| {
+            t.map_or(Vector3::ZERO, |d| Vector3::new(d.x(), d.y(), 0.0))
+        };
+        sp.fit_points = fit.points().iter().copied().map(at).collect();
+        sp.knot_parameterization = fit.knots().code();
+        sp.begin_tangent = direction(fit.start_tangent());
+        sp.end_tangent = direction(fit.end_tangent());
+        // By fit points, with their knot parameterization.
+        sp.dwg_flags1 = 1 | 8 | if fit.is_closed() { 4 } else { 0 };
+        self.add_spline_entity(sp)
+    }
+
+    fn add_spline_entity(
+        &mut self,
+        mut sp: acadrust::entities::Spline,
+    ) -> DocumentResult<EntityId> {
+        sp.common.layer = self.current_layer().name().to_owned();
+        let h = self.cad_mut().add_entity(EntityType::Spline(sp))?;
+        self.sync_entity(h.value());
+        Ok(h.value())
+    }
+
     /// Writes an MTEXT on the current layer with the current text style
     /// (ADR 0022 D6): `content` is plain text whose line breaks are
     /// paragraphs, wrapped to `width` (0: no wrapping), hanging from
@@ -1481,6 +1528,43 @@ impl Document {
         }
     }
 }
+
+/// A SPLINE of `spline`'s control points at `elevation`, its knots and
+/// weights, planar, in the World plane; periodic when closed, as AutoCAD
+/// makes a closed one.
+fn new_spline(
+    spline: &arq_geometry::Spline,
+    elevation: f64,
+) -> DocumentResult<acadrust::entities::Spline> {
+    if !elevation.is_finite() {
+        return Err(DocumentError::Geometry(GeometryError::NonFinite {
+            what: "elevation",
+        }));
+    }
+    let mut sp = acadrust::entities::Spline::new();
+    sp.normal = Vector3::new(0.0, 0.0, 1.0);
+    sp.degree = i32::try_from(spline.degree()).expect("a spline's degree is at most 25");
+    sp.knots = spline.knots().to_vec();
+    sp.control_points = spline
+        .points()
+        .iter()
+        .map(|p| Vector3::new(p.x(), p.y(), elevation))
+        .collect();
+    sp.weights = spline.weights().to_vec();
+    sp.flags.closed = spline.is_closed();
+    sp.flags.periodic = spline.is_closed();
+    sp.flags.rational = !spline.weights().is_empty();
+    sp.flags.planar = true;
+    sp.flags.linear = spline.degree() == 1;
+    // AutoCAD's own tolerances for a spline it makes.
+    sp.knot_tolerance = 1e-10;
+    sp.control_tolerance = 1e-10;
+    Ok(sp)
+}
+
+#[cfg(test)]
+#[path = "spline_make_tests.rs"]
+mod spline_make_tests;
 
 #[cfg(test)]
 #[path = "whole_tests.rs"]

@@ -30,8 +30,8 @@ use crate::info::{
     CadBlockData, CadBlockInfo, CadCurrency, CadEntityInfo, CadLayerInfo, CadSolidMeasures,
 };
 use crate::values::{
-    CadArc, CadBounds2, CadCircle, CadColor, CadEllipse, CadGrip, CadLine, CadSnap, PyPoint,
-    PyVector, snap_kinds,
+    CadArc, CadBounds2, CadCircle, CadColor, CadEllipse, CadGrip, CadLine, CadSnap, CadSpline,
+    PyPoint, PyVector, snap_kinds,
 };
 
 /// The open documents of one application.
@@ -1062,6 +1062,15 @@ impl CadDocument {
     /// Draws `ellipse` on the current layer (ELLIPSE, ADR 0040).
     fn add_ellipse(&self, ellipse: CadEllipse) -> PyResult<(EntityId, CadChangeSet)> {
         self.create(|cad| cad.add_ellipse(ellipse.0))
+    }
+
+    /// Draws `spline` on the current layer (SPLINE, ADR 0042): through its
+    /// fit points, keeping them, or by its control vertices.
+    fn add_spline(&self, spline: CadSpline) -> PyResult<(EntityId, CadChangeSet)> {
+        match &spline.fit {
+            Some(fit) => self.create(|cad| cad.add_fit_spline(fit)),
+            None => self.create(|cad| cad.add_spline(&spline.spline)),
+        }
     }
 
     /// Draws an arc on the current layer, counterclockwise from

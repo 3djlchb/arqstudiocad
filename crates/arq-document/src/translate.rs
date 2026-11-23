@@ -557,13 +557,9 @@ fn bounds_with(e: &EntityType, plan: Option<PlanGeometry>) -> Option<Bounds2> {
         // curve and costs nothing; its drawn shape's box is exact (ADR 0042
         // D4, maintainer, 2026-11-22: reading and saving stay as fast).
         None if let EntityType::Spline(sp) = e
-            && crate::drawing::spline_in_plan(sp) =>
+            && let Some(b) = crate::drawing::plan_spline_box(sp) =>
         {
-            Bounds2::from_points(
-                sp.control_points
-                    .iter()
-                    .filter_map(|c| Point2::new(c.x, c.y).ok()),
-            )
+            Some(b)
         }
         // A text's box is where its letters are drawn (text_layout.rs).
         None => text_layout(e).map(|l| l.bounds).or_else(|| codec_bounds(e)),

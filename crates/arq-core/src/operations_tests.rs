@@ -2045,6 +2045,32 @@ fn an_ellipse_is_drawn_and_undone_as_one_step() {
 }
 
 #[test]
+fn a_spline_is_drawn_and_undone_as_one_step_and_a_refused_one_draws_nothing() {
+    let mut cad = CadDocument::new();
+    let points = vec![p(0.0, 0.0), p(2.0, 3.0), p(5.0, 1.0), p(7.0, 4.0)];
+    let fit = arq_geometry::SplineFit::new(
+        points.clone(),
+        arq_geometry::SplineKnots::Chord,
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    let (id, changes) = cad.add_fit_spline(&fit).unwrap();
+    assert_eq!(changes.created(), [id]);
+    assert_eq!(cad.undo_name(), Some("SPLINE"));
+    assert_eq!(cad.document().entity(id).unwrap().kind(), "SPLINE");
+    let cv = arq_geometry::Spline::by_vertices(3, points, true).unwrap();
+    let (other, changes) = cad.add_spline(&cv).unwrap();
+    assert_eq!(changes.created(), [other]);
+    assert_eq!(cad.undo_name(), Some("SPLINE"));
+    cad.undo().unwrap();
+    assert!(cad.document().entity(other).is_none());
+    cad.undo().unwrap();
+    assert!(cad.document().entity(id).is_none());
+}
+
+#[test]
 fn an_ellipse_moves_turns_scales_and_mirrors_as_a_whole() {
     let arc = Ellipse::new(p(2.0, 1.0), v(3.0, 1.0), 0.5, 0.4, 2.6).unwrap();
     let axis = Line::new(p(0.0, 0.0), p(1.0, 3.0)).unwrap();
