@@ -99,7 +99,7 @@ def test_locked_targets_are_left_and_cancelling_changes_nothing() -> None:
     h.run("MATCHPROP")
     h.runner.answer_entity(source, (0.5, 0.0))
     choose(h, [locked])
-    assert h.messages()[-1] == "1 were on a locked layer."
+    assert h.messages()[-1] == "1 was on a locked layer."
     assert h.document.get_entity(locked).layer == "LOCKED"
     assert h.document.undo_history == before, "nothing changed: no step"
 

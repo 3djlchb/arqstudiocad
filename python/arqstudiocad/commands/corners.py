@@ -28,6 +28,7 @@ from arqstudiocad.commands import (
     Picked,
     Prompt,
 )
+from arqstudiocad.commands.modify import on_locked_layer
 from arqstudiocad.core import CadArc, CadDocument, CadError, CadLine, InvalidGeometryError
 from arqstudiocad.i18n import tr
 
@@ -111,6 +112,8 @@ def fillet(ctx: CommandContext) -> CommandScript:
             multiple = True
             continue
         assert isinstance(first, Picked)
+        if on_locked_layer(ctx, document, first.entity_id):
+            continue
         polyline = _is_polyline(document, first)
         if not (polyline or _fits(document, first, CadLine | CadArc)):
             ctx.message(tr("Cannot fillet that object."))
@@ -208,6 +211,8 @@ def chamfer(ctx: CommandContext) -> CommandScript:
             multiple = True
             continue
         assert isinstance(first, Picked)
+        if on_locked_layer(ctx, document, first.entity_id):
+            continue
         polyline = _is_polyline(document, first)
         if not (polyline or _fits(document, first, CadLine)):
             ctx.message(tr("Cannot chamfer that object."))
@@ -312,6 +317,8 @@ def _second(
                 if second.entity_id == first.entity_id and not same:
                     ctx.message(tr("Select another object."))
                     continue
+                if on_locked_layer(ctx, document, second.entity_id):
+                    continue
                 return second
             yield from setting(second)
     finally:
@@ -335,7 +342,7 @@ def _whole_polyline(
     """The Polyline option: a polyline picked, every corner cut; 1 when
     one was."""
     picked = yield ctx.entity(tr("Select 2D polyline"), optional=True)
-    if not isinstance(picked, Picked):
+    if not isinstance(picked, Picked) or on_locked_layer(ctx, document, picked.entity_id):
         return 0
     if not _is_polyline(document, picked):
         ctx.message(

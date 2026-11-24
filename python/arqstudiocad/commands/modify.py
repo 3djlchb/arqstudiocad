@@ -127,7 +127,7 @@ def select_objects(
     locked = {layer.name for layer in document.get_layers() if layer.is_locked}
     on_locked = {e.id for e in document.get_entities(chosen) if e.layer in locked}
     if on_locked:
-        ctx.message(tr("{count} were on a locked layer.", count=len(on_locked)))
+        ctx.message(locked_message(len(on_locked)))
         ctx.session.deselect(document, on_locked)
     return tuple(i for i in chosen if i not in on_locked)
 
@@ -329,6 +329,8 @@ def offset(ctx: CommandContext) -> CommandScript:
             steps = _undo_offset(ctx, document, steps)
             continue
         source = picked.entity_id
+        if on_locked_layer(ctx, document, source):
+            continue
         entity = document.get_entity(source)
         geometry = entity.geometry
         if geometry is None and entity.kind != "LWPOLYLINE":
@@ -513,6 +515,24 @@ def _transformable(ctx: CommandContext, document: CadDocument) -> Selecting:
             tr("These objects cannot be transformed yet: {kinds}.", kinds=", ".join(kinds))
         )
     return ids
+
+
+def locked_message(count: int) -> str:
+    """How many objects were left on locked layers, as AutoCAD says it."""
+    if count == 1:
+        return tr("1 was on a locked layer.")
+    return tr("{count} were on a locked layer.", count=count)
+
+
+def on_locked_layer(ctx: CommandContext, document: CadDocument, entity_id: int) -> bool:
+    """Whether the object picked is on a locked layer, said if so: a
+    command that edits one picked object asks for another, rather than let
+    the core refuse it with its own words."""
+    locked = {layer.name for layer in document.get_layers() if layer.is_locked}
+    if document.get_entity(entity_id).layer not in locked:
+        return False
+    ctx.message(locked_message(1))
+    return True
 
 
 def done_selecting(ctx: CommandContext, document: CadDocument, ids: Ids) -> None:

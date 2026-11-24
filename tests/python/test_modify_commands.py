@@ -124,7 +124,7 @@ def test_objects_on_locked_layers_are_left_out() -> None:
     h.document.set_layer_locked(layer_id, True)
     h.select(h.a, h.b)
     h.run("MOVE")
-    assert h.messages()[-1] == "1 were on a locked layer."
+    assert h.messages()[-1] == "1 was on a locked layer."
     assert h.selection() == (h.a,)
     h.run("0,0", "0,2")
     assert h.line(h.a) == ((0.0, 2.0), (10.0, 2.0)) and h.line(h.b) == ((0.0, 5.0), (10.0, 5.0))
