@@ -317,8 +317,8 @@ fn which_entities_transform_as_a_whole() {
         .iter()
         .map(|id| doc.entity(*id).unwrap().is_transformable())
         .collect();
-    assert_eq!(flags, [true, true, false], "a block array is not");
-    for id in &ids[..2] {
+    assert_eq!(flags, [true, true, true], "a block array too");
+    for id in &ids {
         assert!(
             !doc.entity(*id).unwrap().is_editable(),
             "their geometry is not editable"
@@ -329,7 +329,8 @@ fn which_entities_transform_as_a_whole() {
 #[test]
 fn other_entities_are_refused() {
     let (mut doc, ids) = drawing_with(&[&minsert()]);
-    // A POINT is still refused; texts transform since ADR 0022.
+    // A POINT is still refused; texts transform since ADR 0022, block
+    // arrays since their spacing follows.
     let point = doc
         .cad_mut()
         .add_entity(EntityType::Point(acadrust::Point::from_coords(
@@ -338,16 +339,17 @@ fn other_entities_are_refused() {
         .unwrap()
         .value();
     let t = Transform2::translation(v(1.0, 0.0));
-    for (id, kind) in [(ids[0], "MINSERT"), (point, "POINT")] {
-        assert_eq!(
-            doc.transform_entity(id, t),
-            Err(DocumentError::NotEditable { id, kind })
-        );
-        assert_eq!(
-            doc.copy_entity(id),
-            Err(DocumentError::NotEditable { id, kind })
-        );
-    }
+    assert!(doc.transform_entity(ids[0], t).is_ok());
+    assert!(doc.copy_entity(ids[0]).is_ok());
+    let (id, kind) = (point, "POINT");
+    assert_eq!(
+        doc.transform_entity(id, t),
+        Err(DocumentError::NotEditable { id, kind })
+    );
+    assert_eq!(
+        doc.copy_entity(id),
+        Err(DocumentError::NotEditable { id, kind })
+    );
     assert_eq!(
         doc.transform_entity(999_999, t),
         Err(DocumentError::EntityNotFound(999_999))

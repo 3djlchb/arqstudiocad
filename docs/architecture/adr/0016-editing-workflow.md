@@ -27,7 +27,8 @@ milestone 2.7 to here, transformed **as a whole**:
 - INSERT: insertion point, rotation and scale factors, through the codec's
   transformation, which carries the block's attributes along (a mirror
   leaves one scale factor negative; the block is drawn mirrored as in
-  AutoCAD). Block arrays (MINSERT) are not transformed yet.
+  AutoCAD). Block arrays (MINSERT) are transformed too since 2026-11-23, their row
+  and column spacing taken where the transformation takes it.
 - LWPOLYLINE: vertices and bulges (a mirror flips the bulges' sign); its
   elevation is kept.
 - A copy is a new entity with the original's properties; links it cannot

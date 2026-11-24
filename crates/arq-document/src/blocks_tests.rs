@@ -912,3 +912,76 @@ fn a_named_block_is_never_another_blocks_copy() {
         (1, 1)
     );
 }
+
+/// The ends of every line drawn for `id`, each taken by `t`, rounded as
+/// [`drawn`] rounds them, sorted.
+fn drawn_moved(doc: &Document, id: EntityId, t: arq_geometry::Transform2) -> Vec<(i64, i64)> {
+    let mut ends: Vec<(i64, i64)> = doc
+        .drawing(id)
+        .unwrap()
+        .into_iter()
+        .filter_map(|item| match item.shape {
+            Shape::Line(l) => Some([l.start(), l.end()]),
+            _ => None,
+        })
+        .flatten()
+        .map(|q| t.apply_point(q))
+        .map(|q| ((q.x() * 1e6).round() as i64, (q.y() * 1e6).round() as i64))
+        .collect();
+    ends.sort_unstable();
+    ends
+}
+
+#[test]
+fn a_block_array_moves_turns_scales_and_mirrors_as_a_whole() {
+    use arq_geometry::{Transform2, Vector2};
+    let axis = Line::new(p(-3.0, 1.0), p(4.0, 6.0)).unwrap();
+    let transforms = [
+        Transform2::translation(Vector2::new(3.0, -1.0).unwrap()),
+        Transform2::rotation(p(2.0, -4.0), 0.7).unwrap(),
+        Transform2::scaling(p(-2.0, 5.0), 2.5).unwrap(),
+        Transform2::mirror(axis),
+        Transform2::mirror(axis).then(Transform2::scaling(p(1.0, 1.0), 0.5).unwrap()),
+    ];
+    // A 2 × 3 array of the door, turned 30°, scaled 2, and the same with
+    // its plane facing down.
+    for down in [false, true] {
+        for t in transforms {
+            let door = door_block();
+            let mut doc = dxf(LAYERS, &[&door], &[]);
+            let id = doc
+                .insert_block("PUERTA", p(5.0, 5.0), 2.0, std::f64::consts::FRAC_PI_6)
+                .unwrap();
+            let Some(EntityType::Insert(i)) = doc.cad_mut().get_entity_mut(handle(id)) else {
+                panic!("an insert")
+            };
+            (i.row_count, i.column_count) = (2, 3);
+            (i.row_spacing, i.column_spacing) = (4.0, 7.0);
+            if down {
+                i.normal = Vector3::new(0.0, 0.0, -1.0);
+            }
+            assert!(doc.entity(id).unwrap().is_transformable());
+            let expected = drawn_moved(&doc, id, t);
+            assert_eq!(expected.len(), 4 * 6, "six copies of two lines");
+            doc.transform_entity(id, t).unwrap();
+            assert_eq!(drawn(&doc, id), expected, "down {down}, {t:?}");
+            // A mirror leaves a spacing negative: DWG and DXF keep it.
+            let dxf = Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap();
+            let dwg = Document::read(
+                doc.to_dwg_bytes().unwrap(),
+                crate::FileFormat::Dwg,
+                std::path::Path::new("array.dwg"),
+            )
+            .unwrap();
+            for back in [dxf, dwg] {
+                let again = back
+                    .entities()
+                    .iter()
+                    .find(|e| e.kind() == "MINSERT" || e.kind() == "INSERT")
+                    .map(|e| e.id())
+                    .unwrap();
+                assert_eq!(drawn(&back, again), expected, "read back, down {down}");
+            }
+        }
+    }
+}

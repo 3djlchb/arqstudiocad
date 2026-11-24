@@ -97,14 +97,11 @@ fn details(e: &EntityType) -> Vec<(String, String)> {
 
 /// Blocks and lightweight polylines drawn in plan, which move, rotate,
 /// scale, mirror and copy as a whole (ADR 0016, D1). A block array
-/// (MINSERT) is not: its spacing would not follow a scaling.
+/// (MINSERT) too: its spacing follows the transformation
+/// ([`transform_whole`]).
 pub(crate) fn is_whole_transformable(e: &EntityType) -> bool {
     match e {
-        EntityType::Insert(i) => {
-            plan_normal(i.normal.x, i.normal.y, i.normal.z).is_some()
-                && i.column_count <= 1
-                && i.row_count <= 1
-        }
+        EntityType::Insert(i) => plan_normal(i.normal.x, i.normal.y, i.normal.z).is_some(),
         EntityType::LwPolyline(p) => plan_normal(p.normal.x, p.normal.y, p.normal.z).is_some(),
         EntityType::Text(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
         EntityType::MText(t) => plan_normal(t.normal.x, t.normal.y, t.normal.z).is_some(),
@@ -516,6 +513,11 @@ pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
         return;
     }
     let reading = text_data(e).map(|text| text.rotation());
+    // A block array's spacing is not the codec's to carry (below).
+    let array = match e {
+        EntityType::Insert(i) if i.column_count > 1 || i.row_count > 1 => Some(i.clone()),
+        _ => None,
+    };
     let [[a, b, tx], [c, d, ty]] = t.affine();
     // A solid scales in height too, as AutoCAD's SCALE does, about the
     // base point on the XY plane.
@@ -533,6 +535,9 @@ pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
         ],
     });
     e.apply_transform(&codec);
+    if let (Some(before), EntityType::Insert(after)) = (array, &mut *e) {
+        carry_array_spacing(&before, after, &codec);
+    }
     crate::acis::tidy_placement(e);
     if let Some(before) = reading {
         // The codec turns a TEXT's stored angle as a world angle, wrong in a
@@ -546,6 +551,39 @@ pub(crate) fn transform_whole(e: &mut EntityType, t: Transform2) {
             edit_text(e, None, None, Some(world));
         }
     }
+}
+
+/// A block array's (MINSERT's) spacings after `t` took it from `before` to
+/// `after`. The codec moves, turns and scales the reference but not the
+/// distances between its rows and columns, which are in the reference's
+/// own axes, not scaled by it. Each step between copies is taken where `t`
+/// takes it, and measured along the transformed reference's axes: so the
+/// copies land where `t` takes them, under a scale, a mirror and a plane
+/// facing down alike.
+fn carry_array_spacing(
+    before: &acadrust::entities::Insert,
+    after: &mut acadrust::entities::Insert,
+    t: &Transform,
+) {
+    // The world steps to the next column and the next row, by a reference
+    // with these spacings.
+    let steps = |ins: &acadrust::entities::Insert, column: f64, row: f64| {
+        let mut probe = ins.clone();
+        (probe.column_count, probe.row_count) = (2, 2);
+        (probe.column_spacing, probe.row_spacing) = (column, row);
+        let at = crate::drawing::insert_copies(&probe, Vector3::ZERO)
+            .iter()
+            .map(|copy| copy.apply(Vector3::ZERO))
+            .collect::<Vec<_>>();
+        (at[0], at[1], at[2])
+    };
+    let (origin, next_column, next_row) = steps(before, before.column_spacing, before.row_spacing);
+    let (o, c, r) = (t.apply(origin), t.apply(next_column), t.apply(next_row));
+    let (wanted_column, wanted_row) = (c - o, r - o);
+    let (o, c, r) = steps(after, 1.0, 1.0);
+    let along = |wanted: Vector3, unit: Vector3| wanted.dot(&unit) / unit.dot(&unit);
+    after.column_spacing = along(wanted_column, c - o);
+    after.row_spacing = along(wanted_row, r - o);
 }
 
 /// Plan bounds of an entity: from our geometry when it has plan geometry,
