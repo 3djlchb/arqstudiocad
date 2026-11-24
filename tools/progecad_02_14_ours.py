@@ -399,6 +399,18 @@ def sc10(doc: CadDocument) -> None:
     doc.join_entities(None, ring)
 
 
+def sc11(doc: CadDocument) -> None:
+    doc.offset_curve(ell(doc), 1.0, (9, 0))
+
+
+def sc12(doc: CadDocument) -> None:
+    doc.offset_curve(ell(doc, 0.0, math.pi), 1.0, (0, 1))
+
+
+def sc13(doc: CadDocument) -> None:
+    doc.offset_curve(bezier(doc), 0.5, (3, 5))
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -457,6 +469,9 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("SC8-join-splines", sc8),
     ("SC9-join-spline-degrees", sc9),
     ("SC10-join-splines-ring-at-once", sc10),
+    ("SC11-offset-ellipse-out", sc11),
+    ("SC12-offset-elliptical-arc-in", sc12),
+    ("SC13-offset-spline", sc13),
     ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
     (
         "SP2-spline-fit-tangents",

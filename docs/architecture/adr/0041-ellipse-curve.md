@@ -125,13 +125,15 @@ not see it yet (D4).
    lines or arcs, which AutoCAD turns into a SPLINE, waits for SPLINE.
 
 OFFSET of an ellipse is a SPLINE in AutoCAD, so it is refused with nothing
-changed until SPLINE exists. FILLET and CHAMFER with ellipses are not
+changed until SPLINE exists. Since 2026-11-23 it makes that spline
+([ADR 0043](0043-spline-curve.md) D4, fifth delivery). FILLET and CHAMFER with ellipses are not
 planned here.
 
 ## Consequences
 
 - Until delivery 2, TRIM, EXTEND, BREAK and OFFSET refused an ellipse;
-  since it, only OFFSET does (`OutOfRange { what: "curve" }`).
+  since it, only OFFSET does (`OutOfRange { what: "curve" }`), until
+  ADR 0043's fifth delivery.
 - Since delivery 3a, `Entity::plan` gives an ellipse lying in the plan
   and the own model owns it; a tilted one is kept by the codec as
   before.

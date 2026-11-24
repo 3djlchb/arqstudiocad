@@ -165,7 +165,32 @@ with no new library.
      point its first: DWG's closed flag without the periodic one, which
      is now set only when its knots are not clamped (`Spline::is_periodic`);
    - the result is written by its vertices, its fit points dropped.
-5. OFFSET of ellipses and splines.
+5. OFFSET of ellipses and splines (2026-11-23), as D4 says, the
+   maintainer choosing three points that day:
+   - the result is by its vertices, as TRIM's, BREAK's and JOIN's are;
+   - a spline whose tangent breaks at a corner (one of degree 1, or
+     joined at an angle) is refused for now, until ProgeCAD shows how it
+     fills them;
+   - one pull request for both curves.
+
+   How it is made (`curve_offset.rs`):
+   - the exact offset sampled, each quarter turn of an ellipse and each
+     span of a spline in four to start;
+   - fitted through by `SplineFit`, chord knots, its end tangents the
+     curve's;
+   - each of its spans checked at its quarters by its distance from the
+     curve, and split where it strays by more than the millionth of the
+     size, up to 4096 points;
+   - refused where the curve bends toward that side tighter than the
+     distance: each span sampled 64 times, the tightest refined by
+     golden-section search;
+   - refused where a spline stops (a cusp), and on the curve itself (no
+     side);
+   - Through measures the distance from the curve itself.
+
+   `CadDocument::offset_curve` adds the result with the source's
+   properties, `Document::add_geometry_like`; a spline added so is marked
+   closed for DWG as `add_spline` marks one.
 
 Each delivery adds its cases to the Windows comparison tools.
 
