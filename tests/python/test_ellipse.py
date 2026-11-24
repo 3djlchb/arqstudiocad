@@ -220,15 +220,15 @@ def test_a_whole_ellipse_is_not_extended_and_a_fence_trims_it() -> None:
     assert ellipse_ends(h) == ((4.0, 1.8), (4.0, -1.8))
 
 
-def test_an_ellipse_is_plan_geometry_and_offset_still_refuses_it() -> None:
+def test_an_ellipse_is_plan_geometry_and_offset_as_a_spline() -> None:
     h = Harness()
     h.run("ELLIPSE", "C", "0,0", "5,0", "3")
     (entity,) = [e for e in h.document.get_entities() if e.kind == "ELLIPSE"]
     assert isinstance(entity.geometry, CadEllipse) and entity.geometry.is_full
     assert entity.is_editable and entity.elevation == 0.0
-    before = h.document.undo_history
     h.run("OFFSET", "1")
     h.runner.answer_entity(entity.id, (5.0, 0.0))
-    assert h.messages()[-1] == "Cannot offset that object."
-    h.runner.cancel()
-    assert h.document.undo_history == before
+    h.run("9,0")
+    kinds = sorted(e.kind for e in h.document.get_entities())
+    assert kinds == ["ELLIPSE", "SPLINE"]
+    assert h.document.undo_history[-1] == "OFFSET"

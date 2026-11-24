@@ -860,6 +860,37 @@ impl CadDocument {
         })
     }
 
+    /// Adds the offset of ellipse or spline `id`, `distance` toward
+    /// `toward`, or through `toward` when `distance` is None (OFFSET, ADR
+    /// 0043 D4): a spline by its vertices within a millionth of the curve's
+    /// size of the exact offset, with every common property of `id`.
+    /// Refused on a locked layer, for any other entity, where the offset
+    /// would curl back on itself and for a spline with a corner.
+    pub fn offset_curve(
+        &mut self,
+        id: EntityId,
+        distance: Option<f64>,
+        toward: Point2,
+    ) -> CadResult<(EntityId, ChangeSet)> {
+        self.transact("OFFSET", |doc| {
+            let e = doc.entity(id).ok_or(CadError::EntityNotFound(id))?;
+            check_unlocked(doc, &e)?;
+            let not = || DocumentError::NotEditable { id, kind: e.kind() };
+            let plan = e.plan().ok_or_else(not)?;
+            let curve = plan.geometry();
+            if !matches!(curve, Geometry2::Ellipse(_) | Geometry2::Spline(_)) {
+                return Err(not().into());
+            }
+            let tol = Tolerance::DEFAULT;
+            let made = match distance {
+                Some(d) => curve.offset(d, toward, tol),
+                None => curve.offset_through(toward, tol),
+            }
+            .map_err(DocumentError::from)?;
+            Ok(doc.add_geometry_like(id, plan.with_geometry(made))?)
+        })
+    }
+
     /// Applies `t` to entities that transform: lines, circles and arcs
     /// through their geometry, blocks and polylines as a whole (ADR 0016,
     /// D1). Any other entity fails the whole operation.

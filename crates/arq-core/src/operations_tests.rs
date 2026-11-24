@@ -3,7 +3,7 @@
 //! Expected geometry is worked out by hand, not with `Transform2`, so a bug
 //! shared by the transform and its use here cannot hide.
 
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use arq_geometry::{Ellipse, Geometry2, Tolerance};
 
@@ -3057,4 +3057,57 @@ fn a_spline_point_moved_is_one_grip_step() {
     assert_eq!(cad.document().entity(spline).unwrap(), before);
     assert!(cad.set_spline_point(spline, 7, p(0.0, 0.0)).is_err());
     assert_eq!(cad.document().entity(spline).unwrap(), before);
+}
+
+#[test]
+fn offset_makes_a_spline_of_an_ellipse_or_a_spline_with_its_properties() {
+    let mut cad = CadDocument::new();
+    let e = Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.6, 0.0, TAU).unwrap();
+    let (ellipse, _) = cad.add_ellipse(e).unwrap();
+    let (layer, _) = cad.create_layer("WALLS").unwrap();
+    cad.set_entity_layer(&[ellipse], layer).unwrap();
+    cad.set_entity_color(&[ellipse], Color::Index(5)).unwrap();
+    let steps = cad.undo_names().len();
+
+    let (made, changes) = cad.offset_curve(ellipse, Some(1.0), p(9.0, 0.0)).unwrap();
+    assert_eq!(changes.created(), [made]);
+    assert_eq!(cad.undo_names().len(), steps + 1);
+    assert_eq!(cad.undo_name(), Some("OFFSET"));
+    let entity = cad.document().entity(made).unwrap();
+    assert_eq!(
+        (entity.kind(), entity.layer(), entity.color()),
+        ("SPLINE", "WALLS", Color::Index(5))
+    );
+    let ring = plan_spline(&cad, made);
+    assert!(ring.is_closed());
+    assert!((ring.distance_to(p(6.0, 0.0))).abs() < 1e-5);
+    assert!((ring.distance_to(p(0.0, 4.0))).abs() < 1e-5);
+    assert!(cad.document().entity(ellipse).is_some(), "the source stays");
+    // Through a point, from the spline just made: inside it.
+    let (again, _) = cad.offset_curve(made, None, p(5.5, 0.0)).unwrap();
+    assert!(plan_spline(&cad, again).distance_to(p(5.5, 0.0)) < 1e-5);
+    cad.undo().unwrap();
+    cad.undo().unwrap();
+    assert!(cad.document().entity(made).is_none());
+}
+
+#[test]
+fn offset_of_a_curve_refuses_other_kinds_a_locked_layer_and_a_curl() {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(0.0, 0.0), p(4.0, 0.0)).unwrap();
+    assert!(cad.offset_curve(line, Some(1.0), p(0.0, 1.0)).is_err());
+    let e = Ellipse::new(p(0.0, 0.0), v(5.0, 0.0), 0.6, 0.0, TAU).unwrap();
+    let (ellipse, _) = cad.add_ellipse(e).unwrap();
+    let before = cad.document().entities();
+    let steps = cad.undo_names().len();
+    // Inward past its tightest bend, 1.8.
+    assert!(cad.offset_curve(ellipse, Some(2.0), p(0.0, 0.0)).is_err());
+    assert_eq!(cad.undo_names().len(), steps, "no step made");
+    let (layer, _) = cad.create_layer("LOCKED").unwrap();
+    cad.set_entity_layer(&[ellipse], layer).unwrap();
+    cad.set_layer_locked(layer, true).unwrap();
+    let steps_locked = cad.undo_names().len();
+    assert!(cad.offset_curve(ellipse, Some(1.0), p(9.0, 0.0)).is_err());
+    assert_eq!(cad.undo_names().len(), steps_locked);
+    assert_eq!(cad.document().entities().len(), before.len());
 }

@@ -981,9 +981,13 @@ pub(crate) fn new_entity(plan: PlanGeometry, layer: &str) -> EntityType {
             crate::drawing::write_plan_ellipse(&mut el, g);
             EntityType::Ellipse(el)
         }
-        Geometry2::Spline(g) => EntityType::Spline(
-            crate::entities::new_spline(&g, z).expect("a plan geometry's elevation is finite"),
-        ),
+        Geometry2::Spline(g) => {
+            let mut sp =
+                crate::entities::new_spline(&g, z).expect("a plan geometry's elevation is finite");
+            // By its vertices; DWG's closed bit as AutoCAD sets it.
+            sp.dwg_flags1 = if g.is_closed() { 4 } else { 0 };
+            EntityType::Spline(sp)
+        }
     };
     e.common_mut().layer = layer.to_owned();
     e

@@ -649,6 +649,9 @@ class CadDocument:
     def offset_polyline(
         self, entity_id: int, distance: float | None, toward: _PointLike
     ) -> tuple[int, CadChangeSet]: ...
+    def offset_curve(
+        self, entity_id: int, distance: float | None, toward: _PointLike
+    ) -> tuple[int, CadChangeSet]: ...
     def copy_entities(
         self, entity_ids: _Ids, offset: _PointLike
     ) -> tuple[list[int], CadChangeSet]: ...
