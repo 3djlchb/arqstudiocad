@@ -583,7 +583,7 @@
   (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
   ;; SC1-SC4: a spline as a curve (ADR 0043), the Bezier from (0,0) by
   ;; (2,3) and (4,3) to (6,0). SC3 and SC5 cut the spline itself, SC4
-  ;; extends it, which ours refuses until compared.
+  ;; extends it (ours as ProgeCAD since 2026-11-24).
   (arq:command-case "SC1-trim-line-at-spline" '(list (arq:ln doc '(-1 1) '(7 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.TRIM" '(3 1) "") dir log)
   (arq:command-case "SC2-extend-line-to-spline" '(list (arq:ln doc '(-5 1) '(-2 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(arq:extend (cadr arq:o) '(-2.5 1)) dir log)
   (arq:command-case "SC3-trim-spline-middle" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(2 -9) '(2 9)) (arq:ln doc '(4 -9) '(4 9))) '(command "_.TRIM" '(3 2.25) "") dir log)
@@ -601,6 +601,11 @@
   ;; SC11-SC13: OFFSET of an ellipse and a spline, a spline (ADR 0043 D4).
   ;; SC11: the ellipse about (0,0), semi-axes 5 and 3, by 1 outside; SC12:
   ;; its upper half by 1 inside; SC13: the Bezier by 0.5 above it.
+  ;; SC14-SC15: JOIN of other curves onto a spline (maintainer,
+  ;; 2026-11-24, as AutoCAD). SC14: from the Bezier, a line after it and a
+  ;; half circle after that; SC15: lines either side of it, many at once.
+  (arq:command-case "SC14-join-spline-line-arc" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(6 0) '(8 0)) (arq:arc doc '(9 0) 1.0 180.0 360.0)) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) (arq:en (caddr arq:o)) "") dir log)
+  (arq:command-case "SC15-join-lines-spline-at-once" '(list (arq:ln doc '(-2 0) '(0 0)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(6 0) '(8 0))) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
   (arq:command-case "SC11-offset-ellipse-out" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(5 0)) '(9 0) "") dir log)
   (arq:command-case "SC12-offset-elliptical-arc-in" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 pi)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(0 3)) '(0 1) "") dir log)
   (arq:command-case "SC13-offset-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.OFFSET" 0.5 (list (arq:en (car arq:o)) '(3 2.25)) '(3 5) "") dir log)

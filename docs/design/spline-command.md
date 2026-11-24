@@ -131,7 +131,11 @@ curve.
   A piece keeps its control points and loses its fit points, which no
   longer describe it. Fences and Quick TRIM see a spline as they see any
   curve.
-- **EXTEND** refuses the spline itself until ProgeCAD shows its rule.
+- **EXTEND** (2026-11-24, ProgeCAD's rule from case SC4): an open
+  spline grows from the end picked straight along its tangent to the
+  nearest edge that way; the straight piece becomes part of the spline,
+  raised to its degree, its knots as long as the piece. Quick mode looks
+  for edges along that ray. A closed spline cannot be extended.
 - **STRETCH** (delivery 3a, 2026-11-23):
   - A spline through fit points moves its fit points inside the crossing
     area and is fitted again through them, its knots method and tangents
@@ -166,8 +170,12 @@ curve.
     start, written closed but not periodic;
   - the result keeps the source's id and properties, by its vertices,
     its fit points dropped, which no longer describe it *(to confirm)*;
-  - a closed spline is no source and joins nothing; lines, arcs,
-    ellipses and polylines do not join a spline yet.
+  - a closed spline is no source and joins nothing;
+  - since 2026-11-24, as AutoCAD: a source spline also takes the lines,
+    arcs, elliptical arcs and open polylines touching its ends, each as
+    an exact spline (an arc a rational quadratic); many at once, a chain
+    with a spline in it is a spline, kept by that spline; a line, an arc
+    or a polyline as source leaves a spline, discarded.
 - **OFFSET** (delivery 5, 2026-11-23), of an ellipse or a spline:
   - a cubic spline by its vertices through points of the exact offset,
     within a millionth of the curve's size of it, its end tangents the
@@ -185,7 +193,7 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 | SC1 | TRIM (Quick) the line (−1,1)–(7,1) at (3,1) | two lines, to x = 3 − √5 and from x = 3 + √5 |
 | SC2 | EXTEND the line (−5,1)–(−2,1) to the spline | to (3 − √5, 1) |
 | SC3 | TRIM (Quick) the spline at its top, cut by x = 2 and x = 4 | two splines, (0,0)–(2,2) and (4,2)–(6,0), by their vertices; whether ProgeCAD keeps fit points to confirm |
-| SC4 | EXTEND the spline at its end (6,0) to x = 8 | refused, unchanged: what ProgeCAD makes decides EXTEND's rule |
+| SC4 | EXTEND the spline at its end (6,0) to x = 8 | since 2026-11-24 as ProgeCAD: to (8,−3) along its end tangent, control points (6,0), (6⅔,−1), (7⅓,−2), (8,−3) added, knots 1 ×3 then 1 + √13 ×4 |
 | SC5 | BREAK the spline, First (2,2), second (4,2) | the same two splines as SC3 |
 | SC6 | STRETCH the Bézier, crossing window (3.5,2)–(4.5,3.5) round its vertex (4,3), by (1,1) | that vertex at (5,4), the others kept |
 | SC7 | STRETCH a spline made through (0,0), (3,4), (7,1), (9,6), window (6,0)–(8,2), by (0,−2) | fitted again through (7,−1), its fit points kept |
@@ -193,11 +201,13 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 | SC9 | JOIN from the Bézier the quadratic by (6,0), (8,−3), (10,0) | one cubic, the quadratic raised: (6,0), (7⅓,−2), (8⅔,−2), (10,0) after the Bézier's points, knots as SC8 |
 | SC11 | OFFSET the ellipse about (0,0), semi-axes 5 and 3, by 1 toward (9,0) | a closed cubic of 79 control points through (6,0) and (0,4) |
 | SC12 | OFFSET its upper half, parameters 0 to π, by 1 toward (0,1) | an open cubic of 37 control points from (4,0) to (−4,0) |
+| SC14 | JOIN from the Bézier the line (6,0)–(8,0) and the half circle about (9,0), radius 1, below it | one cubic from (0,0) to (10,0), rational, of 13 control points |
+| SC15 | JOIN many at once the lines (−2,0)–(0,0) and (6,0)–(8,0) and the Bézier | one cubic from (−2,0) to (8,0), of 10 control points, the Bézier's id kept |
 | SC13 | OFFSET the Bézier by 0.5 toward (3,5) | an open cubic of 35 control points from (−0.416,0.277) to (6.416,0.277) |
 | SC10 | JOIN many at once three cubic Béziers in a ring: (0,0) (1,−1) (3,−1) (4,0); (4,0) (5,1) (5,3) (4,4); (4,4) (2,6) (−1,2) (0,0) | one closed cubic of 10 control points, its last its first, knots 0 ×4, 1 ×3, 2 ×3, 3 ×4; DXF flag 70 = 9, closed and not periodic |
 
 **Run on 2026-11-23** ([results](../testing/commands-02-14-windows.md#elliptical-arcs-joined-spline-and-the-spline-as-a-curve-2026-11-23)): SC1–SC3, SC5, SC7 and SC10
 the same as ProgeCAD. SC4: ProgeCAD extends a spline by a straight segment
-along its end tangent, the rule to adopt. SC6, SC8 and SC9 kept as ours.
+along its end tangent, the rule adopted on 2026-11-24. SC6, SC8 and SC9 kept as ours.
 SC11–SC13: ProgeCAD's offsets are quadratics or cubics of fewer control
 points, ours 10 to over 100 times closer.

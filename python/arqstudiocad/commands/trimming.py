@@ -10,7 +10,9 @@ command. Undo takes back the last trim or extension of the run, and TRIM's
 Erase erases objects without leaving it. The core does every change, each
 one undo step. Lines, arcs, circles and lightweight polylines: a polyline
 trimmed in the middle becomes two, a closed one opens; an open one extends
-at its end segment. Fences and crossing rectangles select several objects;
+at its end segment. A spline extends straight along its end's tangent, the
+piece made part of it, as ProgeCAD extends one (ADR 0043 D4). Fences and
+crossing rectangles select several objects;
 Top-view cursor gestures provide a freehand or two-click fence. Each target
 is edited once per gesture, with the existing per-object undo behavior.
 """
@@ -201,11 +203,11 @@ def _extend_one(ctx: CommandContext, document: CadDocument, picked: Picked, edge
     entity = document.get_entity(picked.entity_id)
     polyline = entity.kind == "LWPOLYLINE"
     curve = entity.geometry
-    closed = (polyline and dict(entity.details).get("Closed") == "true") or (
-        isinstance(curve, CadEllipse) and curve.is_full
+    closed = (
+        (polyline and dict(entity.details).get("Closed") == "true")
+        or (isinstance(curve, CadEllipse) and curve.is_full)
+        or (isinstance(curve, CadSpline) and curve.is_closed)
     )
-    # A spline is not extended until ProgeCAD shows the rule (ADR 0043 D4).
-    closed = closed or isinstance(curve, CadSpline)
     if (curve is None and not polyline) or entity.kind == "CIRCLE" or closed:
         ctx.message(tr("Cannot extend that object."))
         return 0

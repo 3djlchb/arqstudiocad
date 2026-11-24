@@ -1453,13 +1453,21 @@ fn join_curves(source: &Piece, others: &[Piece], tol: Tolerance) -> CadResult<Op
             (joined, taken.into_iter().map(|i| ids[i]).collect())
         }
         Geometry2::Spline(spline) => {
-            let (ids, splines): (Vec<EntityId>, Vec<Spline>) = curves
-                .iter()
-                .filter_map(|(id, g)| match g {
-                    Geometry2::Spline(s) => Some((*id, s.as_ref().clone())),
-                    _ => None,
-                })
-                .unzip();
+            // Lines, arcs, elliptical arcs, open polylines and splines, each
+            // as a spline (maintainer, 2026-11-24, as AutoCAD).
+            let mut ids = Vec::new();
+            let mut splines = Vec::new();
+            for p in others {
+                let made = match (&p.plan, &p.path) {
+                    (Some(plan), _) => Spline::from_curve(&plan.geometry()),
+                    (None, Some(path)) => Some(Spline::from_path(&path.vertices)),
+                    (None, None) => None,
+                };
+                if let Some(made) = made {
+                    ids.push(p.id);
+                    splines.push(made.map_err(DocumentError::from)?);
+                }
+            }
             let Some((joined, taken)) = join_splines(&spline, &splines, tol)? else {
                 return Ok(None);
             };
@@ -1526,14 +1534,41 @@ fn uniform_width(piece: &Piece, tol: Tolerance) -> Option<f64> {
         .then_some(w)
 }
 
-/// JOIN many at once on one level: chains of touching ends, in selection
-/// order, each from its first (collinear lines alone stay a line, arcs of
-/// one circle alone an arc); chains of touching splines, each from its
-/// first, a spline; then the lines and arcs left grouped as with a source,
-/// gaps filled.
+/// JOIN many at once on one level: first the chains from each spline, in
+/// selection order, of whatever touches its ends (lines, arcs, elliptical
+/// arcs, open polylines and splines), a spline; then chains of touching
+/// ends, each from its first (collinear lines alone stay a line, arcs of
+/// one circle alone an arc); then the lines and arcs left grouped as with
+/// a source, gaps filled.
 fn join_many(level: &[Piece], tol: Tolerance) -> CadResult<Vec<Join>> {
     let mut free = vec![true; level.len()];
     let mut joins = Vec::new();
+    // A chain with a spline in it is a spline, as AutoCAD makes it
+    // (maintainer, 2026-11-24): those from each spline first, so their
+    // lines and arcs do not chain into a polyline of their own.
+    let is_spline = |p: &Piece| {
+        matches!(
+            p.plan.as_ref().map(PlanGeometry::geometry),
+            Some(Geometry2::Spline(_))
+        )
+    };
+    for seed in 0..level.len() {
+        if !free[seed] || !is_spline(&level[seed]) {
+            continue;
+        }
+        let rest: Vec<usize> = (0..level.len()).filter(|&i| i != seed && free[i]).collect();
+        let others: Vec<Piece> = rest.iter().map(|&i| level[i].clone()).collect();
+        let Some(chained) = join_curves(&level[seed], &others, tol)? else {
+            continue;
+        };
+        for &i in &rest {
+            if chained.erased.contains(&level[i].id) {
+                free[i] = false;
+            }
+        }
+        free[seed] = false;
+        joins.push(chained);
+    }
     for seed in 0..level.len() {
         if !free[seed] {
             continue;
@@ -1556,31 +1591,6 @@ fn join_many(level: &[Piece], tol: Tolerance) -> CadResult<Vec<Join>> {
         let alike =
             join_curves(&level[seed], &members, tol)?.filter(|j| j.erased.len() == members.len());
         joins.push(alike.unwrap_or(chained));
-    }
-    let is_spline = |p: &Piece| {
-        matches!(
-            p.plan.as_ref().map(PlanGeometry::geometry),
-            Some(Geometry2::Spline(_))
-        )
-    };
-    for seed in 0..level.len() {
-        if !free[seed] || !is_spline(&level[seed]) {
-            continue;
-        }
-        let rest: Vec<usize> = (0..level.len())
-            .filter(|&i| i != seed && free[i] && is_spline(&level[i]))
-            .collect();
-        let others: Vec<Piece> = rest.iter().map(|&i| level[i].clone()).collect();
-        let Some(chained) = join_curves(&level[seed], &others, tol)? else {
-            continue;
-        };
-        for &i in &rest {
-            if chained.erased.contains(&level[i].id) {
-                free[i] = false;
-            }
-        }
-        free[seed] = false;
-        joins.push(chained);
     }
     let left: Vec<Piece> = (0..level.len())
         .filter(|&i| free[i] && level[i].plan.is_some())
@@ -1640,7 +1650,12 @@ fn extension_query_area(
     padding: f64,
 ) -> Option<arq_geometry::Bounds2> {
     match curve {
-        Geometry2::Circle(_) | Geometry2::Spline(_) => None,
+        Geometry2::Circle(_) => None,
+        // A spline grows straight along its end's tangent, as a line does.
+        Geometry2::Spline(s) => {
+            let probe = arq_geometry::spline_extension_line(&s, pick)?;
+            extension_query_area(Geometry2::Line(probe), probe.end(), extent, padding)
+        }
         Geometry2::Ellipse(e) if e.is_full() => None,
         Geometry2::Arc(arc) => {
             // A partial arc may have finite bounds even if its supporting

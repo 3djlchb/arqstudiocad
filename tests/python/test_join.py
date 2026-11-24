@@ -206,25 +206,27 @@ def test_join_from_an_elliptical_arc_takes_its_ellipses_arcs_and_closes() -> Non
     assert h.messages()[-1] == CANNOT_JOIN
 
 
-def test_join_from_a_spline_takes_the_splines_touching_its_ends() -> None:
+def test_join_from_a_spline_takes_what_touches_its_ends() -> None:
     h = Harness()
     fitted = CadSpline.through([(0.0, 0.0), (2.0, 2.0), (4.0, 1.0), (6.0, 0.0)])
     source, _ = h.document.add_spline(fitted)
-    # The other way round, of another degree; a line touching is left.
+    # The other way round, of another degree; a line touching its start
+    # joins too, as AutoCAD; a circle never does.
     after = CadSpline.by_vertices([(12.0, 0.0), (9.0, -3.0), (6.0, 0.0)], degree=2)
     other, _ = h.document.add_spline(after)
     line = h.line((0.0, 0.0), (-3.0, 0.0))
+    circle, _ = h.document.add_circle((20.0, 0.0), 1.0)
     h.run("JOIN")
     choose(h, [source])
-    assert h.prompt().text == "Select splines to join to source:"
-    choose(h, [other, line])
+    assert h.prompt().text == "Select objects to join to source:"
+    choose(h, [other, line, circle])
     assert h.runner.active is None
-    assert h.messages()[-2:] == ["Joined to the source: 1.", "Discarded from the operation: 1."]
+    assert h.messages()[-2:] == ["Joined to the source: 2.", "Discarded from the operation: 1."]
     joined = h.document.spline(source)
     assert joined is not None and joined.degree == 3
-    assert joined.points()[0] == (0.0, 0.0) and joined.points()[-1] == pytest.approx((12.0, 0.0))
+    assert joined.points()[0] == (-3.0, 0.0) and joined.points()[-1] == pytest.approx((12.0, 0.0))
     assert joined.fit_points == [], "by its vertices now"
-    assert h.document.get_entity(line).kind == "LINE"
+    assert h.document.get_entity(circle).kind == "CIRCLE"
     assert h.document.undo_history[-1] == "JOIN"
     h.run("UNDO")
     assert h.document.get_entity(other).kind == "SPLINE"

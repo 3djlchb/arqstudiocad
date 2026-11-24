@@ -160,7 +160,7 @@ points, tangents and weights. Shapes were compared by sampling both curves.
 **A spline extended (SC4).**
 - **ProgeCAD** extends the Bézier from its end (6,0) to x = 8 by a straight segment along its end tangent, to (8,−3). The segment becomes part of the spline: control points (6,0), (6.667,−1), (7.333,−2), (8,−3), a span of knots as long as the segment, √13.
 - **Ours** refused it, by its design, until ProgeCAD showed its rule.
-- **Decision.** The maintainer chose to adopt ProgeCAD's rule (2026-11-23), in a pull request of its own.
+- **Decision.** The maintainer chose to adopt ProgeCAD's rule (2026-11-23), in a pull request of its own: done on 2026-11-24, ours now gives the same control points and knots.
 
 **The start tangent asked after the points (SP2b).** Given toward (0,5), ProgeCAD's spline leaves (0,0) downward, away from it; ours leaves toward (0,5), by its design. The end tangent is the same. The maintainer chose to keep ours (2026-11-23).
 
@@ -180,6 +180,17 @@ points, tangents and weights. Shapes were compared by sampling both curves.
 Ours is 10 to more than 100 times closer, with a few more control points. ProgeCAD's quadratics are written as rational with every weight 1.
 
 **Other differences kept by the maintainer (2026-11-23):** SC6, where ProgeCAD's STRETCH moves fit points (SC7) but not control vertices; SP4's fit points.
+
+## To run: JOIN onto a spline (SC14–SC15)
+
+Added on 2026-11-24, when JOIN took lines, arcs, elliptical arcs and open
+polylines onto a spline, as AutoCAD (the maintainer's choice):
+- SC14, from the Bézier, a line after it and a half circle after that;
+- SC15, lines either side of it, many at once.
+
+To see: whether ProgeCAD makes one spline of each, its degree, whether
+it is rational, and which object's id and direction it keeps. What ours
+gives is in [SPLINE's design](../design/spline-command.md#the-spline-as-a-curve-adr-0043).
 
 ## To run by hand: ELLIPSE grips and Properties
 

@@ -102,6 +102,7 @@ pub mod snap;
 mod spline;
 mod spline_curve;
 mod spline_fit;
+mod spline_from;
 mod spline_join;
 mod spline_split;
 mod tolerance;
@@ -147,7 +148,8 @@ pub use tolerance::Tolerance;
 pub use transform::Transform2;
 pub use transform3::Transform3;
 pub use trim::{
-    EXTEND_EDGE_RELATIVE_TOLERANCE, break_curve, cutting_points, extend, extends_at_end, trim,
+    EXTEND_EDGE_RELATIVE_TOLERANCE, break_curve, cutting_points, extend, extends_at_end,
+    spline_extension_line, trim,
 };
 pub use vector::Vector2;
 pub use vector3::Vector3;

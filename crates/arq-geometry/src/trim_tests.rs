@@ -422,3 +422,112 @@ fn an_ellipse_bounds_lines_and_arcs_extended_to_it() {
         .is_none()
     );
 }
+
+fn bezier() -> crate::spline::Spline {
+    crate::spline::Spline::by_vertices(
+        3,
+        vec![p(0.0, 0.0), p(2.0, 3.0), p(4.0, 3.0), p(6.0, 0.0)],
+        false,
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_spline_grows_straight_along_its_end_tangent_as_progecad_grows_it() {
+    // Case SC4: from (6,0) along (2,-3) to x = 8, at (8,-3); the piece a
+    // cubic of its own, its knots as long as it, sqrt(13).
+    let tol = Tolerance::DEFAULT;
+    let wall: Geometry2 = Line::new(p(8.0, -9.0), p(8.0, 9.0)).unwrap().into();
+    let s = bezier();
+    let Some(Geometry2::Spline(grown)) = extend(
+        &Geometry2::Spline(s.clone().into()),
+        &[wall],
+        p(5.9, 0.2),
+        tol,
+    )
+    .unwrap() else {
+        panic!("grown")
+    };
+    let third = |a: f64, b: f64| (a * 1e9).round() == (b * 1e9).round();
+    let expected = [
+        p(0.0, 0.0),
+        p(2.0, 3.0),
+        p(4.0, 3.0),
+        p(6.0, 0.0),
+        p(20.0 / 3.0, -1.0),
+        p(22.0 / 3.0, -2.0),
+        p(8.0, -3.0),
+    ];
+    assert_eq!(grown.points().len(), expected.len());
+    for (q, e) in grown.points().iter().zip(expected) {
+        assert!(third(q.x(), e.x()) && third(q.y(), e.y()), "{q:?} {e:?}");
+    }
+    let root13 = 13f64.sqrt();
+    let knots = grown.knots();
+    assert_eq!(&knots[..7], &[0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+    for &k in &knots[7..] {
+        assert!((k - (1.0 + root13)).abs() < 1e-12, "{knots:?}");
+    }
+    // The old curve is kept, to the bit.
+    for k in 0..=20 {
+        let u = f64::from(k) / 20.0;
+        assert!(grown.point_at(u).distance_to(s.point_at(u)) < 1e-12);
+    }
+}
+
+#[test]
+fn a_spline_grows_at_its_start_to_a_circle_and_not_when_closed_or_nothing_is_there() {
+    let tol = Tolerance::DEFAULT;
+    // From (0,0) back along (-2,-3) to the circle about (-2,-3), radius 1.
+    let ring: Geometry2 = crate::circle::Circle::new(p(-2.0, -3.0), 1.0)
+        .unwrap()
+        .into();
+    let Some(Geometry2::Spline(grown)) = extend(
+        &Geometry2::Spline(bezier().into()),
+        std::slice::from_ref(&ring),
+        p(0.1, 0.2),
+        tol,
+    )
+    .unwrap() else {
+        panic!("grown at its start")
+    };
+    let out = crate::vector::Vector2::new(-2.0, -3.0)
+        .unwrap()
+        .normalized()
+        .unwrap();
+    let meets = p(-2.0, -3.0) - out * 1.0;
+    assert!(
+        grown.ends().0.distance_to(meets) < 1e-9,
+        "{:?}",
+        grown.ends()
+    );
+    assert!(grown.ends().1.distance_to(p(6.0, 0.0)) < 1e-12);
+    // Nothing that way: none.
+    let far: Geometry2 = Line::new(p(-8.0, 5.0), p(-8.0, 9.0)).unwrap().into();
+    assert_eq!(
+        extend(
+            &Geometry2::Spline(bezier().into()),
+            &[far],
+            p(5.9, 0.2),
+            tol
+        )
+        .unwrap(),
+        None
+    );
+    // A closed spline has no end to grow.
+    let closed = crate::spline::Spline::by_vertices(
+        3,
+        vec![p(0.0, 0.0), p(4.0, 0.0), p(4.0, 4.0), p(0.0, 4.0)],
+        true,
+    )
+    .unwrap();
+    assert!(
+        extend(
+            &Geometry2::Spline(closed.into()),
+            std::slice::from_ref(&ring),
+            p(0.0, 0.0),
+            tol
+        )
+        .is_err()
+    );
+}

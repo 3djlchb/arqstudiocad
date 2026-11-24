@@ -264,10 +264,7 @@ def test_trim_and_break_cut_a_spline() -> None:
     h.run("4,2")
     assert h.document.undo_history[-1] == "BREAK"
     assert len([e for e in h.document.get_entities() if e.kind == "SPLINE"]) == 2
-    # EXTEND still refuses it.
-    h.run("EXTEND")
-    h.runner.answer_entity(spline, (1.9, 1.9))
-    assert h.messages()[-1] == "Cannot extend that object."
+    # EXTEND grows a spline since 2026-11-24 (test_trim.py).
 
 
 def test_stretch_moves_a_fitted_spline_s_fit_point_and_fits_again() -> None:
