@@ -102,6 +102,11 @@ fn a_closed_spline_is_periodic_and_marked_closed() {
         (sp.begin_tangent, sp.end_tangent),
         (Vector3::ZERO, Vector3::ZERO)
     );
+    // Its first fit point repeated at the end, as ProgeCAD writes a closed
+    // one: without it, ProgeCAD reads the DXF as open (SP3, 2026-11-23).
+    let mut closing = wave();
+    closing.push(wave()[0]);
+    assert_eq!(sp.fit_points, at(&closing, 0.0));
     assert_eq!(drawn(&doc, id).flatten(), fit.spline().unwrap().flatten());
 
     let cv = Spline::by_vertices(3, wave(), true).unwrap();
