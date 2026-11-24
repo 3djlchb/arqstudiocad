@@ -3,6 +3,7 @@
 
 use crate::arc::Arc;
 use crate::circle::Circle;
+use crate::curve_offset;
 use crate::error::{GeometryError, GeometryResult};
 use crate::geometry::Geometry2;
 use crate::line::Line;
@@ -15,9 +16,11 @@ impl Geometry2 {
     /// center, wider outside it and narrower inside, an arc between the same
     /// angles. Refused when `distance` is not finite and greater than zero,
     /// when `toward` lies on the curve's line or circle (no side), and when
-    /// a circle or arc would shrink to nothing. An ellipse's offset is no
-    /// ellipse, but the SPLINE AutoCAD makes, refused until SPLINE exists
-    /// (ADR 0041).
+    /// a circle or arc would shrink to nothing. An ellipse's or a spline's
+    /// offset is a cubic spline through points of the exact offset, within
+    /// a millionth of the curve's size of it (ADR 0043 D4); refused where
+    /// it would curl back on itself, inward past the tightest bend, and for
+    /// a spline whose tangent breaks at a corner.
     pub fn offset(&self, distance: f64, toward: Point2, tol: Tolerance) -> GeometryResult<Self> {
         if !(distance.is_finite() && distance > 0.0) {
             return Err(GeometryError::NegativeOrNonFinite {
@@ -25,9 +28,12 @@ impl Geometry2 {
             });
         }
         match *self {
-            // An ellipse's and a spline's offset is a spline, made in
-            // ADR 0043's fifth delivery.
-            Self::Ellipse(_) | Self::Spline(_) => Err(GeometryError::OutOfRange { what: "curve" }),
+            Self::Ellipse(e) => Ok(Self::Spline(std::sync::Arc::new(
+                curve_offset::offset_ellipse(e, distance, toward, tol)?,
+            ))),
+            Self::Spline(ref s) => Ok(Self::Spline(std::sync::Arc::new(
+                curve_offset::offset_spline(s, distance, toward, tol)?,
+            ))),
             Self::Line(l) => {
                 let side = side_of_line(l, toward, tol)?;
                 let shift = l.direction().perp() * (side * distance);
@@ -51,15 +57,15 @@ impl Geometry2 {
 
     /// The curve offset so that it passes through `through` (OFFSET's
     /// Through): the distance is how far `through` is from this curve's
-    /// line or circle, as AutoCAD measures it, not from its ends.
+    /// line or circle, as AutoCAD measures it, not from its ends; from an
+    /// ellipse or a spline, how far it is from the curve itself.
     pub fn offset_through(&self, through: Point2, tol: Tolerance) -> GeometryResult<Self> {
         let distance = match *self {
             Self::Line(l) => l.direction().cross(through - l.start()).abs(),
             Self::Circle(c) => (c.center().distance_to(through) - c.radius()).abs(),
             Self::Arc(a) => (a.center().distance_to(through) - a.radius()).abs(),
-            Self::Ellipse(_) | Self::Spline(_) => {
-                return Err(GeometryError::OutOfRange { what: "curve" });
-            }
+            Self::Ellipse(e) => curve_offset::ellipse_distance(e, through),
+            Self::Spline(ref s) => curve_offset::spline_distance(s, through),
         };
         if distance <= tol.linear() {
             return Err(GeometryError::OutOfRange { what: "side" });
