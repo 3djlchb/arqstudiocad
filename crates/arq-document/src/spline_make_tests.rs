@@ -372,3 +372,39 @@ fn a_spline_piece_written_is_by_its_vertices_its_fit_dropped() {
     let not_a_spline = crate::PlanGeometry::new(line.into());
     assert!(doc.set_plan_geometry(id, not_a_spline).is_err());
 }
+
+#[test]
+fn a_closed_fit_spline_moved_by_a_grip_repeats_its_first_point_once() {
+    // From the Linux agent's #262, closed for this change: a point moved by
+    // its grip leaves the first point again at the end once, not twice, and
+    // DWG and DXF read it back as it was.
+    let written = |doc: &Document, id: u64| -> Vec<Point2> {
+        codec(doc, id)
+            .fit_points
+            .iter()
+            .map(|q| p(q.x, q.y))
+            .collect()
+    };
+    let fit = SplineFit::new(wave(), SplineKnots::Chord, None, None, true).unwrap();
+    let mut doc = Document::new();
+    let id = doc.add_fit_spline(&fit, 0.0).unwrap();
+    assert_eq!(doc.spline_fit(id), Some(fit), "read, the repeat is dropped");
+    doc.set_spline_point(id, 1, p(3.0, 5.0)).unwrap();
+    let moved = written(&doc, id);
+    assert_eq!(moved.len(), wave().len() + 1);
+    assert_eq!(moved[0], moved[moved.len() - 1]);
+    let refit = doc.spline_fit(id).unwrap();
+    assert!(refit.is_closed() && refit.points().len() == wave().len());
+    let dxf = Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap();
+    let dwg = Document::read(
+        doc.to_dwg_bytes().unwrap(),
+        crate::FileFormat::Dwg,
+        std::path::Path::new("closed.dwg"),
+    )
+    .unwrap();
+    for back in [dxf, dwg] {
+        assert_eq!(back.spline_fit(id), Some(refit.clone()));
+        assert_eq!(written(&back, id), moved);
+        assert_eq!(drawn(&back, id).flatten(), drawn(&doc, id).flatten());
+    }
+}
