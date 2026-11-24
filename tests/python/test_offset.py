@@ -433,10 +433,12 @@ def test_an_offset_the_core_refuses_leaves_nothing_behind() -> None:
     locked, _ = h.document.create_layer("LOCKED")
     h.document.set_current_layer(locked)
     line = h.line((0.0, 0.0), (10.0, 0.0))
-    h.document.set_layer_locked(locked, True)
-    history = list(h.document.undo_history)
     h.run("OFFSET", "1")
     h.runner.answer_entity(line, (5.0, 0.0))
+    # Locked once picked, so the core refuses within OFFSET's group (a
+    # layer locked before the pick is said so at the pick).
+    h.document.set_layer_locked(locked, True)
+    history = list(h.document.undo_history)
     count = len(h.events)
     h.run("5,5")
     said = h.messages()[-1]

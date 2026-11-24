@@ -19,7 +19,7 @@ from arqstudiocad.commands import (
     Option,
     Prompt,
 )
-from arqstudiocad.commands.modify import Ids, done_selecting
+from arqstudiocad.commands.modify import Ids, done_selecting, on_locked_layer
 from arqstudiocad.core import CadDocument, CadEllipse, CadError, CadSpline
 from arqstudiocad.i18n import tr
 
@@ -44,6 +44,8 @@ def join(ctx: CommandContext) -> CommandScript:
         _join(ctx, document, None, chosen)
         return
     source = chosen[0]
+    if on_locked_layer(ctx, document, source):
+        return
     entity = document.get_entity(source)
     in_plan = entity.kind == "LWPOLYLINE" or entity.geometry is not None
     whole = isinstance(entity.geometry, CadEllipse) and entity.geometry.is_full

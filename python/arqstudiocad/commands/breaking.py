@@ -1,6 +1,7 @@
 """BREAK's initial 2D subset, following AutoCAD 2021's point workflow."""
 
 from arqstudiocad.commands import Command, CommandContext, CommandScript, Option, Picked
+from arqstudiocad.commands.modify import on_locked_layer
 from arqstudiocad.core import CadError, InvalidGeometryError
 from arqstudiocad.i18n import tr
 
@@ -25,10 +26,7 @@ def break_object(ctx: CommandContext) -> CommandScript:
                 )
             )
             continue
-        locked = {layer.name for layer in document.get_layers() if layer.is_locked}
-        if entity.layer in locked:
-            # Said as the other commands say it, not as the core's error.
-            ctx.message(tr("{count} were on a locked layer.", count=1))
+        if on_locked_layer(ctx, document, picked.entity_id):
             continue
         first = picked.point
         second = yield ctx.point(
