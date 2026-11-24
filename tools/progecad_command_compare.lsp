@@ -10,6 +10,7 @@
 ;;;   (arq:compare-02-14 "C:/path/to/saved" "C:/path/to/cases.log")
 ;;;   (arq:compare-array "C:/path/to/array" "C:/path/to/array.log")
 ;;;   (arq:compare-commands "C:/path/to/cmd" "C:/path/to/commands.log")
+;;;   (arq:assoc-array-samples "C:/path/to/aa" "C:/path/to/aa.log")
 ;;;
 ;;; arq:compare-array runs rectangular -ARRAY with ARRAYASSOCIATIVITY 0
 ;;; (independent copies, as ours) and saves each result as pc-<case>.dwg;
@@ -318,6 +319,54 @@
     (progn
       (arq:dump-full doc "after" log)
       (if dir (vl-catch-all-apply 'vla-SaveAs (list doc (strcat dir "/pc-" name ".dwg") 64))))))
+
+;;; ADR 0044 D4: rectangular associative arrays made by ProgeCAD itself,
+;;; for ours to read (docs/testing/assoc-array-samples-windows.md). Each
+;;; case is described and saved as aa-<case>.dwg and .dxf (2018); a step
+;;; whose prompts ProgeCAD does not have logs its error and the case is
+;;; saved as it stands. ARRAYASSOCIATIVITY is set to 1 and restored.
+(defun arq:assoc-case (name kind act dir log / doc r k)
+  (setq doc (vla-get-ActiveDocument (vlax-get-acad-object)))
+  (arq:mark log (strcat "case " name))
+  (arq:clear doc)
+  (setq arq:objs (arq:sources doc kind))
+  (command "_.ZOOM" "_W" '(-200 -200) '(200 200))
+  (foreach step act
+    (setq r (vl-catch-all-apply 'eval (list step)))
+    (if (vl-catch-all-error-p r) (arq:mark log (strcat "  step error: " (vl-catch-all-error-message r))))
+    (setq k 0)
+    (while (and (= 1 (logand 1 (getvar "CMDACTIVE"))) (< k 5)) (command "") (setq k (1+ k)))
+    (if (> k 0) (arq:mark log (strcat "  step needed " (itoa k) " Enter(s) to end"))))
+  (arq:dump-full doc "after" log)
+  (if dir (arq:save doc dir (strcat "aa-" name) log)))
+
+(defun arq:assoc-array-samples (dir log / assoc0 make)
+  (arq:mark log (strcat "ProgeCAD " (getvar "ACADVER") " ARRAYASSOCIATIVITY=" (vl-princ-to-string (getvar "ARRAYASSOCIATIVITY"))))
+  (arq:prepare)
+  (setq assoc0 (getvar "ARRAYASSOCIATIVITY"))
+  (setvar "ARRAYASSOCIATIVITY" 1)
+  (setq make '(command "_.-ARRAY" (arq:ss arq:objs) "" "_R" 3 4 2 3))
+  (arq:assoc-case "AA1-line-3x4" 'line (list make) dir log)
+  (arq:assoc-case "AA2-many-sources-2x3" 'many '((command "_.-ARRAY" (arq:ss arq:objs) "" "_R" 2 3 4 15)) dir log)
+  (arq:assoc-case "AA3-angle30-3x4" 'line
+    '((setvar "SNAPANG" (/ pi 6.0)) (command "_.-ARRAY" (arq:ss arq:objs) "" "_R" 3 4 2 3) (setvar "SNAPANG" 0.0)) dir log)
+  ;; Levels: ARRAYRECT's Count, Spacing and Levels options, as AutoCAD 2021
+  ;; asks them.
+  (arq:assoc-case "AA4-levels-2x2x2" 'line
+    '((command "_.ARRAYRECT" (arq:ss arq:objs) "" "_COU" 2 2 "_S" 3 2 "_L" 2 5 "_X")) dir log)
+  (arq:assoc-case "AA5-moved-turned-scaled" 'line
+    (list make
+          '(command "_.MOVE" (entlast) "" '(0 0) '(10 5))
+          '(command "_.ROTATE" (entlast) "" '(10 5) 30)
+          '(command "_.SCALE" (entlast) "" '(10 5) 2)) dir log)
+  (arq:assoc-case "AA6-columns-edited" 'line
+    (list make '(command "_.ARRAYEDIT" (entlast) "_COL" 6 "" "_X")) dir log)
+  (arq:assoc-case "AA7-many-exploded" 'many
+    '((command "_.-ARRAY" (arq:ss arq:objs) "" "_R" 2 3 4 15) (command "_.EXPLODE" (entlast))) dir log)
+  (setvar "ARRAYASSOCIATIVITY" assoc0)
+  (arq:restore)
+  (arq:mark log (strcat "ARRAYASSOCIATIVITY restored=" (vl-princ-to-string (getvar "ARRAYASSOCIATIVITY"))))
+  (arq:mark log "run done"))
 
 (defun arq:compare-array (dir log / assoc0)
   (arq:mark log (strcat "ProgeCAD " (getvar "ACADVER") " ARRAYASSOCIATIVITY=" (vl-princ-to-string (getvar "ARRAYASSOCIATIVITY"))))
