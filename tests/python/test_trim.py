@@ -5,12 +5,13 @@ Every expected shape is worked out by hand."""
 
 from pathlib import Path
 
+import pytest
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
 from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.builtin import builtin_registry
-from arqstudiocad.core import CadArc, CadDocument, CadLine
+from arqstudiocad.core import CadArc, CadDocument, CadLine, CadSpline
 from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
 from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
@@ -334,3 +335,25 @@ def test_a_shift_click_in_the_viewport_is_sent_with_shift(qtbot: QtBot, tmp_path
     assert document is not None
     assert [e.kind for e in document.get_entities()] == ["CIRCLE"]
     window.runner.cancel()
+
+
+def test_a_spline_extends_straight_along_its_end_and_a_closed_one_is_refused() -> None:
+    h = Harness()
+    # Case SC4: the Bezier from (0,0) by (2,3) and (4,3) to (6,0), to x = 8.
+    bezier = CadSpline.by_vertices([(0.0, 0.0), (2.0, 3.0), (4.0, 3.0), (6.0, 0.0)])
+    spline, _ = h.document.add_spline(bezier)
+    h.line((8.0, -9.0), (8.0, 9.0))
+    h.run("EXTEND")
+    h.runner.answer_entity(spline, (5.9, 0.2))
+    grown = h.document.spline(spline)
+    assert grown is not None
+    assert grown.control_points[-1] == pytest.approx((8.0, -3.0))
+    assert h.document.undo_history[-1] == "EXTEND"
+    h.run("")
+    ring, _ = h.document.add_spline(
+        CadSpline.by_vertices([(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)], closed=True)
+    )
+    h.run("EXTEND")
+    h.runner.answer_entity(ring, (4.0, 2.0))
+    assert h.messages()[-1] == "Cannot extend that object."
+    h.run("")

@@ -22,7 +22,7 @@ The ellipse waits on it too: its OFFSET is a spline in AutoCAD (ADR 0041).
 The maintainer chose the following on 2026-11-23:
 - `Geometry2` holds the spline itself, and stops being `Copy`;
 - EXTEND refuses a spline until the Windows comparison shows AutoCAD's
-  rule;
+  rule (shown on 2026-11-23, adopted on 2026-11-24, D4);
 - JOIN joins splines to splines only (widened on 2026-11-24 to what
   AutoCAD joins to a spline, D4);
 - OFFSET approximates the exact offset to a tolerance relative to the
@@ -93,9 +93,14 @@ with no new library.
   - A trimmed or broken spline keeps its control points and loses its fit
     points, which no longer describe it. Whether AutoCAD keeps them, the
     Windows comparison will tell.
-- **EXTEND** refuses a spline ("Cannot extend that object."), nothing
-  changed. A case for Windows shows what AutoCAD does first (maintainer,
-  2026-11-23).
+- **EXTEND** refused a spline ("Cannot extend that object."), nothing
+  changed, until a case for Windows showed what AutoCAD does (maintainer,
+  2026-11-23). ProgeCAD's rule was shown in case SC4 and adopted by the
+  maintainer: since 2026-11-24 an open spline grows straight along its
+  end's tangent to the nearest edge that way, the straight piece made
+  part of the spline at its degree, its knots spanning the piece's
+  length (`spline_extension_line`; Quick mode searches along that ray).
+  A closed spline is still refused.
 - **Plan geometry:** `Entity::plan` gives a spline lying in the plan, so
   the own model owns it (ADR 0018 stage 1 widened again) and a save checks
   it by its data, as the ellipse's (ADR 0041 D4).
@@ -215,5 +220,5 @@ Each delivery adds its cases to the Windows comparison tools.
   is clear, and refused where its delivery is still to come.
 - An imported spline gains the snaps, crossings and edits of a curve, as
   each delivery arrives.
-- Until delivery 2, TRIM and BREAK refuse a spline; EXTEND refuses one
-  after it too, until the Windows comparison.
+- Until delivery 2, TRIM and BREAK refuse a spline; EXTEND refused one
+  after it too, until the Windows comparison (2026-11-24).

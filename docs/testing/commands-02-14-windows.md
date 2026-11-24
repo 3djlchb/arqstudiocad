@@ -159,7 +159,7 @@ points, tangents and weights. Shapes were compared by sampling both curves.
 **A spline extended (SC4).**
 - **ProgeCAD** extends the Bézier from its end (6,0) to x = 8 by a straight segment along its end tangent, to (8,−3). The segment becomes part of the spline: control points (6,0), (6.667,−1), (7.333,−2), (8,−3), a span of knots as long as the segment, √13.
 - **Ours** refused it, by its design, until ProgeCAD showed its rule.
-- **Decision.** The maintainer chose to adopt ProgeCAD's rule (2026-11-23), in a pull request of its own.
+- **Decision.** The maintainer chose to adopt ProgeCAD's rule (2026-11-23), in a pull request of its own: done on 2026-11-24, ours now gives the same control points and knots.
 
 **The start tangent asked after the points (SP2b).** Given toward (0,5), ProgeCAD's spline leaves (0,0) downward, away from it; ours leaves toward (0,5), by its design. The end tangent is the same. The maintainer chose to keep ours (2026-11-23).
 
