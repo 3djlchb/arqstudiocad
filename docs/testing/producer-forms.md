@@ -3,13 +3,13 @@
 [ADR 0045](../architecture/adr/0045-producer-compatibility.md) D3:
 - **Written:** each entity is written in one form, the one AutoCAD and
   every producer reads the same way (AutoCAD, ProgeCAD, BricsCAD, ARES
-  Commander, GstarCAD, Edificius). Where there is none, it is AutoCAD's,
+  Commander, GstarCAD, Edificius, Vectorworks). Where there is none, it is AutoCAD's,
   unless one of them breaks on it.
 - **Read:** each producer's form is taken into one model (D2).
 - **Evidence:** this table records the choice for each entity and its
   evidence. A change of form goes through it.
 
-Columns for BricsCAD, ARES Commander, GstarCAD and Edificius are added
+Columns for BricsCAD, ARES Commander, GstarCAD, Edificius and Vectorworks are added
 as their evidence comes (D4); until then each is "to confirm".
 
 | Entity | AutoCAD | ProgeCAD | Written by ours | Evidence |

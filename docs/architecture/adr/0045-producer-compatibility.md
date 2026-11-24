@@ -11,7 +11,9 @@ Many programs read and write DWG and DXF besides ours:
 - BricsCAD;
 - ARES Commander;
 - GstarCAD;
-- the CAD in ACCA's Edificius.
+- the CAD in ACCA's Edificius;
+- Vectorworks, which keeps its own `.vwx` and exports and imports DWG
+  and DXF.
 
 Each has an engine of its own or the Open Design Alliance's libraries,
 and some entities they keep in different ways: each reads its own form
@@ -29,8 +31,8 @@ found these:
 The maintainer asked, on 2026-11-24:
 - for the greatest compatibility possible, in both directions;
 - for it to be automatic;
-- for BricsCAD, ARES Commander, GstarCAD and Edificius's CAD to be
-  among the producers, with AutoCAD and ProgeCAD.
+- for BricsCAD, ARES Commander, GstarCAD, Edificius's CAD and
+  Vectorworks to be among the producers, with AutoCAD and ProgeCAD.
 
 The two directions differ:
 - **Reading:** a drawing says, more or less clearly, what made it. Ours
@@ -38,7 +40,8 @@ The two directions differ:
 - **Writing:** what program will open the file is not known when it is
   saved. Ours cannot write for it; it can only write what all read.
 
-Nobody here has AutoCAD, BricsCAD, ARES Commander, GstarCAD or Edificius.
+Nobody here has AutoCAD, BricsCAD, ARES Commander, GstarCAD, Edificius
+or Vectorworks.
 ProgeCAD runs on the Windows laptop alone.
 
 ## Decision
@@ -54,6 +57,7 @@ Each drawing read knows its producer, one of:
 - ARES Commander;
 - GstarCAD;
 - Edificius;
+- Vectorworks;
 - ours;
 - another, named as it names itself;
 - unknown.
@@ -107,7 +111,7 @@ goes through it.
   is written "to confirm".
 - **ProgeCAD:** from runs on the Windows laptop, as the 02.14
   comparisons are made.
-- **BricsCAD, ARES Commander, GstarCAD and Edificius:** from public
+- **BricsCAD, ARES Commander, GstarCAD, Edificius and Vectorworks:** from public
   drawings each has made, or from runs where the maintainer has one at
   hand (a trial, on the Windows laptop). Until then, what each does is
   "to confirm", and D3 rests on AutoCAD and ProgeCAD.
