@@ -583,7 +583,7 @@
   (arq:command-case "EL9-extend-line-to-ellipse" '(list (arq:ln doc '(-10 1.8) '(-8 1.8)) (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(arq:extend (cadr arq:o) '(-8.5 1.8)) dir log)
   ;; SC1-SC4: a spline as a curve (ADR 0043), the Bezier from (0,0) by
   ;; (2,3) and (4,3) to (6,0). SC3 and SC5 cut the spline itself, SC4
-  ;; extends it, which ours refuses until compared.
+  ;; extends it (ours as ProgeCAD since 2026-11-24).
   (arq:command-case "SC1-trim-line-at-spline" '(list (arq:ln doc '(-1 1) '(7 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.TRIM" '(3 1) "") dir log)
   (arq:command-case "SC2-extend-line-to-spline" '(list (arq:ln doc '(-5 1) '(-2 1)) (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(arq:extend (cadr arq:o) '(-2.5 1)) dir log)
   (arq:command-case "SC3-trim-spline-middle" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(2 -9) '(2 9)) (arq:ln doc '(4 -9) '(4 9))) '(command "_.TRIM" '(3 2.25) "") dir log)
