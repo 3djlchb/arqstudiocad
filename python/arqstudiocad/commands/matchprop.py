@@ -7,7 +7,7 @@ chooses the properties, remembered for the session.
 """
 
 from arqstudiocad.commands import Command, CommandContext, CommandScript, Option, Picked
-from arqstudiocad.commands.modify import done_selecting
+from arqstudiocad.commands.modify import done_selecting, locked_message
 from arqstudiocad.core import CadError
 from arqstudiocad.i18n import tr
 
@@ -66,7 +66,7 @@ def matchprop(ctx: CommandContext) -> CommandScript:
             return
         ctx.session.report(document, changes)
         if locked:
-            ctx.message(tr("{count} were on a locked layer.", count=locked))
+            ctx.message(locked_message(locked))
 
 
 def _say_settings(ctx: CommandContext, settings: frozenset[str]) -> None:

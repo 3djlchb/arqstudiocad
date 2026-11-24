@@ -65,7 +65,7 @@ def test_locked_and_nonintersecting_targets_do_not_stop_the_rest() -> None:
     h.run("TRIM")
     h.runner.answer_path(((8, -2), (8, 12)))
     assert [ends(h, i) for i in ids] == [(5, 0), (10, 5), (5, 10)]
-    assert "1 were on a locked layer." in h.messages()
+    assert "1 was on a locked layer." in h.messages()
 
 
 def test_fence_query_uses_exact_curves_and_filters_hidden_layers() -> None:

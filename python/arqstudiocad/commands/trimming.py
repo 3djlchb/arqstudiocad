@@ -28,7 +28,7 @@ from arqstudiocad.commands import (
     PickedPath,
     Prompt,
 )
-from arqstudiocad.commands.modify import done_selecting, select_objects
+from arqstudiocad.commands.modify import done_selecting, locked_message, select_objects
 from arqstudiocad.core import CadDocument, CadEllipse, CadError, CadSpline, InvalidGeometryError
 from arqstudiocad.i18n import tr
 
@@ -110,7 +110,7 @@ def _trim_or_extend(ctx: CommandContext, extending: bool) -> CommandScript:
                 for entity_id, point in picks:
                     entity = document.get_entity(entity_id)
                     if entity.layer in locked:
-                        ctx.message(tr("{count} were on a locked layer.", count=1))
+                        ctx.message(locked_message(1))
                         continue
                     target = Picked(entity_id, point, picked.shift)
                     if extending != picked.shift:

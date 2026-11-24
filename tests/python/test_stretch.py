@@ -97,7 +97,7 @@ def test_locked_layers_are_skipped() -> None:
     h.run("STRETCH", "0,0", "1,0")
     assert h.line(h.a) == ((1, 0), (11, 0))
     assert h.line(h.b) == ((0, 5), (10, 5))
-    assert "1 were on a locked layer." in h.messages()
+    assert "1 was on a locked layer." in h.messages()
 
 
 @pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf])

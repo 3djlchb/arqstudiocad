@@ -150,7 +150,7 @@ def test_break_on_a_locked_layer_says_so_and_asks_again() -> None:
     before = h.document.undo_history
     h.run("BREAK")
     h.runner.answer_entity(line, (3.0, 0.0))
-    assert h.messages()[-1] == "1 were on a locked layer."
+    assert h.messages()[-1] == "1 was on a locked layer."
     assert h.prompt().entity, "another object is asked for"
     h.runner.cancel()
     assert h.lines() == [((0.0, 0.0), (10.0, 0.0))]

@@ -50,8 +50,8 @@ on the Windows laptop.
 - **Two things a user meets were wrong, and are fixed:**
   - **BREAK on a locked layer:** an object picked on a locked layer gave
     the core's error, untranslated: `Error: entity 49 is on locked layer
-    L`, in Spanish too. It now says what the other commands say, `{count}
-    were on a locked layer.`, and asks for another object.
+    L`, in Spanish too. It now says what the other commands say, and asks
+    for another object.
   - **STRETCH's displacement prompt** did not show the displacement Enter
     takes. As AutoCAD does, it now shows the last one, `Specify
     displacement <2,3>:`.
@@ -63,9 +63,10 @@ on the Windows laptop.
   - **No center snap on a circle:** a circle's center, typed as a break
     point, projects onto an arbitrary point of the circle, since it has
     no nearest one. AutoCAD's pick cannot land there.
-  - **The singular message:** `{count} were on a locked layer.` reads
-    "1 were" for one object. It is shared with TRIM and MATCHPROP; a
-    singular form is a change for all of them.
+  - **The singular message:** `{count} were on a locked layer.` read
+    "1 were" for one object. Since its follow-up (the same day) one reads
+    `1 was on a locked layer.` in every command, and OFFSET, FILLET,
+    CHAMFER and JOIN say it too where they gave the core's error.
 
 ## Checks
 
