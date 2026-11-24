@@ -38,11 +38,14 @@ def stretch(ctx: CommandContext) -> CommandScript:
         default="D",
     )
     if base is None or base == "D":
+        # The last displacement shown, as AutoCAD shows it; Enter takes it.
+        last = ctx.remembered.get(DISPLACEMENT, (0.0, 0.0))
         offset = yield ctx.point(
-            tr("Specify displacement"), base=(0.0, 0.0), optional=True, drag=preview
+            tr("Specify displacement"),
+            base=(0.0, 0.0),
+            default=f"{_exact(last[0])},{_exact(last[1])}",
+            drag=preview,
         )
-        if offset is None:
-            offset = ctx.remembered.get(DISPLACEMENT, (0.0, 0.0))
     else:
         second = yield ctx.point(
             tr("Specify second point <use first point as displacement>"),
@@ -63,6 +66,13 @@ def stretch(ctx: CommandContext) -> CommandScript:
     ctx.session.report(document, changes)
     ctx.remembered[DISPLACEMENT] = offset
     done_selecting(ctx, document, ids)
+
+
+def _exact(value: float) -> str:
+    """``value`` as short as it reads back exactly: a default Enter takes,
+    so it must give back the very displacement remembered."""
+    short = f"{value:.10g}"
+    return short if float(short) == value else repr(value)
 
 
 STRETCH_COMMAND = Command("STRETCH", stretch, ("S",))

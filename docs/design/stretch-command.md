@@ -21,7 +21,8 @@ newer behavior must be identified explicitly.
 - Base point and second point determine the offset; Enter at the second
   prompt uses the first point as displacement. `D` or Enter at the base
   prompt asks for displacement, whose empty answer uses the previous value
-  (initially zero). Existing Cartesian, relative, polar and direct-distance
+  (initially zero), shown in the prompt as AutoCAD shows it (`<2,3>`),
+  exactly as remembered (since 2026-11-23, [review](../testing/stretch-break-review.md)). Existing Cartesian, relative, polar and direct-distance
   point input applies. This delivery accepts XY coordinates only.
 - Circles move by their centers, block references by their insertion points
   and texts by their anchors when those lie in a crossing window.
