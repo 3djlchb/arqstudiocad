@@ -102,7 +102,12 @@ command error. To confirm:
 - what Close makes of a fit;
 - the CV knots.
 
-**To run.**
+**Run on 2026-11-23** ([results](../testing/commands-02-14-windows.md#elliptical-arcs-joined-spline-and-the-spline-as-a-curve-2026-11-23)): SP1, SP4 and SP5 the same as
+ProgeCAD. SP3 is the same curve, which ProgeCAD reads as open from our
+DXF: to be written as ProgeCAD does, its first fit point repeated at the
+end. SP2b's start tangent points the other way in ProgeCAD; ours kept.
+SP2 and SP6 cannot be compared: ProgeCAD has no tangent options among the
+points and makes every spline cubic.
 
 ## The spline as a curve (ADR 0043)
 
@@ -191,4 +196,8 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 | SC13 | OFFSET the Bézier by 0.5 toward (3,5) | an open cubic of 35 control points from (−0.416,0.277) to (6.416,0.277) |
 | SC10 | JOIN many at once three cubic Béziers in a ring: (0,0) (1,−1) (3,−1) (4,0); (4,0) (5,1) (5,3) (4,4); (4,4) (2,6) (−1,2) (0,0) | one closed cubic of 10 control points, its last its first, knots 0 ×4, 1 ×3, 2 ×3, 3 ×4; DXF flag 70 = 9, closed and not periodic |
 
-**To run.**
+**Run on 2026-11-23** ([results](../testing/commands-02-14-windows.md#elliptical-arcs-joined-spline-and-the-spline-as-a-curve-2026-11-23)): SC1–SC3, SC5, SC7 and SC10
+the same as ProgeCAD. SC4: ProgeCAD extends a spline by a straight segment
+along its end tangent, the rule to adopt. SC6, SC8 and SC9 kept as ours.
+SC11–SC13: ProgeCAD's offsets are quadratics or cubics of fewer control
+points, ours 10 to over 100 times closer.

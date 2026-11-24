@@ -138,6 +138,8 @@ Cases EL5–EL9 are about (0,0), with semi-axes 5 and 3:
 | EL14 | JOIN many at once the arcs 0–2, 2–4 and 4–0 | the whole ellipse |
 | EL15 | JOIN from the arc 0–1, Close | the whole ellipse |
 
+EL13–EL15 run on 2026-11-23, the same as ProgeCAD ([results](../testing/commands-02-14-windows.md#elliptical-arcs-joined-spline-and-the-spline-as-a-curve-2026-11-23)).
+
 To confirm: that angles count from the first axis drawn when it is not
 horizontal (EL4 draws one whose first end is (0,0), the axis pointing
 west), and what Parameter gives.

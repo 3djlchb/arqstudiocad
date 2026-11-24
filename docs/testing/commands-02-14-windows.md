@@ -123,12 +123,62 @@ again: 23 cases, 67 files reopened.
 - **Ours** refuses it, by its design, and changes nothing.
 - **Decision.** The maintainer chose to keep the refusal (2026-11-20). ProgeCAD's rule is not evident, and changes the whole ellipse.
 
-## To run: JOIN of elliptical arcs (EL13–EL15)
+## Elliptical arcs joined, SPLINE and the spline as a curve (2026-11-23)
 
-Added on 2026-11-22 with JOIN of one ellipse's arcs (ADR 0041): from a
-source arc across a gap, many at once round to the whole ellipse, and
-Close. What ours gives is in
-[ELLIPSE's design](../design/ellipse-command.md#windows-comparison-to-run).
+The automated cases added with JOIN of elliptical arcs (ADR 0041), SPLINE
+(ADR 0042) and the spline as a curve (ADR 0043), run in ProgeCAD 2026 on
+Windows (Codex paused; the maintainer's go-ahead), by the method above:
+23 cases, 67 files reopened.
+
+**Splines read from the DXF.** ProgeCAD's ActiveX gives neither a spline's
+knots nor whether it is periodic, which these cases are about. So each of
+ProgeCAD's results was also saved by ProgeCAD as DXF, and the splines were
+compared by their group codes: degree, flags, knots, control points, fit
+points, tangents and weights. Shapes were compared by sampling both curves.
+
+| Commands | Cases | Result |
+|---|---|---|
+| JOIN of elliptical arcs | EL13 across a gap, EL14 many at once round to the whole ellipse, EL15 Close | **all the same** |
+| SPLINE | SP1 fit, Chord; SP4 Square root knots; SP5 by vertices | the same; in SP4 ProgeCAD keeps no fit points, ours does |
+| SPLINE, closed by fit points | SP3 | **the same curve, 4×10⁻⁷ apart**; our DXF read by ProgeCAD as open (below) |
+| SPLINE, tangents | SP2b, asked after the points | the start tangent differs (below) |
+| SPLINE, not comparable | SP2 tangents among the points (AutoCAD 2021's prompts); SP6 degree 2 | ProgeCAD has neither: it takes no tangent options there and makes every spline cubic, whatever the degree asked |
+| TRIM, EXTEND, BREAK with splines | SC1 a line trimmed at a spline, SC2 a line extended to one, SC3 the spline trimmed, SC5 broken | **the same** |
+| EXTEND a spline | SC4 | ProgeCAD extends it; ours refused (below) |
+| STRETCH | SC7 a fit point | the same |
+| STRETCH | SC6 a control vertex | ProgeCAD moves nothing; ours moves the vertex |
+| JOIN of splines | SC10 three in a ring at once | the same: closed, not periodic |
+| JOIN of splines | SC8 two cubics; SC9 a cubic and a quadratic | differ (below) |
+| OFFSET | SC11 an ellipse, SC12 an elliptical arc, SC13 a spline | different approximations, ours closer (below) |
+
+**A spline closed by its fit points, saved in DXF (SP3).**
+- **The same curve.** ProgeCAD keeps it clamped: its last control point is its first, its first fit point repeated at the end (5 fit points). Ours keeps it periodic: its last three control points are its first three, with 4 fit points. Sampled, the two curves lie within 4×10⁻⁷ of each other.
+- **What goes wrong.** ProgeCAD reads our DWG of it as closed, and our DXF as open, though both DXFs carry the same flags (70 = 1067). Closed splines by vertices (SP6, SC10, SC11) read back closed from our DXF.
+- **Decision.** The maintainer chose to write it as ProgeCAD does, the first fit point repeated at the end, in a pull request of its own (2026-11-23).
+
+**A spline extended (SC4).**
+- **ProgeCAD** extends the Bézier from its end (6,0) to x = 8 by a straight segment along its end tangent, to (8,−3). The segment becomes part of the spline: control points (6,0), (6.667,−1), (7.333,−2), (8,−3), a span of knots as long as the segment, √13.
+- **Ours** refused it, by its design, until ProgeCAD showed its rule.
+- **Decision.** The maintainer chose to adopt ProgeCAD's rule (2026-11-23), in a pull request of its own.
+
+**The start tangent asked after the points (SP2b).** Given toward (0,5), ProgeCAD's spline leaves (0,0) downward, away from it; ours leaves toward (0,5), by its design. The end tangent is the same. The maintainer chose to keep ours (2026-11-23).
+
+**Splines joined (SC8, SC9).**
+- **SC8.** The same curve. ProgeCAD runs it from (12,0), the joined spline's far end; ours keeps the source's direction, as for lines (J1).
+- **SC9.** ProgeCAD gives a quadratic that starts at (2,3), losing the cubic's first span from (0,0). Ours raises the quadratic to a cubic, exactly.
+- **Decision.** Ours kept for both (the maintainer, 2026-11-23).
+
+**Curves offset (SC11–SC13).** Both are approximations, of different kinds. The error is the largest difference, along the curve, between its distance from the source and the offset distance:
+
+| Case | ProgeCAD | Ours |
+|---|---|---|
+| SC11 the whole ellipse, by 1 | quadratic, 53 control points, uniform knots every 7.5°; error 1.1×10⁻⁴ | cubic, 79 control points, periodic; error 1.1×10⁻⁵ |
+| SC12 its upper half, by 1 | quadratic, 27 control points; error 1.5×10⁻⁴ | cubic, 37 control points; error 9.7×10⁻⁶ |
+| SC13 the Bézier, by 0.5 | cubic, 27 control points, uniform knots; error 3.2×10⁻⁴ | cubic, 35 control points; error under 2×10⁻⁶, the measurement's resolution |
+
+Ours is 10 to more than 100 times closer, with a few more control points. ProgeCAD's quadratics are written as rational with every weight 1.
+
+**Other differences kept by the maintainer (2026-11-23):** SC6, where ProgeCAD's STRETCH moves fit points (SC7) but not control vertices; SP4's fit points.
 
 ## To run by hand: ELLIPSE grips and Properties
 
@@ -140,15 +190,6 @@ the grip at (0,3) taken to (0,7), past the major; the quarter's end at
 (0,3) taken toward (−10,0). And the Properties panel's Start and End angle
 of the quarter, against the dump's `start-angle` and `end-angle`.
 
-## To run: SPLINE (SP1–SP6)
-
-Added on 2026-11-23 with the SPLINE command (ADR 0042):
-- by fit points, with Chord and Square root knots, with tangents, and
-  closed;
-- by control vertices, open and closed.
-
-What ours gives is in [SPLINE's design](../design/spline-command.md#windows-comparison).
-
 ## To run by hand: spline grips and Properties
 
 Added on 2026-11-23 with the spline's grips and Properties (ADR 0043). By
@@ -157,23 +198,3 @@ one by those vertices, compared with [SPLINE's design](../design/spline-command.
 - which grips show;
 - the fit point (7,1) taken to (7,−1), and the vertex (9,6) to (9,8);
 - the Properties panel's rows, and a point's X and Y edited.
-
-## To run: the spline as a curve (SC1–SC13)
-
-Added on 2026-11-23 with the spline as a curve (ADR 0043):
-- a line trimmed at a spline, and extended to one;
-- the spline itself trimmed and broken (SC3, SC5, added with delivery 2),
-  and extended, which ours refuses until ProgeCAD shows its rule (SC4);
-- the spline stretched by a vertex and by a fit point (SC6, SC7, added
-  with delivery 3a);
-- splines joined: one turned round, one of a lower degree, and three in
-  a ring many at once (SC8–SC10, added with delivery 4). To see: the
-  degree and knots ProgeCAD gives, whether it keeps fit points, and
-  whether the ring is closed and periodic;
-- an ellipse, an elliptical arc and a spline offset (SC11–SC13, added
-  with delivery 5). To see: how many control points ProgeCAD gives,
-  whether by vertices or by fit points, and whether the ellipse's is
-  closed and periodic. And by hand: a spline with a corner offset, and
-  an ellipse inward past 1.8, which ours refuses.
-
-What ours gives is in [SPLINE's design](../design/spline-command.md#the-spline-as-a-curve-adr-0043).
