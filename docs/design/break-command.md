@@ -23,6 +23,9 @@ with AutoCAD 2021 as the baseline. Open and closed lightweight polylines are imp
   cannot be edited. The first surviving open-curve piece keeps its ID; other
   pieces copy the source properties. A converted circle receives an arc ID,
   following the existing TRIM writer. Undo restores the original IDs.
+  An object picked on a locked layer is said to be on one, as the other
+  commands say it, and another is asked for (since 2026-11-23,
+  [review](../testing/stretch-break-review.md)).
 - The command currently requires Top view. Tilted/non-editable curves and
   other entity kinds are unsupported. No new entity type, codec behavior,
   dependency, renderer implementation or compile-time CPU feature is added.
