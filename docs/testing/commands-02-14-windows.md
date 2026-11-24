@@ -158,7 +158,7 @@ one by those vertices, compared with [SPLINE's design](../design/spline-command.
 - the fit point (7,1) taken to (7,−1), and the vertex (9,6) to (9,8);
 - the Properties panel's rows, and a point's X and Y edited.
 
-## To run: the spline as a curve (SC1–SC10)
+## To run: the spline as a curve (SC1–SC13)
 
 Added on 2026-11-23 with the spline as a curve (ADR 0043):
 - a line trimmed at a spline, and extended to one;
@@ -169,6 +169,11 @@ Added on 2026-11-23 with the spline as a curve (ADR 0043):
 - splines joined: one turned round, one of a lower degree, and three in
   a ring many at once (SC8–SC10, added with delivery 4). To see: the
   degree and knots ProgeCAD gives, whether it keeps fit points, and
-  whether the ring is closed and periodic.
+  whether the ring is closed and periodic;
+- an ellipse, an elliptical arc and a spline offset (SC11–SC13, added
+  with delivery 5). To see: how many control points ProgeCAD gives,
+  whether by vertices or by fit points, and whether the ellipse's is
+  closed and periodic. And by hand: a spline with a corner offset, and
+  an ellipse inward past 1.8, which ours refuses.
 
 What ours gives is in [SPLINE's design](../design/spline-command.md#the-spline-as-a-curve-adr-0043).

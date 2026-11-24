@@ -549,6 +549,12 @@
   (arq:command-case "SC8-join-splines" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:spl doc '((12 0) (10 -3) (8 -3) (6 0)))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   (arq:command-case "SC9-join-spline-degrees" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:spl2 doc '((6 0) (8 -3) (10 0)))) '(command "_.JOIN" (arq:en (car arq:o)) (arq:en (cadr arq:o)) "") dir log)
   (arq:command-case "SC10-join-splines-ring-at-once" '(list (arq:spl doc '((0 0) (1 -1) (3 -1) (4 0))) (arq:spl doc '((4 0) (5 1) (5 3) (4 4))) (arq:spl doc '((4 4) (2 6) (-1 2) (0 0)))) '(command "_.JOIN" (arq:ss arq:o) "") dir log)
+  ;; SC11-SC13: OFFSET of an ellipse and a spline, a spline (ADR 0043 D4).
+  ;; SC11: the ellipse about (0,0), semi-axes 5 and 3, by 1 outside; SC12:
+  ;; its upper half by 1 inside; SC13: the Bezier by 0.5 above it.
+  (arq:command-case "SC11-offset-ellipse-out" '(list (arq:ell doc '(0 0) '(5 0) 0.6 nil nil)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(5 0)) '(9 0) "") dir log)
+  (arq:command-case "SC12-offset-elliptical-arc-in" '(list (arq:ell doc '(0 0) '(5 0) 0.6 0.0 pi)) '(command "_.OFFSET" 1.0 (list (arq:en (car arq:o)) '(0 3)) '(0 1) "") dir log)
+  (arq:command-case "SC13-offset-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0)))) '(command "_.OFFSET" 0.5 (list (arq:en (car arq:o)) '(3 2.25)) '(3 5) "") dir log)
   (arq:command-case "SC4-extend-spline" '(list (arq:spl doc '((0 0) (2 3) (4 3) (6 0))) (arq:ln doc '(8 -9) '(8 9))) '(arq:extend (cadr arq:o) '(5.8824 0.1764)) dir log)
   ;; SPLINE (docs/design/spline-command.md): through (0,0) (3,4) (7,1)
   ;; (9,6). Prompts as AutoCAD 2021's; a case whose prompts ProgeCAD does

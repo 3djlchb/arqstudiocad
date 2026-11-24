@@ -422,12 +422,3 @@ fn an_ellipse_bounds_lines_and_arcs_extended_to_it() {
         .is_none()
     );
 }
-
-#[test]
-fn an_ellipse_is_not_offset_yet() {
-    // OFFSET with SPLINE (ADR 0041): refused, nothing made.
-    let tol = Tolerance::DEFAULT;
-    let e: Geometry2 = ellipse(0.0, PI).into();
-    assert!(e.offset(1.0, p(0.0, 9.0), tol).is_err());
-    assert!(e.offset_through(p(0.0, 9.0), tol).is_err());
-}

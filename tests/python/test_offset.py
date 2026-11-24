@@ -12,7 +12,15 @@ from ui_fakes import QuietUi
 
 from arqstudiocad.commands import CommandContext, CommandRunner
 from arqstudiocad.commands.builtin import builtin_registry
-from arqstudiocad.core import CadArc, CadCircle, CadDocument, CadEllipse, CadLine, CadSpline
+from arqstudiocad.core import (
+    CadArc,
+    CadCircle,
+    CadColor,
+    CadDocument,
+    CadEllipse,
+    CadLine,
+    CadSpline,
+)
 from arqstudiocad.events import CommandMessage, CommandPrompt, Event, EventBus
 from arqstudiocad.i18n import set_language
 from arqstudiocad.session import Session
@@ -277,6 +285,74 @@ def test_multiple_offsets_a_polyline_again_from_each_copy() -> None:
     h.runner.answer_entity(box, (2.0, 0.0))
     h.run("M", "2,-5", "2,-5", "")
     assert vertices(h, newest(h)) == [(-2.0, -2.0), (6.0, -2.0), (6.0, 4.0), (-2.0, 4.0)]
+
+
+# Ellipses and splines: a spline by its vertices (ADR 0043 D4).
+
+
+def spline_of(h: Harness, entity_id: int) -> CadSpline:
+    spline = h.document.spline(entity_id)
+    assert spline is not None
+    return spline
+
+
+def test_an_ellipse_is_offset_as_a_spline_with_its_properties() -> None:
+    h = Harness()
+    ellipse, _ = h.document.add_ellipse(CadEllipse((0.0, 0.0), (5.0, 0.0), 0.6))
+    h.document.set_entity_color([ellipse], CadColor.from_index(3))
+    h.run("OFFSET", "1")
+    h.runner.answer_entity(ellipse, (5.0, 0.0))
+    h.run("9,0")
+    made = newest(h)
+    entity = h.document.get_entity(made)
+    assert entity.kind == "SPLINE" and entity.color == h.document.get_entity(ellipse).color
+    spline = spline_of(h, made)
+    assert spline.is_closed and spline.degree == 3 and spline.fit_points == []
+    # Its points 1 outside the ellipse: (6, 0) and (0, 4) on its axes.
+    near = [min(abs(x - 6.0) + abs(y), abs(x) + abs(y - 4.0)) for x, y in spline.points()]
+    assert min(near) < 1e-3
+    assert h.document.undo_history[-1] == "OFFSET"
+    h.run("UNDO")
+    assert len(h.document.get_entities()) == 1
+
+
+def test_an_ellipse_offset_inward_past_its_tightest_bend_is_refused() -> None:
+    h = Harness()
+    ellipse, _ = h.document.add_ellipse(CadEllipse((0.0, 0.0), (5.0, 0.0), 0.6))
+    h.run("OFFSET", "2")  # its tightest bend, at the ends of its major axis, 1.8
+    h.runner.answer_entity(ellipse, (5.0, 0.0))
+    h.run("0,0")
+    assert h.messages()[-1] == "Cannot offset that object to that side."
+    assert len(h.document.get_entities()) == 1
+    assert h.prompt().text == SIDE
+
+
+def test_a_spline_is_offset_through_a_point_and_again_with_multiple() -> None:
+    h = Harness()
+    fitted = CadSpline.through([(0.0, 0.0), (3.0, 4.0), (7.0, 1.0), (9.0, 6.0)])
+    source, _ = h.document.add_spline(fitted)
+    h.run("OFFSET", "T")
+    h.runner.answer_entity(source, (3.0, 4.0))
+    h.run("M", "3,4.3")
+    first = newest(h)
+    assert spline_of(h, first).fit_points == [], "by its vertices"
+    h.run("3,4.4", "")
+    second = newest(h)
+    assert second != first
+    assert h.document.undo_history[-2:] == ["OFFSET", "OFFSET"]
+    assert sorted(e.kind for e in h.document.get_entities()) == ["SPLINE"] * 3
+
+
+def test_a_spline_with_a_corner_is_refused() -> None:
+    h = Harness()
+    zig, _ = h.document.add_spline(
+        CadSpline.by_vertices([(0.0, 0.0), (4.0, 4.0), (8.0, 0.0)], degree=1)
+    )
+    h.run("OFFSET", "0.5")
+    h.runner.answer_entity(zig, (4.0, 4.0))
+    h.run("4,9")
+    assert h.messages()[-1] == "Cannot offset that object to that side."
+    assert len(h.document.get_entities()) == 1
 
 
 def test_an_entity_answer_is_ignored_at_other_prompts() -> None:

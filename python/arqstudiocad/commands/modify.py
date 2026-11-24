@@ -298,7 +298,8 @@ def offset(ctx: CommandContext) -> CommandScript:
     or lightweight polyline a distance away, to the side a point shows, or
     through a point (Through); one object picked at a time until Exit or
     Enter. A polyline's segments meet again at its corners, extended
-    outside and trimmed inside, as AutoCAD's OFFSETGAPTYPE 0. Multiple
+    outside and trimmed inside, as AutoCAD's OFFSETGAPTYPE 0. An ellipse's
+    or a spline's offset is a spline by its vertices (ADR 0043). Multiple
     offsets the last copy again; Undo takes back the last offset. The
     source may be erased (Erase) and the copy go on the current layer
     (Layer). Each offset is one undo step; the settings are remembered."""
@@ -330,16 +331,15 @@ def offset(ctx: CommandContext) -> CommandScript:
         source = picked.entity_id
         entity = document.get_entity(source)
         geometry = entity.geometry
-        # A polyline is offset by the core as a whole (None here); an
-        # ellipse and a spline wait for their offset (ADR 0043 D5).
-        if isinstance(geometry, (CadEllipse, CadSpline)) or (
-            geometry is None and entity.kind != "LWPOLYLINE"
-        ):
+        if geometry is None and entity.kind != "LWPOLYLINE":
             ctx.message(tr("Cannot offset that object."))
             continue
+        # A polyline, an ellipse and a spline are offset by the core (None
+        # here): an ellipse's and a spline's offset is a spline (ADR 0043).
+        curve = None if isinstance(geometry, (CadEllipse, CadSpline)) else geometry
         ctx.session.select(document, (source,))
         try:
-            ended, steps = yield from _offset_one(ctx, document, memory, source, geometry, steps)
+            ended, steps = yield from _offset_one(ctx, document, memory, source, curve, steps)
         finally:
             ctx.session.clear_selection(document)
         if ended:
@@ -448,8 +448,8 @@ def _make_offset(
     current_layer: bool,
     erase: int | None,
 ) -> int | None:
-    """A copy of ``source`` with ``geometry``, or, for a polyline (None),
-    offset by the core by ``side``'s distance (None: through) toward its
+    """A copy of ``source`` with ``geometry``, or, for a polyline, an
+    ellipse or a spline (None), offset by the core by ``side``'s distance (None: through) toward its
     point; on the current layer if asked, ``erase`` erased, all as one undo
     step named OFFSET. None, with a message, when the core refuses: no
     room on that side, or a locked layer."""
@@ -459,7 +459,12 @@ def _make_offset(
     try:
         if geometry is None:
             distance, toward = side
-            new, made = document.offset_polyline(source, distance, toward)
+            by_core = (
+                document.offset_polyline
+                if document.get_entity(source).kind == "LWPOLYLINE"
+                else document.offset_curve
+            )
+            new, made = by_core(source, distance, toward)
             changes.append(made)
         else:
             ids, made = document.copy_entities([source], (0.0, 0.0))

@@ -363,3 +363,52 @@ fn a_closed_spline_clamped_round_to_its_start_is_not_periodic_and_reads_back() {
         }
     }
 }
+
+#[test]
+fn a_spline_added_like_another_entity_is_marked_closed_for_dwg() {
+    // As OFFSET adds an ellipse's: closed, periodic, by its vertices.
+    let mut doc = Document::new();
+    let ellipse = doc
+        .add_ellipse(
+            arq_geometry::Ellipse::new(
+                p(0.0, 0.0),
+                Vector2::new(5.0, 0.0).unwrap(),
+                0.6,
+                0.0,
+                std::f64::consts::TAU,
+            )
+            .unwrap(),
+            0.0,
+        )
+        .unwrap();
+    let plan = doc.entity(ellipse).unwrap().plan().unwrap();
+    let ring = Spline::by_vertices(3, wave(), true).unwrap();
+    let open = Spline::by_vertices(3, wave(), false).unwrap();
+    let closed_id = doc
+        .add_geometry_like(
+            ellipse,
+            plan.with_geometry(Geometry2::Spline(ring.clone().into())),
+        )
+        .unwrap();
+    let open_id = doc
+        .add_geometry_like(ellipse, plan.with_geometry(Geometry2::Spline(open.into())))
+        .unwrap();
+    assert_eq!(codec(&doc, closed_id).dwg_flags1, 4);
+    assert_eq!(codec(&doc, open_id).dwg_flags1, 0);
+    let dwg = Document::read(
+        doc.to_dwg_bytes().unwrap(),
+        crate::FileFormat::Dwg,
+        std::path::Path::new("ring.dwg"),
+    )
+    .unwrap();
+    let dxf = Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap();
+    for back in [dwg, dxf] {
+        let closed: Vec<bool> = back
+            .entities()
+            .iter()
+            .filter(|e| e.kind() == "SPLINE")
+            .map(|e| plan_spline(&back, e.id()).0.is_closed())
+            .collect();
+        assert_eq!(closed, [true, false]);
+    }
+}

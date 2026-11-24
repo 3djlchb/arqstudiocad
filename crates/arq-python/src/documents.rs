@@ -1409,6 +1409,20 @@ impl CadDocument {
         self.create(|cad| cad.offset_polyline(entity_id, distance, toward.0))
     }
 
+    /// Adds the offset of ellipse or spline `entity_id`, `distance` toward
+    /// `toward`, or through `toward` when `distance` is None (OFFSET): a
+    /// spline by its vertices within a millionth of the curve's size of the
+    /// exact offset, every common property kept. Returns its id and what
+    /// changed.
+    fn offset_curve(
+        &self,
+        entity_id: EntityId,
+        distance: Option<f64>,
+        toward: PyPoint,
+    ) -> PyResult<(EntityId, CadChangeSet)> {
+        self.create(|cad| cad.offset_curve(entity_id, distance, toward.0))
+    }
+
     /// Copies entities, the copies moved by `offset` (COPY); returns the
     /// copies' ids, in order without repeats, and what changed. Lines,
     /// circles, arcs, blocks and polylines can be copied.

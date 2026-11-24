@@ -75,6 +75,7 @@ mod bounds;
 mod bounds3;
 mod circle;
 mod crossings;
+mod curve_offset;
 mod curved_region;
 mod ellipse;
 mod error;
