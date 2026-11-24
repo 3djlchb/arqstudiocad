@@ -180,6 +180,17 @@ Ours is 10 to more than 100 times closer, with a few more control points. ProgeC
 
 **Other differences kept by the maintainer (2026-11-23):** SC6, where ProgeCAD's STRETCH moves fit points (SC7) but not control vertices; SP4's fit points.
 
+## To run: JOIN onto a spline (SC14–SC15)
+
+Added on 2026-11-24, when JOIN took lines, arcs, elliptical arcs and open
+polylines onto a spline, as AutoCAD (the maintainer's choice):
+- SC14, from the Bézier, a line after it and a half circle after that;
+- SC15, lines either side of it, many at once.
+
+To see: whether ProgeCAD makes one spline of each, its degree, whether
+it is rational, and which object's id and direction it keeps. What ours
+gives is in [SPLINE's design](../design/spline-command.md#the-spline-as-a-curve-adr-0043).
+
 ## To run by hand: ELLIPSE grips and Properties
 
 Added on 2026-11-20 with the ellipse's grips and Properties (ADR 0041). By

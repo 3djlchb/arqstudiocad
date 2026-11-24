@@ -411,6 +411,17 @@ def sc13(doc: CadDocument) -> None:
     doc.offset_curve(bezier(doc), 0.5, (3, 5))
 
 
+def sc14(doc: CadDocument) -> None:
+    source = bezier(doc)
+    half = doc.add_arc((9, 0), 1.0, math.pi, 2 * math.pi)[0]
+    doc.join_entities(source, [line(doc, (6, 0), (8, 0)), half])
+
+
+def sc15(doc: CadDocument) -> None:
+    first = line(doc, (-2, 0), (0, 0))
+    doc.join_entities(None, [first, bezier(doc), line(doc, (6, 0), (8, 0))])
+
+
 CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("O1-offset-line", o1),
     ("O2-offset-circle-out", o2),
@@ -472,6 +483,8 @@ CASES: list[tuple[str, Callable[[CadDocument], None]]] = [
     ("SC11-offset-ellipse-out", sc11),
     ("SC12-offset-elliptical-arc-in", sc12),
     ("SC13-offset-spline", sc13),
+    ("SC14-join-spline-line-arc", sc14),
+    ("SC15-join-lines-spline-at-once", sc15),
     ("SP1-spline-fit", spline(CadSpline.through(SPLINE_POINTS))),
     (
         "SP2-spline-fit-tangents",

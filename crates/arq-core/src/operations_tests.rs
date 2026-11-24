@@ -2964,11 +2964,12 @@ fn join_from_a_spline_chains_the_splines_at_its_ends_as_one_step() {
         arq_geometry::Spline::by_vertices(2, vec![p(12.0, 0.0), p(9.0, -3.0), p(6.0, 0.0)], false)
             .unwrap();
     let (next, _) = cad.add_spline(&after).unwrap();
-    let (line, _) = cad.add_line(p(0.0, 0.0), p(-3.0, 0.0)).unwrap();
+    // A circle through its start never joins.
+    let (circle, _) = cad.add_circle(p(-1.0, 0.0), 1.0).unwrap();
     let before = cad.document().entity(source).unwrap();
     let steps = cad.undo_names().len();
 
-    let (joined, changes) = cad.join_entities(Some(source), &[line, next]).unwrap();
+    let (joined, changes) = cad.join_entities(Some(source), &[circle, next]).unwrap();
     assert_eq!(joined.results, [source], "the source, its id kept");
     assert_eq!((joined.joined, joined.discarded), (1, 1));
     assert_eq!(changes.deleted(), [next]);
@@ -2978,8 +2979,8 @@ fn join_from_a_spline_chains_the_splines_at_its_ends_as_one_step() {
     let e = cad.document().entity(source).unwrap();
     assert_eq!((e.kind(), e.color()), ("SPLINE", Color::Index(4)));
     assert!(
-        cad.document().entity(line).is_some(),
-        "splines join splines"
+        cad.document().entity(circle).is_some(),
+        "a circle never joins"
     );
     let s = plan_spline(&cad, source);
     assert_eq!(s.degree(), 3);
@@ -3110,4 +3111,101 @@ fn offset_of_a_curve_refuses_other_kinds_a_locked_layer_and_a_curl() {
     assert!(cad.offset_curve(ellipse, Some(1.0), p(9.0, 0.0)).is_err());
     assert_eq!(cad.undo_names().len(), steps_locked);
     assert_eq!(cad.document().entities().len(), before.len());
+}
+
+#[test]
+fn join_from_a_spline_takes_lines_arcs_elliptical_arcs_and_polylines() {
+    let mut cad = CadDocument::new();
+    let cubic = arq_geometry::Spline::by_vertices(
+        3,
+        vec![p(0.0, 0.0), p(1.0, 2.0), p(3.0, 2.0), p(4.0, 0.0)],
+        false,
+    )
+    .unwrap();
+    let (source, _) = cad.add_spline(&cubic).unwrap();
+    // After its end: a line, then an arc round (6,0), then a polyline.
+    let (line, _) = cad.add_line(p(4.0, 0.0), p(5.0, 0.0)).unwrap();
+    let (arc, _) = cad.add_arc(p(6.0, 0.0), 1.0, PI, TAU).unwrap();
+    let (pline, _) = cad
+        .add_polyline(
+            &[(p(7.0, 0.0), 0.0), (p(9.0, 0.0), 1.0), (p(11.0, 0.0), 0.0)],
+            false,
+        )
+        .unwrap();
+    // Before its start: an elliptical arc ending at (0,0), the other way.
+    let half = Ellipse::new(p(-2.0, 0.0), v(2.0, 0.0), 0.5, PI, TAU).unwrap();
+    let (ellipse, _) = cad.add_ellipse(half).unwrap();
+    let (joined, _) = cad
+        .join_entities(Some(source), &[pline, ellipse, arc, line])
+        .unwrap();
+    assert_eq!(joined.results, [source]);
+    assert_eq!((joined.joined, joined.discarded), (4, 0));
+    for id in [line, arc, pline, ellipse] {
+        assert!(cad.document().entity(id).is_none());
+    }
+    let s = plan_spline(&cad, source);
+    let (a, b) = s.ends();
+    assert!(
+        near(a, p(-4.0, 0.0)) && near(b, p(11.0, 0.0)),
+        "{a:?} {b:?}"
+    );
+    // Through each: the line's middle, the arc's bottom, the polyline's
+    // arc top (bulge 1: a half circle below its chord), the ellipse's.
+    for q in [p(4.5, 0.0), p(6.0, -1.0), p(10.0, -1.0), p(-2.0, -1.0)] {
+        assert!(s.distance_to(q) < 1e-9, "{q:?}");
+    }
+    assert!(!s.weights().is_empty(), "its arcs exact, rational");
+}
+
+#[test]
+fn join_many_at_once_makes_a_spline_of_a_chain_with_a_spline_in_it() {
+    let mut cad = CadDocument::new();
+    // Two lines end to end before the spline's start: chained from the
+    // spline, not into a polyline of their own first.
+    let (far, _) = cad.add_line(p(-4.0, 0.0), p(-2.0, 0.0)).unwrap();
+    let (a, _) = cad.add_line(p(-2.0, 0.0), p(0.0, 0.0)).unwrap();
+    let cubic = arq_geometry::Spline::by_vertices(
+        3,
+        vec![p(0.0, 0.0), p(1.0, 2.0), p(3.0, 2.0), p(4.0, 0.0)],
+        false,
+    )
+    .unwrap();
+    let (spline, _) = cad.add_spline(&cubic).unwrap();
+    let (b, _) = cad.add_line(p(4.0, 0.0), p(6.0, 0.0)).unwrap();
+    // Lines of their own, apart: a polyline, as before.
+    let (c, _) = cad.add_line(p(0.0, 9.0), p(2.0, 9.0)).unwrap();
+    let (d, _) = cad.add_line(p(2.0, 9.0), p(2.0, 11.0)).unwrap();
+    // A line on the source's start chains before the polyline pass.
+    let (joined, _) = cad.join_entities(None, &[far, a, spline, b, c, d]).unwrap();
+    assert_eq!(joined.results.len(), 2);
+    assert!(joined.results.contains(&spline), "the spline keeps its id");
+    let s = plan_spline(&cad, spline);
+    assert_eq!(s.ends(), (p(-4.0, 0.0), p(6.0, 0.0)));
+    for id in [far, a, b, c, d] {
+        assert!(cad.document().entity(id).is_none());
+    }
+    let other = *joined.results.iter().find(|&&r| r != spline).unwrap();
+    assert_eq!(cad.document().entity(other).unwrap().kind(), "LWPOLYLINE");
+}
+
+#[test]
+fn join_from_a_line_or_a_polyline_leaves_a_spline_that_touches_it() {
+    let mut cad = CadDocument::new();
+    let (line, _) = cad.add_line(p(-2.0, 0.0), p(0.0, 0.0)).unwrap();
+    let cubic = arq_geometry::Spline::by_vertices(
+        3,
+        vec![p(0.0, 0.0), p(1.0, 2.0), p(3.0, 2.0), p(4.0, 0.0)],
+        false,
+    )
+    .unwrap();
+    let (spline, _) = cad.add_spline(&cubic).unwrap();
+    let (pline, _) = cad
+        .add_polyline(&[(p(4.0, 0.0), 0.0), (p(6.0, 0.0), 0.0)], false)
+        .unwrap();
+    for source in [line, pline] {
+        let (joined, changes) = cad.join_entities(Some(source), &[spline]).unwrap();
+        assert_eq!((joined.joined, joined.discarded), (0, 1));
+        assert_eq!(changes, ChangeSet::default());
+    }
+    assert_eq!(plan_spline(&cad, spline), cubic);
 }

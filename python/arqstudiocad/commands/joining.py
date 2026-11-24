@@ -2,10 +2,11 @@
 
 One object selected is the source: a line takes collinear lines, an arc the
 arcs of its circle, an elliptical arc the arcs of its ellipse (ADR 0041),
-an open spline the open splines whose ends touch it (ADR 0043 D4), an open
-polyline the lines, arcs and polylines whose ends touch it. Several
-selected at once are joined together: chains of touching ends, and lines
-and arcs of one line, circle or ellipse.
+an open spline the lines, arcs, elliptical arcs, open polylines and open
+splines whose ends touch it, as AutoCAD (ADR 0043 D4), an open polyline
+the lines, arcs and polylines whose ends touch it. Several selected at
+once are joined together: chains of touching ends (a spline when one of
+them is), and lines and arcs of one line, circle or ellipse.
 """
 
 from collections.abc import Generator
@@ -67,8 +68,6 @@ def join(ctx: CommandContext) -> CommandScript:
         options = [Option("L", tr("Close"))]
     elif entity.kind == "LINE":
         message = tr("Select lines to join to source")
-    elif entity.kind == "SPLINE":
-        message = tr("Select splines to join to source")
     else:
         message = tr("Select objects to join to source")
     others = yield from _selected(ctx, document, message, options)
