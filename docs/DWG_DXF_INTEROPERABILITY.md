@@ -34,7 +34,7 @@ when its parameters change).
 |---|---|---|---|---|---|---|
 | Lines, circles, arcs | ✅ | 100 % / 100 % | ✅ | ✅ geometry, layer, color | — | |
 | Lightweight polylines | ✅ | 100 % / 100 % | ✅ | ✅ drawn (PLINE: segments and tangent arcs; RECTANG, with elevation, thickness and constant width), as a whole and by vertex | — | Width drawn as a filled band in plan and thickness as walls in the 3D views ([ADR 0038](architecture/adr/0038-filled-shapes.md)); in a 3D view the width is seen by the centerline |
-| Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ created (BLOCK), placed (INSERT), transformed as a whole with their attributes, definitions edited in the block editor (BEDIT; not dynamic ones); EXPLODE keeps attribute values as texts (ADR 0023) | — | MINSERT arrays not transformed |
+| Blocks (INSERT) | ✅ | 100 % / 100 % | ✅ expanded | ◐ created (BLOCK), placed (INSERT), transformed as a whole with their attributes, definitions edited in the block editor (BEDIT; not dynamic ones); EXPLODE keeps attribute values as texts (ADR 0023) | — | MINSERT arrays transformed whole, their spacing following (since 2026-11-23); EXPLODE breaks one into every copy, where AutoCAD refuses |
 | Dimensions | ✅ | 100 % / 100 % | ✅ as AutoCAD drew them (their block) | ○ | ○ | phase 04 |
 | Hatches | ✅ | 100 % / 100 % | ◐ boundaries, no fill pattern | ○ | ○ | phase 04 |
 | Texts, MTEXT, attributes | ✅ | 100 % / 100 % | ◐ letters in a built-in stroke font; MTEXT as plain lines, wrapped to its width | ◐ TEXT and MTEXT created and transformed as a whole; content, height, rotation (ADR 0022) | — | the drawing's fonts (SHX, TrueType) and formatted MTEXT in phase 04; attributes with their block |
