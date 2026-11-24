@@ -166,8 +166,12 @@ curve.
     start, written closed but not periodic;
   - the result keeps the source's id and properties, by its vertices,
     its fit points dropped, which no longer describe it *(to confirm)*;
-  - a closed spline is no source and joins nothing; lines, arcs,
-    ellipses and polylines do not join a spline yet.
+  - a closed spline is no source and joins nothing;
+  - since 2026-11-24, as AutoCAD: a source spline also takes the lines,
+    arcs, elliptical arcs and open polylines touching its ends, each as
+    an exact spline (an arc a rational quadratic); many at once, a chain
+    with a spline in it is a spline, kept by that spline; a line, an arc
+    or a polyline as source leaves a spline, discarded.
 - **OFFSET** (delivery 5, 2026-11-23), of an ellipse or a spline:
   - a cubic spline by its vertices through points of the exact offset,
     within a millionth of the curve's size of it, its end tangents the
@@ -193,6 +197,8 @@ Cases SC1–SC4, the Bézier from (0,0) by (2,3) and (4,3) to (6,0):
 | SC9 | JOIN from the Bézier the quadratic by (6,0), (8,−3), (10,0) | one cubic, the quadratic raised: (6,0), (7⅓,−2), (8⅔,−2), (10,0) after the Bézier's points, knots as SC8 |
 | SC11 | OFFSET the ellipse about (0,0), semi-axes 5 and 3, by 1 toward (9,0) | a closed cubic of 79 control points through (6,0) and (0,4) |
 | SC12 | OFFSET its upper half, parameters 0 to π, by 1 toward (0,1) | an open cubic of 37 control points from (4,0) to (−4,0) |
+| SC14 | JOIN from the Bézier the line (6,0)–(8,0) and the half circle about (9,0), radius 1, below it | one cubic from (0,0) to (10,0), rational, of 13 control points |
+| SC15 | JOIN many at once the lines (−2,0)–(0,0) and (6,0)–(8,0) and the Bézier | one cubic from (−2,0) to (8,0), of 10 control points, the Bézier's id kept |
 | SC13 | OFFSET the Bézier by 0.5 toward (3,5) | an open cubic of 35 control points from (−0.416,0.277) to (6.416,0.277) |
 | SC10 | JOIN many at once three cubic Béziers in a ring: (0,0) (1,−1) (3,−1) (4,0); (4,0) (5,1) (5,3) (4,4); (4,4) (2,6) (−1,2) (0,0) | one closed cubic of 10 control points, its last its first, knots 0 ×4, 1 ×3, 2 ×3, 3 ×4; DXF flag 70 = 9, closed and not periodic |
 
