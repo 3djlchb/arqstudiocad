@@ -139,3 +139,19 @@ def test_break_refuses_non_top_views_before_asking_for_an_object() -> None:
     assert h.runner.active is None
     assert h.document.undo_history == before
     assert h.messages()[-1] == "Use PLAN to switch to the Top view before using BREAK."
+
+
+def test_break_on_a_locked_layer_says_so_and_asks_again() -> None:
+    h = Harness()
+    line = h.line((0.0, 0.0), (10.0, 0.0))
+    layer, _ = h.document.create_layer("LOCKED")
+    h.document.set_entity_layer([line], layer)
+    h.document.set_layer_locked(layer, True)
+    before = h.document.undo_history
+    h.run("BREAK")
+    h.runner.answer_entity(line, (3.0, 0.0))
+    assert h.messages()[-1] == "1 were on a locked layer."
+    assert h.prompt().entity, "another object is asked for"
+    h.runner.cancel()
+    assert h.lines() == [((0.0, 0.0), (10.0, 0.0))]
+    assert h.document.undo_history == before
