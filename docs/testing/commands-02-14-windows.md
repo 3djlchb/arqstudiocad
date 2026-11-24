@@ -123,6 +123,13 @@ again: 23 cases, 67 files reopened.
 - **Ours** refuses it, by its design, and changes nothing.
 - **Decision.** The maintainer chose to keep the refusal (2026-11-20). ProgeCAD's rule is not evident, and changes the whole ellipse.
 
+## Reservation (2026-11-23)
+
+Claude, Windows validation role (Codex paused; the maintainer's go-ahead):
+the automated cases below, EL13–EL15, SP1–SP6 and SC1–SC13, run in
+ProgeCAD 2026 on this laptop. ProgeCAD is in use by this task until its
+pull request leaves draft. Base: `37f456b231e9dff90b232e520539b6b0d137c052`.
+
 ## To run: JOIN of elliptical arcs (EL13–EL15)
 
 Added on 2026-11-22 with JOIN of one ellipse's arcs (ADR 0041): from a
