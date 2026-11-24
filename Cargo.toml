@@ -82,6 +82,8 @@ opt-level = 3
 # vertex has one, so a constant width (43) is read by every reader.
 # A DXF text value is read without a second copy or three searches (14%
 # fewer instructions reading a 100,000-line DXF).
-# Immutable tag: arqstudiocad/on-ea66abe-dxf-text-read.
+# The DWG reader's bounds check is inlined and AC18 pages are decompressed
+# by block copies (14% fewer instructions reading a 100,000-line DWG).
+# Immutable tag: arqstudiocad/on-ea66abe-dwg-read.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "cc116a75467c2c52b2497422fdd974d75bae74d0" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "b8014d061d545355958f99f5aaeba362dc831247" }

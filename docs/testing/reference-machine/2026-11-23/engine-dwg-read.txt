@@ -1,0 +1,60 @@
+The engine's DWG read on the reference machine, 2026-11-23
+
+LMDE 7, Linux 6.12.118, Intel Core i7-2600, Rust 1.99.0. Desktop idle.
+The drawing: the 100,000-line DXF of 2026-11-22 (open-phases.txt) saved
+by the application as DWG (1.6 MB, AC1018). Generated, public.
+
+Profile
+-------
+The engine's read, Document::open five or ten times in one process
+(an arq-document example built with line tables, run under perf record
+-F 4000). On the pin before this change (cc116a7):
+
+  8.3%  DwgBitReader::require_bits
+  5.1%  decompress_ac18
+  2.5%  DwgBitReader::read_byte, 2.4% apply_shift_to_arr, 1.7% read_2bits
+  5.3%  malloc and free
+  the rest spread over the document builder's passes, page faults on
+  new memory, the handle maps' SipHash, and our own Document::read.
+
+require_bits is the check every read makes that enough bits remain. It
+built its error message in the same function, so the compiler never
+inlined it, and it ran as a call from every read of every field.
+decompress_ac18 copied literals and back-references one byte at a time,
+each byte checked against both limits.
+
+Change (fork, on cc116a7)
+-------------------------
+7d3b9dc  the common case of require_bits, a few comparisons, inlined; a
+         short or broken stream takes the original code, unchanged.
+b8014d0  literal runs and non-overlapping back-references copied in one
+         block, clamped to the same limits; an overlapping or
+         out-of-range reference keeps the byte-at-a-time copy.
+Tests: a bit-reader test reads to a stream's exact end and one bit past
+it (fails with the check one bit loose); a decompressor test holds the
+block copies to the byte-at-a-time ones on 20,000 random cases,
+including out-of-range offsets and a read position past the source
+(fails with one overlapping byte let through; it also found a slice
+past the source's end in the first version, fixed before the commit).
+
+Also tried: inlining read_byte with a cold error path, no measurable
+gain over 7d3b9dc; dropped. Not tried: the per-entity allocations (an
+Arc and a raw record kept for each entity, structural in the engine's
+model) and the handle maps' SipHash (handles come from the file; a
+fixed hash would let a crafted drawing collide them).
+
+Instructions for five reads (perf stat, two alternating runs):
+  cc116a7 (pin)          8.53 G   8.43 G
+  7d3b9dc                7.80 G   7.81 G
+  b8014d0 (new pin)      7.28 G   7.27 G      0.86 of the pin
+
+One read, ms (median of ten after one warm-up, two alternating rounds):
+  cc116a7                129.0    127.5
+  7d3b9dc                129.4    124.6
+  b8014d0                122.4    122.3       about 0.95
+
+The whole open from Python (CadApplication.open_document), fresh
+processes, the median of seven, three alternating rounds; the
+application on main bc1f6a9 against the same with the new pin:
+  main                   219.9    216.4    221.1
+  new pin                208.7    212.4    210.6     about 0.96
