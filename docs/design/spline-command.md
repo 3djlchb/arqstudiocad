@@ -104,8 +104,8 @@ command error. To confirm:
 
 **Run on 2026-11-23** ([results](../testing/commands-02-14-windows.md#elliptical-arcs-joined-spline-and-the-spline-as-a-curve-2026-11-23)): SP1, SP4 and SP5 the same as
 ProgeCAD. SP3 is the same curve, which ProgeCAD reads as open from our
-DXF: to be written as ProgeCAD does, its first fit point repeated at the
-end. SP2b's start tangent points the other way in ProgeCAD; ours kept.
+DXF: written as ProgeCAD does since 2026-11-23, its first fit point
+repeated at the end. SP2b's start tangent points the other way in ProgeCAD; ours kept.
 SP2 and SP6 cannot be compared: ProgeCAD has no tangent options among the
 points and makes every spline cubic.
 

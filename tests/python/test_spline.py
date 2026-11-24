@@ -77,7 +77,8 @@ def test_a_spline_through_fit_points_passes_through_them_and_keeps_them(tmp_path
     doc.save(path)
     back = CadApplication().open_document(path)
     assert [back.get_entity(i).bounds for i in ids] == [doc.get_entity(i).bounds for i in ids]
-    # The fitted ones keep their fit points (DXF group 74, their count).
+    # The fitted ones keep their fit points (DXF group 74, their count), the
+    # closed one its first again at the end, as ProgeCAD writes it.
     text = tmp_path / "splines.dxf"
     doc.save(text)
     lines = [line.strip() for line in text.read_text().splitlines()]
@@ -86,7 +87,7 @@ def test_a_spline_through_fit_points_passes_through_them_and_keeps_them(tmp_path
         kind = value if code == "0" else kind
         if kind == "SPLINE" and code == "74":
             fits.append(int(value))
-    assert fits == [4, 4, 0]
+    assert fits == [4, 5, 0]
     doc.undo()
     assert len(doc.get_entities()) == 2
 
