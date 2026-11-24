@@ -25,6 +25,11 @@ def break_object(ctx: CommandContext) -> CommandScript:
                 )
             )
             continue
+        locked = {layer.name for layer in document.get_layers() if layer.is_locked}
+        if entity.layer in locked:
+            # Said as the other commands say it, not as the core's error.
+            ctx.message(tr("{count} were on a locked layer.", count=1))
+            continue
         first = picked.point
         second = yield ctx.point(
             tr("Specify second break point"),

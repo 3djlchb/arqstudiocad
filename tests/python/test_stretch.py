@@ -42,10 +42,24 @@ def test_individual_selection_moves_whole_and_enter_uses_first_point() -> None:
 def test_displacement_option_and_last_value() -> None:
     h = Harness()
     h.select(h.a)
-    h.run("STRETCH", "D", "2,3")
+    h.run("STRETCH", "D")
+    assert h.prompt().text == "Specify displacement <0,0>:"
+    h.run("2,3")
     h.select(h.b)
-    h.run("STRETCH", "", "")
+    h.run("STRETCH", "")
+    # The last displacement shown, as AutoCAD shows it; Enter takes it.
+    assert h.prompt().text == "Specify displacement <2,3>:"
+    h.run("")
     assert h.line(h.b) == ((2, 8), (12, 8))
+    # One that ten digits would round is shown whole, and taken whole.
+    h.select(h.b)
+    h.run("STRETCH", "D", "0.1234567890123,0")
+    h.select(h.a)
+    h.run("STRETCH", "")
+    assert h.prompt().text == "Specify displacement <0.1234567890123,0>:"
+    h.run("")
+    start, _ = h.line(h.a)
+    assert start == (2 + 0.1234567890123, 3.0)
 
 
 def test_empty_selection_and_cancellation_change_nothing() -> None:
