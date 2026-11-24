@@ -1650,7 +1650,12 @@ fn extension_query_area(
     padding: f64,
 ) -> Option<arq_geometry::Bounds2> {
     match curve {
-        Geometry2::Circle(_) | Geometry2::Spline(_) => None,
+        Geometry2::Circle(_) => None,
+        // A spline grows straight along its end's tangent, as a line does.
+        Geometry2::Spline(s) => {
+            let probe = arq_geometry::spline_extension_line(&s, pick)?;
+            extension_query_area(Geometry2::Line(probe), probe.end(), extent, padding)
+        }
         Geometry2::Ellipse(e) if e.is_full() => None,
         Geometry2::Arc(arc) => {
             // A partial arc may have finite bounds even if its supporting

@@ -226,3 +226,26 @@ fn quick_index_preserves_relative_slack_and_updated_index_after_undo() {
         "overflow must use exhaustive fallback"
     );
 }
+
+#[test]
+fn a_spline_s_quick_edges_lie_along_its_end_s_tangent() {
+    // The Bezier's end (6,0) heads along (2,-3): the wall at x = 8 is a
+    // candidate, a line far up and away is not; the result is as with all.
+    let mut cad = CadDocument::new();
+    let bezier = arq_geometry::Spline::by_vertices(
+        3,
+        vec![p(0., 0.), p(2., 3.), p(4., 3.), p(6., 0.)],
+        false,
+    )
+    .unwrap();
+    let (target, _) = cad.add_spline(&bezier).unwrap();
+    let (wall, _) = cad.add_line(p(8., -9.), p(8., 9.)).unwrap();
+    let (away, _) = cad.add_line(p(-50., 40.), p(-40., 40.)).unwrap();
+    let at = p(5.9, 0.2);
+    let candidates = cad
+        .quick_edge_candidates(target, at, true)
+        .expect("indexed query");
+    assert!(candidates.contains(&wall));
+    assert!(!candidates.contains(&away));
+    equivalent(cad, target, at, true);
+}

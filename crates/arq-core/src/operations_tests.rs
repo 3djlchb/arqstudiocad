@@ -2928,14 +2928,32 @@ fn trim_and_break_cut_a_spline_into_splines_as_one_step() {
     assert_eq!(cad.undo_name(), Some("BREAK"));
     assert_eq!(pieces.len(), 2);
     assert!(near(spline_ends(&cad, pieces[1]).0, p(4.0, 2.0)));
-    // EXTEND still refuses it, unchanged (ADR 0043 D4).
-    let (wall, _) = cad.add_line(p(8.0, -9.0), p(8.0, 9.0)).unwrap();
-    let kept = cad.document().entity(spline).unwrap();
-    assert!(
-        cad.extend_entity(spline, p(1.9, 1.9), Some(&[wall]))
-            .is_err()
-    );
-    assert_eq!(cad.document().entity(spline).unwrap(), kept);
+}
+
+#[test]
+fn extend_grows_a_spline_straight_to_an_edge_as_one_step_in_either_mode() {
+    // Case SC4: the Bezier grown from its end (6,0) to x = 8, as ProgeCAD.
+    for quick in [false, true] {
+        let (mut cad, spline) = bezier_spline();
+        let (wall, _) = cad.add_line(p(8.0, -9.0), p(8.0, 9.0)).unwrap();
+        let steps = cad.undo_names().len();
+        let edges = [wall];
+        let changes = cad
+            .extend_entity(spline, p(5.9, 0.2), (!quick).then_some(&edges[..]))
+            .unwrap();
+        assert_eq!(changes.modified(), [spline]);
+        assert_eq!(cad.undo_names().len(), steps + 1);
+        assert_eq!(cad.undo_name(), Some("EXTEND"));
+        let s = plan_spline(&cad, spline);
+        assert!(near(s.ends().1, p(8.0, -3.0)), "{:?}", s.ends());
+        let tip = arq_geometry::Bounds2::new(p(7.8, -3.0), p(8.0, -2.8));
+        assert!(
+            cad.query_entities(tip).contains(&spline),
+            "the index has it"
+        );
+        cad.undo().unwrap();
+        assert!(near(plan_spline(&cad, spline).ends().1, p(6.0, 0.0)));
+    }
 }
 
 /// The spline of entity `id` as plan geometry.

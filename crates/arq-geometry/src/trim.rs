@@ -12,6 +12,7 @@ use crate::intersect::intersect;
 use crate::intersect_spline::{Carrier, spline_carrier};
 use crate::line::Line;
 use crate::point::Point2;
+use crate::spline::Spline;
 use crate::tolerance::Tolerance;
 
 /// Historical EXTEND on-edge slack per unit of world-coordinate magnitude.
@@ -240,7 +241,9 @@ pub fn extend(
     pick: Point2,
     tol: Tolerance,
 ) -> GeometryResult<Option<Geometry2>> {
-    refuse_spline(curve)?;
+    if let Geometry2::Spline(s) = curve {
+        return extend_spline(s, edges, pick, tol);
+    }
     let at_end = extends_at_end(curve, pick);
     // Where the curve's line or circle meets each edge, on the edge.
     let reach: Vec<Point2> = edges
@@ -378,13 +381,63 @@ pub fn extend(
     }
 }
 
-/// A spline is not extended until the Windows comparison shows AutoCAD's
-/// rule (ADR 0043 D4): refused, nothing changed.
-fn refuse_spline(curve: &Geometry2) -> GeometryResult<()> {
-    match curve {
-        Geometry2::Spline(_) => Err(GeometryError::OutOfRange { what: "curve" }),
-        _ => Ok(()),
+/// The line an open spline's end grows along, as EXTEND grows it: a unit
+/// long, ending at the end nearer `pick`, heading out along the spline's
+/// tangent there. None for a closed spline, and for one whose end heads
+/// nowhere.
+pub fn spline_extension_line(s: &Spline, pick: Point2) -> Option<Line> {
+    if s.is_closed() {
+        return None;
     }
+    let curve = Geometry2::Spline(std::sync::Arc::new(s.clone()));
+    let (a, b) = s.domain();
+    let (tip, out) = if extends_at_end(&curve, pick) {
+        (s.point_at(b), s.derivative_at(b))
+    } else {
+        (s.point_at(a), s.derivative_at(a) * -1.0)
+    };
+    let out = out.normalized().ok()?;
+    Line::new(tip - out, tip).ok()
+}
+
+/// An open spline grown at the end nearer `pick`, as ProgeCAD grows one
+/// (case SC4, the maintainer's choice, 2026-11-23): a straight piece from
+/// that end along its tangent to the nearest of `edges` it reaches, made
+/// part of the spline at its degree, its knots spanning the piece's
+/// length. None when no edge lies that way; refused for a closed spline.
+fn extend_spline(
+    s: &Spline,
+    edges: &[Geometry2],
+    pick: Point2,
+    tol: Tolerance,
+) -> GeometryResult<Option<Geometry2>> {
+    let probe =
+        spline_extension_line(s, pick).ok_or(GeometryError::OutOfRange { what: "curve" })?;
+    let tip = probe.end();
+    let Some(Geometry2::Line(grown)) = extend(&Geometry2::Line(probe), edges, tip, tol)? else {
+        return Ok(None);
+    };
+    let to = grown.end();
+    let length = tip.distance_to(to);
+    let (a, b) = s.domain();
+    let whole = s.between(a, b)?;
+    let p = whole.degree();
+    let at_end = whole.ends().1.distance_to(tip) <= whole.ends().0.distance_to(tip);
+    let (from, until) = if at_end { (tip, to) } else { (to, tip) };
+    let piece = Spline::new(
+        1,
+        vec![from, until],
+        Vec::new(),
+        vec![0.0, 0.0, length, length],
+        false,
+    )?
+    .elevated(p)?;
+    let joined = if at_end {
+        crate::spline_split::join(&whole, &piece, whole.domain().1)
+    } else {
+        crate::spline_split::join(&piece, &whole, length - whole.domain().0)
+    }?;
+    Ok(Some(Geometry2::Spline(std::sync::Arc::new(joined))))
 }
 
 /// Same end choice for the operation and its broad-phase query.
