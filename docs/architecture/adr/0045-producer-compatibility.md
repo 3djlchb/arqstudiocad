@@ -5,9 +5,18 @@ entity
 
 ## Context
 
-AutoCAD and ProgeCAD (an IntelliCAD) both read and write DWG and DXF.
-Some entities they keep in different ways, each reading its own form
-well and the other's less well. The Windows comparisons found these:
+Many programs read and write DWG and DXF besides ours:
+- AutoCAD, the format's owner;
+- ProgeCAD, an IntelliCAD;
+- BricsCAD;
+- ARES Commander;
+- GstarCAD;
+- the CAD in ACCA's Edificius.
+
+Each has an engine of its own or the Open Design Alliance's libraries,
+and some entities they keep in different ways: each reads its own form
+well and another's less well. The Windows comparisons with ProgeCAD
+found these:
 
 | Case | AutoCAD | ProgeCAD | Ours |
 |---|---|---|---|
@@ -19,15 +28,18 @@ well and the other's less well. The Windows comparisons found these:
 
 The maintainer asked, on 2026-11-24:
 - for the greatest compatibility possible, in both directions;
-- for it to be automatic.
+- for it to be automatic;
+- for BricsCAD, ARES Commander, GstarCAD and Edificius's CAD to be
+  among the producers, with AutoCAD and ProgeCAD.
 
 The two directions differ:
 - **Reading:** a drawing says, more or less clearly, what made it. Ours
   can know it and read each entity as that program meant it.
 - **Writing:** what program will open the file is not known when it is
-  saved. Ours cannot write for it; it can only write what both read.
+  saved. Ours cannot write for it; it can only write what all read.
 
-Nobody here has AutoCAD. ProgeCAD runs on the Windows laptop alone.
+Nobody here has AutoCAD, BricsCAD, ARES Commander, GstarCAD or Edificius.
+ProgeCAD runs on the Windows laptop alone.
 
 ## Decision
 
@@ -35,8 +47,16 @@ The maintainer chose the following on 2026-11-24.
 
 ### D1 — The producer, found on reading
 
-Each drawing read knows its producer: AutoCAD, an IntelliCAD such as
-ProgeCAD, ours, another, or unknown.
+Each drawing read knows its producer, one of:
+- AutoCAD;
+- ProgeCAD, or another IntelliCAD;
+- BricsCAD;
+- ARES Commander;
+- GstarCAD;
+- Edificius;
+- ours;
+- another, named as it names itself;
+- unknown.
 
 **How it is found:** by what the file itself says.
 - **A DWG of 2004 or later** names the program that wrote it in its
@@ -64,16 +84,16 @@ So the model does not depend on where a drawing came from, and nothing
 drawn changes because of it. A difference is handled where the entity
 is read, so every command sees one form.
 
-### D3 — Written as both read
+### D3 — Written as all read
 
 Each entity is written in one form, whoever made the drawing and
 whoever will open it:
-- the form AutoCAD and ProgeCAD both read the same way, where there is
-  one;
-- otherwise AutoCAD's, the format's owner, which ProgeCAD sets out to
+- the form every producer of D1 reads the same way, where there is one;
+- otherwise AutoCAD's, the format's owner, which the others set out to
   read;
-- unless a test shows ProgeCAD breaking on AutoCAD's form; then the one
-  ProgeCAD reads, recorded as a known difference.
+- unless a test shows one of them breaking on AutoCAD's form; then the
+  one they all read, recorded as a known difference. If none suits them
+  all, the difference is the maintainer's to decide, case by case.
 
 The choice for each entity is recorded with its evidence in a table,
 `docs/testing/producer-forms.md`, which this ADR starts. A change of form
@@ -87,6 +107,10 @@ goes through it.
   is written "to confirm".
 - **ProgeCAD:** from runs on the Windows laptop, as the 02.14
   comparisons are made.
+- **BricsCAD, ARES Commander, GstarCAD and Edificius:** from public
+  drawings each has made, or from runs where the maintainer has one at
+  hand (a trial, on the Windows laptop). Until then, what each does is
+  "to confirm", and D3 rests on AutoCAD and ProgeCAD.
 - **Ours:** each entity's form is read back by ours in every case.
 
 ### D5 — Deliveries
@@ -94,7 +118,7 @@ goes through it.
 1. **The producer found:**
    - the codec reads `AcDb:AppInfo`;
    - DXF headers and registered applications are compared across samples
-     from each producer;
+     from each producer, all of D1's that samples are found for;
    - the document knows its producer;
    - tests on the public samples and on files ProgeCAD made.
 2. **The forms table:** the cases above, each checked against AutoCAD's
