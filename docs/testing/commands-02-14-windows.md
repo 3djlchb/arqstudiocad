@@ -154,7 +154,7 @@ points, tangents and weights. Shapes were compared by sampling both curves.
 **A spline closed by its fit points, saved in DXF (SP3).**
 - **The same curve.** ProgeCAD keeps it clamped: its last control point is its first, its first fit point repeated at the end (5 fit points). Ours keeps it periodic: its last three control points are its first three, with 4 fit points. Sampled, the two curves lie within 4×10⁻⁷ of each other.
 - **What goes wrong.** ProgeCAD reads our DWG of it as closed, and our DXF as open, though both DXFs carry the same flags (70 = 1067). Closed splines by vertices (SP6, SC10, SC11) read back closed from our DXF.
-- **Decision.** The maintainer chose to write it as ProgeCAD does, the first fit point repeated at the end, in a pull request of its own (2026-11-23).
+- **Decision.** The maintainer chose to write it as ProgeCAD does, the first fit point repeated at the end, in a pull request of its own (2026-11-23): done on 2026-11-24, our DWG and DXF now carry 5 fit points for SP3. **To run again:** SP3, to see ProgeCAD read our DXF closed.
 
 **A spline extended (SC4).**
 - **ProgeCAD** extends the Bézier from its end (6,0) to x = 8 by a straight segment along its end tangent, to (8,−3). The segment becomes part of the spline: control points (6,0), (6.667,−1), (7.333,−2), (8,−3), a span of knots as long as the segment, √13.

@@ -367,3 +367,53 @@ fn a_spline_piece_written_is_by_its_vertices_its_fit_dropped() {
     let not_a_spline = crate::PlanGeometry::new(line.into());
     assert!(doc.set_plan_geometry(id, not_a_spline).is_err());
 }
+
+#[test]
+fn a_closed_fitted_spline_is_written_with_its_first_fit_point_again_at_its_end() {
+    // As ProgeCAD writes one, which reads ours back closed only so (SP3).
+    let fit = SplineFit::new(wave(), SplineKnots::Chord, None, None, true).unwrap();
+    let mut doc = Document::new();
+    let id = doc.add_fit_spline(&fit, 0.0).unwrap();
+    let written = |doc: &Document, id: u64| -> Vec<Point2> {
+        codec(doc, id)
+            .fit_points
+            .iter()
+            .map(|q| p(q.x, q.y))
+            .collect()
+    };
+    let mut expected = wave();
+    expected.push(wave()[0]);
+    assert_eq!(written(&doc, id), expected);
+    // Read, the repeat is dropped: the fit as made.
+    assert_eq!(doc.spline_fit(id), Some(fit.clone()));
+    // An open one is written as it is.
+    let open = SplineFit::new(wave(), SplineKnots::Chord, None, None, false).unwrap();
+    let open_id = doc.add_fit_spline(&open, 0.0).unwrap();
+    assert_eq!(written(&doc, open_id), wave());
+    // Its point moved by its grip: still once again at the end, not twice.
+    doc.set_spline_point(id, 1, p(3.0, 5.0)).unwrap();
+    let moved = written(&doc, id);
+    assert_eq!(moved.len(), wave().len() + 1);
+    assert_eq!(moved[0], moved[moved.len() - 1]);
+    let refit = doc.spline_fit(id).unwrap();
+    assert!(refit.is_closed() && refit.points().len() == wave().len());
+    // Through DWG and DXF, the same fit and the same curve.
+    let dxf = Document::from_dxf_bytes(doc.to_dxf_bytes().unwrap()).unwrap();
+    let dwg = Document::read(
+        doc.to_dwg_bytes().unwrap(),
+        crate::FileFormat::Dwg,
+        std::path::Path::new("closed.dwg"),
+    )
+    .unwrap();
+    for back in [dxf, dwg] {
+        let closed = back
+            .entities()
+            .iter()
+            .map(|e| e.id())
+            .find(|&e| back.spline_fit(e).is_some_and(|f| f.is_closed()))
+            .unwrap();
+        assert_eq!(back.spline_fit(closed), Some(refit.clone()));
+        assert_eq!(written(&back, closed), moved);
+        assert_eq!(drawn(&back, closed).flatten(), drawn(&doc, id).flatten());
+    }
+}

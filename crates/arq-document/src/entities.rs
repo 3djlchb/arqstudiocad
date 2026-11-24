@@ -1709,6 +1709,14 @@ fn write_fit(sp: &mut acadrust::entities::Spline, fit: &arq_geometry::SplineFit,
         t.map_or(Vector3::ZERO, |d| Vector3::new(d.x(), d.y(), 0.0))
     };
     sp.fit_points = fit.points().iter().copied().map(at).collect();
+    // A closed one with its first fit point again at its end, as ProgeCAD
+    // writes one, which reads ours back closed only so (case SP3, the
+    // maintainer's choice, 2026-11-23). Read, the repeat is dropped.
+    if fit.is_closed()
+        && let Some(&first) = sp.fit_points.first()
+    {
+        sp.fit_points.push(first);
+    }
     sp.knot_parameterization = fit.knots().code();
     sp.begin_tangent = direction(fit.start_tangent());
     sp.end_tangent = direction(fit.end_tangent());

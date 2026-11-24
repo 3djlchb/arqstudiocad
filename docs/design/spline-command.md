@@ -90,7 +90,7 @@ The points are (0,0), (3,4), (7,1) and (9,6), but for SP3:
 | SP1 | Fit, Chord | cubic, knots 0×4, 5, 10, 15.3852×4; control (0,0), (0.8656,2.1171), (2.5968,6.3514), (7.7418,−1.605), (8.5703,3.4031), (9,6) |
 | SP2 | Fit, start tangent toward (0,5), end toward (12,6) | control (0,0), (0,1.6667), (2.8364,6.8714), (8.2071,−2.7919), (7.2049,6), (9,6) |
 | SP2b | the same, the tangents asked after the points (older prompts) | as SP2 |
-| SP3 | Fit, Close, through (0,0), (6,1), (8,5), (3,7) | periodic, 7 control points, the last three the first three |
+| SP3 | Fit, Close, through (0,0), (6,1), (8,5), (3,7) | periodic, 7 control points, the last three the first three; written since 2026-11-24 with 5 fit points, the first again at the end, as ProgeCAD writes them |
 | SP4 | Fit, Knots Square root | knots 0×4, 2.2361, 4.4721, 6.7927×4 |
 | SP5 | CV, degree 3 | the four points, knots 0×4, 1×4 |
 | SP6 | CV, degree 2, Close | periodic, the first two points repeated, knots −2 to 6 |
