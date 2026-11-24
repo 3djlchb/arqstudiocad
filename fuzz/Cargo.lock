@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "acadrust"
 version = "0.6.8"
-source = "git+https://github.com/3djlchb/acadrust?rev=cc116a75467c2c52b2497422fdd974d75bae74d0#cc116a75467c2c52b2497422fdd974d75bae74d0"
+source = "git+https://github.com/3djlchb/acadrust?rev=b8014d061d545355958f99f5aaeba362dc831247#b8014d061d545355958f99f5aaeba362dc831247"
 dependencies = [
  "anyhow",
  "bitflags",
