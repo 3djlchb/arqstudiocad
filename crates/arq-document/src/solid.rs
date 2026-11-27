@@ -87,8 +87,12 @@ impl WireframeCache {
         if let Some(found) = entries.get(&key) {
             return found.clone();
         }
-        let wire = body_to_draw(e).map(|body| {
+        let wire = body_to_draw(e).map(|(body, check)| {
             let size = reach(&body).filter(|s| *s > 0.0).unwrap_or(1.0);
+            // A tolerant body by its edges alone: finding where its faces'
+            // isolines run takes the kernel up to half a minute for one
+            // (Autodesk's condominium, 2026-11-27), its edges a millisecond.
+            let isolines = if check == Check::Full { isolines } else { 0 };
             Arc::new(body.wireframe(size * 1e-3, isolines))
         });
         if entries.len() >= CACHED_WIREFRAMES {
@@ -140,25 +144,27 @@ fn sat_of(e: &acadrust::EntityType) -> Option<Option<SatDocument>> {
     })
 }
 
-/// The body an ACIS entity is drawn by: the body itself, as `body_of`
-/// gives it; or, when ACIS keeps its vertices off their curves or
-/// surfaces by more than our tolerance (a "tolerant" body, as ACIS writes
-/// some), the same parts without that check, so it is outlined by its own
-/// curves rather than drawn as a box (maintainer, 2026-11-27). Its
-/// topology is checked as ever. Only drawing takes it: a body measured or
-/// combined is the one `body_of` checks.
-pub(crate) fn body_to_draw(e: &acadrust::EntityType) -> Option<Body> {
+/// The body an ACIS entity is drawn by, and how it was checked: the body
+/// itself, as `body_of` gives it; or, when ACIS keeps its vertices off
+/// their curves or surfaces by more than our tolerance (a "tolerant" body,
+/// as ACIS writes some), the same parts without that check, so it is
+/// outlined by its own edges rather than drawn as a box (maintainer,
+/// 2026-11-27). Its topology is checked as ever. Only drawing takes it: a
+/// body measured or combined is the one `body_of` checks.
+pub(crate) fn body_to_draw(e: &acadrust::EntityType) -> Option<(Body, Check)> {
     let doc = sat_of(e)??;
     match translate(&doc) {
-        Ok(body) => Some(body),
-        Err(Untranslated::Invalid(_)) => translate_with(&doc, Check::Topology).ok(),
+        Ok(body) => Some((body, Check::Full)),
+        Err(Untranslated::Invalid(_)) => translate_with(&doc, Check::Topology)
+            .ok()
+            .map(|body| (body, Check::Topology)),
         Err(_) => None,
     }
 }
 
 /// How a translated body is checked.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Check {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Check {
     /// Its topology, and each vertex on its curves and surfaces within
     /// ACIS's own tolerance.
     Full,

@@ -295,3 +295,36 @@ fn a_tolerant_solid_is_drawn_though_it_is_not_measured() {
     let (doc, id) = drawing_with(&sat);
     assert!(doc.wireframes.get(&solid(&doc, id).unwrap(), 4).is_none());
 }
+
+#[test]
+fn a_tolerant_solid_is_outlined_by_its_edges_alone() {
+    // A cylinder has isolines on its side; moved off its curves, by its
+    // edges alone (where its isolines run costs the kernel too much).
+    let isolines_of = |sat: &SatDocument| {
+        let (doc, id) = drawing_with(sat);
+        let e = doc
+            .cad()
+            .get_entity(acadrust::Handle::new(id))
+            .cloned()
+            .unwrap();
+        let wire = doc.wireframes.get(&e, 4).expect("a wireframe");
+        (wire.edges.len(), wire.isolines.len(), doc.solid(id))
+    };
+    let mut sat = primitives::build_cylinder([0.0, 0.0, 0.0], 1.0, 3.0);
+    let (edges, isolines, solid) = isolines_of(&sat);
+    assert!(solid.unwrap().is_ok() && edges > 0 && isolines > 0);
+    let point = sat
+        .records
+        .iter()
+        .position(|r| r.entity_type == "point")
+        .unwrap();
+    let slot = sat.records[point]
+        .tokens
+        .iter()
+        .position(|t| matches!(t, SatToken::Float(_)))
+        .unwrap();
+    sat.records[point].tokens[slot] = SatToken::Float(0.5);
+    let (tolerant_edges, isolines, solid) = isolines_of(&sat);
+    assert!(matches!(solid, Some(Err(Untranslated::Invalid(_)))));
+    assert_eq!((tolerant_edges, isolines), (edges, 0));
+}
