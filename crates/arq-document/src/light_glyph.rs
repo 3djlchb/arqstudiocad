@@ -4,6 +4,10 @@
 //! target, opening by its falloff angle; a distant light has none. All of
 //! them hide when the drawing's LIGHTGLYPHDISPLAY is off.
 //!
+//! In plan a glyph is drawn so that it turns with the light: a bulb is
+//! the circle a sphere is from above, a cone pointing straight up or down
+//! the circle of its base, any other cone its lines, set by its axis.
+//!
 //! A glyph shows where a light is while drawing; it is not part of the
 //! drawing on paper, so plotting, when it comes, leaves it out unless the
 //! light asks for it (`plot_glyph`, DXF 291), as AutoCAD does.
@@ -32,23 +36,112 @@ const SPOT: i32 = 3;
 /// would reach far sideways.
 const WIDEST_HALF_ANGLE: f64 = 80.0 * std::f64::consts::PI / 180.0;
 
-/// The polylines of `light`'s glyph in world coordinates; none when it has
-/// no glyph or `shown` (LIGHTGLYPHDISPLAY) is off. `size` is the glyph's
-/// size in drawing units ([`glyph_size`]).
-pub(crate) fn glyph(light: &Light, shown: bool, size: f64) -> Vec<Vec<Vector3>> {
+/// A light's glyph, before it is drawn.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Glyph {
+    /// A bulb: a sphere around `center`.
+    Bulb { center: Vector3, radius: f64 },
+    /// A cone from `apex` along `axis` (a unit vector), `length` long,
+    /// its base of `radius`.
+    Cone {
+        apex: Vector3,
+        axis: Vector3,
+        length: f64,
+        radius: f64,
+    },
+}
+
+/// What a glyph draws in plan.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum PlanPiece {
+    /// A circle level with the plan, around `center` (its height kept).
+    Circle { center: Vector3, radius: f64 },
+    /// A polyline, seen from above.
+    Path(Vec<Vector3>),
+}
+
+/// `light`'s glyph; none when it has no glyph or `shown`
+/// (LIGHTGLYPHDISPLAY) is off. `size` is the glyph's size in drawing
+/// units ([`glyph_size`]).
+pub(crate) fn glyph(light: &Light, shown: bool, size: f64) -> Option<Glyph> {
     let at = light.position;
     if !shown || !finite(at) || !(size.is_finite() && size > 0.0) {
-        return Vec::new();
+        return None;
     }
     match light.light_type {
-        DISTANT => Vec::new(),
+        DISTANT => None,
         SPOT => {
             let axis = unit(light.target - at).unwrap_or(Vector3::new(0.0, 0.0, -1.0));
-            spot(at, axis, light.falloff_angle, size)
+            let falloff = light.falloff_angle;
+            let half = if falloff.is_finite() && falloff > 0.0 {
+                (falloff / 2.0).min(WIDEST_HALF_ANGLE)
+            } else {
+                FRAC_PI_2 / 4.0
+            };
+            Some(Glyph::Cone {
+                apex: at,
+                axis,
+                length: size,
+                radius: size * half.tan(),
+            })
         }
         // Point, web, and any other: a bulb.
-        _ => bulb(at, size / 2.0),
+        _ => Some(Glyph::Bulb {
+            center: at,
+            radius: size / 2.0,
+        }),
     }
+}
+
+impl Glyph {
+    /// Its polylines in space: a bulb's three circles, one on each world
+    /// plane; a cone's base circle and four lines from its apex to it.
+    pub(crate) fn paths(&self) -> Vec<Vec<Vector3>> {
+        match *self {
+            Glyph::Bulb { center, radius } => bulb(center, radius),
+            Glyph::Cone {
+                apex,
+                axis,
+                length,
+                radius,
+            } => {
+                let (u, v) = across(axis);
+                let center = apex + axis * length;
+                let mut paths = vec![circle(center, u * radius, v * radius)];
+                for k in 0..4 {
+                    let t = k as f64 * FRAC_PI_2;
+                    let rim = center + u * (radius * t.cos()) + v * (radius * t.sin());
+                    paths.push(vec![apex, rim]);
+                }
+                paths
+            }
+        }
+    }
+
+    /// What it draws in plan, turning with the light: a bulb's circle;
+    /// a vertical cone's base circle; another cone's lines, set by its
+    /// axis.
+    pub(crate) fn plan(&self) -> Vec<PlanPiece> {
+        match *self {
+            Glyph::Bulb { center, radius } => vec![PlanPiece::Circle { center, radius }],
+            Glyph::Cone {
+                apex,
+                axis,
+                length,
+                radius,
+            } if level(axis) => vec![PlanPiece::Circle {
+                center: apex + axis * length,
+                radius,
+            }],
+            Glyph::Cone { .. } => self.paths().into_iter().map(PlanPiece::Path).collect(),
+        }
+    }
+}
+
+/// Whether a unit `axis` points straight up or down, so that no direction
+/// in plan follows from it.
+fn level(axis: Vector3) -> bool {
+    axis.x.hypot(axis.y) < 1e-9
 }
 
 /// The glyph's size in drawing units: [`GLYPH_METRES`] in the units
@@ -96,27 +189,6 @@ fn bulb(at: Vector3, radius: f64) -> Vec<Vec<Vector3>> {
     ]
 }
 
-/// A cone from `apex` along `axis` (a unit vector), `length` long, its
-/// whole angle `falloff` (radians): its base circle and four lines from
-/// the apex to it.
-fn spot(apex: Vector3, axis: Vector3, falloff: f64, length: f64) -> Vec<Vec<Vector3>> {
-    let half = if falloff.is_finite() && falloff > 0.0 {
-        (falloff / 2.0).min(WIDEST_HALF_ANGLE)
-    } else {
-        FRAC_PI_2 / 4.0
-    };
-    let radius = length * half.tan();
-    let (u, v) = across(axis);
-    let center = apex + axis * length;
-    let mut paths = vec![circle(center, u * radius, v * radius)];
-    for k in 0..4 {
-        let t = k as f64 * FRAC_PI_2;
-        let rim = center + u * (radius * t.cos()) + v * (radius * t.sin());
-        paths.push(vec![apex, rim]);
-    }
-    paths
-}
-
 /// A circle around `center` through `center + a` and `center + b`, `a`
 /// and `b` at right angles and of one length.
 fn circle(center: Vector3, a: Vector3, b: Vector3) -> Vec<Vector3> {
@@ -131,7 +203,9 @@ fn circle(center: Vector3, a: Vector3, b: Vector3) -> Vec<Vector3> {
 /// Two unit vectors at right angles to `axis` (a unit vector) and to each
 /// other.
 fn across(axis: Vector3) -> (Vector3, Vector3) {
-    let helper = if axis.z.abs() < 0.9 {
+    // Across the vertical when the axis leans at all, so that the vectors
+    // turn with it about the vertical.
+    let helper = if !level(axis) {
         Vector3::new(0.0, 0.0, 1.0)
     } else {
         Vector3::new(1.0, 0.0, 0.0)

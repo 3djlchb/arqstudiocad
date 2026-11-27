@@ -70,7 +70,11 @@ names them.
   boxes; since 2026-11-27 the solids, tolerant ACIS bodies, are outlined
   by their edges and the lights drawn by their glyphs, so nothing in it is
   a box. Of the 18 drawings, two keep boxes:
-  `visualization_-_condominium_with_skylight.dwg` six, for solids of NURBS
-  surfaces and curves (milestone 02.15), and `tablet.dwg` one, for an
-  embedded OLE object (OLE2FRAME). Its lights are type 10, which is what AutoCAD writes for a web
+  `visualization_-_condominium_with_skylight.dwg` six, five for solids of
+  NURBS surfaces and curves (milestone 02.15), one alone and four in the
+  blocks "Seat" and "ExposedRecess", and one for a polyline lying on a
+  vertical plane, which the plan does not draw yet; and `tablet.dwg` one,
+  for an embedded OLE object (OLE2FRAME). The corpus's local round trip
+  passes on the conference room and reports only these boxes on the
+  condominium. Its lights are type 10, which is what AutoCAD writes for a web
   light, and are drawn as point lights.

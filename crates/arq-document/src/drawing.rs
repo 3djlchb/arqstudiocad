@@ -502,11 +502,24 @@ impl<'a> Painter<'a> {
             EntityType::Insert(ins) => self.expand_insert(ins, layer, color, ctx, out),
             // Its glyph, seen from above.
             EntityType::Light(light) => {
-                for path in self.light_glyph(light) {
-                    for pair in path.windows(2) {
-                        let (a, b) = ((pair[0].x, pair[0].y), (pair[1].x, pair[1].y));
-                        if let Some(shape @ Shape::Line(_)) = segment(a, b) {
-                            push(shape);
+                use crate::light_glyph::PlanPiece;
+                let pieces = self.light_glyph(light).map(|g| g.plan());
+                for piece in pieces.into_iter().flatten() {
+                    match piece {
+                        PlanPiece::Circle { center, radius } => {
+                            let circle = Point2::new(center.x, center.y)
+                                .and_then(|c| Circle::new(c, radius));
+                            if let Ok(circle) = circle {
+                                push(Shape::Circle(circle));
+                            }
+                        }
+                        PlanPiece::Path(path) => {
+                            for pair in path.windows(2) {
+                                let (a, b) = ((pair[0].x, pair[0].y), (pair[1].x, pair[1].y));
+                                if let Some(shape @ Shape::Line(_)) = segment(a, b) {
+                                    push(shape);
+                                }
+                            }
                         }
                     }
                 }
@@ -579,6 +592,8 @@ impl<'a> Painter<'a> {
             }
             EntityType::Light(light) => self
                 .light_glyph(light)
+                .map(|g| g.paths())
+                .unwrap_or_default()
                 .into_iter()
                 .map(|path| path.into_iter().filter_map(point3).collect())
                 .collect(),
@@ -594,7 +609,7 @@ impl<'a> Painter<'a> {
 
     /// A light's glyph (`light_glyph.rs`), as the drawing's
     /// LIGHTGLYPHDISPLAY and units say.
-    fn light_glyph(&self, light: &acadrust::entities::Light) -> Vec<Vec<Vector3>> {
+    fn light_glyph(&self, light: &acadrust::entities::Light) -> Option<crate::light_glyph::Glyph> {
         let header = &self.doc.cad().header;
         let size = crate::light_glyph::glyph_size(header.insertion_units, header.measurement);
         crate::light_glyph::glyph(light, header.light_glyph_display != 0, size)

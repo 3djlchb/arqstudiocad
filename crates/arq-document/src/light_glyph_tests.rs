@@ -5,9 +5,14 @@ use acadrust::entities::Light;
 use acadrust::types::Vector3;
 use acadrust::{CadDocument, EntityType};
 
-use super::{glyph, glyph_size};
+use super::{PlanPiece, glyph, glyph_size};
 use crate::document::Document;
 use crate::drawing::Shape;
+
+/// The space polylines of `l`'s glyph, none without one.
+fn glyph_paths(l: &Light, shown: bool, size: f64) -> Vec<Vec<Vector3>> {
+    glyph(l, shown, size).map(|g| g.paths()).unwrap_or_default()
+}
 
 fn light(kind: i32, at: [f64; 3], target: [f64; 3]) -> Light {
     let mut l = Light::new();
@@ -33,13 +38,13 @@ fn extent(paths: &[Vec<Vector3>]) -> [[f64; 3]; 2] {
 
 #[test]
 fn a_point_light_is_a_bulb_around_it() {
-    let paths = glyph(&light(2, [10.0, 5.0, 3.0], [10.0, 5.0, 0.0]), true, 2.0);
+    let paths = glyph_paths(&light(2, [10.0, 5.0, 3.0], [10.0, 5.0, 0.0]), true, 2.0);
     // Three circles of radius 1, one on each world plane.
     assert_eq!(paths.len(), 3);
     assert_eq!(extent(&paths), [[9.0, 4.0, 2.0], [11.0, 6.0, 4.0]]);
     // A web light (AutoCAD's type 10) is drawn the same.
     assert_eq!(
-        glyph(&light(10, [10.0, 5.0, 3.0], [0.0; 3]), true, 2.0),
+        glyph_paths(&light(10, [10.0, 5.0, 3.0], [0.0; 3]), true, 2.0),
         paths
     );
 }
@@ -48,19 +53,19 @@ fn a_point_light_is_a_bulb_around_it() {
 fn a_spot_light_is_a_cone_toward_its_target() {
     // Pointing down from (0,0,10), 2 long, 90° wide: its base circle of
     // radius 2 at z = 8, and four lines from the apex.
-    let paths = glyph(&light(3, [0.0, 0.0, 10.0], [0.0, 0.0, 0.0]), true, 2.0);
+    let paths = glyph_paths(&light(3, [0.0, 0.0, 10.0], [0.0, 0.0, 0.0]), true, 2.0);
     assert_eq!(paths.len(), 5);
     assert_eq!(extent(&paths), [[-2.0, -2.0, 8.0], [2.0, 2.0, 10.0]]);
     // Pointing along x: the cone reaches x = 2 and spreads in y and z.
-    let paths = glyph(&light(3, [0.0, 0.0, 0.0], [5.0, 0.0, 0.0]), true, 2.0);
+    let paths = glyph_paths(&light(3, [0.0, 0.0, 0.0], [5.0, 0.0, 0.0]), true, 2.0);
     assert_eq!(extent(&paths), [[0.0, -2.0, -2.0], [2.0, 2.0, 2.0]]);
 }
 
 #[test]
 fn a_distant_light_or_hidden_glyphs_draw_nothing() {
-    assert!(glyph(&light(1, [0.0; 3], [0.0, 0.0, -1.0]), true, 2.0).is_empty());
-    assert!(glyph(&light(2, [0.0; 3], [0.0; 3]), false, 2.0).is_empty());
-    assert!(glyph(&light(2, [f64::NAN, 0.0, 0.0], [0.0; 3]), true, 2.0).is_empty());
+    assert!(glyph(&light(1, [0.0; 3], [0.0, 0.0, -1.0]), true, 2.0).is_none());
+    assert!(glyph(&light(2, [0.0; 3], [0.0; 3]), false, 2.0).is_none());
+    assert!(glyph(&light(2, [f64::NAN, 0.0, 0.0], [0.0; 3]), true, 2.0).is_none());
 }
 
 #[test]
@@ -82,11 +87,11 @@ fn drawing_with(l: Light) -> (Document, u64) {
     (Document::from_engine(cad), h.value())
 }
 
-/// The rounded plan box of what is drawn for `id`, and whether all of it
-/// is lines.
+/// The rounded plan box of what is drawn for `id`, and whether it is one
+/// circle (a bulb seen from above).
 fn drawn(doc: &Document, id: u64) -> Option<([f64; 4], bool)> {
     let items = doc.drawing(id).unwrap();
-    let lines = items.iter().all(|i| matches!(i.shape, Shape::Line(_)));
+    let one_circle = matches!(items[..], [ref i] if matches!(i.shape, Shape::Circle(_)));
     let b = items
         .iter()
         .map(|i| i.shape.bounds())
@@ -99,14 +104,14 @@ fn drawn(doc: &Document, id: u64) -> Option<([f64; 4], bool)> {
             r(b.max().x()),
             r(b.max().y()),
         ],
-        lines,
+        one_circle,
     ))
 }
 
 #[test]
 fn a_drawing_shows_a_light_by_its_glyph() {
     // A point light at (10, 5) in a drawing in metres: a bulb 0.3 wide,
-    // drawn in lines, no box; in space, its circles at its height.
+    // a circle in plan, no box; in space, its circles at its height.
     let (doc, id) = drawing_with(light(2, [10.0, 5.0, 3.0], [10.0, 5.0, 0.0]));
     assert_eq!(drawn(&doc, id), Some(([9.85, 4.85, 10.15, 5.15], true)));
     let space = doc.space_drawing(id).unwrap();
@@ -143,4 +148,66 @@ fn a_light_in_a_block_is_drawn_where_the_block_places_it() {
         drawn(&doc, placed),
         Some(([19.85, -0.15, 20.15, 0.15], true))
     );
+}
+
+/// `pieces` turned by `angle` about the vertical through the origin.
+fn turned(pieces: Vec<PlanPiece>, angle: f64) -> Vec<PlanPiece> {
+    let (sin, cos) = angle.sin_cos();
+    let turn = |p: Vector3| Vector3::new(p.x * cos - p.y * sin, p.x * sin + p.y * cos, p.z);
+    pieces
+        .into_iter()
+        .map(|piece| match piece {
+            PlanPiece::Circle { center, radius } => PlanPiece::Circle {
+                center: turn(center),
+                radius,
+            },
+            PlanPiece::Path(path) => PlanPiece::Path(path.into_iter().map(turn).collect()),
+        })
+        .collect()
+}
+
+fn close(a: &[PlanPiece], b: &[PlanPiece]) -> bool {
+    let near = |p: &Vector3, q: &Vector3| (p.x - q.x).hypot(p.y - q.y).hypot(p.z - q.z) < 1e-9;
+    a.len() == b.len()
+        && a.iter().zip(b).all(|pair| match pair {
+            (
+                PlanPiece::Circle { center, radius },
+                PlanPiece::Circle {
+                    center: c,
+                    radius: r,
+                },
+            ) => near(center, c) && (radius - r).abs() < 1e-9,
+            (PlanPiece::Path(p), PlanPiece::Path(q)) => {
+                p.len() == q.len() && p.iter().zip(q).all(|(x, y)| near(x, y))
+            }
+            _ => false,
+        })
+}
+
+#[test]
+fn a_glyph_in_plan_turns_with_its_light() {
+    // A block turned turns its lights' positions and targets: what each
+    // glyph draws in plan turns with them, as everything else drawn does.
+    let angle = 0.4;
+    let turn = acadrust::types::Transform::from_rotation(Vector3::new(0.0, 0.0, 1.0), angle);
+    for l in [
+        light(2, [10.0, 5.0, 3.0], [10.0, 5.0, 0.0]), // a bulb
+        light(3, [4.0, 1.0, 3.0], [4.0, 1.0, 0.0]),   // a cone down
+        light(3, [4.0, 1.0, 3.0], [9.0, 3.0, 0.0]),   // a cone leaning
+        light(3, [4.0, 1.0, 3.0], [9.0, 1.0, 3.0]),   // a cone level
+        light(3, [4.0, 1.0, 3.0], [4.1, 1.0, 0.0]),   // a cone nearly down
+    ] {
+        let before = glyph(&l, true, 2.0).unwrap().plan();
+        let mut moved = l.clone();
+        acadrust::entities::Entity::apply_transform(&mut moved, &turn);
+        let after = glyph(&moved, true, 2.0).unwrap().plan();
+        assert!(close(&after, &turned(before, angle)), "{l:?}");
+    }
+    // A cone down is its base circle in plan; a leaning one its lines.
+    let down = glyph(&light(3, [4.0, 1.0, 3.0], [4.0, 1.0, 0.0]), true, 2.0).unwrap();
+    assert!(
+        matches!(down.plan()[..], [PlanPiece::Circle { radius, .. }] if (radius - 2.0).abs() < 1e-9)
+    );
+    let leaning = glyph(&light(3, [4.0, 1.0, 3.0], [9.0, 3.0, 0.0]), true, 2.0).unwrap();
+    assert_eq!(leaning.plan().len(), 5);
 }
