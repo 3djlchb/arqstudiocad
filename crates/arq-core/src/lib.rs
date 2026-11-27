@@ -67,6 +67,7 @@
 //! [ADR 0011]: https://github.com/3djlchb/arqstudiocad/blob/main/docs/architecture/adr/0011-document-model-and-transactions.md
 
 mod app;
+mod dependency_graph;
 mod error;
 mod history;
 mod operations;
@@ -86,6 +87,7 @@ pub use arq_document::{
     Unrevolved, Unwritable, pick_among, select_among, set_writer,
 };
 pub use arq_geometry::snap::{SnapKind, SnapPoint};
+pub use dependency_graph::{DependencyGraph, DependencyGraphError, DependencyNode};
 pub use error::{CadError, CadResult};
 pub use history::{CadDocument, Snapshot};
 pub use operations::{Joined, Matched};
