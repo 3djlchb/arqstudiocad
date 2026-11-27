@@ -500,6 +500,17 @@ impl<'a> Painter<'a> {
                 },
             },
             EntityType::Insert(ins) => self.expand_insert(ins, layer, color, ctx, out),
+            // Its glyph, seen from above.
+            EntityType::Light(light) => {
+                for path in self.light_glyph(light) {
+                    for pair in path.windows(2) {
+                        let (a, b) = ((pair[0].x, pair[0].y), (pair[1].x, pair[1].y));
+                        if let Some(shape @ Shape::Line(_)) = segment(a, b) {
+                            push(shape);
+                        }
+                    }
+                }
+            }
             EntityType::Dimension(dim) => {
                 // AutoCAD stores what it drew in an anonymous block, in
                 // world coordinates; draw that, or decompose without one.
@@ -566,6 +577,11 @@ impl<'a> Painter<'a> {
                     .map(|line| line.iter().filter_map(place).collect())
                     .collect()
             }
+            EntityType::Light(light) => self
+                .light_glyph(light)
+                .into_iter()
+                .map(|path| path.into_iter().filter_map(point3).collect())
+                .collect(),
             _ => return None,
         };
         Some(
@@ -574,6 +590,14 @@ impl<'a> Painter<'a> {
                 .filter(|p: &Vec<Point3>| !p.is_empty())
                 .collect(),
         )
+    }
+
+    /// A light's glyph (`light_glyph.rs`), as the drawing's
+    /// LIGHTGLYPHDISPLAY and units say.
+    fn light_glyph(&self, light: &acadrust::entities::Light) -> Vec<Vec<Vector3>> {
+        let header = &self.doc.cad().header;
+        let size = crate::light_glyph::glyph_size(header.insertion_units, header.measurement);
+        crate::light_glyph::glyph(light, header.light_glyph_display != 0, size)
     }
 
     /// The drawing's ISOLINES, the lines drawn on each curved face of a

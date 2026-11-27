@@ -1176,8 +1176,9 @@ impl Document {
     }
 
     /// The drawn box of a block reference or a dimension, and of a
-    /// polyline, whose arcs the engine's box (its vertices) leaves out;
-    /// `None` for other kinds, whose own box is right.
+    /// polyline, whose arcs the engine's box (its vertices) leaves out, and
+    /// of a light, which the engine boxes by its position alone (its glyph,
+    /// `light_glyph.rs`); `None` for other kinds, whose own box is right.
     fn block_extent(&self, e: &EntityType) -> Option<Bounds2> {
         match e {
             EntityType::Insert(_)
@@ -1187,7 +1188,8 @@ impl Document {
             | EntityType::Solid3D(_)
             | EntityType::Region(_)
             | EntityType::Body(_)
-            | EntityType::Surface(_) => self.drawn_extent(e),
+            | EntityType::Surface(_)
+            | EntityType::Light(_) => self.drawn_extent(e),
             _ => None,
         }
     }

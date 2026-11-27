@@ -45,6 +45,7 @@ mod grips;
 mod inventory;
 mod kept_view;
 mod layers;
+mod light_glyph;
 mod matching;
 mod measuring;
 mod model;
