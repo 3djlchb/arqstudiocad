@@ -119,12 +119,22 @@ goes through it.
 
 ### D5 — Deliveries
 
-1. **The producer found:**
+1. **The producer found** (done, 2026-11-26):
    - the codec reads `AcDb:AppInfo`;
    - DXF headers and registered applications are compared across samples
      from each producer, all of D1's that samples are found for;
    - the document knows its producer;
    - tests on the public samples and on files ProgeCAD made.
+
+   Done: the fork reads and writes AppInfo (`b967601`); `Producer` and
+   `Document::producer` in `arq-document`, `CadDocument.producer` in
+   Python; each DWG saved names ours, its name given once by the
+   application (`set_writer`, from `product.py`). LibreDWG's public DWGs
+   name AutoCAD (2004 to 2013) and the ODA's Teigha (2018); older ones
+   and DXF name nobody, so DXF is unknown until samples from each
+   producer show what tells them apart. The other producers are known by
+   the names they give themselves, to confirm against their own drawings,
+   ProgeCAD's first.
 2. **The forms table:** the cases above, each checked against AutoCAD's
    public samples; SP3's AutoCAD form first, since ours changed in #262.
 3. **Adaptations:** each difference found, read in D2 and written in D3,
