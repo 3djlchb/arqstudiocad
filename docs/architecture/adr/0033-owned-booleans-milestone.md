@@ -250,6 +250,23 @@ As ADR 0032 D4, for the new kinds:
     - [Truck](../../testing/truck-boolean-comparison.md): parallel
       columns and columns with turned boxes.
 
+- **Delivery 3, four pull requests** (maintainer, 2026-11-24), as delivery
+  2's:
+  1. spheres with planes in general position, their sections circles;
+  2. tori with planes across or along their axis, their sections circles;
+  3. spheres and tori with cylinders and cones on a common axis, and the
+     coincident cases (a dome on a drum);
+  4. the commands, Truck and ProgeCAD.
+
+  A torus cut by a plane at an angle to its axis, whose section is a
+  quartic, not a conic, is refused until delivery 4, which fits curves
+  between curved surfaces (maintainer, 2026-11-24).
+- **3.1 (in progress):** spheres with planes. A sphere's face is split in
+  its stereographic image from a point of the sphere where nothing
+  happens: every circle on the sphere is a circle there, or a line, so a
+  plane's section stays exact. The part round the projection point is the
+  complement of the others, and only its boundary is lifted back.
+
 ## Consequences
 
 - Solids architecture uses most combine without a third-party kernel. Each
