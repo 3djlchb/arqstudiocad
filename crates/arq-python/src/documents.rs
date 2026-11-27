@@ -18,7 +18,7 @@ use std::sync::Arc;
 use arq_core::{
     BlockData, BlockDefinition, BlockObjects, CadApplication as CoreApplication,
     CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
-    DocumentId, EntityId, LayerId, MatchSettings, Money,
+    DocumentId, EntityId, LayerId, LinetypeDefinition, MatchSettings, Money,
 };
 use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance, selection_polygons};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -421,6 +421,69 @@ impl CadDocument {
     /// The line types loaded in the drawing, excluding `ByLayer` and `ByBlock`.
     fn get_linetypes(&self) -> PyResult<Vec<String>> {
         self.read(|cad| cad.document().linetypes())
+    }
+
+    /// Loaded simple definitions as `(name, description, pattern)` tuples.
+    fn get_linetype_definitions(&self) -> PyResult<Vec<(String, String, Vec<f64>)>> {
+        Ok(self
+            .read(|cad| cad.linetype_definitions())?
+            .into_iter()
+            .map(|item| (item.name, item.description, item.pattern))
+            .collect())
+    }
+
+    /// Parses simple AutoCAD `.lin` records; complex text/shape records are rejected.
+    #[staticmethod]
+    fn parse_linetype_file(contents: &str) -> PyResult<Vec<(String, String, Vec<f64>)>> {
+        arq_core::Document::parse_linetype_file(contents)
+            .map(|items| {
+                items
+                    .into_iter()
+                    .map(|item| (item.name, item.description, item.pattern))
+                    .collect()
+            })
+            .map_err(|error| PyValueError::new_err(error.to_string()))
+    }
+
+    /// Loads selected simple definitions from a `.lin` file in one undo step.
+    fn load_linetypes(
+        &self,
+        definitions: Vec<(String, String, Vec<f64>)>,
+    ) -> PyResult<CadChangeSet> {
+        let definitions = definitions
+            .into_iter()
+            .map(|(name, description, pattern)| LinetypeDefinition {
+                name,
+                description,
+                pattern,
+            })
+            .collect::<Vec<_>>();
+        self.change(|cad| cad.load_linetypes(&definitions))
+    }
+
+    /// Creates or edits a simple definition.
+    fn set_linetype(
+        &self,
+        name: &str,
+        description: &str,
+        pattern: Vec<f64>,
+    ) -> PyResult<CadChangeSet> {
+        let definition = LinetypeDefinition {
+            name: name.to_owned(),
+            description: description.to_owned(),
+            pattern,
+        };
+        self.change(|cad| cad.set_linetype(&definition))
+    }
+
+    /// Renames a definition and updates its layer/entity references.
+    fn rename_linetype(&self, old_name: &str, new_name: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.rename_linetype(old_name, new_name))
+    }
+
+    /// Deletes an unused custom definition.
+    fn delete_linetype(&self, name: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.delete_linetype(name))
     }
 
     /// The layer with this id.

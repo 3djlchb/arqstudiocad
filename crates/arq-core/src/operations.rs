@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 
 use arq_document::{
     BlockData, BlockDefinition, BlockObjects, ChangeSet, ClashChoice, Color, Combined, Currencies,
-    Document, DocumentError, Entity, EntityId, Extruded, LayerId, MatchSettings, PlanGeometry,
-    PolylineStyle, Revolved,
+    Document, DocumentError, Entity, EntityId, Extruded, LayerId, LinetypeDefinition,
+    MatchSettings, PlanGeometry, PolylineStyle, Revolved,
 };
 use arq_geometry::{
     Arc, Chain, Circle, CrossingArea, Ellipse, Geometry2, GeometryError, JoinPath, Line, Point2,
@@ -23,6 +23,41 @@ use crate::error::{CadError, CadResult};
 use crate::history::CadDocument;
 
 impl CadDocument {
+    /// Loads simple linetype definitions into the drawing in one undo step.
+    pub fn load_linetypes(&mut self, definitions: &[LinetypeDefinition]) -> CadResult<ChangeSet> {
+        let ((), changes) =
+            self.transact("LINETYPE", |doc| Ok(doc.load_linetypes(definitions)?))?;
+        Ok(changes)
+    }
+
+    /// Lists loaded simple definitions suitable for editing/export.
+    pub fn linetype_definitions(&self) -> Vec<LinetypeDefinition> {
+        self.document().linetype_definitions()
+    }
+
+    /// Creates or edits one simple linetype in a single undo step.
+    pub fn set_linetype(&mut self, definition: &LinetypeDefinition) -> CadResult<ChangeSet> {
+        self.linetype_op(|doc| doc.set_linetype(definition))
+    }
+
+    /// Renames a linetype and preserves its layer/entity assignments.
+    pub fn rename_linetype(&mut self, old_name: &str, new_name: &str) -> CadResult<ChangeSet> {
+        self.linetype_op(|doc| doc.rename_linetype(old_name, new_name))
+    }
+
+    /// Removes an unused custom linetype from the drawing.
+    pub fn delete_linetype(&mut self, name: &str) -> CadResult<ChangeSet> {
+        self.linetype_op(|doc| doc.delete_linetype(name))
+    }
+
+    fn linetype_op(
+        &mut self,
+        f: impl FnOnce(&mut Document) -> arq_document::DocumentResult<()>,
+    ) -> CadResult<ChangeSet> {
+        let ((), changes) = self.transact("LINETYPE", |doc| Ok(f(doc)?))?;
+        Ok(changes)
+    }
+
     /// Draws a line on the current layer.
     pub fn add_line(&mut self, start: Point2, end: Point2) -> CadResult<(EntityId, ChangeSet)> {
         self.add_geometry(Line::new(start, end)?.into())

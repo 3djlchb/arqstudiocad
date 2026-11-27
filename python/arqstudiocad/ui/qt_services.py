@@ -25,6 +25,7 @@ from arqstudiocad.ui import (
     block_definition_dialog,
     currencies_dialog,
     edit_block_dialog,
+    linetype_manager_dialog,
     match_settings_dialog,
     purge_dialog,
     rename_block_dialog,
@@ -292,6 +293,11 @@ class QtUiServices:
 
     def show_options(self) -> bool:
         return self._options is not None and self._options()
+
+    def show_linetype_manager(self, document: CadDocument) -> bool:
+        dialog = linetype_manager_dialog.LinetypeManagerDialog(document, self._parent)
+        dialog.exec()
+        return True
 
     def _remember(self, path: str) -> Path | None:
         if not path:

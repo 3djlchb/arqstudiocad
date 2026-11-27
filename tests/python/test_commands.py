@@ -207,6 +207,10 @@ class FakeUi:
         self.asked.append(f"panel {name}")
         return True
 
+    def show_linetype_manager(self, document: CadDocument) -> bool:
+        self.asked.append("linetype manager")
+        return True
+
     def show_options(self) -> bool:
         self.asked.append("options")
         return True
@@ -602,6 +606,13 @@ def test_layer_opens_the_layers_panel() -> None:
     h = harness(ui)
     h.run("NEW", "LA")
     assert ui.asked == ["panel layers"] and h.of(CommandCancelled) == []
+
+
+def test_linetype_opens_the_manager_for_the_active_document() -> None:
+    ui = FakeUi()
+    h = harness(ui)
+    h.run("NEW", "LT")
+    assert ui.asked == ["linetype manager"] and h.of(CommandCancelled) == []
 
 
 def test_layer_without_a_panel_or_a_drawing() -> None:

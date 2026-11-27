@@ -359,6 +359,10 @@ class UiServices(Protocol):
         """Shows and raises a panel (``"layers"``…); False if there is none."""
         ...
 
+    def show_linetype_manager(self, document: CadDocument) -> bool:
+        """Opens the current drawing's linetype manager."""
+        ...
+
     def show_options(self) -> bool:
         """Opens the Options dialog (OPTIONS, ADR 0029 D3) until it closes;
         False if there is none."""

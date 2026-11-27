@@ -309,7 +309,6 @@ def test_layer_linetype_choices_and_lineweight_api(doc: CadDocument) -> None:
     with pytest.raises(InvalidOperationError):
         doc.set_layer_linetype(layer, "NotLoaded")
     assert doc.get_layer(layer).linetype == "Continuous"
-
     doc.set_layer_lineweight(layer, "0.25 mm")
     assert doc.get_layer(layer).lineweight == "0.25 mm"
     with pytest.raises(InvalidOperationError):
@@ -319,6 +318,40 @@ def test_layer_linetype_choices_and_lineweight_api(doc: CadDocument) -> None:
     assert doc.get_layer(layer).lineweight == "Default"
     doc.redo()
     assert doc.get_layer(layer).lineweight == "0.25 mm"
+
+
+def test_simple_linetype_file_parse_and_load_is_undoable(doc: CadDocument) -> None:
+    parsed = CadDocument.parse_linetype_file("*DASHED,Dashed\nA,0.5,-0.25,0\n")
+    assert parsed == [("DASHED", "Dashed", [0.5, -0.25, 0.0])]
+    change = doc.load_linetypes(parsed)
+    assert change.document_changed
+    assert "DASHED" in doc.get_linetypes()
+    assert doc.undo_name == "LINETYPE"
+    doc.undo()
+    assert "DASHED" not in doc.get_linetypes()
+    with pytest.raises(ValueError, match="complex text/shape"):
+        CadDocument.parse_linetype_file("*TEXT,Text\nA,0.5,[TXT,STANDARD],-0.25\n")
+
+
+def test_linetype_manager_edits_renames_and_protects_referenced_types(doc: CadDocument) -> None:
+    doc.set_linetype("DASHED", "Dashed", [0.5, -0.25])
+    layer, _ = doc.create_layer("WALLS")
+    doc.set_layer_linetype(layer, "DASHED")
+    doc.rename_linetype("DASHED", "WALL_DASH")
+    assert doc.get_layer(layer).linetype == "WALL_DASH"
+    assert any(item[0] == "WALL_DASH" for item in doc.get_linetype_definitions())
+    with pytest.raises(InvalidOperationError, match="in use"):
+        doc.delete_linetype("WALL_DASH")
+    doc.set_layer_linetype(layer, "Continuous")
+    doc.delete_linetype("WALL_DASH")
+    assert "WALL_DASH" not in doc.get_linetypes()
+    doc.undo()
+    assert "WALL_DASH" in doc.get_linetypes()
+    doc.undo()
+    assert doc.get_layer(layer).linetype == "WALL_DASH"
+    doc.undo()
+    assert doc.get_layer(layer).linetype == "DASHED"
+    assert any(item[0] == "DASHED" for item in doc.get_linetype_definitions())
 
 
 def test_layer_transparency_api_is_validated_and_undoable(doc: CadDocument) -> None:

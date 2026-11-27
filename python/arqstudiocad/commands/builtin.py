@@ -351,6 +351,15 @@ def layer(ctx: CommandContext) -> CommandScript:
     yield
 
 
+def linetype(ctx: CommandContext) -> CommandScript:
+    """Opens the linetype manager for the active drawing."""
+    document = ctx.document()
+    if ctx.ui is None or not ctx.ui.show_linetype_manager(document):
+        raise CommandCancelledError(tr("The linetype manager is not available here."))
+    return
+    yield
+
+
 def options(ctx: CommandContext) -> CommandScript:
     """Opens the Options dialog (ADR 0029 D3), with or without a drawing."""
     if ctx.ui is None or not ctx.ui.show_options():
@@ -387,6 +396,7 @@ BUILTIN_COMMANDS = (
     Command("REDO", redo),
     Command("ZOOM", zoom, ("Z",)),
     Command("LAYER", layer, ("LA",)),
+    Command("LINETYPE", linetype, ("LT",)),
     Command("BLOCKSPALETTE", blocks_palette),
     Command("PROPERTIES", properties, ("PR",)),
     Command("OPTIONS", options, ("OP",)),
