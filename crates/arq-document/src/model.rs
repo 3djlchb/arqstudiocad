@@ -1,17 +1,18 @@
 //! The own internal model (ADR 0018 D2, stage 1).
 //!
 //! ArqStudioCAD's document model is its own; the DWG engine is an adapter.
-//! In stage 1 the model owns the layers (name, color, on, frozen, locked,
-//! plotted), the current layer, and every LINE, CIRCLE and ARC drawn in plan
-//! (geometry, elevation, layer, color). Reads of those come from here.
+//! In stage 1 the model owns the layers (name, color, linetype, lineweight,
+//! on, frozen, locked, plotted), the current layer, and every LINE, CIRCLE
+//! and ARC drawn in plan (geometry, elevation, layer, color). Reads of those
+//! come from here.
 //!
 //! The model and the engine's database are written together (write-through):
 //! every operation that changes an owned thing updates both in the same
 //! step, so saving needs no conversion, and what the model does not own
-//! (linetypes, thickness, the normal's direction, XDATA, every other kind of
-//! entity) stays in the engine's records untouched. Undo and redo restore the
-//! engine's images and refresh the model from them. [`Document::check_model`]
-//! says whether both still agree.
+//! (linetype definitions, thickness, the normal's direction, XDATA, every
+//! other kind of entity) stays in the engine's records untouched. Undo and
+//! redo restore the engine's images and refresh the model from them.
+//! [`Document::check_model`] says whether both still agree.
 
 use std::collections::BTreeMap;
 
@@ -34,8 +35,8 @@ pub(crate) struct OwnedEntity {
 /// The own model of one drawing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct OwnModel {
-    /// Every layer. Its linetype is a read-only mirror of the engine's: the
-    /// model does not own linetypes yet.
+    /// Every layer, including its assigned linetype and lineweight. The
+    /// linetype definitions remain in the codec's drawing table.
     pub(crate) layers: BTreeMap<LayerId, Layer>,
     /// The current layer (AutoCAD's CLAYER).
     pub(crate) current: LayerId,

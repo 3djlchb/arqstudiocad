@@ -418,6 +418,11 @@ impl CadDocument {
         Ok(layers.into_iter().map(CadLayerInfo).collect())
     }
 
+    /// The line types loaded in the drawing, excluding `ByLayer` and `ByBlock`.
+    fn get_linetypes(&self) -> PyResult<Vec<String>> {
+        self.read(|cad| cad.document().linetypes())
+    }
+
     /// The layer with this id.
     fn get_layer(&self, layer_id: LayerId) -> PyResult<CadLayerInfo> {
         self.read(|cad| cad.document().layer(layer_id))?
@@ -1584,6 +1589,16 @@ impl CadDocument {
     /// Sets a layer's color: an index or RGB color.
     fn set_layer_color(&self, layer_id: LayerId, color: CadColor) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.set_layer_color(layer_id, color.0))
+    }
+
+    /// Sets a layer to a linetype already loaded in the drawing.
+    fn set_layer_linetype(&self, layer_id: LayerId, name: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_linetype(layer_id, name))
+    }
+
+    /// Sets a layer lineweight to `Default` or a standard millimeter value.
+    fn set_layer_lineweight(&self, layer_id: LayerId, value: &str) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_lineweight(layer_id, value))
     }
 
     /// Turns a layer on or off.

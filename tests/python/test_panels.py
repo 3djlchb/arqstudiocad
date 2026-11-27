@@ -28,6 +28,8 @@ from arqstudiocad.ui.layers_panel import (
     COLOR,
     CURRENT,
     FROZEN,
+    LINETYPE,
+    LINEWEIGHT,
     LOCKED,
     NAME,
     ON,
@@ -165,6 +167,32 @@ def test_toggles_change_the_layer(window: MainWindow) -> None:
     assert plot_item.icon().cacheKey() != plottable_icon
     assert not plot_item.flags() & Qt.ItemFlag.ItemIsUserCheckable
     assert document.undo_history == ["LAYER", "LAYER", "LAYER", "LAYER", "LAYER"]
+
+
+def test_layer_linetype_menu_lists_loaded_types_and_lineweight_menu_edits(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window.runner.execute("NEW")
+    panel = window.layers_panel
+    document = window.session.active
+    assert document is not None
+    layer_id = panel.layer_id_at(0)
+    assert layer_id is not None
+
+    menus = []
+    monkeypatch.setattr(layers_panel, "popup", lambda menu, _position: menus.append(menu))
+    panel._on_click(0, LINETYPE)
+    assert [action.text() for action in menus[-1].actions()] == document.get_linetypes()
+    assert "Continuous" in document.get_linetypes()
+
+    panel._on_click(0, LINEWEIGHT)
+    quarter_mm = next(action for action in menus[-1].actions() if action.text() == "0.25 mm")
+    quarter_mm.trigger()
+
+    layer = document.get_layer(layer_id)
+    assert layer.lineweight == "0.25 mm"
+    assert cell(panel, 0, LINEWEIGHT).text() == "0.25 mm"
+    assert document.undo_history[-1] == "LAYER"
 
 
 def test_a_refused_change_is_reported_and_undone_in_the_table(window: MainWindow) -> None:

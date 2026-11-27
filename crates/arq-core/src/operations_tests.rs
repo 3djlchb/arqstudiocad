@@ -620,6 +620,28 @@ fn layer_operations_report_and_undo() {
 }
 
 #[test]
+fn layer_lineweight_changes_are_transactional_and_undoable() {
+    let mut cad = CadDocument::new();
+    let (layer, _) = cad.create_layer("WALLS").unwrap();
+
+    let change = cad.set_layer_lineweight(layer, "0.50 mm").unwrap();
+    assert_eq!(change.layers_modified(), [layer]);
+    assert_eq!(cad.undo_name(), Some("LAYER"));
+    assert_eq!(cad.document().layer(layer).unwrap().lineweight(), "0.50 mm");
+
+    assert!(matches!(
+        cad.set_layer_lineweight(layer, "0.51 mm"),
+        Err(CadError::InvalidOperation(_))
+    ));
+    assert_eq!(cad.document().layer(layer).unwrap().lineweight(), "0.50 mm");
+
+    cad.undo().unwrap();
+    assert_eq!(cad.document().layer(layer).unwrap().lineweight(), "Default");
+    cad.redo().unwrap();
+    assert_eq!(cad.document().layer(layer).unwrap().lineweight(), "0.50 mm");
+}
+
+#[test]
 fn color_index_zero_is_an_invalid_operation() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();

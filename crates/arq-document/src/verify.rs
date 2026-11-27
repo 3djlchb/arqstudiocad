@@ -19,16 +19,18 @@ impl Document {
     ///
     /// Allowed, as no loss: geometry within the contract's tolerance (DXF
     /// stores angles in degrees; a box within it relative to its size, so a
-    /// ray's far-out box survives a direction rounded in the last place); a linetype name in other capitals (names
-    /// ignore case: an R12 drawing's `CONTINUOUS` is `Continuous` in DWG);
-    /// before AutoCAD 2004 (AC1018), which has
-    /// no true color, RGB as an ACI index; before AutoCAD 2000 (AC1015),
-    /// which cannot mark a layer not plotted, every layer plotted. The
-    /// older of the two drawings' versions decides.
+    /// ray's far-out box survives a direction rounded in the last place); a
+    /// linetype name in other capitals (names ignore case: an R12 drawing's
+    /// `CONTINUOUS` is `Continuous` in DWG); before AutoCAD 2004 (AC1018),
+    /// which has no true color, RGB as an ACI index; before AutoCAD 2000
+    /// (AC1015), which cannot keep lineweights or mark a layer not plotted,
+    /// those values are ignored. The older of the two drawings' versions
+    /// decides.
     pub fn validate_roundtrip(&self, written: &Document) -> Vec<String> {
         let version = self.version_code().min(written.version_code());
         let rules = Rules {
             true_color: version.as_str() >= "AC1018",
+            lineweight: version.as_str() >= "AC1015",
             plot_flag: version.as_str() >= "AC1015",
         };
         let mut differences = Vec::new();
@@ -191,6 +193,7 @@ fn compare<T: std::fmt::Debug>(
 
 struct Rules {
     true_color: bool,
+    lineweight: bool,
     plot_flag: bool,
 }
 
@@ -214,6 +217,7 @@ impl Rules {
         a.name() == b.name()
             && self.color(a.color(), b.color())
             && a.linetype().eq_ignore_ascii_case(b.linetype())
+            && (!self.lineweight || a.lineweight() == b.lineweight())
             && a.is_visible() == b.is_visible()
             && a.is_frozen() == b.is_frozen()
             && a.is_locked() == b.is_locked()

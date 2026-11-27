@@ -85,7 +85,7 @@ pub mod snap;  // END, MID, CEN, QUA, INT, PER, TAN, NEA points
 pub struct Document { /* codec document, private */ }   // open/save/snapshot, entities, layers
 pub struct Entity { /* id, kind, layer, color, bounds, plan */ }  // read-only view
 pub struct PlanGeometry { /* Geometry2 + elevation */ } // LINE/CIRCLE/ARC in plan: editable
-pub struct Layer { /* id, name, color, linetype, visible, frozen, locked, plottable */ }
+pub struct Layer { /* id, name, color, linetype, lineweight, visible, frozen, locked, plottable */ }
 pub enum Color { ByLayer, ByBlock, Index(u8), Rgb { r, g, b }, None }
 
 // arq-core: the facade Python binds to.
@@ -142,7 +142,8 @@ Minimum operations:
 - Geometry: `add_line`, `add_circle`, `get_entity`, `delete_entities`,
   `move_entities`, `rotate_entities`
 - Query/edit: `get_bounds`, `query_entities(bounds)`, `get_layers`,
-  `create_layer`, `set_entity_layer`
+  `get_linetypes`, `create_layer`, `set_layer_linetype`,
+  `set_layer_lineweight`, `set_entity_layer`
 
 All of them are bound since phase 4, in `crates/arq-python`; Python code
 imports them from `arqstudiocad.core`. Points are `(x, y)` tuples (any two

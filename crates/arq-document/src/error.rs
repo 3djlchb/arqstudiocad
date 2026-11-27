@@ -101,6 +101,10 @@ pub enum DocumentError {
     LayerInUse(String),
     /// A layer's own color must be an ACI index or RGB, not ByLayer/ByBlock.
     InvalidLayerColor,
+    /// A layer linetype is not loaded in the drawing or is an entity-only mode.
+    InvalidLayerLinetype(String),
+    /// A layer lineweight is not `Default` or an AutoCAD standard value in mm.
+    InvalidLayerLineWeight(String),
     /// An ACI color index must be 1 to 255 (0 means ByBlock).
     InvalidColorIndex(u8),
     /// A frozen layer cannot be the current layer.
@@ -184,6 +188,12 @@ impl fmt::Display for DocumentError {
             Self::LayerInUse(name) => write!(f, "layer {name:?} still has entities"),
             Self::InvalidLayerColor => {
                 write!(f, "a layer color must be a color index or RGB")
+            }
+            Self::InvalidLayerLinetype(name) => {
+                write!(f, "linetype {name:?} is not loaded in this drawing")
+            }
+            Self::InvalidLayerLineWeight(value) => {
+                write!(f, "invalid layer lineweight {value:?}")
             }
             Self::InvalidColorIndex(i) => {
                 write!(f, "color index {i} is not 1 to 255 (0 means ByBlock)")

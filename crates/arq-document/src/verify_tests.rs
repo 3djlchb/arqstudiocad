@@ -21,6 +21,7 @@ fn plan(g: impl Into<Geometry2>) -> PlanGeometry {
 fn sample() -> Document {
     let mut doc = Document::new();
     let walls = doc.create_layer("MUROS").unwrap();
+    doc.set_layer_lineweight(walls, "0.25 mm").unwrap();
     doc.add_entity(
         plan(Line::new(p(0.0, 0.0), p(123.456, 7.0)).unwrap()),
         walls,
@@ -29,6 +30,21 @@ fn sample() -> Document {
     doc.add_entity(plan(Circle::new(p(5.0, 5.0), 2.0).unwrap()), walls)
         .unwrap();
     doc
+}
+
+#[test]
+fn layer_lineweight_changes_are_detected() {
+    let doc = sample();
+    let mut back = doc.snapshot();
+    let walls = back.layer_by_name("MUROS").unwrap().id();
+    back.set_layer_lineweight(walls, "0.50 mm").unwrap();
+
+    let differences = doc.validate_roundtrip(&back);
+    assert_eq!(differences.len(), 1);
+    assert!(
+        differences[0].starts_with("changed: was Layer"),
+        "{differences:?}"
+    );
 }
 
 /// Every file in `dir`, by name.
@@ -99,6 +115,7 @@ fn old_versions_may_lose_what_they_cannot_hold() {
     back.set_entity_color(id, Color::Index(5)).unwrap();
     back.set_layer_plottable(walls, true).unwrap();
     assert_eq!(doc.validate_roundtrip(&back).len(), 2, "2018 keeps both");
+    back.set_layer_lineweight(walls, "Default").unwrap();
     back.cad_mut().version = acadrust::types::DxfVersion::AC1014;
     assert!(
         doc.validate_roundtrip(&back).is_empty(),

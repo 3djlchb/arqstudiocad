@@ -1254,6 +1254,17 @@ impl CadDocument {
         self.layer_op(|doc| doc.set_layer_color(id, color))
     }
 
+    /// Sets the layer's linetype to a definition already loaded in the drawing.
+    pub fn set_layer_linetype(&mut self, id: LayerId, name: &str) -> CadResult<ChangeSet> {
+        self.layer_op(|doc| doc.set_layer_linetype(id, name))
+    }
+
+    /// Sets a layer lineweight using `Default` or an AutoCAD standard value
+    /// formatted in millimeters (for example, `0.25 mm`).
+    pub fn set_layer_lineweight(&mut self, id: LayerId, value: &str) -> CadResult<ChangeSet> {
+        self.layer_op(|doc| doc.set_layer_lineweight(id, value))
+    }
+
     /// Turns a layer on or off.
     pub fn set_layer_visible(&mut self, id: LayerId, visible: bool) -> CadResult<ChangeSet> {
         self.layer_op(|doc| doc.set_layer_visible(id, visible))
