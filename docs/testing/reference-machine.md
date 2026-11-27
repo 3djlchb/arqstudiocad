@@ -128,3 +128,7 @@ entities, median (95th percentile).
 ## Renderer and safe mode checks
 
 - 2026-11-20, `763c69c`. Automatic used OpenGL on the GT 730. Safe mode used the CPU with default settings and with OpenGL saved in Preferences. Both paths opened, edited, saved and reopened the generated DXF. [Validation report](reference-machine/2026-11-20/renderer-safe-mode.txt)
+
+## GPU driver check
+
+- 2026-11-27: `glxinfo -B` reports accelerated OpenGL 4.3 and OpenGL ES 3.2 on the GeForce GT 730 (NV106). `vulkaninfo --summary` lists only llvmpipe on the CPU, not the GT 730. [Full report](reference-machine/2026-11-27/gpu-info.txt)
