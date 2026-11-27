@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from arqstudiocad.core import CadDocument, CadError
 from arqstudiocad.i18n import tr
+from arqstudiocad.paths import linetypes_dir
 from arqstudiocad.ui.linetype_preview import linetype_preview
 
 
@@ -93,6 +94,7 @@ class LinetypeManagerDialog(QDialog):
             ):
                 button.hide()
         self._refresh_loaded()
+        self._load_file_path(linetypes_dir() / "OpenCADStudio.lin")
 
     def _refresh_loaded(self) -> None:
         self._loaded.clear()
@@ -115,18 +117,24 @@ class LinetypeManagerDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(
             self,
             tr("Load linetypes"),
-            "",
+            str(linetypes_dir() / "OpenCADStudio.lin"),
             tr("Linetype definitions (*.lin);;All files (*)"),
         )
         if not path:
             return
+        self._load_file_path(Path(path))
+
+    def _load_file_path(self, path: Path) -> None:
         try:
-            contents = Path(path).read_text(encoding="utf-8-sig")
+            contents = path.read_text(encoding="utf-8-sig")
             self._definitions = CadDocument.parse_linetype_file(contents)
         except (OSError, ValueError) as error:
+            self._available.clear()
+            self._definitions.clear()
+            self._source.setText(tr("No LIN file selected"))
             QMessageBox.warning(self, tr("Linetype Manager"), str(error))
             return
-        self._source.setText(path)
+        self._source.setText(str(path))
         self._available.clear()
         loaded = {name.casefold() for name in self._document.get_linetypes()}
         for name, description, pattern in self._definitions:

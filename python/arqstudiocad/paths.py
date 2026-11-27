@@ -37,6 +37,13 @@ def templates_dir() -> Path:
     return package_dir().parents[1] / "resources" / "templates"
 
 
+def linetypes_dir() -> Path:
+    """Folder holding the bundled `.lin` libraries."""
+    if is_frozen():
+        return Path(sys._MEIPASS) / "resources" / "linetypes"  # type: ignore[attr-defined]
+    return package_dir().parents[1] / "resources" / "linetypes"
+
+
 def sample_template() -> Path:
     """The sample template (ADR 0025 D7): simple architectural blocks,
     public domain (CC0 1.0), made by `tools/make_sample_template.py`."""
