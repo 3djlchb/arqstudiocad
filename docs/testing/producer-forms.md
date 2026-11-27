@@ -59,6 +59,13 @@ names them.
   undone. 17 pass. `visualization_-_conference_room.dwg` does not save as
   DXF: the safe save refuses it, nothing lost, because six references to
   its block "Fluorescent Fixture" read back with another box, reaching the
-  origin. The block holds a 3D solid already drawn as a box; in DXF a body
-  is kept without the DWG's wireframe cache and boxed from its vertices
-  ([matrix](../DWG_DXF_INTEROPERABILITY.md)). A fix of its own is to come.
+  origin. The cause, found on 2026-11-27, was not its 3D solids but its two
+  lights: the DXF reader of our AcadRust fork read lights and surfaces
+  inside a block as unknown custom entities, whose empty box stretched each
+  reference's to the origin. Fixed in the fork (`c8f965c`): a block's
+  lights and surfaces are read as the ENTITIES section reads them. And an
+  unknown entity's empty box no longer counts as a place at the origin.
+  The drawing now saves as DXF and reads back the same. The round trip
+  still reports what it does not yet draw there: three of its 3D solids,
+  whose ACIS ours cannot outline yet, and the lights of each "Fluorescent
+  Fixture", are drawn as boxes. Nothing is lost by it.
