@@ -32,12 +32,19 @@ pub struct Document {
     undecoded: Vec<String>,
     /// ACIS bodies' wireframes, by their data (see `solid.rs`).
     pub(crate) wireframes: crate::solid::WireframeCache,
+    /// The program the drawing was read from (ADR 0045 D1); ours for one
+    /// made here.
+    producer: crate::Producer,
+    /// The name the file's AppInfo gave that program, when it gave one.
+    producer_name: Option<String>,
 }
 
 impl Document {
     /// An empty drawing.
     pub fn new() -> Self {
-        Self::from_cad(CadDocument::new())
+        let mut doc = Self::from_cad(CadDocument::new());
+        doc.producer = crate::Producer::Ours;
+        doc
     }
 
     /// A document around an engine database just read (this crate only).
@@ -60,9 +67,35 @@ impl Document {
             recovery: None,
             undecoded: Vec::new(),
             wireframes: crate::solid::WireframeCache::default(),
+            producer: crate::Producer::Unknown,
+            producer_name: None,
         };
+        doc.producer = crate::Producer::of(doc.cad.app_info.as_ref());
+        doc.producer_name = doc
+            .cad
+            .app_info
+            .as_ref()
+            .and_then(|info| info.product_attribute("name"));
+        // From now on it is ours that saves it: named so at once, so a save
+        // writes it as it is (ADR 0045).
+        if let Some(writer) = crate::producer::writer() {
+            doc.cad.app_info = Some(writer);
+        }
         doc.rebuild_model();
         doc
+    }
+
+    /// The program this drawing was read from, as its file says (ADR 0045
+    /// D1): a DWG's AppInfo section names it; a DXF, or a DWG before 2004,
+    /// says nothing, and is unknown. A drawing made here is ours.
+    pub fn producer(&self) -> &crate::Producer {
+        &self.producer
+    }
+
+    /// The name the file's AppInfo gives the program that wrote it, when it
+    /// has one.
+    pub fn app_info_name(&self) -> Option<String> {
+        self.producer_name.clone()
     }
 
     /// Opens a `.dwg`, `.dwt` or `.dxf` file; the extension decides the format.
@@ -133,14 +166,27 @@ impl Document {
     /// version. The drawing itself keeps its version. (As DXF the codec writes
     /// an R12 drawing as R13, the oldest version whose structure matches what
     /// it emits.)
+    ///
+    /// Its AppInfo section names this program, once the application has
+    /// named it ([`set_writer`](crate::set_writer)), whoever made the
+    /// drawing: the file is saved by us (ADR 0045).
     pub fn to_dwg_bytes(&self) -> DocumentResult<Vec<u8>> {
-        if matches!(self.cad.version, DxfVersion::AC1009 | DxfVersion::Unknown) {
-            // A cheap copy: entities are shared `Arc`s (see `snapshot`).
-            let mut modern = CadDocument::clone(&self.cad);
-            modern.version = DxfVersion::AC1032;
-            return Ok(DwgWriter::write_to_vec(&modern)?);
+        let old = matches!(self.cad.version, DxfVersion::AC1009 | DxfVersion::Unknown);
+        let writer = crate::producer::writer();
+        // Named ours when made or read: written as it is, no copy.
+        let named = writer.is_none() || self.cad.app_info == writer;
+        if !old && named {
+            return Ok(DwgWriter::write_to_vec(&self.cad)?);
         }
-        Ok(DwgWriter::write_to_vec(&self.cad)?)
+        // A cheap copy: entities are shared `Arc`s (see `snapshot`).
+        let mut saved = CadDocument::clone(&self.cad);
+        if old {
+            saved.version = DxfVersion::AC1032;
+        }
+        if writer.is_some() {
+            saved.app_info = writer;
+        }
+        Ok(DwgWriter::write_to_vec(&saved)?)
     }
 
     /// Saves to `path` in the format its extension names.
@@ -255,6 +301,8 @@ impl Document {
             recovery: self.recovery.clone(),
             undecoded: self.undecoded.clone(),
             wireframes: crate::solid::WireframeCache::default(),
+            producer: self.producer.clone(),
+            producer_name: self.producer_name.clone(),
         }
     }
 

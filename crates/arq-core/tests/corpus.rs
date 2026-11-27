@@ -1119,3 +1119,44 @@ fn local_drawings_round_trip() {
     };
     run_all(items, check_file);
 }
+
+/// The producer of each public sample, as its file says (ADR 0045 D1):
+/// LibreDWG's DWGs of 2004 and later name AutoCAD, but its 2018
+/// constraint drawing, saved by the ODA's Teigha; older ones, and DXF, say
+/// nothing.
+#[test]
+#[ignore = "needs the regression drawings: uv run python tools/fetch_codec_samples.py"]
+fn codec_samples_name_their_producer() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/corpus/libredwg");
+    assert!(
+        root.is_dir(),
+        "{} is missing: run `uv run python tools/fetch_codec_samples.py`",
+        root.display()
+    );
+    let expected = [
+        ("2004/Constraints.dwg", "autocad"),
+        ("2004/Surface.dwg", "autocad"),
+        ("2007/Constraints.dwg", "autocad"),
+        ("2007/ATMOS-DC22S.dwg", "autocad"),
+        ("2010/Constraints.dwg", "autocad"),
+        ("2013/Constraints.dwg", "autocad"),
+        ("2018/Constraints.dwg", "oda"),
+        ("example_2007.dwg", "autocad"),
+        ("example_2013.dwg", "autocad"),
+        ("2000/Constraints.dwg", "unknown"),
+        ("r14/Constraints.dwg", "unknown"),
+        ("example_2000.dwg", "unknown"),
+    ];
+    let found: Vec<(&str, String)> = expected
+        .iter()
+        .map(|&(name, _)| {
+            let doc = Document::open(root.join(name)).expect(name);
+            (name, doc.producer().key().to_owned())
+        })
+        .collect();
+    let wanted: Vec<(&str, String)> = expected
+        .iter()
+        .map(|&(name, key)| (name, key.to_owned()))
+        .collect();
+    assert_eq!(found, wanted);
+}

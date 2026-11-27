@@ -23,3 +23,16 @@ as their evidence comes (D4); until then each is "to confirm".
 
 **To confirm** means no public AutoCAD sample has shown it yet (ADR
 0045 D4).
+
+## How a producer is known
+
+Since 2026-11-26 (ADR 0045 delivery 1), from a DWG's AppInfo section:
+
+| Producer | What its AppInfo says | Evidence |
+|---|---|---|
+| AutoCAD | `name ="AutoCAD"`, a Trusted DWG comment | LibreDWG's 2004–2013 samples |
+| The ODA's Teigha | `name ="Teigha®"`, an Open Design Alliance comment | LibreDWG's 2018 `Constraints.dwg` |
+| Ours | our product name, given by `product.py` | our own saves |
+| ProgeCAD, BricsCAD, ARES Commander, GstarCAD, Edificius, Vectorworks | to confirm: known by the names they give themselves | none yet |
+
+A DXF, and a DWG before 2004, carry no AppInfo: their producer is unknown.
