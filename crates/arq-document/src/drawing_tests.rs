@@ -1613,3 +1613,48 @@ fn a_spline_our_geometry_refuses_is_drawn_by_the_codec_and_not_moved() {
     );
     assert!(!doc.entity(id).unwrap().is_transformable());
 }
+
+#[test]
+fn layers_are_matched_in_any_case_from_one_entity_to_the_next() {
+    // A line on each layer named, one unit apart, colored by layer. The
+    // layers change from each line to the next and come back, so a style
+    // kept from the line before is never taken for another layer's.
+    let named = [
+        "muros", "apagada", "Muros", "0", "MUROS", "área", "Nueva", "muros",
+    ];
+    let x = ["0", "1", "2", "3", "4", "5", "6", "7"];
+    let entities: Vec<Vec<&str>> = named
+        .iter()
+        .zip(x)
+        .map(|(&layer, x)| {
+            vec![
+                "0", "LINE", "8", layer, "10", x, "20", "0", "30", "0", "11", x, "21", "1", "31",
+                "0",
+            ]
+        })
+        .collect();
+    let refs: Vec<&[&str]> = entities.iter().map(Vec::as_slice).collect();
+    let mut layers = LAYERS.to_vec();
+    layers.push(("ÁREA", 0, 3)); // matched by its Unicode upper case
+    let doc = dxf(&layers, &[], &refs);
+    let drawn: Vec<(f64, Color)> = shapes(&doc)
+        .iter()
+        .filter_map(|i| match i.shape {
+            Shape::Line(l) => Some((l.start().x(), i.color)),
+            _ => None,
+        })
+        .collect();
+    let index = Color::Index;
+    assert_eq!(
+        drawn,
+        [
+            (0.0, index(1)), // muros: MUROS's red
+            (2.0, index(1)), // Muros; apagada (x = 1) is off
+            (3.0, index(7)),
+            (4.0, index(1)),
+            (5.0, index(3)), // área: ÁREA
+            (6.0, index(7)), // not in the table: shown, color 7
+            (7.0, index(1)),
+        ]
+    );
+}
