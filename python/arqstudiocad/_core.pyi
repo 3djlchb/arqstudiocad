@@ -57,6 +57,7 @@ __all__ = [
     "list_gpu_adapters",
     "probe_gpu_adapter",
     "probe_gpu_backend",
+    "set_writer",
 ]
 
 # Public versions of these two live in arqstudiocad.core.
