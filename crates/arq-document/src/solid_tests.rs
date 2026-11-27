@@ -256,3 +256,42 @@ fn a_changed_solid_is_drawn_from_its_new_data() {
     }
     assert_eq!(drawn(&doc, id).0, [4.0, -1.0, 6.0, 1.0]);
 }
+
+#[test]
+fn a_tolerant_solid_is_drawn_though_it_is_not_measured() {
+    // A box with one vertex moved off its edges and faces, as tolerant
+    // ACIS stores them: not valid for measuring or combining, but its
+    // edges are still drawn from its own wireframe, not left to the
+    // engine's breakdown (which, for most such bodies, is a box).
+    let mut sat = primitives::build_box([1.0, 0.0, 0.0], 2.0, 2.0, 2.0);
+    let point = sat
+        .records
+        .iter()
+        .position(|r| r.entity_type == "point")
+        .unwrap();
+    let slot = sat.records[point]
+        .tokens
+        .iter()
+        .position(|t| matches!(t, SatToken::Float(_)))
+        .unwrap();
+    sat.records[point].tokens[slot] = SatToken::Float(0.5);
+    let (doc, id) = drawing_with(&sat);
+    assert!(matches!(doc.solid(id), Some(Err(Untranslated::Invalid(_)))));
+    let solid = |doc: &Document, id| doc.cad().get_entity(acadrust::Handle::new(id)).cloned();
+    let wire = doc
+        .wireframes
+        .get(&solid(&doc, id).unwrap(), 4)
+        .expect("a wireframe");
+    assert_eq!(wire.edges.len(), 12);
+    assert_eq!(drawn(&doc, id), ([0.0, -1.0, 2.0, 1.0], false));
+    // What cannot be translated at all has no wireframe.
+    let mut sat = primitives::build_box([1.0, 0.0, 0.0], 2.0, 2.0, 2.0);
+    let plane = sat
+        .records
+        .iter()
+        .position(|r| r.entity_type == "plane-surface")
+        .unwrap();
+    sat.records[plane].entity_type = "spline-surface".into();
+    let (doc, id) = drawing_with(&sat);
+    assert!(doc.wireframes.get(&solid(&doc, id).unwrap(), 4).is_none());
+}
