@@ -1,0 +1,21 @@
+GPU information on the reference machine, 2026-11-27
+
+LMDE 7, kernel 6.12.118, X11 (display :0), GeForce GT 730 (NV106,
+PCI ID 10de:1287), Mesa 25.0.7-2+deb13u1.
+
+OpenGL, from glxinfo -B:
+- Direct rendering: Yes; Mesa reports accelerated rendering.
+- Vendor: Mesa; renderer: NV106.
+- OpenGL core and compatibility profiles: 4.3.
+- OpenGL ES: 3.2.
+
+Vulkan, from vulkaninfo --summary:
+- Instance version: 1.4.309.
+- The only physical device listed is GPU0, llvmpipe (LLVM 19.1.7, 256
+  bits), a CPU device. Its Vulkan API version is 1.4.305 and the driver
+  is Mesa 25.0.7-2+deb13u1.
+- The GT 730 is not listed as a Vulkan device.
+
+This agrees with the reference setup used by the application: its GPU
+viewport can use the GT 730 through OpenGL ES, while Vulkan and the
+software backend are software renderers on this machine.
