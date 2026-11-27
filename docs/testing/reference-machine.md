@@ -132,3 +132,4 @@ entities, median (95th percentile).
 ## GPU driver check
 
 - 2026-11-27: `glxinfo -B` reports accelerated OpenGL 4.3 and OpenGL ES 3.2 on the GeForce GT 730 (NV106). `vulkaninfo --summary` lists only llvmpipe on the CPU, not the GT 730. [Full report](reference-machine/2026-11-27/gpu-info.txt)
+- 2026-11-27: The system, workspace tests, installation check and 10,000/100,000-line DXF timings were recorded. The Python XCB window tests initially could not reach X11 from the runner; all 10 GPU viewport tests passed when rerun with X11 access. [System report](reference-machine/2026-11-27/system-report.txt)
