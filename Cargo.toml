@@ -86,6 +86,8 @@ opt-level = 3
 # by block copies (14% fewer instructions reading a 100,000-line DWG).
 # A DWG's AppInfo section is read into the document, and written from it,
 # so a drawing's producer is known (ADR 0045 D1).
-# Immutable tag: arqstudiocad/on-ea66abe-app-info.
+# A block's lights and surfaces are read from DXF as what they are, as the
+# ENTITIES section reads them, not as unknown custom entities.
+# Immutable tag: arqstudiocad/on-ea66abe-dxf-block-light.
 # THIRD_PARTY.md lists the patches and provenance.
-acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "b967601017e168ca4444b27f2760192101fd189b" }
+acadrust = { git = "https://github.com/3djlchb/acadrust", rev = "c8f965cd0e271c69a77a09446050dc1f7fe1948e" }

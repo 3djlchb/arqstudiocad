@@ -985,3 +985,91 @@ fn a_block_array_moves_turns_scales_and_mirrors_as_a_whole() {
         }
     }
 }
+
+/// A block holding a line and an entity the codec does not know, placed
+/// far from the origin.
+fn lamp_with_a_stranger() -> (Vec<&'static str>, Vec<&'static str>) {
+    let block = vec![
+        "0",
+        "BLOCK",
+        "8",
+        "0",
+        "2",
+        "LAMP",
+        "70",
+        "0",
+        "10",
+        "0",
+        "20",
+        "0",
+        "30",
+        "0",
+        "3",
+        "LAMP", //
+        "0",
+        "LINE",
+        "8",
+        "0",
+        "10",
+        "1",
+        "20",
+        "1",
+        "30",
+        "0",
+        "11",
+        "2",
+        "21",
+        "1",
+        "31",
+        "0",
+        //
+        "0",
+        "ACME_WIDGET",
+        "8",
+        "0",
+        "10",
+        "7",
+        "20",
+        "7",
+        "30",
+        "0", //
+        "0",
+        "ENDBLK",
+        "8",
+        "0",
+    ];
+    let insert = vec![
+        "0", "INSERT", "8", "0", "2", "LAMP", "10", "100", "20", "100", "30", "0",
+    ];
+    (block, insert)
+}
+
+#[test]
+fn an_entity_the_codec_does_not_know_does_not_stretch_a_box_to_the_origin() {
+    let (block, insert) = lamp_with_a_stranger();
+    let stranger = vec![
+        "0",
+        "ACME_WIDGET",
+        "8",
+        "0",
+        "10",
+        "5",
+        "20",
+        "5",
+        "30",
+        "0",
+    ];
+    let doc = dxf(LAYERS, &[&block], &[&insert, &stranger]);
+    let entities = doc.entities();
+    let reference = entities.iter().find(|e| e.kind() == "INSERT").unwrap();
+    // The reference is boxed by its line alone, at (101,101)-(102,101).
+    let b = reference.bounds.unwrap();
+    assert_eq!(
+        (b.min().x(), b.min().y(), b.max().x(), b.max().y()),
+        (101.0, 101.0, 102.0, 101.0),
+        "the stranger is nowhere, not at the origin"
+    );
+    // A stranger in model space has no box of its own.
+    let alone = entities.iter().find(|e| e.kind() != "INSERT").unwrap();
+    assert_eq!(alone.bounds, None, "{}", alone.kind());
+}
