@@ -37,6 +37,8 @@ from arqstudiocad.ui.color_picker import (
 )
 from arqstudiocad.ui.color_picker import color_name as color_name
 from arqstudiocad.ui.event_bridge import QtEventBridge
+from arqstudiocad.ui.linetype_preview import linetype_preview
+from arqstudiocad.ui.linetype_select_dialog import choose_linetype
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 from arqstudiocad.ui.popup import popup
 
@@ -119,6 +121,7 @@ class LayersPanel(QDockWidget):
         self.setObjectName("layers_panel")
         self._session = session
         self._filling = False
+        self._linetype_patterns: dict[str, tuple[float, ...]] = {}
 
         self.new_button = QPushButton()
         self.delete_button = QPushButton()
@@ -190,6 +193,14 @@ class LayersPanel(QDockWidget):
         document = self._session.active
         layers = [] if document is None else document.get_layers()
         current = None if document is None else document.current_layer.id
+        self._linetype_patterns = (
+            {}
+            if document is None
+            else {
+                name.casefold(): tuple(pattern)
+                for name, _description, pattern in document.get_linetype_definitions()
+            }
+        )
         self._filling = True
         try:
             self.table.setRowCount(len(layers))
@@ -235,7 +246,11 @@ class LayersPanel(QDockWidget):
         )
         self.table.setItem(row, PLOT, plot_item)
         self.table.setItem(row, COLOR, color)
-        self.table.setItem(row, LINETYPE, cell(layer.linetype))
+        linetype_item = cell(layer.linetype)
+        pattern = self._linetype_patterns.get(layer.linetype.casefold())
+        if pattern is not None:
+            linetype_item.setIcon(linetype_preview(pattern))
+        self.table.setItem(row, LINETYPE, linetype_item)
         self.table.setItem(row, LINEWEIGHT, cell(_lineweight_label(layer.lineweight)))
         self.table.setItem(row, TRANSPARENCY, cell(layer.transparency))
 
@@ -369,6 +384,15 @@ class LayersPanel(QDockWidget):
             if accepted:
                 self.set_transparency(layer_id, percent)
             return
+        if column == LINETYPE:
+            document = self._session.active
+            if document is None:
+                return
+            current = document.get_layer(layer_id).linetype
+            name = choose_linetype(document, current, self)
+            if name is not None:
+                self.set_linetype(layer_id, name)
+            return
         if column not in (COLOR, LINETYPE, LINEWEIGHT):
             return
         menu = QMenu(self)
@@ -391,18 +415,6 @@ class LayersPanel(QDockWidget):
                 menu.addSeparator()
             other = menu.addAction(tr("More colors…"))
             other.triggered.connect(lambda: self._pick_color(layer_id))
-        elif column == LINETYPE:
-            document = self._session.active
-            if document is None:
-                return
-            current = document.get_layer(layer_id).linetype
-            for name in document.get_linetypes():
-                action = menu.addAction(name)
-                action.setCheckable(True)
-                action.setChecked(name.casefold() == current.casefold())
-                action.triggered.connect(
-                    lambda _checked=False, value=name: self.set_linetype(layer_id, value)
-                )
         elif column == LINEWEIGHT:
             document = self._session.active
             if document is None:
