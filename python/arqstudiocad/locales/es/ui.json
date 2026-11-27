@@ -1206,6 +1206,7 @@
   "{name} was not saved: the file written did not read back as the drawing. The original file is unchanged; what was written is kept beside it.": "{name} no se ha guardado: el archivo escrito no se releyó como el dibujo. El archivo original no ha cambiado; lo escrito se conserva a su lado.",
   "{text} is not a number.": "{text} no es un número.",
   "{typed} is not an amount: write it as {example}.": "{typed} no es un importe: escríbalo como {example}.",
+  "{value} mm": "{value} mm",
   "{view}: snaps, ORTHO and grips in plan only": "{view}: referencias, ORTO y pinzamientos solo en planta",
   "{width} x {height}": "{width} x {height}"
 }

@@ -38,8 +38,36 @@ from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 from arqstudiocad.ui.popup import popup
 
-CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE = range(8)
+CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE, LINEWEIGHT = range(9)
 LAYER_ID = Qt.ItemDataRole.UserRole
+
+_LINEWEIGHTS = (
+    "Default",
+    "0.00 mm",
+    "0.05 mm",
+    "0.09 mm",
+    "0.13 mm",
+    "0.15 mm",
+    "0.18 mm",
+    "0.20 mm",
+    "0.25 mm",
+    "0.30 mm",
+    "0.35 mm",
+    "0.40 mm",
+    "0.50 mm",
+    "0.53 mm",
+    "0.60 mm",
+    "0.70 mm",
+    "0.80 mm",
+    "0.90 mm",
+    "1.00 mm",
+    "1.06 mm",
+    "1.20 mm",
+    "1.40 mm",
+    "1.58 mm",
+    "2.00 mm",
+    "2.11 mm",
+)
 
 
 @cache
@@ -70,6 +98,15 @@ def swatch(color: CadColor) -> QIcon:
     return QIcon(pixmap)
 
 
+def _lineweight_label(value: str) -> str:
+    if value == "Default":
+        return tr("Default")
+    if not value.endswith(" mm"):
+        return value
+    number, _unit = value.split(" ", maxsplit=1)
+    return tr("{value} mm", value=number)
+
+
 class LayersPanel(QDockWidget):
     """The active drawing's layers."""
 
@@ -95,7 +132,7 @@ class LayersPanel(QDockWidget):
             buttons.addWidget(button)
         buttons.addStretch(1)
 
-        self.table = QTableWidget(0, 8)
+        self.table = QTableWidget(0, 9)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().hide()
@@ -140,6 +177,7 @@ class LayersPanel(QDockWidget):
                 tr("Plot"),
                 tr("Color"),
                 tr("Linetype"),
+                tr("Lineweight"),
             ]
         )
         self.refresh()
@@ -195,6 +233,7 @@ class LayersPanel(QDockWidget):
         self.table.setItem(row, PLOT, plot_item)
         self.table.setItem(row, COLOR, color)
         self.table.setItem(row, LINETYPE, cell(layer.linetype))
+        self.table.setItem(row, LINEWEIGHT, cell(_lineweight_label(layer.lineweight)))
 
     def _on_document_changed(self, event: DocumentChanged) -> None:
         changes = event.changes
@@ -254,6 +293,12 @@ class LayersPanel(QDockWidget):
         if self._edit(lambda d: d.set_layer_color(layer_id, color)):
             remember_color(color)
 
+    def set_linetype(self, layer_id: int, name: str) -> None:
+        self._edit(lambda d: d.set_layer_linetype(layer_id, name))
+
+    def set_lineweight(self, layer_id: int, value: str) -> None:
+        self._edit(lambda d: d.set_layer_lineweight(layer_id, value))
+
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if self._filling or item.column() != NAME:
             return
@@ -298,7 +343,7 @@ class LayersPanel(QDockWidget):
                 plottable = document.get_layer(layer_id).is_plottable
                 self._edit(lambda d: d.set_layer_plottable(layer_id, not plottable))
             return
-        if column != COLOR:
+        if column not in (COLOR, LINETYPE, LINEWEIGHT):
             return
         menu = QMenu(self)
         menu.setStyleSheet(
@@ -307,16 +352,43 @@ class LayersPanel(QDockWidget):
             "border-bottom: 1px solid rgba(0, 140, 255, 230); "
             "color: palette(text); }"
         )
-        choices = _quick_color_choices()
-        for choice_index, choice in enumerate(choices):
-            if choice_index == 9:
+        if column == COLOR:
+            choices = _quick_color_choices()
+            for choice_index, choice in enumerate(choices):
+                if choice_index == 9:
+                    menu.addSeparator()
+                action = menu.addAction(swatch(choice), color_name(choice))
+                action.triggered.connect(
+                    lambda _checked=False, c=choice: self.set_color(layer_id, c)
+                )
+            if len(choices) == 9:
                 menu.addSeparator()
-            action = menu.addAction(swatch(choice), color_name(choice))
-            action.triggered.connect(lambda _checked=False, c=choice: self.set_color(layer_id, c))
-        if len(choices) == 9:
-            menu.addSeparator()
-        other = menu.addAction(tr("More colors…"))
-        other.triggered.connect(lambda: self._pick_color(layer_id))
+            other = menu.addAction(tr("More colors…"))
+            other.triggered.connect(lambda: self._pick_color(layer_id))
+        elif column == LINETYPE:
+            document = self._session.active
+            if document is None:
+                return
+            current = document.get_layer(layer_id).linetype
+            for name in document.get_linetypes():
+                action = menu.addAction(name)
+                action.setCheckable(True)
+                action.setChecked(name.casefold() == current.casefold())
+                action.triggered.connect(
+                    lambda _checked=False, value=name: self.set_linetype(layer_id, value)
+                )
+        else:
+            document = self._session.active
+            if document is None:
+                return
+            current = document.get_layer(layer_id).lineweight
+            for value in _LINEWEIGHTS:
+                action = menu.addAction(_lineweight_label(value))
+                action.setCheckable(True)
+                action.setChecked(value == current)
+                action.triggered.connect(
+                    lambda _checked=False, selected=value: self.set_lineweight(layer_id, selected)
+                )
         item = self.table.item(row, column)
         if item is not None:
             rect = self.table.visualItemRect(item)

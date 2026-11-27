@@ -6,6 +6,7 @@
 use acadrust::Handle;
 use acadrust::tables::layer::Layer as CodecLayer;
 use acadrust::tables::normalize_name;
+use acadrust::types::LineWeight as CodecLineWeight;
 
 use crate::change::LayerNote;
 use crate::document::Document;
@@ -23,6 +24,7 @@ pub struct Layer {
     name: String,
     color: Color,
     linetype: String,
+    lineweight: String,
     visible: bool,
     frozen: bool,
     locked: bool,
@@ -42,9 +44,13 @@ impl Layer {
     pub fn color(&self) -> Color {
         self.color
     }
-    /// Its linetype name (read-only for now, ADR 0011 D3.11).
+    /// Its linetype name.
     pub fn linetype(&self) -> &str {
         &self.linetype
+    }
+    /// Its lineweight in millimeters or a special value such as `Default`.
+    pub fn lineweight(&self) -> &str {
+        &self.lineweight
     }
     /// Whether it is on (shown).
     pub fn is_visible(&self) -> bool {
@@ -70,11 +76,50 @@ pub(crate) fn read_layer(l: &CodecLayer) -> Layer {
         name: l.name.clone(),
         color: color_from_codec(l.color),
         linetype: l.line_type.clone(),
+        lineweight: lineweight_text(l.line_weight),
         visible: !l.flags.off,
         frozen: l.flags.frozen,
         locked: l.flags.locked,
         plottable: l.is_plottable,
     }
+}
+
+fn lineweight_text(weight: CodecLineWeight) -> String {
+    match weight {
+        CodecLineWeight::ByLayer => "ByLayer".to_owned(),
+        CodecLineWeight::ByBlock => "ByBlock".to_owned(),
+        CodecLineWeight::Default => "Default".to_owned(),
+        CodecLineWeight::Value(value) => format!("{:.2} mm", f64::from(value) / 100.0),
+    }
+}
+
+const STANDARD_LINEWEIGHTS: [i16; 24] = [
+    0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200,
+    211,
+];
+
+fn parse_lineweight(value: &str) -> DocumentResult<CodecLineWeight> {
+    if value == "Default" {
+        return Ok(CodecLineWeight::Default);
+    }
+    let Some(number) = value.strip_suffix(" mm") else {
+        return Err(DocumentError::InvalidLayerLineWeight(value.to_owned()));
+    };
+    let Ok(mm) = number.parse::<f64>() else {
+        return Err(DocumentError::InvalidLayerLineWeight(value.to_owned()));
+    };
+    let hundredths = mm * 100.0;
+    let rounded = hundredths.round();
+    if !hundredths.is_finite()
+        || number.starts_with('-')
+        || (hundredths - rounded).abs() > 1e-8
+        || !(0.0..=211.0).contains(&rounded)
+        || !STANDARD_LINEWEIGHTS.contains(&(rounded as i16))
+        || format!("{:.2} mm", mm) != value
+    {
+        return Err(DocumentError::InvalidLayerLineWeight(value.to_owned()));
+    }
+    Ok(CodecLineWeight::Value(rounded as i16))
 }
 
 /// DWG symbol-table name rules, plus no surrounding spaces and at most 255
@@ -110,6 +155,22 @@ impl Document {
         let mut layers: Vec<Layer> = self.model.layers.values().cloned().collect();
         layers.sort_by_key(|l| (l.name != "0", l.name.to_lowercase()));
         layers
+    }
+
+    /// The linetypes loaded in this drawing, excluding entity-only
+    /// `ByLayer` and `ByBlock` modes, sorted by name.
+    pub fn linetypes(&self) -> Vec<String> {
+        let mut names: Vec<_> = self
+            .cad()
+            .line_types
+            .iter()
+            .map(|linetype| linetype.name.clone())
+            .filter(|name| {
+                !name.eq_ignore_ascii_case("ByLayer") && !name.eq_ignore_ascii_case("ByBlock")
+            })
+            .collect();
+        names.sort_by_key(|name| name.to_lowercase());
+        names
     }
 
     /// The layer with this id.
@@ -207,6 +268,46 @@ impl Document {
             return Err(DocumentError::InvalidLayerColor);
         }
         self.edit_layer(id, |l| l.color = color_to_codec(color))
+    }
+
+    /// Sets the layer's linetype to a definition already loaded in the drawing.
+    pub fn set_layer_linetype(&mut self, id: LayerId, name: &str) -> DocumentResult<()> {
+        if self.codec_layer(id).is_none() {
+            return Err(DocumentError::LayerIdNotFound(id));
+        }
+        let linetype = self
+            .cad()
+            .line_types
+            .get(name)
+            .filter(|entry| {
+                !entry.name.eq_ignore_ascii_case("ByLayer")
+                    && !entry.name.eq_ignore_ascii_case("ByBlock")
+            })
+            .map(|entry| entry.name.clone())
+            .ok_or_else(|| DocumentError::InvalidLayerLinetype(name.to_owned()))?;
+        if self
+            .codec_layer(id)
+            .is_some_and(|layer| layer.line_type == linetype)
+        {
+            return Ok(());
+        }
+        self.edit_layer(id, |layer| layer.line_type = linetype)
+    }
+
+    /// Sets a layer lineweight using an AutoCAD standard value (`"0.25 mm"`)
+    /// or `"Default"`.
+    pub fn set_layer_lineweight(&mut self, id: LayerId, value: &str) -> DocumentResult<()> {
+        if self.codec_layer(id).is_none() {
+            return Err(DocumentError::LayerIdNotFound(id));
+        }
+        let weight = parse_lineweight(value)?;
+        if self
+            .codec_layer(id)
+            .is_some_and(|layer| layer.line_weight == weight)
+        {
+            return Ok(());
+        }
+        self.edit_layer(id, |layer| layer.line_weight = weight)
     }
 
     /// Turns a layer on or off.
@@ -416,6 +517,48 @@ mod tests {
             doc.set_layer_visible(999_999, true),
             Err(DocumentError::LayerIdNotFound(999_999))
         );
+    }
+
+    #[test]
+    fn linetype_choices_are_loaded_and_layer_assignment_is_case_insensitive() {
+        use acadrust::tables::LineType;
+
+        let mut doc = Document::new();
+        let layer = doc.create_layer("AXES").unwrap();
+        let mut dashed = LineType::dashed();
+        dashed.handle = doc.cad_mut().allocate_handle();
+        doc.cad_mut().line_types.add(dashed).unwrap();
+
+        assert_eq!(doc.linetypes(), ["Continuous", "Dashed"]);
+        doc.set_layer_linetype(layer, "dAsHeD").unwrap();
+        assert_eq!(doc.layer(layer).unwrap().linetype(), "Dashed");
+        assert_eq!(
+            doc.set_layer_linetype(layer, "Hidden"),
+            Err(DocumentError::InvalidLayerLinetype("Hidden".to_owned()))
+        );
+        assert_eq!(doc.layer(layer).unwrap().linetype(), "Dashed");
+        assert!(doc.set_layer_linetype(layer, "ByLayer").is_err());
+    }
+
+    #[test]
+    fn layer_lineweight_accepts_only_default_and_standard_values() {
+        let mut doc = Document::new();
+        let layer = doc.create_layer("WALLS").unwrap();
+        assert_eq!(doc.layer(layer).unwrap().lineweight(), "Default");
+
+        doc.set_layer_lineweight(layer, "0.25 mm").unwrap();
+        assert_eq!(doc.layer(layer).unwrap().lineweight(), "0.25 mm");
+        doc.set_layer_lineweight(layer, "Default").unwrap();
+        assert_eq!(doc.layer(layer).unwrap().lineweight(), "Default");
+
+        for invalid in ["0.23 mm", "2.12 mm", "ByLayer", "nan mm", "0.5 mm"] {
+            assert_eq!(
+                doc.set_layer_lineweight(layer, invalid),
+                Err(DocumentError::InvalidLayerLineWeight(invalid.to_owned())),
+                "{invalid}"
+            );
+        }
+        assert_eq!(doc.layer(layer).unwrap().lineweight(), "Default");
     }
 
     #[test]

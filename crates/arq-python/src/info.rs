@@ -253,6 +253,12 @@ impl CadLayerInfo {
         self.0.linetype()
     }
 
+    /// Its lineweight in millimeters, or a special value such as `Default`.
+    #[getter]
+    fn lineweight(&self) -> &str {
+        self.0.lineweight()
+    }
+
     /// On (shown) or off.
     #[getter]
     fn is_visible(&self) -> bool {

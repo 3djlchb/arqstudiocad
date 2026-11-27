@@ -302,6 +302,25 @@ def test_layer_operations(doc: CadDocument) -> None:
     assert doc.undo_name == "LAYER"
 
 
+def test_layer_linetype_choices_and_lineweight_api(doc: CadDocument) -> None:
+    layer, _ = doc.create_layer("WALLS")
+    assert doc.get_linetypes() == ["Continuous"]
+    doc.set_layer_linetype(layer, "Continuous")
+    with pytest.raises(InvalidOperationError):
+        doc.set_layer_linetype(layer, "NotLoaded")
+    assert doc.get_layer(layer).linetype == "Continuous"
+
+    doc.set_layer_lineweight(layer, "0.25 mm")
+    assert doc.get_layer(layer).lineweight == "0.25 mm"
+    with pytest.raises(InvalidOperationError):
+        doc.set_layer_lineweight(layer, "0.23 mm")
+    assert doc.get_layer(layer).lineweight == "0.25 mm"
+    doc.undo()
+    assert doc.get_layer(layer).lineweight == "Default"
+    doc.redo()
+    assert doc.get_layer(layer).lineweight == "0.25 mm"
+
+
 # History
 
 
