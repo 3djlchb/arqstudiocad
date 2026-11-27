@@ -249,7 +249,7 @@ phases *(maintainer, 2026-11-10)*:
 
 | Milestone | Content | Status |
 |---|---|---|
-| 04.1 Parametric engine | ArqStudioCAD's own engine (ADR 0017 D6; an ADR first): a dependency graph that regenerates what depends on what changed; 2D geometric and dimensional constraints, solved and kept through DWG; dynamic blocks recomputed when a parameter changes (visibility, stretch, flip, lookup…), so the block editor accepts them (ADR 0023 D3a). Associative dimensions and views are built on it; BIM objects (phases 06 and 08) reuse it | ○ |
+| 04.1 Parametric engine | ArqStudioCAD's own engine (ADR 0017 D6; an ADR first): a dependency graph that regenerates what depends on what changed; 2D geometric and dimensional constraints, solved and kept through DWG; dynamic blocks recomputed when a parameter changes (visibility, stretch, flip, lookup…), so the block editor accepts them (ADR 0023 D3a). Associative dimensions and views are built on it; BIM objects (phases 06 and 08) reuse it | ◐ first delivery: deterministic dependency graph and regeneration ordering in `arq-core` (ADR 0046); evaluator execution, document transactions, persistence, constraints and dynamic blocks remain |
 | 04.2 Dimensions | Dimensions created and edited, associative on the parametric engine; dimension styles kept through DWG | ○ |
 | 04.3 Hatches | Hatches created and edited, with their patterns drawn and kept through DWG | ○ |
 | 04.4 Layouts | Paper space: layouts, viewports, title blocks and scales | ○ |
