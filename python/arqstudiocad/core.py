@@ -44,7 +44,14 @@ from arqstudiocad._core import (
     OverwritesDamagedError,
     SaveNotVerifiedError,
     UnsupportedFormatError,
+    __version__,
+    set_writer,
 )
+from arqstudiocad.product import APP_NAME
+
+# Every DWG saved names this program in its AppInfo section, so a drawing
+# saved here is known as ours when read again (ADR 0045 D1).
+set_writer(APP_NAME, __version__)
 
 type Point = tuple[float, float]
 """A point or vector as the core returns it."""

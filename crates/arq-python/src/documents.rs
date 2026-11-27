@@ -263,6 +263,23 @@ impl CadDocument {
         self.read(|cad| cad.document().undecoded_objects().to_vec())
     }
 
+    /// The program the drawing was read from, as its file says (ADR 0045
+    /// D1): `"autocad"`, `"intellicad"`, `"bricscad"`, `"ares"`,
+    /// `"gstarcad"`, `"edificius"`, `"vectorworks"`, `"oda"`, `"ours"`,
+    /// `"other"` or `"unknown"`, and the name the file gives it (empty when
+    /// it gives none).
+    #[getter]
+    fn producer(&self) -> PyResult<(String, String)> {
+        self.read(|cad| {
+            let producer = cad.document().producer();
+            let name = match producer {
+                arq_core::Producer::Other(name) => name.clone(),
+                _ => cad.document().app_info_name().unwrap_or_default(),
+            };
+            (producer.key().to_owned(), name)
+        })
+    }
+
     /// The user accepts the recovered drawing: saving may now replace the
     /// damaged file it came from (otherwise `OverwritesDamagedError`).
     fn allow_overwriting_damaged(&self) -> PyResult<()> {

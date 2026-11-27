@@ -176,6 +176,7 @@ def test_the_public_module_exports_every_native_class() -> None:
         "list_gpu_adapters",
         "probe_gpu_adapter",
         "probe_gpu_backend",
+        "set_writer",
     }
     assert callable(native.probe_gpu_backend)
     for name in core.__all__:

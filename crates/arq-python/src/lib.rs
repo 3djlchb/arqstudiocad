@@ -27,9 +27,18 @@ mod info;
 mod values;
 mod view;
 
+/// Names this program, `name` at `version`, in every DWG saved from now on,
+/// so a drawing saved here is known as ours when read again (ADR 0045). The
+/// application calls it once, with its product name.
+#[pyfunction]
+fn set_writer(name: &str, version: &str) {
+    arq_core::set_writer(name, version);
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", arq_core::version())?;
+    m.add_function(wrap_pyfunction!(set_writer, m)?)?;
     errors::register(m)?;
     gpu::register(m)?;
     documents::register(m)?;
