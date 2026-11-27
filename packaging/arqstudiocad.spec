@@ -29,6 +29,7 @@ datas = [
     (str(ROOT / "resources" / "icons" / "icons_actions"), "resources/icons/icons_actions"),
     (str(ROOT / "resources" / "icons" / "icons_draw"), "resources/icons/icons_draw"),
     (str(ROOT / "resources" / "templates"), "resources/templates"),
+    (str(ROOT / "resources" / "linetypes"), "resources/linetypes"),
     (str(ROOT / "AUTHORS"), "."),
     (str(ROOT / "LICENSE"), "."),
 ]
