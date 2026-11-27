@@ -925,6 +925,13 @@ pub(crate) fn codec_bounds(e: &EntityType) -> Option<Bounds2> {
     {
         return Some(bounds);
     }
+    // An entity the codec does not know has no geometry of its own: its box
+    // is nothing at the origin, which says nothing of where it is. Counted,
+    // it would stretch a block reference's box, and the drawing's, to the
+    // origin.
+    if empty && matches!(e, EntityType::Unknown(_)) {
+        return None;
+    }
     let min = Point2::new(b.min.x, b.min.y).ok()?;
     let max = Point2::new(b.max.x, b.max.y).ok()?;
     (min.x() <= max.x() && min.y() <= max.y()).then(|| Bounds2::new(min, max))
