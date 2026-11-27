@@ -213,6 +213,9 @@ class QuietUi:
         self.panels_shown.append(name)
         return True if self.panel_for is None else self.panel_for(name)
 
+    def show_linetype_manager(self, document: CadDocument) -> bool:
+        return True
+
     def show_options(self) -> bool:
         self.options_shown += 1
         return True
