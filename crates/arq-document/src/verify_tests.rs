@@ -22,6 +22,7 @@ fn sample() -> Document {
     let mut doc = Document::new();
     let walls = doc.create_layer("MUROS").unwrap();
     doc.set_layer_lineweight(walls, "0.25 mm").unwrap();
+    doc.set_layer_transparency(walls, 40).unwrap();
     doc.add_entity(
         plan(Line::new(p(0.0, 0.0), p(123.456, 7.0)).unwrap()),
         walls,
@@ -38,6 +39,21 @@ fn layer_lineweight_changes_are_detected() {
     let mut back = doc.snapshot();
     let walls = back.layer_by_name("MUROS").unwrap().id();
     back.set_layer_lineweight(walls, "0.50 mm").unwrap();
+
+    let differences = doc.validate_roundtrip(&back);
+    assert_eq!(differences.len(), 1);
+    assert!(
+        differences[0].starts_with("changed: was Layer"),
+        "{differences:?}"
+    );
+}
+
+#[test]
+fn layer_transparency_changes_are_detected() {
+    let doc = sample();
+    let mut back = doc.snapshot();
+    let walls = back.layer_by_name("MUROS").unwrap().id();
+    back.set_layer_transparency(walls, 50).unwrap();
 
     let differences = doc.validate_roundtrip(&back);
     assert_eq!(differences.len(), 1);
@@ -114,7 +130,12 @@ fn old_versions_may_lose_what_they_cannot_hold() {
     let mut back = doc.snapshot();
     back.set_entity_color(id, Color::Index(5)).unwrap();
     back.set_layer_plottable(walls, true).unwrap();
-    assert_eq!(doc.validate_roundtrip(&back).len(), 2, "2018 keeps both");
+    back.set_layer_transparency(walls, 0).unwrap();
+    assert_eq!(
+        doc.validate_roundtrip(&back).len(),
+        2,
+        "2018 keeps the layer and entity differences"
+    );
     back.set_layer_lineweight(walls, "Default").unwrap();
     back.cad_mut().version = acadrust::types::DxfVersion::AC1014;
     assert!(

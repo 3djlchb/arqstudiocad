@@ -1265,6 +1265,11 @@ impl CadDocument {
         self.layer_op(|doc| doc.set_layer_lineweight(id, value))
     }
 
+    /// Sets a layer transparency to an AutoCAD percentage from 0 through 90.
+    pub fn set_layer_transparency(&mut self, id: LayerId, percent: u8) -> CadResult<ChangeSet> {
+        self.layer_op(|doc| doc.set_layer_transparency(id, percent))
+    }
+
     /// Turns a layer on or off.
     pub fn set_layer_visible(&mut self, id: LayerId, visible: bool) -> CadResult<ChangeSet> {
         self.layer_op(|doc| doc.set_layer_visible(id, visible))

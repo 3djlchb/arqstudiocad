@@ -24,6 +24,7 @@ impl Document {
     /// `CONTINUOUS` is `Continuous` in DWG); before AutoCAD 2004 (AC1018),
     /// which has no true color, RGB as an ACI index; before AutoCAD 2000
     /// (AC1015), which cannot keep lineweights or mark a layer not plotted,
+    /// and before AutoCAD 2004 (AC1018), which cannot keep transparency,
     /// those values are ignored. The older of the two drawings' versions
     /// decides.
     pub fn validate_roundtrip(&self, written: &Document) -> Vec<String> {
@@ -31,6 +32,7 @@ impl Document {
         let rules = Rules {
             true_color: version.as_str() >= "AC1018",
             lineweight: version.as_str() >= "AC1015",
+            transparency: version.as_str() >= "AC1018",
             plot_flag: version.as_str() >= "AC1015",
         };
         let mut differences = Vec::new();
@@ -194,6 +196,7 @@ fn compare<T: std::fmt::Debug>(
 struct Rules {
     true_color: bool,
     lineweight: bool,
+    transparency: bool,
     plot_flag: bool,
 }
 
@@ -218,6 +221,7 @@ impl Rules {
             && self.color(a.color(), b.color())
             && a.linetype().eq_ignore_ascii_case(b.linetype())
             && (!self.lineweight || a.lineweight() == b.lineweight())
+            && (!self.transparency || a.transparency() == b.transparency())
             && a.is_visible() == b.is_visible()
             && a.is_frozen() == b.is_frozen()
             && a.is_locked() == b.is_locked()

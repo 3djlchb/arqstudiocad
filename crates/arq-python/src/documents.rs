@@ -1601,6 +1601,11 @@ impl CadDocument {
         self.change(|cad| cad.set_layer_lineweight(layer_id, value))
     }
 
+    /// Sets a layer transparency to an AutoCAD percentage from 0 through 90.
+    fn set_layer_transparency(&self, layer_id: LayerId, percent: u8) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_transparency(layer_id, percent))
+    }
+
     /// Turns a layer on or off.
     fn set_layer_visible(&self, layer_id: LayerId, visible: bool) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.set_layer_visible(layer_id, visible))

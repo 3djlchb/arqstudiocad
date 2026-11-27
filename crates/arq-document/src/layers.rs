@@ -7,6 +7,7 @@ use acadrust::Handle;
 use acadrust::tables::layer::Layer as CodecLayer;
 use acadrust::tables::normalize_name;
 use acadrust::types::LineWeight as CodecLineWeight;
+use acadrust::types::Transparency as CodecTransparency;
 
 use crate::change::LayerNote;
 use crate::document::Document;
@@ -25,6 +26,7 @@ pub struct Layer {
     color: Color,
     linetype: String,
     lineweight: String,
+    transparency: String,
     visible: bool,
     frozen: bool,
     locked: bool,
@@ -52,6 +54,10 @@ impl Layer {
     pub fn lineweight(&self) -> &str {
         &self.lineweight
     }
+    /// Its transparency percentage, or a special codec value.
+    pub fn transparency(&self) -> &str {
+        &self.transparency
+    }
     /// Whether it is on (shown).
     pub fn is_visible(&self) -> bool {
         self.visible
@@ -77,10 +83,21 @@ pub(crate) fn read_layer(l: &CodecLayer) -> Layer {
         color: color_from_codec(l.color),
         linetype: l.line_type.clone(),
         lineweight: lineweight_text(l.line_weight),
+        transparency: transparency_text(l.transparency),
         visible: !l.flags.off,
         frozen: l.flags.frozen,
         locked: l.flags.locked,
         plottable: l.is_plottable,
+    }
+}
+
+fn transparency_text(transparency: CodecTransparency) -> String {
+    match transparency {
+        CodecTransparency::Explicit(alpha) => {
+            format!("{}%", (u16::from(alpha) * 100 + 127) / 255)
+        }
+        CodecTransparency::ByLayer => "ByLayer".to_owned(),
+        CodecTransparency::ByBlock => "ByBlock".to_owned(),
     }
 }
 
@@ -308,6 +325,25 @@ impl Document {
             return Ok(());
         }
         self.edit_layer(id, |layer| layer.line_weight = weight)
+    }
+
+    /// Sets explicit layer transparency to an AutoCAD percentage from
+    /// 0 (opaque) through 90.
+    pub fn set_layer_transparency(&mut self, id: LayerId, percent: u8) -> DocumentResult<()> {
+        if self.codec_layer(id).is_none() {
+            return Err(DocumentError::LayerIdNotFound(id));
+        }
+        if percent > 90 {
+            return Err(DocumentError::InvalidLayerTransparency(percent));
+        }
+        let transparency = CodecTransparency::from_percent(f64::from(percent) / 100.0);
+        if self
+            .codec_layer(id)
+            .is_some_and(|layer| layer.transparency == transparency)
+        {
+            return Ok(());
+        }
+        self.edit_layer(id, |layer| layer.transparency = transparency)
     }
 
     /// Turns a layer on or off.
@@ -559,6 +595,26 @@ mod tests {
             );
         }
         assert_eq!(doc.layer(layer).unwrap().lineweight(), "Default");
+    }
+
+    #[test]
+    fn layer_transparency_accepts_integer_percentages_through_ninety() {
+        let mut doc = Document::new();
+        let layer = doc.create_layer("GLASS").unwrap();
+        assert_eq!(doc.layer(layer).unwrap().transparency(), "0%");
+        doc.set_layer_transparency(layer, 50).unwrap();
+        assert_eq!(doc.layer(layer).unwrap().transparency(), "50%");
+        doc.set_layer_transparency(layer, 55).unwrap();
+        assert_eq!(doc.layer(layer).unwrap().transparency(), "55%");
+        doc.set_layer_transparency(layer, 0).unwrap();
+        assert_eq!(doc.layer(layer).unwrap().transparency(), "0%");
+        for invalid in [91, 100, 255] {
+            assert_eq!(
+                doc.set_layer_transparency(layer, invalid),
+                Err(DocumentError::InvalidLayerTransparency(invalid))
+            );
+        }
+        assert_eq!(doc.layer(layer).unwrap().transparency(), "0%");
     }
 
     #[test]

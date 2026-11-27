@@ -105,6 +105,8 @@ pub enum DocumentError {
     InvalidLayerLinetype(String),
     /// A layer lineweight is not `Default` or an AutoCAD standard value in mm.
     InvalidLayerLineWeight(String),
+    /// A layer transparency is outside AutoCAD's 0-to-90 percent range.
+    InvalidLayerTransparency(u8),
     /// An ACI color index must be 1 to 255 (0 means ByBlock).
     InvalidColorIndex(u8),
     /// A frozen layer cannot be the current layer.
@@ -194,6 +196,9 @@ impl fmt::Display for DocumentError {
             }
             Self::InvalidLayerLineWeight(value) => {
                 write!(f, "invalid layer lineweight {value:?}")
+            }
+            Self::InvalidLayerTransparency(value) => {
+                write!(f, "invalid layer transparency {value}%")
             }
             Self::InvalidColorIndex(i) => {
                 write!(f, "color index {i} is not 1 to 255 (0 means ByBlock)")

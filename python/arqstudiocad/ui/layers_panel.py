@@ -1,9 +1,10 @@
 """The layers panel (ADR 0013, D5.6), opened by the LAYER command.
 
 A table of the active drawing's layers: current, name, on, frozen, locked,
-color, linetype, plotted. Every change goes through the session, so it is one
-undo step, reaches the viewport and the other panels by events, and a refused
-change (freezing the current layer…) is reported on the command line.
+color, linetype, lineweight, transparency and plotted. Every change goes
+through the session, so it is one undo step, reaches the viewport and the
+other panels by events, and a refused change (freezing the current layer…) is
+reported on the command line.
 """
 
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
     QHBoxLayout,
+    QInputDialog,
     QMenu,
     QPushButton,
     QTableWidget,
@@ -38,7 +40,7 @@ from arqstudiocad.ui.event_bridge import QtEventBridge
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 from arqstudiocad.ui.popup import popup
 
-CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE, LINEWEIGHT = range(9)
+CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE, LINEWEIGHT, TRANSPARENCY = range(10)
 LAYER_ID = Qt.ItemDataRole.UserRole
 
 _LINEWEIGHTS = (
@@ -132,7 +134,7 @@ class LayersPanel(QDockWidget):
             buttons.addWidget(button)
         buttons.addStretch(1)
 
-        self.table = QTableWidget(0, 9)
+        self.table = QTableWidget(0, 10)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().hide()
@@ -178,6 +180,7 @@ class LayersPanel(QDockWidget):
                 tr("Color"),
                 tr("Linetype"),
                 tr("Lineweight"),
+                tr("Transparency"),
             ]
         )
         self.refresh()
@@ -234,6 +237,7 @@ class LayersPanel(QDockWidget):
         self.table.setItem(row, COLOR, color)
         self.table.setItem(row, LINETYPE, cell(layer.linetype))
         self.table.setItem(row, LINEWEIGHT, cell(_lineweight_label(layer.lineweight)))
+        self.table.setItem(row, TRANSPARENCY, cell(layer.transparency))
 
     def _on_document_changed(self, event: DocumentChanged) -> None:
         changes = event.changes
@@ -299,6 +303,9 @@ class LayersPanel(QDockWidget):
     def set_lineweight(self, layer_id: int, value: str) -> None:
         self._edit(lambda d: d.set_layer_lineweight(layer_id, value))
 
+    def set_transparency(self, layer_id: int, percent: int) -> None:
+        self._edit(lambda d: d.set_layer_transparency(layer_id, percent))
+
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         if self._filling or item.column() != NAME:
             return
@@ -343,6 +350,25 @@ class LayersPanel(QDockWidget):
                 plottable = document.get_layer(layer_id).is_plottable
                 self._edit(lambda d: d.set_layer_plottable(layer_id, not plottable))
             return
+        if column == TRANSPARENCY:
+            document = self._session.active
+            if document is None:
+                return
+            current = document.get_layer(layer_id).transparency
+            current_value = int(current.removesuffix("%")) if current.endswith("%") else 0
+            current_value = min(current_value, 90)
+            percent, accepted = QInputDialog.getInt(
+                self,
+                tr("Layer transparency"),
+                tr("Transparency (0-90%)"),
+                current_value,
+                0,
+                90,
+                1,
+            )
+            if accepted:
+                self.set_transparency(layer_id, percent)
+            return
         if column not in (COLOR, LINETYPE, LINEWEIGHT):
             return
         menu = QMenu(self)
@@ -377,7 +403,7 @@ class LayersPanel(QDockWidget):
                 action.triggered.connect(
                     lambda _checked=False, value=name: self.set_linetype(layer_id, value)
                 )
-        else:
+        elif column == LINEWEIGHT:
             document = self._session.active
             if document is None:
                 return
