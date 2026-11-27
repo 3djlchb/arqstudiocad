@@ -1,0 +1,52 @@
+Reference machine system report, 2026-11-27
+
+System observed by tools/reference_machine_report.sh:
+- LMDE 7, kernel 6.12.118, X11/Cinnamon; HDMI-1 at 1920 x 1080,
+  60 Hz.
+- Intel Core i7-2600, four cores/eight threads, AVX present and AVX2/FMA
+  absent; 16 GB RAM.
+- GeForce GT 730 (GK208B, 10de:1287) on nouveau, Mesa
+  25.0.7-2+deb13u1. OpenGL 4.3 and OpenGL ES 3.2 reported accelerated.
+- Vulkan instance 1.4.309; the only listed device was llvmpipe,
+  Mesa 25.0.7-2+deb13u1, CPU.
+
+At collection time the desktop had 12 Chrome processes and one Firefox
+process. The kernel journal reported 3,019 nouveau GPU traps on that
+boot. The current Codex sandbox could not connect to DISPLAY :0 while
+the first system report was running. A separately approved X11 command
+later queried the same display successfully, and the GPU tests below
+passed. Frame-time measurements were not collected in this report.
+
+Commit: 983a6a9 (main, 2026-11-27).
+
+Checks:
+- Rust workspace tests with ARQ_GPU_TESTS=require: passed. arq-core
+  159, arq-document 442, arq-kernel 143, arq-render 68, hostile files
+  1, corpus generated drawings 1; codec and local-drawing corpus tests
+  were ignored because their optional samples were not fetched/provided.
+- Python suite with QT_QPA_PLATFORM=offscreen and
+  ARQ_GPU_TESTS=require: 1,324 passed, 3 skipped, 6 failed. All six
+  failures were tests that launch a real XCB window but could not
+  connect to DISPLAY :0 from the sandbox.
+- Re-running tests/python/test_viewport_gpu.py with X11 access:
+  10 passed. This includes real GPU window presentation and overlays.
+- uv run arqstudiocad --check: passed. Qt platform plugin was xcb.
+
+Generated DXF workload timings, one pass, milliseconds:
+
+Operation                            10,000 lines   100,000 lines
+Open DXF                                    32.0           322.7
+get_entities                                 8.0            86.4
+get_bounds                                   1.1            13.1
+Small-window query                           0.1             0.6
+Move 1,000 entities                          3.7             3.7
+Undo                                         2.1             1.4
+Save DWG                                    57.9           476.8
+Save DXF                                    71.4           723.2
+
+The helper script's unmodified full run could not use uv's default
+cache, which is read-only in this environment. Its build, Python,
+self-check and timing steps reported that cache error. The checks above
+were rerun directly with UV_CACHE_DIR under /tmp. The system report
+contains the kernel's trap count and program-name totals above, and
+omits the hostname and private file names.
