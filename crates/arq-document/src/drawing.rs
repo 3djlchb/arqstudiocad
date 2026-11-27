@@ -127,6 +127,9 @@ struct LayerStyle {
 struct Painter<'a> {
     doc: &'a Document,
     layers: HashMap<String, LayerStyle>,
+    /// The layer last looked up and its style, as named: entities come in
+    /// runs on one layer, so most lookups need no hashing.
+    last_layer: RefCell<Option<(String, LayerStyle)>>,
     /// Draw what off and frozen layers hide too (an extent, not a picture).
     every_layer: bool,
     /// Where what is drawn goes placed in space, when it is wanted there.
@@ -291,6 +294,7 @@ impl<'a> Painter<'a> {
         Self {
             doc,
             layers,
+            last_layer: RefCell::default(),
             every_layer: false,
             space: None,
             references: None,
@@ -313,15 +317,15 @@ impl<'a> Painter<'a> {
     }
 
     fn style(&self, layer: &str) -> LayerStyle {
-        let style = self
-            .layers
-            .get(&layer.to_uppercase())
-            .copied()
-            .unwrap_or(LayerStyle {
-                shown: true,
-                frozen: false,
-                color: DEFAULT_COLOR,
-            });
+        let cached = match &*self.last_layer.borrow() {
+            Some((name, style)) if name == layer => Some(*style),
+            _ => None,
+        };
+        let style = cached.unwrap_or_else(|| {
+            let style = self.layer_style(layer);
+            *self.last_layer.borrow_mut() = Some((layer.to_owned(), style));
+            style
+        });
         if self.every_layer {
             LayerStyle {
                 shown: true,
@@ -333,13 +337,33 @@ impl<'a> Painter<'a> {
         }
     }
 
+    /// The style of `layer`, matched in upper case; a layer not in the
+    /// table is shown, thawed and in color 7.
+    fn layer_style(&self, layer: &str) -> LayerStyle {
+        // Most names are ASCII with no lower-case letter, already their own
+        // key: no copy for those.
+        let found = if layer
+            .bytes()
+            .all(|b| b.is_ascii() && !b.is_ascii_lowercase())
+        {
+            self.layers.get(layer)
+        } else {
+            self.layers.get(&layer.to_uppercase())
+        };
+        found.copied().unwrap_or(LayerStyle {
+            shown: true,
+            frozen: false,
+            color: DEFAULT_COLOR,
+        })
+    }
+
     /// The layer an entity is drawn on: inside a block, layer "0" means the
     /// insert's layer.
-    fn effective_layer(&self, e: &EntityType, ctx: &Context) -> String {
+    fn effective_layer<'e>(&self, e: &'e EntityType, ctx: &'e Context) -> &'e str {
         let own = e.as_entity().layer();
         match &ctx.insert_layer {
-            Some(outer) if own == "0" => outer.clone(),
-            _ => own.to_owned(),
+            Some(outer) if own == "0" => outer,
+            _ => own,
         }
     }
 
@@ -359,7 +383,7 @@ impl<'a> Painter<'a> {
             return;
         }
         let layer = self.effective_layer(e, ctx);
-        let style = self.style(&layer);
+        let style = self.style(layer);
         // A frozen layer hides everything on it, a block's contents included.
         // An off layer hides only what is drawn on it: inside a block on an
         // off layer, entities on layer "0" take that layer and hide, the rest
@@ -381,7 +405,7 @@ impl<'a> Painter<'a> {
             references.borrow_mut().extend(points);
             return;
         }
-        let color = self.resolve_color(color_from_codec(e.as_entity().color()), &layer, ctx);
+        let color = self.resolve_color(color_from_codec(e.as_entity().color()), layer, ctx);
         if let Some(space) = &self.space
             && let Some(paths) = self.own_points(e, ctx)
         {
@@ -475,13 +499,13 @@ impl<'a> Painter<'a> {
                     }
                 },
             },
-            EntityType::Insert(ins) => self.expand_insert(ins, &layer, color, ctx, out),
+            EntityType::Insert(ins) => self.expand_insert(ins, layer, color, ctx, out),
             EntityType::Dimension(dim) => {
                 // AutoCAD stores what it drew in an anonymous block, in
                 // world coordinates; draw that, or decompose without one.
                 let name = &dim.base().block_name;
                 if !name.is_empty() && self.doc.cad().block_records.get(name).is_some() {
-                    self.expand_block(name, &Transform::identity(), &layer, color, ctx, out);
+                    self.expand_block(name, &Transform::identity(), layer, color, ctx, out);
                 } else {
                     self.emit_parts(e, ctx, out, color);
                 }

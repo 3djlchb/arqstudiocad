@@ -1,0 +1,69 @@
+What the GUI thread does on opening a drawing, reference machine,
+2026-11-26
+
+LMDE 7, Linux 6.12.118, Intel Core i7-2600, GeForce GT 730 on nouveau,
+Mesa 25.0.7, X11 at 1920 x 1080. Desktop idle. Base: main at cbd7ca1.
+2026-11-20/large-drawing-open.txt found two steps of about 60 ms each on
+the GUI thread after the worker has read the drawing: building the
+viewport's scene (CadView) and attaching the GPU.
+
+== Attaching the GPU
+
+Temporary timers (not committed) in CadView.attach_window and
+GpuRenderer::for_surface, the real MainWindow opening three small
+generated drawings, one after the other:
+
+                          1st open   2nd open   3rd open
+  window_surface, ms        53.0       2.3        3.5
+  up to the device, ms      14.8       3.6        6.6
+  the whole attach, ms      68.6       6.7       11.1
+
+The 60-70 ms is paid once a process, by the first viewport the GPU draws:
+window_surface creates the wgpu instance, which initializes EGL and Mesa's
+driver for the X11 display. Later viewports attach in 7-11 ms. Loading
+the driver earlier without a window (list_gpu_adapters, 78 ms itself)
+brings the first attach to 44.8 ms only, as the instance for the X11
+display still takes 30 ms.
+
+Removing it from the first open would need one wgpu instance a process,
+shared by every viewport and made ready while the application is idle
+after start-up: a change to the GPU and the start-up (ADR 0034) to be
+proven with several tabs on nouveau. The maintainer chose not to now:
+recorded here as a finding.
+
+== Building the scene
+
+cargo bench -p arq-render --bench raster, "build scene from the
+document", 100,000 entities; perf record on that benchmark. Scene::build
+asks the document what every entity draws (Document::drawing_all). On
+the base, Painter::style took 10.4% and was reached once or twice for
+every entity: the entity's layer name copied (effective_layer returned a
+String) and upper-cased into a new String to look its style up in a
+SipHash map, a second time for a color by layer.
+
+Change (crates/arq-document/src/drawing.rs):
+  - effective_layer borrows the name instead of copying it;
+  - a name that is ASCII with no lower-case letter is already its own
+    key, looked up without a copy; others are upper-cased as before;
+  - the painter keeps the layer it last looked up and its style:
+    entities come in runs on one layer, so most lookups need no hashing.
+A new test draws lines on layers that change from each line to the next
+and back, in different cases, one not in the table and one non-ASCII
+(ÁREA); it fails with a cached style taken for another layer, and with
+names no longer upper-cased.
+
+Benchmark, ms (two alternating runs):
+  base            75.8   75.1
+  names borrowed  68.7   69.2
+  and cached      61.6   62.0      about 0.82
+
+After the change Painter::style is 1.4% of the build. What is left is
+spread: the engine's walk of model space by handle (17%, scattered
+memory), emitting and translating each shape, and one Vec of items an
+entity, kept by the scene.
+
+In the application: CadView(document, 1098, 347) on the 100,000-line
+DXF of 2026-11-22, fresh processes, the median of seven, three
+alternating rounds:
+  base            54.5   55.6   54.6
+  change          46.1   48.2   47.1      about 0.86
