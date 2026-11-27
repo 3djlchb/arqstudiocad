@@ -259,6 +259,12 @@ impl CadLayerInfo {
         self.0.lineweight()
     }
 
+    /// Its explicit transparency percentage (0 is opaque).
+    #[getter]
+    fn transparency(&self) -> &str {
+        self.0.transparency()
+    }
+
     /// On (shown) or off.
     #[getter]
     fn is_visible(&self) -> bool {

@@ -34,6 +34,7 @@ from arqstudiocad.ui.layers_panel import (
     NAME,
     ON,
     PLOT,
+    TRANSPARENCY,
     LayersPanel,
 )
 from arqstudiocad.ui.main_window import MainWindow
@@ -192,6 +193,32 @@ def test_layer_linetype_menu_lists_loaded_types_and_lineweight_menu_edits(
     layer = document.get_layer(layer_id)
     assert layer.lineweight == "0.25 mm"
     assert cell(panel, 0, LINEWEIGHT).text() == "0.25 mm"
+    assert document.undo_history[-1] == "LAYER"
+
+
+def test_layer_transparency_dialog_edits_percentage(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window.runner.execute("NEW")
+    panel = window.layers_panel
+    document = window.session.active
+    assert document is not None
+    layer_id = panel.layer_id_at(0)
+    assert layer_id is not None
+
+    selected = []
+
+    def choose_forty_percent(*_args: object) -> tuple[int, bool]:
+        selected.append((40, True))
+        return 40, True
+
+    monkeypatch.setattr("arqstudiocad.ui.layers_panel.QInputDialog.getInt", choose_forty_percent)
+    panel._on_click(0, TRANSPARENCY)
+    assert selected == [(40, True)]
+
+    layer = document.get_layer(layer_id)
+    assert layer.transparency == "40%"
+    assert cell(panel, 0, TRANSPARENCY).text() == "40%"
     assert document.undo_history[-1] == "LAYER"
 
 

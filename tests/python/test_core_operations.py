@@ -321,6 +321,19 @@ def test_layer_linetype_choices_and_lineweight_api(doc: CadDocument) -> None:
     assert doc.get_layer(layer).lineweight == "0.25 mm"
 
 
+def test_layer_transparency_api_is_validated_and_undoable(doc: CadDocument) -> None:
+    layer, _ = doc.create_layer("GLASS")
+    doc.set_layer_transparency(layer, 50)
+    assert doc.get_layer(layer).transparency == "50%"
+    with pytest.raises(InvalidOperationError):
+        doc.set_layer_transparency(layer, 91)
+    assert doc.get_layer(layer).transparency == "50%"
+    doc.undo()
+    assert doc.get_layer(layer).transparency == "0%"
+    doc.redo()
+    assert doc.get_layer(layer).transparency == "50%"
+
+
 # History
 
 

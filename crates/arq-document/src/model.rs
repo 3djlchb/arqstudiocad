@@ -1,7 +1,7 @@
 //! The own internal model (ADR 0018 D2, stage 1).
 //!
 //! ArqStudioCAD's document model is its own; the DWG engine is an adapter.
-//! In stage 1 the model owns the layers (name, color, linetype, lineweight,
+//! In stage 1 the model owns the layers (name, color, linetype, lineweight, transparency,
 //! on, frozen, locked, plotted), the current layer, and every LINE, CIRCLE
 //! and ARC drawn in plan (geometry, elevation, layer, color). Reads of those
 //! come from here.
@@ -35,7 +35,7 @@ pub(crate) struct OwnedEntity {
 /// The own model of one drawing.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct OwnModel {
-    /// Every layer, including its assigned linetype and lineweight. The
+    /// Every layer, including its assigned linetype, lineweight and transparency. The
     /// linetype definitions remain in the codec's drawing table.
     pub(crate) layers: BTreeMap<LayerId, Layer>,
     /// The current layer (AutoCAD's CLAYER).
