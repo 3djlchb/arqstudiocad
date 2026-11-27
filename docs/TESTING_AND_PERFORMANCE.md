@@ -53,9 +53,9 @@ and separation between tests, checking containment before writing.
 | World XYZ overlay, 800 x 600 CPU viewport, 100 lines | Top 0.011100 → 0.121881 ms (10.980x); SW isometric 0.010960 → 0.105006 ms (9.581x) | LMDE 7 development host, Ryzen 9 5900X; release extension, Python 3.13.5, 5 warm-ups + 100 samples per view (2026-11-17); overlay-only diagnostic; reference acceptance pending |
 | ID capture, 100000 elevated lines, 800 x 600 view | Top XY → XYZ: 0.001710 → 0.001540 ms (0.901x); SW isometric plane intersection → XYZ reference: 0.000420 → 0.071691 ms (170.693x) | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 warm-ups + 100 captures per view (2026-11-17); different isometric capabilities, query-only diagnostic; reference acceptance pending |
 | BREAK, 1000-vertex path in 100000 unrelated lines | Open pooled median 0.347343 → 0.348968 ms (1.00468x); new closed case 0.376989 ms | LMDE 7 development host, Ryzen 9 5900X; release extension, 5 alternating pairs, each with 5 warm-ups + 100 samples (2026-11-17); operation-only diagnostic; reference acceptance pending |
-| Polar ARRAY, 100 lines × 100 positions over 360 degrees | Rotate: grouped COPY/ROTATE 50.053234 → atomic ARRAY 19.694723 ms (0.393476x); no rotation: grouped COPY 28.168532 → 19.834554 ms (0.704139x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; reference interaction pending |
+| Polar ARRAY, 100 lines × 100 positions over 360 degrees | Rotate: grouped COPY/ROTATE 50.053234 → atomic ARRAY 19.694723 ms (0.393476x); no rotation: grouped COPY 28.168532 → 19.834554 ms (0.704139x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; on the reference machine 2026-11-26: 0.434 rotating, 0.736 keeping orientation, and the command accepted in the main window ([report](testing/reference-machine/2026-11-26/arrays.txt)) |
 | Path ARRAY, 100 lines × 100 positions on a mixed open path | Align: grouped COPY/ROTATE 40.513941 → atomic ARRAY 18.280985 ms (0.451227x); no alignment: grouped COPY 26.347081 → 18.245295 ms (0.692498x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; on the reference machine 2026-11-23: 0.507 aligned, 0.748 kept, and the command accepted in the main window ([report](testing/reference-machine/2026-11-23/path-array.txt)) |
-| ARRAYRECT orientation preview, 100 lines × 10×10 cells, CPU 800×600 | Edit 17.897058 → 17.761422 ms (0.992421x); bounded query 0.329887 ms, overlay build 1.481141 ms, paint 6.808924 ms, build+paint 8.389221 ms; 20 of 99 copied cells | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 5 warmups + 100 samples per metric (2026-11-20); diagnostic only; reference cursor acceptance pending |
+| ARRAYRECT orientation preview, 100 lines × 10×10 cells, CPU 800×600 | Edit 17.897058 → 17.761422 ms (0.992421x); bounded query 0.329887 ms, overlay build 1.481141 ms, paint 6.808924 ms, build+paint 8.389221 ms; 20 of 99 copied cells | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 5 warmups + 100 samples per metric (2026-11-20); diagnostic only; on the reference machine 2026-11-26 the preview takes at most 28.7 ms a CPU cursor frame (p95) and keeps the display's rate on the GPU: accepted ([report](testing/reference-machine/2026-11-26/arrays.txt)) |
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 
@@ -303,6 +303,8 @@ samples stayed outside the repository. No QSettings or system preference was
 changed outside the temporary configuration.
 
 Both ratios exceed one, so reference-machine validation remains required.
+It was done on 2026-11-19 at the same commits: about 0.28 ms added to a CPU
+overlay frame, GPU frames unchanged ([reports](testing/reference-machine/2026-11-19/)).
 Run `tools/reference_machine_report.sh` and
 `uv run python tools/gpu_viewport_check.py` on the actual i7-2600/GT 730, and
 repeat this overlay scenario at identical commits/settings before claiming
@@ -362,7 +364,9 @@ every 10 ms; none were detected. Temporary harness SHA-256:
 `318ec5ee784939bbb4b4a4839863c200ac4e7dd27d75657c94256ad74934f973`. Raw samples/scripts and the generated DXF remained outside
 the repository. Both extensions keep the normal release profile and ISA floor.
 
-Reference-machine acceptance remains pending because ID now adds a geometric
+Measured on the reference machine on 2026-11-19 ([reports](testing/reference-machine/2026-11-19/)): ID
+capture in SW isometric adds about 0.14 ms. Before that, reference-machine
+acceptance remained pending because ID now adds a geometric
 query in non-plan views, and reference traversal adds a branch to drawing
 visits. On the actual i7-2600/GT 730, repeat the query scenario with these exact
 commits/settings and exercise ID cursor capture in Top/SW isometric, CPU and
@@ -430,7 +434,9 @@ The identical temporary measurement harness has SHA-256
 Raw logs, scripts and synthetic files stayed outside the repository; no private
 drawing, real app preference or system setting was changed.
 
-The pooled ratio is above one, so actual reference-machine validation remains
+Measured on the reference machine on 2026-11-19 ([reports](testing/reference-machine/2026-11-19/)): open
+0.706 → 0.716 ms (1.014), closed 0.710 ms. Before that, the pooled ratio
+was above one, so actual reference-machine validation remained
 required before floor acceptance: repeat these operations on the i7-2600/GT 730
 and exercise the resulting paths interactively with
 `tools/reference_machine_report.sh` and `uv run python tools/gpu_viewport_check.py`.

@@ -1,0 +1,129 @@
+Polar ARRAY and ARRAYRECT's orientation preview, reference machine
+acceptance, 2026-11-26
+
+LMDE 7, Linux 6.12.118, Intel Core i7-2600, GeForce GT 730 on nouveau,
+Mesa 25.0.7 (OpenGL 4.3), X11 (Cinnamon) at 1920 x 1080 and 60 Hz.
+Desktop idle: no browser, video or streaming program; the only other
+process using the CPU was the editor. Series 19:31-19:35.
+
+Plan agreed with the maintainer before measuring: main at
+3abe09b1 (release build by uv sync in a detached copy), one alternated
+series. Accepted when:
+  (1A) the atomic polar ARRAY is no slower than the equivalent grouped
+       COPY/ROTATE, rotating and not (the development host gave 0.393
+       and 0.704);
+  (1B) in the main window 9,900 copies are on screen within 250 ms and
+       99,000 within 1.5 s; then pan and zoom keep the display's rate on
+       the GPU and take at most 33 ms a CPU frame; the copy count, the
+       last copy's place and one undo step are right;
+  (2)  at ARRAYRECT's orientation prompt, with a 10 x 10 array following
+       the cursor in a 100,000-entity drawing, a cursor frame takes at
+       most 33 ms on the CPU and keeps the display's rate on the GPU;
+       typing the angle makes every copy, and cancelling leaves the
+       drawing as it was with nothing of the preview left.
+
+Harnesses, kept outside the repository (SHA-256):
+  polar_timing.py    df07f49d341265030ce71f0a63e7cd7956ada3ce08d9c5ab20f94ff7332e029f
+  polar_frames.py    6ebfd1cb46dbc2ce515672252a9e66841230fdfa50622cdb1292b14f748a3b55
+  rect_preview.py    90ba1a5972801233dac353a39d2745bd38744dd15574319c1dc5c223456d0012
+  arrays_series.sh   1af9af0d12e1f0d847aa72d69fb58c5b015262b7bb495cb9c44b42c7d0757993
+Each run had a fresh XDG_CONFIG_HOME (and, in the main window, QSettings
+in a temporary INI folder), LANG=C.UTF-8, QT_QPA_PLATFORM=xcb.
+
+== (1A) The polar diagnostic, repeated
+
+TESTING_AND_PERFORMANCE.md, "Polar ARRAY diagnostic comparison": 100
+lines i from (10+i%10, i//10) to (+0.5, 0), center (0,0), 100 items over
++360 degrees including the source; base (10,0) when not rotating. The
+grouped workflow is COPY at zero offset and ROTATE of the new ids, or
+COPY at the base's orbital offset; the atomic one is polar_array(ids,
+(0,0), 100, tau, rotate, base). Each sample is checked: 10,000 entities,
+the last item's copy of line 0 from (10cos a, 10sin a), a = 0.99 tau, to
+(10.5cos a, 10.5sin a) rotating or (+0.5, 0) not, the ARRAYPOLAR history
+entry, and undo to 100 entities. Garbage collection off; 2 warm-ups and
+10 samples a run; five runs, the workflow going first alternating.
+
+Run medians, ms:
+  Rotate    COPY/ROTATE  97.15 102.88 97.24 94.29 96.65   pooled 97.35
+            ARRAY        42.08  43.27 40.60 42.11 41.27   pooled 42.22
+            ARRAY / COPY 0.434
+  Keep      COPY         57.86  58.09 54.55 54.22 55.11   pooled 56.38
+            ARRAY        43.32  43.28 40.61 40.24 40.34   pooled 41.50
+            ARRAY / COPY 0.736
+The development host gave 0.393 and 0.704: the same gain on the floor.
+
+== (1B) ARRAYPOLAR in the main window
+
+As 2026-11-23/path-array.txt (B): the real MainWindow, 1366 x 740 (a
+1098 x 347 viewport), OpenGL on the GT 730 or the CPU through safe mode.
+N lines from (100+i%s, 100+i//s) to (+0.5, 0), s = ceil(sqrt N), all
+selected, then ARRAYPOLAR, center 0,0, 100 items, 360 degrees, rotate Y.
+Timed to the copies reported ("command") and to the first frame painted
+after the queued events ("first frame"); then zoom extents, 57 pan and 57
+zoom frames after 3 warm-ups, and the undo to its frame.
+
+Copies     Renderer  Command, ms         First frame, ms     Undo frame, ms
+9,900      CPU       118.8 119.3 119.7   128.5 129.8 127.5   7.8 6.9 6.8
+9,900      GPU       116.4 120.0 117.6   123.2 128.7 125.0   16.6 16.7 16.7
+99,000     CPU       662.2 674.3 649.3   673.1 685.3 658.9   74.7 74.5 73.9
+99,000     GPU       622.8 667.8 671.4   657.7 703.3 707.1   81.3 75.3 77.2
+
+Over the result, ms, median (p95) of each round:
+9,900      CPU  pan  4.81 (6.45)  4.85 (8.28)  4.65 (7.40)
+                zoom 3.72 (4.77)  3.04 (3.38)  3.17 (4.02)
+           GPU  pan and zoom 16.64 (16.68-16.74), the display's rate
+99,000     CPU  pan  11.55 (16.83) 11.62 (18.57) 12.06 (15.14)
+                zoom 8.04 (8.94)  7.99 (8.80)  8.02 (8.94)
+           GPU  pan and zoom 16.64-16.65 (16.71-16.89), the display's rate
+
+Every run: N x 99 copies (N x 100 entities), line 0's last copy in its
+place, one ARRAYPOLAR undo step back to N entities.
+
+== (2) ARRAYRECT's orientation preview
+
+Method as 2026-11-23/stretch-partial-arcs.txt: the same window and
+renderers; 100,000 generated lines on a 3-unit grid, viewed so the whole
+array shows (x 0..390, y 150..537); synthetic QMouseEvent moves on a
+loop, each sample a move plus a repaint, 60 samples after 3 warm-ups.
+"Idle" with no command; "preview" at "Specify array orientation" after
+10 rows, 10 columns, 40 and 40, the 10 x 10 array turning about (0,0) as
+the cursor moves.
+  many  the 10 x 10 block of lines at x 0..27, y 150..177: 100 sources;
+        the preview's work budget shows 20 of the 99 cells, with its
+        notice (2,109 overlay strokes).
+  one   the line at (0,150) alone: all 99 cells (109 strokes).
+Then: cancelled, checked against the same selection shown with no
+command (the selection stays after a cancel, as AutoCAD's); then run
+again with 0 typed as the angle, checked and undone.
+
+Cursor frames, ms, median (p95) of each round:
+           Renderer  Idle                 Preview
+many       CPU       1.57-1.65 (2.16-2.73)  26.70 (28.68) 26.99 (27.51) 26.96 (27.54)
+           GPU       16.40-16.54            12.81 (13.14) 12.95 (13.11) 12.82 (13.02)
+one        CPU       1.73-2.15 (2.44-3.05)  2.74 (3.17)   2.90 (4.20)   2.72 (4.32)
+           GPU       16.42-16.55            16.29 (16.45) 16.37 (16.44) 16.29 (16.42)
+
+On the GPU every frame is paced by the display; a median below one
+refresh shows where the frame lands in the vsync, not less work.
+
+Every run: the preview shown while the prompt was up; after the cancel
+the history, the entity count and the overlay were those of the
+selection alone; typing 0 made 9,900 (many) or 99 (one) copies in one
+ARRAYRECT step, and undo restored the drawing.
+
+== Verdict, against the agreed criteria
+
+  (1A) 0.434 rotating, 0.736 keeping orientation: accepted.
+  (1B) 9,900 copies on screen in 123-130 ms (limit 250), 99,000 in
+       657-707 ms (limit 1,500); GPU frames at the display's rate, CPU
+       frames at most 18.6 ms p95 (limit 33); counts, place and undo
+       right: accepted.
+  (2)  The preview at most 28.7 ms p95 a CPU frame (limit 33) and at the
+       display's rate on the GPU; commit, cancel and undo right:
+       accepted.
+
+The margin of (2) on the CPU is small: 20 cells of 100 lines cost about
+25 ms a frame more than the cursor alone, the 2,000 preview paths drawn
+by QPainter. A larger budget would pass the limit on the floor; the
+budget, not the machine, keeps it under.
+Not covered: a hand on a real mouse, and ProgeCAD (Windows).

@@ -146,9 +146,10 @@ from both sides were retained, and the roadmap keeps both command deliveries.
 No operation semantics or approved scope changed. Every required local gate
 passed on the combined tree: 888 Rust cases (20 ignored), 1119 Python cases
 (5 skipped), all nine explicit codec corpus cases, fmt, Clippy, Ruff, mypy,
-stubtest and deny. The actual reference-machine STRETCH check remains a
-separate follow-up; closing its implementation PR does not establish a
-performance result.
+stubtest and deny. The actual reference-machine STRETCH check was a
+separate follow-up; closing its implementation PR did not establish a
+performance result. It was measured on 2026-11-19
+([reports](../testing/reference-machine/2026-11-19/)).
 
 ## Closed lightweight polylines (2026-11-17)
 
@@ -218,5 +219,7 @@ All required local gates passed after sabotage restoration: 941 Rust tests,
 1190 Python tests (3 platform-only skips), the nine explicit public-codec
 corpus cases, fmt, workspace/all-target Clippy with warnings denied, Ruff
 lint/format, strict mypy, stubtest and cargo-deny. The diagnostic's exact
-revisions, all five pairs and remaining reference-machine check are recorded
-in [Testing and performance](../TESTING_AND_PERFORMANCE.md#closed-break-diagnostic-2026-11-17).
+revisions and all five pairs are recorded in [Testing and
+performance](../TESTING_AND_PERFORMANCE.md#closed-break-diagnostic-2026-11-17); the reference-machine
+check was done on 2026-11-19, open 0.706 → 0.716 ms (1.014) and closed
+0.710 ms ([reports](../testing/reference-machine/2026-11-19/)).

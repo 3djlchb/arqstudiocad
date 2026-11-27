@@ -185,8 +185,11 @@ No codec, dependency, startup, GPU backend or new rendering path is introduced.
 While CP is active, the shared overlay describes its polygon edges; idle views
 have no polygon work.
 Polygon validation checks edge pairs; very large contours cost more than a
-rectangle. Reference-floor performance acceptance remains a separate check on
+rectangle. Reference-floor performance acceptance was a separate check on
 the actual reference machine; no development timing is claimed as acceptance.
+Measured there on 2026-11-19 ([stretch cases](../testing/reference-machine/2026-11-19/stretch-cases.txt)): a
+402-corner polygon previewed at about 250 ms a cursor move until #213
+validated it once (16 ms on the CPU, 11 ms on the GPU).
 
 Behavioral reference: [AutoCAD 2021 SELECT, CPolygon](https://help.autodesk.com/cloudhelp/2021/ENU/AutoCAD-Core/files/GUID-0DD5DA73-9DC5-4424-8FED-7BBE3BE52A4D.htm).
 This is an original implementation and internally tested subset, not an
