@@ -338,11 +338,12 @@ fn whole_transform_problems(path: &Path) -> Vec<String> {
     let tol = Tolerance::new(1e-9 * (1.0 + size), 1e-9).expect("valid");
     let mut problems = Vec::new();
     for (id, want) in ids.iter().zip(expected) {
+        // Every point where it should be, and nothing elsewhere. Not their
+        // count: an ACIS body's edge seen end on is a line or a point by a
+        // hair, so a block holding one may draw it either way once turned.
         let found = drawn_points(cad.document(), *id);
-        let same = found.len() == want.len()
-            && want
-                .iter()
-                .all(|w| found.iter().any(|f| f.approx_eq(*w, tol)));
+        let near = |p: &Point2, set: &[Point2]| set.iter().any(|q| q.approx_eq(*p, tol));
+        let same = want.iter().all(|w| near(w, &found)) && found.iter().all(|f| near(f, &want));
         if !same {
             let kind = cad.document().entity(*id).map_or("?", |e| e.kind());
             problems.push(format!(

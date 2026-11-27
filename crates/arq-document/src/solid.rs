@@ -87,8 +87,12 @@ impl WireframeCache {
         if let Some(found) = entries.get(&key) {
             return found.clone();
         }
-        let wire = body_of(e).and_then(Result::ok).map(|body| {
+        let wire = body_to_draw(e).map(|(body, check)| {
             let size = reach(&body).filter(|s| *s > 0.0).unwrap_or(1.0);
+            // A tolerant body by its edges alone: finding where its faces'
+            // isolines run takes the kernel up to half a minute for one
+            // (Autodesk's condominium, 2026-11-27), its edges a millisecond.
+            let isolines = if check == Check::Full { isolines } else { 0 };
             Arc::new(body.wireframe(size * 1e-3, isolines))
         });
         if entries.len() >= CACHED_WIREFRAMES {
@@ -122,20 +126,58 @@ fn reach(body: &Body) -> Option<f64> {
 
 /// An engine entity as a body of the kernel, if it is an ACIS body.
 pub(crate) fn body_of(e: &acadrust::EntityType) -> Option<Result<Body, Untranslated>> {
-    let data = crate::acis::acis_data(e)?;
-    let doc = if data.is_binary {
-        acadrust::SabReader::read(&data.sab_data).ok()
-    } else {
-        SatDocument::parse(&data.sat_data).ok()
-    };
+    let doc = sat_of(e)?;
     Some(
         doc.ok_or(Untranslated::Unreadable)
             .and_then(|d| translate(&d)),
     )
 }
 
+/// An engine entity's ACIS document, if it is an ACIS body; `Some(None)`
+/// when its data does not parse.
+fn sat_of(e: &acadrust::EntityType) -> Option<Option<SatDocument>> {
+    let data = crate::acis::acis_data(e)?;
+    Some(if data.is_binary {
+        acadrust::SabReader::read(&data.sab_data).ok()
+    } else {
+        SatDocument::parse(&data.sat_data).ok()
+    })
+}
+
+/// The body an ACIS entity is drawn by, and how it was checked: the body
+/// itself, as `body_of` gives it; or, when ACIS keeps its vertices off
+/// their curves or surfaces by more than our tolerance (a "tolerant" body,
+/// as ACIS writes some), the same parts without that check, so it is
+/// outlined by its own edges rather than drawn as a box (maintainer,
+/// 2026-11-27). Its topology is checked as ever. Only drawing takes it: a
+/// body measured or combined is the one `body_of` checks.
+pub(crate) fn body_to_draw(e: &acadrust::EntityType) -> Option<(Body, Check)> {
+    let doc = sat_of(e)??;
+    match translate(&doc) {
+        Ok(body) => Some((body, Check::Full)),
+        Err(Untranslated::Invalid(_)) => translate_with(&doc, Check::Topology)
+            .ok()
+            .map(|body| (body, Check::Topology)),
+        Err(_) => None,
+    }
+}
+
+/// How a translated body is checked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Check {
+    /// Its topology, and each vertex on its curves and surfaces within
+    /// ACIS's own tolerance.
+    Full,
+    /// Its topology alone: a vertex may lie off its curves and surfaces.
+    Topology,
+}
+
 /// Every body of an ACIS document, as one body of the kernel.
 pub(crate) fn translate(doc: &SatDocument) -> Result<Body, Untranslated> {
+    translate_with(doc, Check::Full)
+}
+
+fn translate_with(doc: &SatDocument, check: Check) -> Result<Body, Untranslated> {
     let mut reader = Reader {
         doc,
         builder: BodyBuilder::new(),
@@ -169,7 +211,13 @@ pub(crate) fn translate(doc: &SatDocument) -> Result<Body, Untranslated> {
         [first, rest @ ..] if rest.iter().all(|p| p == first) => *first,
         _ => return Err(Untranslated::Unsupported("bodies placed apart".into())),
     };
-    let tolerance = tolerance(&reader.points);
+    let tolerance = match check {
+        Check::Full => tolerance(&reader.points),
+        // No distance is too far: only the topology is checked.
+        Check::Topology => {
+            Tolerance::new(f64::MAX, Tolerance::DEFAULT.angular()).expect("finite and positive")
+        }
+    };
     let body = reader
         .builder
         .build(tolerance)

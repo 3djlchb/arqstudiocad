@@ -65,7 +65,16 @@ names them.
   reference's to the origin. Fixed in the fork (`c8f965c`): a block's
   lights and surfaces are read as the ENTITIES section reads them. And an
   unknown entity's empty box no longer counts as a place at the origin.
-  The drawing now saves as DXF and reads back the same. The round trip
-  still reports what it does not yet draw there: three of its 3D solids,
-  whose ACIS ours cannot outline yet, and the lights of each "Fluorescent
-  Fixture", are drawn as boxes. Nothing is lost by it.
+  The drawing now saves as DXF and reads back the same. Three of its 3D
+  solids and the lights of each "Fluorescent Fixture" were still drawn as
+  boxes; since 2026-11-27 the solids, tolerant ACIS bodies, are outlined
+  by their edges and the lights drawn by their glyphs, so nothing in it is
+  a box. Of the 18 drawings, two keep boxes:
+  `visualization_-_condominium_with_skylight.dwg` six, five for solids of
+  NURBS surfaces and curves (milestone 02.15), one alone and four in the
+  blocks "Seat" and "ExposedRecess", and one for a polyline lying on a
+  vertical plane, which the plan does not draw yet; and `tablet.dwg` one,
+  for an embedded OLE object (OLE2FRAME). The corpus's local round trip
+  passes on the conference room and reports only these boxes on the
+  condominium. Its lights are type 10, which is what AutoCAD writes for a web
+  light, and are drawn as point lights.
