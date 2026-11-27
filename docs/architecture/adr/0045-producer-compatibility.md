@@ -22,7 +22,7 @@ found these:
 
 | Case | AutoCAD | ProgeCAD | Ours |
 |---|---|---|---|
-| A closed spline through fit points (SP3) | to confirm | clamped, its first fit point again at its end | the same as ProgeCAD's since #262; before, periodic, which ProgeCAD read as open from DXF |
+| A closed spline through fit points (SP3) | to confirm | clamped, its first fit point again at its end | the same as ProgeCAD's since #259; before, periodic, which ProgeCAD read as open from DXF |
 | A polyline's one width all along (M2) | to confirm | the width at each vertex, no constant width | the constant width |
 | A spline's fit points after a knot method (SP4) | to confirm | none kept | kept |
 | An offset of an ellipse or a spline (SC11–SC13) | to confirm | quadratic, rational with every weight 1 | cubic, not rational |
@@ -136,7 +136,12 @@ goes through it.
    the names they give themselves, to confirm against their own drawings,
    ProgeCAD's first.
 2. **The forms table:** the cases above, each checked against AutoCAD's
-   public samples; SP3's AutoCAD form first, since ours changed in #262.
+   public samples; SP3's AutoCAD form first, since ours changed in #259.
+
+   Begun 2026-11-26 with Autodesk's own 18 sample files: all name AutoCAD;
+   one width all along is AutoCAD's constant width, as ours, kept. SP3 and
+   SP4 are in none of them, still to confirm
+   ([table](../../testing/producer-forms.md)).
 3. **Adaptations:** each difference found, read in D2 and written in D3,
    in its own pull request.
 
@@ -146,7 +151,7 @@ goes through it.
 - **Mixed drawings:** a drawing passed from one program to another and
   back is written in one form each time. Nothing depends on where it
   was made.
-- **#262 may change again:** SP3's form (ProgeCAD's) stands until
+- **#259 may change again:** SP3's form (ProgeCAD's) stands until
   AutoCAD's is known. If they differ and AutoCAD's is one ProgeCAD reads,
   D3 makes it AutoCAD's.
 - **A codec change:** reading `AcDb:AppInfo` is a change in our AcadRust

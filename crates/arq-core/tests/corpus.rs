@@ -12,6 +12,10 @@
 //! 3. real drawings named by `ARQ_CORPUS_DIR` (a folder, searched
 //!    recursively, or one file), never committed; `cargo test -p arq-core --test corpus -- --ignored local`.
 //!
+//! `ARQ_AUTOCAD_DIR` names a folder of drawings AutoCAD saved, such as
+//! Autodesk's own sample files, never committed; each must name AutoCAD as
+//! its producer (ADR 0045 D4), with the same `local` filter.
+//!
 //! The last two fail when their folder is missing or empty: a check that
 //! inspects nothing is a failure (contract §12).
 
@@ -1159,4 +1163,34 @@ fn codec_samples_name_their_producer() {
         .map(|&(name, key)| (name, key.to_owned()))
         .collect();
     assert_eq!(found, wanted);
+}
+
+/// Drawings AutoCAD saved, named by `ARQ_AUTOCAD_DIR` (Autodesk's own
+/// sample files, downloaded and never committed): every DWG among them
+/// names AutoCAD as its producer (ADR 0045 D1, D4).
+#[test]
+#[ignore = "needs ARQ_AUTOCAD_DIR: drawings AutoCAD saved, never committed"]
+fn local_autocad_drawings_name_autocad() {
+    let root = std::env::var_os("ARQ_AUTOCAD_DIR")
+        .map(PathBuf::from)
+        .expect("set ARQ_AUTOCAD_DIR to a folder of drawings AutoCAD saved");
+    assert!(
+        root.is_dir(),
+        "ARQ_AUTOCAD_DIR does not exist: {}",
+        root.display()
+    );
+    let dwgs: Vec<(String, PathBuf)> = drawings_in(&root)
+        .into_iter()
+        .filter(|(_, p)| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("dwg")))
+        .collect();
+    assert!(!dwgs.is_empty(), "no DWG in {}", root.display());
+    let wrong: Vec<String> = dwgs
+        .iter()
+        .filter_map(|(name, path)| {
+            let doc = Document::open(path).ok()?;
+            (doc.producer().key() != "autocad").then(|| format!("{name}: {}", doc.producer().key()))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "not named AutoCAD: {wrong:?}");
+    eprintln!("{} DWG saved by AutoCAD, all named so", dwgs.len());
 }
