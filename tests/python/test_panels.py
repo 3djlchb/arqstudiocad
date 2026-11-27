@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QComboBox, QTableWidgetItem, QTreeWidgetItem
+from PySide6.QtWidgets import QComboBox, QFileDialog, QTableWidgetItem, QTreeWidgetItem
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
@@ -23,7 +23,7 @@ from arqstudiocad.core import (
 )
 from arqstudiocad.events import WorkFinished, WorkStarted
 from arqstudiocad.i18n import set_language
-from arqstudiocad.ui import layers_panel
+from arqstudiocad.ui import layers_panel, linetype_manager_dialog
 from arqstudiocad.ui.layers_panel import (
     COLOR,
     CURRENT,
@@ -37,6 +37,8 @@ from arqstudiocad.ui.layers_panel import (
     TRANSPARENCY,
     LayersPanel,
 )
+from arqstudiocad.ui.linetype_preview import linetype_preview
+from arqstudiocad.ui.linetype_select_dialog import SelectLinetypeDialog
 from arqstudiocad.ui.main_window import MainWindow
 from arqstudiocad.ui.properties_panel import version_text
 
@@ -170,7 +172,7 @@ def test_toggles_change_the_layer(window: MainWindow) -> None:
     assert document.undo_history == ["LAYER", "LAYER", "LAYER", "LAYER", "LAYER"]
 
 
-def test_layer_linetype_menu_lists_loaded_types_and_lineweight_menu_edits(
+def test_layer_linetype_selector_lists_loaded_types_and_lineweight_menu_edits(
     window: MainWindow, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     window.runner.execute("NEW")
@@ -179,13 +181,25 @@ def test_layer_linetype_menu_lists_loaded_types_and_lineweight_menu_edits(
     assert document is not None
     layer_id = panel.layer_id_at(0)
     assert layer_id is not None
+    document.set_linetype("DASHED", "Dashed", [0.5, -0.25])
+    panel.refresh()
+    assert not cell(panel, 0, LINETYPE).icon().isNull()
+
+    selections = []
+
+    def choose_linetype(doc: CadDocument, current: str, _parent: object) -> str:
+        selections.append((doc, current))
+        return "DASHED"
+
+    monkeypatch.setattr(layers_panel, "choose_linetype", choose_linetype)
+    panel._on_click(0, LINETYPE)
+    assert selections == [(document, "Continuous")]
+    layer = document.get_layer(layer_id)
+    assert layer.linetype == "DASHED"
+    assert cell(panel, 0, LINETYPE).text() == "DASHED"
 
     menus = []
     monkeypatch.setattr(layers_panel, "popup", lambda menu, _position: menus.append(menu))
-    panel._on_click(0, LINETYPE)
-    assert [action.text() for action in menus[-1].actions()] == document.get_linetypes()
-    assert "Continuous" in document.get_linetypes()
-
     panel._on_click(0, LINEWEIGHT)
     quarter_mm = next(action for action in menus[-1].actions() if action.text() == "0.25 mm")
     quarter_mm.trigger()
@@ -194,6 +208,46 @@ def test_layer_linetype_menu_lists_loaded_types_and_lineweight_menu_edits(
     assert layer.lineweight == "0.25 mm"
     assert cell(panel, 0, LINEWEIGHT).text() == "0.25 mm"
     assert document.undo_history[-1] == "LAYER"
+
+
+def test_layer_linetype_load_returns_loaded_pattern_to_selector(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window.runner.execute("NEW")
+    document = window.session.active
+    assert document is not None
+    lin_file = tmp_path / "sample.lin"
+    lin_file.write_text("*DASHED,Dashed pattern\nA,0.5,-0.25\n", encoding="utf-8")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *_args: (str(lin_file), ""),
+    )
+
+    def load_selected(self: linetype_manager_dialog.LinetypeManagerDialog) -> int:
+        assert self._load_only
+        self._choose_file()
+        assert (
+            self._available.item(0).icon().cacheKey() == linetype_preview((0.5, -0.25)).cacheKey()
+        )
+        self._load()
+        return self.result()
+
+    monkeypatch.setattr(linetype_manager_dialog.LinetypeManagerDialog, "exec", load_selected)
+    selector = SelectLinetypeDialog(document, "Continuous")
+    selector._load_linetypes()
+
+    loaded = [
+        selector._loaded.item(index)
+        for index in range(selector._loaded.count())
+        if selector._loaded.item(index).text() == "DASHED"
+    ]
+    assert len(loaded) == 1
+    assert not loaded[0].icon().isNull()
+    assert loaded[0].icon().cacheKey() == linetype_preview((0.5, -0.25)).cacheKey()
+    selector._loaded.setCurrentItem(loaded[0])
+    selector._accept_selection()
+    assert selector.selected_linetype == "DASHED"
 
 
 def test_layer_transparency_dialog_edits_percentage(

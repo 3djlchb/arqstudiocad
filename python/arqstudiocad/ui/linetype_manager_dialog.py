@@ -19,15 +19,19 @@ from PySide6.QtWidgets import (
 
 from arqstudiocad.core import CadDocument, CadError
 from arqstudiocad.i18n import tr
+from arqstudiocad.ui.linetype_preview import linetype_preview
 
 
 class LinetypeManagerDialog(QDialog):
     """Load simple A-aligned definitions from `.lin` into a drawing."""
 
-    def __init__(self, document: CadDocument, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, document: CadDocument, parent: QWidget | None = None, *, load_only: bool = False
+    ) -> None:
         super().__init__(parent)
         self._document = document
-        self.setWindowTitle(tr("Linetype Manager"))
+        self._load_only = load_only
+        self.setWindowTitle(tr("Load or Reload Linetypes") if load_only else tr("Linetype Manager"))
         self.setMinimumSize(460, 360)
         self._loaded = QListWidget(self)
         self._available = QListWidget(self)
@@ -42,9 +46,10 @@ class LinetypeManagerDialog(QDialog):
         self._delete = QPushButton(tr("Delete"), self)
         self._export = QPushButton(tr("Export…"), self)
         self._reload = QPushButton(tr("Reload from LIN…"), self)
-        close = QPushButton(tr("Close"), self)
+        close = QPushButton(tr("Cancel") if load_only else tr("Close"), self)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(tr("Loaded in drawing"), self))
+        loaded_label = QLabel(tr("Loaded in drawing"), self)
+        layout.addWidget(loaded_label)
         layout.addWidget(self._loaded)
         manage = QHBoxLayout()
         for button in (
@@ -74,12 +79,30 @@ class LinetypeManagerDialog(QDialog):
         self._export.clicked.connect(self._export_definitions)
         self._reload.clicked.connect(self._reload_selected)
         self._loaded.currentItemChanged.connect(lambda *_args: self._update_actions())
-        close.clicked.connect(self.accept)
+        close.clicked.connect(self.reject if load_only else self.accept)
+        if load_only:
+            self._loaded.hide()
+            loaded_label.hide()
+            for button in (
+                self._create,
+                self._edit,
+                self._rename,
+                self._delete,
+                self._export,
+                self._reload,
+            ):
+                button.hide()
         self._refresh_loaded()
 
     def _refresh_loaded(self) -> None:
         self._loaded.clear()
-        self._loaded.addItems(self._document.get_linetypes())
+        patterns = {
+            name.casefold(): pattern
+            for name, _description, pattern in self._document.get_linetype_definitions()
+        }
+        for name in self._document.get_linetypes():
+            item = QListWidgetItem(linetype_preview(tuple(patterns.get(name.casefold(), []))), name)
+            self._loaded.addItem(item)
         self._update_actions()
 
     def _update_actions(self) -> None:
@@ -106,8 +129,9 @@ class LinetypeManagerDialog(QDialog):
         self._source.setText(path)
         self._available.clear()
         loaded = {name.casefold() for name in self._document.get_linetypes()}
-        for name, description, _pattern in self._definitions:
+        for name, description, pattern in self._definitions:
             item = QListWidgetItem(f"{name} — {description}")
+            item.setIcon(linetype_preview(tuple(pattern)))
             item.setData(Qt.ItemDataRole.UserRole, name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(
@@ -134,6 +158,8 @@ class LinetypeManagerDialog(QDialog):
         self._refresh_loaded()
         self._available.clear()
         self._definitions.clear()
+        if self._load_only:
+            self.accept()
 
     def _selected_loaded_name(self) -> str | None:
         item = self._loaded.currentItem()
