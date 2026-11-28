@@ -1,4 +1,4 @@
-"""Manage simple linetypes loaded in the current drawing."""
+"""Manage simple and complex linetypes loaded in the current drawing."""
 
 from pathlib import Path
 
@@ -21,10 +21,56 @@ from arqstudiocad.core import CadDocument, CadError
 from arqstudiocad.i18n import tr
 from arqstudiocad.paths import linetypes_dir
 from arqstudiocad.ui.linetype_preview import linetype_preview
+from arqstudiocad.ui.shx_shapes import register_shx_search_path, shape_strokes
+
+LinetypeComplex = tuple[int, str, str, str, float, float, str, float, float]
+LinetypeDefinition = tuple[str, str, list[float], list[LinetypeComplex]]
+
+
+def _linetype_pattern_to_lin(pattern: list[float], complex_items: list[LinetypeComplex]) -> str:
+    by_segment = {item[0]: item for item in complex_items}
+    fields: list[str] = []
+    for index, value in enumerate(pattern):
+        fields.append(format(value, ".12g"))
+        item = by_segment.get(index)
+        if item is None:
+            continue
+        _segment, kind, content, reference, scale, rotation, mode, x, y = item
+        if kind == "text":
+            quoted = '"' + content.replace("\\", "\\\\").replace('"', '\\"') + '"'
+            reference_value = reference
+        else:
+            shape = shape_strokes(reference, content)
+            if shape is not None:
+                content = shape[1]
+            quoted = content
+            reference_value = reference
+        angle_key = {"relative": "R", "absolute": "A", "upright": "U"}[mode]
+        options = (
+            f"S={scale:.12g}",
+            f"{angle_key}={rotation * 180.0 / 3.141592653589793:.12g}",
+            f"X={x:.12g}",
+            f"Y={y:.12g}",
+        )
+        fields.append(f"[{quoted},{reference_value},{','.join(options)}]")
+    return ",".join(fields)
+
+
+def _resolve_shape_numbers(definition: LinetypeDefinition) -> LinetypeDefinition:
+    name, description, pattern, complex_items = definition
+    resolved_items: list[LinetypeComplex] = []
+    for item in complex_items:
+        index, kind, content, reference, size, rotation, mode, offset_x, offset_y = item
+        if kind == "shape" and (shape := shape_strokes(reference, content)):
+            content = f"#{shape[0]}"
+        resolved_items.append(
+            (index, kind, content, reference, size, rotation, mode, offset_x, offset_y)
+        )
+    return (name, description, pattern, resolved_items)
 
 
 class LinetypeManagerDialog(QDialog):
-    """Load simple A-aligned definitions from `.lin` into a drawing."""
+    """Load A-aligned simple and complex definitions from `.lin` into a drawing."""
 
     def __init__(
         self, document: CadDocument, parent: QWidget | None = None, *, load_only: bool = False
@@ -37,7 +83,7 @@ class LinetypeManagerDialog(QDialog):
         self._loaded = QListWidget(self)
         self._available = QListWidget(self)
         self._available.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        self._definitions: list[tuple[str, str, list[float]]] = []
+        self._definitions: list[LinetypeDefinition] = []
         self._source = QLabel(tr("No LIN file selected"), self)
         self._load_file = QPushButton(tr("Load LIN file…"), self)
         self._load_selected = QPushButton(tr("Load selected"), self)
@@ -98,12 +144,13 @@ class LinetypeManagerDialog(QDialog):
 
     def _refresh_loaded(self) -> None:
         self._loaded.clear()
-        patterns = {
-            name.casefold(): pattern
-            for name, _description, pattern in self._document.get_linetype_definitions()
+        details = self._document.get_linetype_definition_details()
+        definitions = {
+            name.casefold(): (pattern, complex) for name, _description, pattern, complex in details
         }
         for name in self._document.get_linetypes():
-            item = QListWidgetItem(linetype_preview(tuple(patterns.get(name.casefold(), []))), name)
+            pattern, complex = definitions.get(name.casefold(), ([], []))
+            item = QListWidgetItem(linetype_preview(tuple(pattern), tuple(complex)), name)
             self._loaded.addItem(item)
         self._update_actions()
 
@@ -127,19 +174,20 @@ class LinetypeManagerDialog(QDialog):
     def _load_file_path(self, path: Path) -> None:
         try:
             contents = path.read_text(encoding="utf-8-sig")
-            self._definitions = CadDocument.parse_linetype_file(contents)
+            self._definitions = CadDocument.parse_linetype_file_full(contents)
         except (OSError, ValueError) as error:
             self._available.clear()
             self._definitions.clear()
             self._source.setText(tr("No LIN file selected"))
             QMessageBox.warning(self, tr("Linetype Manager"), str(error))
             return
+        register_shx_search_path(path.parent)
         self._source.setText(str(path))
         self._available.clear()
         loaded = {name.casefold() for name in self._document.get_linetypes()}
-        for name, description, pattern in self._definitions:
+        for name, description, pattern, complex in self._definitions:
             item = QListWidgetItem(f"{name} — {description}")
-            item.setIcon(linetype_preview(tuple(pattern)))
+            item.setIcon(linetype_preview(tuple(pattern), tuple(complex)))
             item.setData(Qt.ItemDataRole.UserRole, name)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(
@@ -159,10 +207,28 @@ class LinetypeManagerDialog(QDialog):
         if not definitions:
             return
         try:
-            self._document.load_linetypes(definitions)
+            unresolved_shapes = sorted(
+                {
+                    f"{content} ({reference})"
+                    for _name, _description, _pattern, complex in definitions
+                    for _index, kind, content, reference, *_rest in complex
+                    if kind == "shape" and shape_strokes(reference, content) is None
+                }
+            )
+            prepared = [_resolve_shape_numbers(item) for item in definitions]
+            self._document.load_linetypes_full(prepared)
         except (CadError, ValueError, OSError) as error:
             QMessageBox.warning(self, tr("Linetype Manager"), str(error))
             return
+        if unresolved_shapes:
+            QMessageBox.information(
+                self,
+                tr("Linetype Manager"),
+                tr(
+                    "The linetype was loaded, but these SHX shapes could not be resolved: {files}",
+                    files=", ".join(unresolved_shapes),
+                ),
+            )
         self._refresh_loaded()
         self._available.clear()
         self._definitions.clear()
@@ -257,18 +323,18 @@ class LinetypeManagerDialog(QDialog):
             return
         definitions = [
             item
-            for item in self._document.get_linetype_definitions()
+            for item in self._document.get_linetype_definition_details()
             if item[0].casefold() not in {"continuous", "bylayer", "byblock"}
         ]
         if not definitions:
             QMessageBox.information(
-                self, tr("Linetype Manager"), tr("There are no custom simple linetypes to export.")
+                self, tr("Linetype Manager"), tr("There are no custom linetypes to export.")
             )
             return
         contents = (
             "\n".join(
-                f"*{name},{description}\nA," + ",".join(format(value, ".12g") for value in pattern)
-                for name, description, pattern in definitions
+                f"*{name},{description}\nA," + _linetype_pattern_to_lin(pattern, complex)
+                for name, description, pattern, complex in definitions
             )
             + "\n"
         )
@@ -288,13 +354,16 @@ class LinetypeManagerDialog(QDialog):
             return
         try:
             contents = Path(path).read_text(encoding="utf-8-sig")
-            definitions = CadDocument.parse_linetype_file(contents)
+            definitions = CadDocument.parse_linetype_file_full(contents)
             definition = next(
                 (item for item in definitions if item[0].casefold() == name.casefold()), None
             )
             if definition is None:
                 raise ValueError(tr("The selected linetype is not in this file."))
-            self._document.set_linetype(*definition)
+            if definition[3]:
+                self._document.set_linetype_full(_resolve_shape_numbers(definition))
+            else:
+                self._document.set_linetype(*definition[:3])
         except (CadError, OSError, ValueError) as error:
             QMessageBox.warning(self, tr("Linetype Manager"), str(error))
             return

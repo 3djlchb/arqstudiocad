@@ -1374,7 +1374,7 @@ impl Document {
         polyline.elevation = style.elevation;
         polyline.thickness = style.thickness;
         polyline.constant_width = style.width;
-        polyline.common.layer = self.current_layer().name().to_owned();
+        polyline.common.layer = self.current_layer_without_count().name().to_owned();
         let h = self
             .cad_mut()
             .add_entity(EntityType::LwPolyline(polyline))?;
@@ -1404,7 +1404,7 @@ impl Document {
     ) -> DocumentResult<EntityId> {
         check_single_line(content)?;
         check_text_sizes(Some(height), Some(rotation))?;
-        let layer = self.current_layer().name().to_owned();
+        let layer = self.current_layer_without_count().name().to_owned();
         let style = self.current_text_style();
         let text = new_text(content, anchor, height, rotation, &layer, &style);
         let h = self.cad_mut().add_entity(text)?;
@@ -1429,7 +1429,7 @@ impl Document {
         el.normal = Vector3::new(0.0, 0.0, 1.0);
         el.center = Vector3::new(0.0, 0.0, elevation);
         crate::drawing::write_plan_ellipse(&mut el, ellipse);
-        el.common.layer = self.current_layer().name().to_owned();
+        el.common.layer = self.current_layer_without_count().name().to_owned();
         let h = self.cad_mut().add_entity(EntityType::Ellipse(el))?;
         self.sync_entity(h.value());
         Ok(h.value())
@@ -1467,7 +1467,7 @@ impl Document {
         &mut self,
         mut sp: acadrust::entities::Spline,
     ) -> DocumentResult<EntityId> {
-        sp.common.layer = self.current_layer().name().to_owned();
+        sp.common.layer = self.current_layer_without_count().name().to_owned();
         let h = self.cad_mut().add_entity(EntityType::Spline(sp))?;
         self.sync_entity(h.value());
         Ok(h.value())
@@ -1500,7 +1500,7 @@ impl Document {
         let attachment = attachment_named(justification).ok_or(DocumentError::InvalidText(
             "unknown multiline text justification",
         ))?;
-        let layer = self.current_layer().name().to_owned();
+        let layer = self.current_layer_without_count().name().to_owned();
         let style = self.current_text_style();
         let text = new_mtext(
             content, anchor, height, rotation, width, attachment, &layer, &style,

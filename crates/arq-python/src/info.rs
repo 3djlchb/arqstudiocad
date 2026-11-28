@@ -265,6 +265,18 @@ impl CadLayerInfo {
         self.0.transparency()
     }
 
+    /// Its user-authored note, empty when none was entered.
+    #[getter]
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    /// Number of drawing entities assigned to this layer.
+    #[getter]
+    fn object_count(&self) -> usize {
+        self.0.object_count()
+    }
+
     /// On (shown) or off.
     #[getter]
     fn is_visible(&self) -> bool {

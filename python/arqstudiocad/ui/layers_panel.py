@@ -1,7 +1,7 @@
 """The layers panel (ADR 0013, D5.6), opened by the LAYER command.
 
 A table of the active drawing's layers: current, name, on, frozen, locked,
-color, linetype, lineweight, transparency and plotted. Every change goes
+color, linetype, lineweight, transparency, object count, description and plotted. Every change goes
 through the session, so it is one undo step, reaches the viewport and the
 other panels by events, and a refused change (freezing the current layer…) is
 reported on the command line.
@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QMenu,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -42,7 +44,20 @@ from arqstudiocad.ui.linetype_select_dialog import choose_linetype
 from arqstudiocad.ui.panel_style import apply_data_view_style, apply_panel_action_style
 from arqstudiocad.ui.popup import popup
 
-CURRENT, NAME, ON, FROZEN, LOCKED, PLOT, COLOR, LINETYPE, LINEWEIGHT, TRANSPARENCY = range(10)
+(
+    CURRENT,
+    NAME,
+    ON,
+    FROZEN,
+    LOCKED,
+    PLOT,
+    COLOR,
+    LINETYPE,
+    LINEWEIGHT,
+    TRANSPARENCY,
+    OBJECTS,
+    DESCRIPTION,
+) = range(12)
 LAYER_ID = Qt.ItemDataRole.UserRole
 
 _LINEWEIGHTS = (
@@ -121,7 +136,13 @@ class LayersPanel(QDockWidget):
         self.setObjectName("layers_panel")
         self._session = session
         self._filling = False
-        self._linetype_patterns: dict[str, tuple[float, ...]] = {}
+        self._linetype_patterns: dict[
+            str,
+            tuple[
+                tuple[float, ...],
+                tuple[tuple[int, str, str, str, float, float, str, float, float], ...],
+            ],
+        ] = {}
 
         self.new_button = QPushButton()
         self.delete_button = QPushButton()
@@ -137,7 +158,7 @@ class LayersPanel(QDockWidget):
             buttons.addWidget(button)
         buttons.addStretch(1)
 
-        self.table = QTableWidget(0, 10)
+        self.table = QTableWidget(0, 12)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.table.verticalHeader().hide()
@@ -184,6 +205,8 @@ class LayersPanel(QDockWidget):
                 tr("Linetype"),
                 tr("Lineweight"),
                 tr("Transparency"),
+                tr("Layer objects"),
+                tr("Description"),
             ]
         )
         self.refresh()
@@ -193,14 +216,11 @@ class LayersPanel(QDockWidget):
         document = self._session.active
         layers = [] if document is None else document.get_layers()
         current = None if document is None else document.current_layer.id
-        self._linetype_patterns = (
-            {}
-            if document is None
-            else {
-                name.casefold(): tuple(pattern)
-                for name, _description, pattern in document.get_linetype_definitions()
-            }
-        )
+        details = [] if document is None else document.get_linetype_definition_details()
+        self._linetype_patterns = {
+            name.casefold(): (tuple(pattern), tuple(complex))
+            for name, _description, pattern, complex in details
+        }
         self._filling = True
         try:
             self.table.setRowCount(len(layers))
@@ -247,17 +267,43 @@ class LayersPanel(QDockWidget):
         self.table.setItem(row, PLOT, plot_item)
         self.table.setItem(row, COLOR, color)
         linetype_item = cell(layer.linetype)
-        pattern = self._linetype_patterns.get(layer.linetype.casefold())
-        if pattern is not None:
-            linetype_item.setIcon(linetype_preview(pattern))
+        pattern, complex = self._linetype_patterns.get(layer.linetype.casefold(), ((), ()))
         self.table.setItem(row, LINETYPE, linetype_item)
+        preview = QLabel()
+        preview.setPixmap(linetype_preview(pattern, complex).pixmap(64, 16))
+        preview.setFixedSize(64, 18)
+        preview.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        linetype_cell = QWidget(self.table)
+        linetype_layout = QHBoxLayout(linetype_cell)
+        linetype_layout.setContentsMargins(4, 0, 5, 0)
+        linetype_layout.setSpacing(4)
+        linetype_layout.addWidget(QLabel(layer.linetype, linetype_cell))
+        linetype_layout.addStretch(1)
+        linetype_layout.addWidget(preview)
+        linetype_cell.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.table.setCellWidget(row, LINETYPE, linetype_cell)
         self.table.setItem(row, LINEWEIGHT, cell(_lineweight_label(layer.lineweight)))
         self.table.setItem(row, TRANSPARENCY, cell(layer.transparency))
+        count = cell(str(layer.object_count))
+        count.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.table.setItem(row, OBJECTS, count)
+        description = cell(layer.description)
+        description.setToolTip(layer.description)
+        self.table.setItem(row, DESCRIPTION, description)
 
     def _on_document_changed(self, event: DocumentChanged) -> None:
         changes = event.changes
         tables = changes.layers_created or changes.layers_modified or changes.layers_deleted
-        if tables or changes.document_changed:
+        if (
+            tables
+            or changes.document_changed
+            or changes.created
+            or changes.modified
+            or changes.deleted
+            or changes.blocks_created
+            or changes.blocks_modified
+            or changes.blocks_deleted
+        ):
             self.refresh()
 
     # Changing the drawing
@@ -383,6 +429,28 @@ class LayersPanel(QDockWidget):
             )
             if accepted:
                 self.set_transparency(layer_id, percent)
+            return
+        if column == DESCRIPTION:
+            document = self._session.active
+            if document is None:
+                return
+            current = document.get_layer(layer_id).description
+            description, accepted = QInputDialog.getMultiLineText(
+                self,
+                tr("Layer description"),
+                tr("Description (up to 256 characters)"),
+                current,
+            )
+            if not accepted:
+                return
+            if len(description) > 256:
+                QMessageBox.warning(
+                    self,
+                    tr("Layer description"),
+                    tr("Layer description must not exceed 256 characters."),
+                )
+                return
+            self._edit(lambda d: d.set_layer_description(layer_id, description))
             return
         if column == LINETYPE:
             document = self._session.active

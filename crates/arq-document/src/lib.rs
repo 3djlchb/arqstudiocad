@@ -84,7 +84,10 @@ pub use grips::{Grip, GripKind};
 pub use inventory::Loss;
 pub use kept_view::KeptView;
 pub use layers::{Layer, LayerId};
-pub use linetypes::{LinetypeDefinition, parse_linetype_file};
+pub use linetypes::{
+    LinetypeComplexContent, LinetypeComplexDefinition, LinetypeDefinition, LinetypeRotationMode,
+    parse_linetype_file,
+};
 pub use matching::MatchSettings;
 pub use measuring::{SolidMeasures, Unmeasured};
 pub use pick::{pick_among, select_among};

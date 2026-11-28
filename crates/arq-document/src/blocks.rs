@@ -504,7 +504,7 @@ impl Document {
         insert.set_y_scale(scale);
         insert.set_z_scale(scale);
         insert.rotation = rotation;
-        insert.common.layer = self.current_layer().name().to_owned();
+        insert.common.layer = self.current_layer_without_count().name().to_owned();
         // Attributes from the definition, placed as the reference places
         // the block's contents.
         let placed = Transform::from_translation(Vector3::new(-base.x, -base.y, -base.z))

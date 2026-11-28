@@ -56,6 +56,27 @@ and separation between tests, checking containment before writing.
 | Polar ARRAY, 100 lines × 100 positions over 360 degrees | Rotate: grouped COPY/ROTATE 50.053234 → atomic ARRAY 19.694723 ms (0.393476x); no rotation: grouped COPY 28.168532 → 19.834554 ms (0.704139x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3 extension, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; on the reference machine 2026-11-26: 0.434 rotating, 0.736 keeping orientation, and the command accepted in the main window ([report](testing/reference-machine/2026-11-26/arrays.txt)) |
 | Path ARRAY, 100 lines × 100 positions on a mixed open path | Align: grouped COPY/ROTATE 40.513941 → atomic ARRAY 18.280985 ms (0.451227x); no alignment: grouped COPY 26.347081 → 18.245295 ms (0.692498x) | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 2 warmups + 10 samples per case (2026-11-20); operation-only diagnostic; on the reference machine 2026-11-23: 0.507 aligned, 0.748 kept, and the command accepted in the main window ([report](testing/reference-machine/2026-11-23/path-array.txt)) |
 | ARRAYRECT orientation preview, 100 lines × 10×10 cells, CPU 800×600 | Edit 17.897058 → 17.761422 ms (0.992421x); bounded query 0.329887 ms, overlay build 1.481141 ms, paint 6.808924 ms, build+paint 8.389221 ms; 20 of 99 copied cells | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.13.5, 5 warmups + 100 samples per metric (2026-11-20); diagnostic only; on the reference machine 2026-11-26 the preview takes at most 28.7 ms a CPU cursor frame (p95) and keeps the display's rate on the GPU: accepted ([report](testing/reference-machine/2026-11-26/arrays.txt)) |
+| Layer-count query, 100,000 lines across 100 layers (`get_layers`) | Base 0.01528 ms → candidate 4.74631 ms; +4.73103 ms (about 311× the metadata-only base call) | LMDE 7 development host, Ryzen 9 5900X; release PyO3, Python 3.14.9, 5 alternating pairs with 5 warmups + 100 samples per run (2026-11-27); diagnostic only; actual reference-floor acceptance pending |
+
+### Layer object-count query diagnostic (2026-11-27)
+
+Base `origin/main` `1c60e58bd8412ae2fc9f1d1b57a2319f814c32a5` was compared
+with candidate `859cfa3`. Both used the default release extension built by
+`uv sync`, Rust 1.99.0, Python 3.14.9, and the same synthetic DXF on LMDE 7,
+Linux 6.12.118+deb13-amd64, Ryzen 9 5900X. The benchmark did not create a
+viewport or access application preferences or private drawings.
+
+The ASCII DXF contains 100,000 LINE entities assigned evenly to 100 layers.
+Line `i` runs from `((i % 500) * 3, (i // 500) * 3)` to a point 0.5 units
+along each axis. Opening the drawing and checking its entity/layer totals are
+outside the measured interval. Each run takes five warmups and 100 samples of
+`CadDocument.get_layers()`. Five alternating base/candidate pairs were pooled:
+0.01528 ms on the base and 4.74631 ms on the candidate (p95 4.92003 ms).
+The roughly 311× ratio compares a metadata-only base call with the candidate's
+new full-drawing count; the added absolute query cost is about 4.73 ms here.
+This is diagnostic data from the development host, not acceptance on the
+reference i7-2600. The panel's widget refresh and linetype previews are outside
+this measurement.
 
 ### Quick TRIM/EXTEND diagnostic comparison (2026-11-15)
 

@@ -662,6 +662,37 @@ fn layer_transparency_changes_are_transactional_and_undoable() {
 }
 
 #[test]
+fn layer_description_changes_are_transactional_and_undoable() {
+    let mut cad = CadDocument::new();
+    let (layer, _) = cad.create_layer("NOTES").unwrap();
+
+    let changes = cad
+        .set_layer_description(layer, "Exterior walls 🧱")
+        .unwrap();
+    assert_eq!(changes.layers_modified(), [layer]);
+    assert_eq!(
+        cad.document().layer(layer).unwrap().description(),
+        "Exterior walls 🧱"
+    );
+    assert!(matches!(
+        cad.set_layer_description(layer, &"x".repeat(257)),
+        Err(CadError::InvalidOperation(_))
+    ));
+    assert_eq!(
+        cad.document().layer(layer).unwrap().description(),
+        "Exterior walls 🧱"
+    );
+
+    cad.undo().unwrap();
+    assert_eq!(cad.document().layer(layer).unwrap().description(), "");
+    cad.redo().unwrap();
+    assert_eq!(
+        cad.document().layer(layer).unwrap().description(),
+        "Exterior walls 🧱"
+    );
+}
+
+#[test]
 fn color_index_zero_is_an_invalid_operation() {
     let mut cad = CadDocument::new();
     let (id, _) = cad.add_line(p(0.0, 0.0), p(1.0, 0.0)).unwrap();
