@@ -217,6 +217,7 @@ pub struct Entity {
     pub(crate) layer: String,
     pub(crate) color: Color,
     pub(crate) linetype: String,
+    pub(crate) linetype_scale: f64,
     pub(crate) lineweight: String,
     pub(crate) details: Vec<(String, String)>,
     pub(crate) bounds: Option<Bounds2>,
@@ -249,6 +250,11 @@ impl Entity {
     /// Entity linetype, with an empty codec value represented as `ByLayer`.
     pub fn linetype(&self) -> &str {
         &self.linetype
+    }
+
+    /// Entity-specific scale applied to its linetype pattern.
+    pub fn linetype_scale(&self) -> f64 {
+        self.linetype_scale
     }
 
     /// Human-readable entity lineweight (millimeters or a special value).

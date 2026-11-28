@@ -94,6 +94,47 @@ fn a_text_box_picks_but_is_not_drawn() {
 }
 
 #[test]
+fn layer_linetype_is_resolved_for_bylayer_entities_in_model_space() {
+    let mut cad = CadDocument::new();
+    cad.load_linetypes(&[arq_core::LinetypeDefinition {
+        name: "DASHED".to_owned(),
+        description: "Dashed".to_owned(),
+        pattern: vec![2.0, -2.0],
+        complex: Vec::new(),
+    }])
+    .unwrap();
+    let (layer, _) = cad.create_layer("Dashed layer").unwrap();
+    let (id, _) = cad.add_line(p(0.0, 0.0), p(8.0, 0.0)).unwrap();
+    cad.set_entity_layer(&[id], layer).unwrap();
+
+    let mut scene = Scene::build(cad.document());
+    assert!(
+        scene
+            .entries()
+            .iter()
+            .find(|entry| entry.id == id)
+            .unwrap()
+            .linetype
+            .is_empty()
+    );
+    let changes = cad.set_layer_linetype(layer, "DASHED").unwrap();
+    assert!(scene.update(cad.document(), &changes));
+    let entry = scene.entries().iter().find(|entry| entry.id == id).unwrap();
+    assert_eq!(entry.linetype, [2.0, -2.0]);
+    assert_eq!(entry.linetype_scale, 1.0);
+
+    let top = Scene::build_in(cad.document(), View::SwIso);
+    assert_eq!(
+        top.entries()
+            .iter()
+            .find(|entry| entry.id == id)
+            .unwrap()
+            .linetype,
+        [2.0, -2.0]
+    );
+}
+
+#[test]
 fn picking_and_windows_work_in_a_view() {
     let mut cad = CadDocument::new();
     let (ground, _) = cad.add_line(p(1.0, 2.0), p(5.0, 2.0)).unwrap();
@@ -115,7 +156,7 @@ fn picking_and_windows_work_in_a_view() {
     );
     assert_eq!(
         front.select_window(around((4.0, -1.0), (11.0, 1.0)), false),
-        []
+        Vec::<u64>::new()
     );
     assert_eq!(
         front.select_window(around((4.0, -1.0), (11.0, 1.0)), true),

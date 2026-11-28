@@ -21,6 +21,7 @@ mod gpu;
 mod gpu_overlay;
 mod gpu_probe;
 mod hairline;
+mod linetype;
 mod outline;
 mod overlay;
 mod raster;

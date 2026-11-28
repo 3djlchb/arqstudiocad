@@ -44,6 +44,42 @@ fn a_line_is_two_vertices_in_its_color() {
 }
 
 #[test]
+fn bylayer_pattern_is_retained_as_world_space_dashes() {
+    let mut cad = CadDocument::new();
+    cad.load_linetypes(&[arq_core::LinetypeDefinition {
+        name: "DASHED".to_owned(),
+        description: "Dashed".to_owned(),
+        pattern: vec![5.0, -5.0],
+        complex: Vec::new(),
+    }])
+    .unwrap();
+    let (layer, _) = cad.create_layer("Dashed layer").unwrap();
+    cad.set_layer_linetype(layer, "DASHED").unwrap();
+    let (id, _) = cad.add_line(p(-30.0, -0.5), p(30.0, -0.5)).unwrap();
+    cad.set_entity_layer(&[id], layer).unwrap();
+
+    let r = Retained::build(&Scene::build(cad.document()), &camera(), DARK).unwrap();
+    let dashes: Vec<_> = r
+        .vertices
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| (world(&r, &pair[0]).0, world(&r, &pair[1]).0))
+        .collect();
+    assert_eq!(
+        dashes,
+        [
+            (-30.0, -25.0),
+            (-20.0, -15.0),
+            (-10.0, -5.0),
+            (0.0, 5.0),
+            (10.0, 15.0),
+            (20.0, 25.0)
+        ]
+    );
+}
+
+#[test]
 fn survey_coordinates_stay_small_and_exact() {
     let (x0, y0) = (500_000.123, 9_977_000.456);
     let mut cad = CadDocument::new();

@@ -30,6 +30,7 @@ pub(crate) fn read_entity_with(e: &EntityType, plan: Option<PlanGeometry>) -> En
         } else {
             common.linetype.clone()
         },
+        linetype_scale: common.linetype_scale,
         lineweight: lineweight_text(common.line_weight),
         details: details(e),
         bounds,
