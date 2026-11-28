@@ -97,6 +97,9 @@ impl Retained {
             fine_scale: camera.scale() * BAND,
             coarse_scale: camera.scale() / BAND,
             rgba: [0, 0, 0, 255],
+            linetype: Vec::new(),
+            linetype_scale: 1.0,
+            linetype_phase: 0.0,
             triangles: Vec::new(),
             vertices: Vec::new(),
             dots: Vec::new(),
@@ -107,6 +110,9 @@ impl Retained {
             if !entry.bounds.is_some_and(|b| b.intersects(region, tol)) {
                 continue;
             }
+            builder.linetype.clone_from(&entry.linetype);
+            builder.linetype_scale = entry.linetype_scale;
+            builder.linetype_phase = 0.0;
             for item in &entry.items {
                 if !shape_bounds(&item.shape).intersects(region, tol) {
                     continue;
@@ -167,6 +173,9 @@ struct Builder {
     /// The band's smallest scale, where segments are shortest on screen.
     coarse_scale: f64,
     rgba: [u8; 4],
+    linetype: Vec<f64>,
+    linetype_scale: f64,
+    linetype_phase: f64,
     triangles: Vec<Vertex>,
     vertices: Vec<Vertex>,
     dots: Vec<Vertex>,
@@ -178,9 +187,11 @@ impl Builder {
         match *shape {
             Shape::Line(l) => {
                 self.segment(l.start(), l.end(), false);
-                self.dot_if_tiny(l.start(), l.end());
-                self.end(l.start());
-                self.end(l.end());
+                if self.linetype.is_empty() {
+                    self.dot_if_tiny(l.start(), l.end());
+                    self.end(l.start());
+                    self.end(l.end());
+                }
             }
             Shape::Circle(c) => self.arc(c.center(), c.radius(), 0.0, std::f64::consts::TAU),
             Shape::Arc(a) => self.arc(a.center(), a.radius(), a.start_angle(), a.sweep()),
@@ -274,24 +285,65 @@ impl Builder {
     /// A segment clipped to the region in `f64`.
     fn segment(&mut self, a: Point2, b: Point2, dashed: bool) {
         let (min, max) = (self.region.min(), self.region.max());
-        let Some((a, b)) = clip(
+        let clipped = clip(
             (a.x(), a.y()),
             (b.x(), b.y()),
             min.x(),
             min.y(),
             max.x(),
             max.y(),
-        ) else {
+        );
+        if !dashed && !self.linetype.is_empty() {
+            let mut parts = Vec::new();
+            let mut phase = self.linetype_phase;
+            super::linetype::split_segment(
+                (a.x(), a.y()),
+                (b.x(), b.y()),
+                &self.linetype,
+                self.linetype_scale,
+                &mut phase,
+                clipped,
+                |part| parts.push(part),
+            );
+            self.linetype_phase = phase;
+            for part in parts {
+                match part {
+                    super::linetype::PatternPart::Dash(start, end) => {
+                        if let (Ok(start), Ok(end)) =
+                            (Point2::new(start.0, start.1), Point2::new(end.0, end.1))
+                        {
+                            self.push_clipped_segment(start, end, false);
+                            self.dot_if_tiny(start, end);
+                            self.end(start);
+                            self.end(end);
+                        }
+                    }
+                    super::linetype::PatternPart::Dot(point) => {
+                        if let Ok(point) = Point2::new(point.0, point.1) {
+                            self.dot((point.x(), point.y()));
+                        }
+                    }
+                }
+            }
             return;
-        };
-        let length = (b.0 - a.0).hypot(b.1 - a.1);
+        }
+        let Some((a, b)) = clipped else { return };
+        self.push_clipped_segment(
+            Point2::new(a.0, a.1).expect("clipped finite point"),
+            Point2::new(b.0, b.1).expect("clipped finite point"),
+            dashed,
+        );
+    }
+
+    fn push_clipped_segment(&mut self, a: Point2, b: Point2, dashed: bool) {
+        let length = a.distance_to(b);
         let (start, end) = if dashed {
             (0.0, length as f32)
         } else {
             (SOLID, SOLID)
         };
-        self.push(a, [0.0, 0.0], start);
-        self.push(b, [0.0, 0.0], end);
+        self.push((a.x(), a.y()), [0.0, 0.0], start);
+        self.push((b.x(), b.y()), [0.0, 0.0], end);
     }
 
     /// A dot at the middle of a line that can be shorter than a pixel

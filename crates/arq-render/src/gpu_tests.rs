@@ -216,6 +216,27 @@ fn draws_what_the_cpu_draws(gpu: &mut GpuRenderer) {
     assert_eq!(pixel(&img, 10, 50), DARK.background, "beyond its end");
     assert!(assert_same(&cpu, &img, DARK, &[WHITE], "a line") > 0);
 
+    // A ByLayer pattern must reach both implementations of the model-space
+    // renderer from the same derived scene.
+    let mut cad = CadDocument::new();
+    cad.load_linetypes(&[arq_core::LinetypeDefinition {
+        name: "DASHED".to_owned(),
+        description: "Dashed".to_owned(),
+        pattern: vec![5.0, -5.0],
+        complex: Vec::new(),
+    }])
+    .unwrap();
+    let (layer, _) = cad.create_layer("Dashed layer").unwrap();
+    cad.set_layer_linetype(layer, "DASHED").unwrap();
+    let (line, _) = cad.add_line(p(-30.0, -0.5), p(30.0, -0.5)).unwrap();
+    cad.set_entity_layer(&[line], layer).unwrap();
+    let scene = Scene::build(cad.document());
+    let (cpu, img) = both(gpu, &scene, &camera, DARK);
+    assert_eq!(pixel(&img, 22, 50), WHITE);
+    assert_eq!(pixel(&img, 27, 50), DARK.background);
+    assert_eq!(pixel(&img, 32, 50), WHITE);
+    assert!(assert_same(&cpu, &img, DARK, &[WHITE], "layer linetype") > 0);
+
     // Colors on a light background.
     let mut cad = CadDocument::new();
     let (red, _) = cad.add_line(p(-30.0, 10.5), p(30.0, 10.5)).unwrap();

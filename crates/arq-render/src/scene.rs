@@ -22,6 +22,8 @@ pub(crate) struct Entry {
     pub(crate) id: EntityId,
     pub(crate) items: Vec<DrawItem>,
     pub(crate) bounds: Option<Bounds2>,
+    pub(crate) linetype: Vec<f64>,
+    pub(crate) linetype_scale: f64,
 }
 
 /// The drawable content of a document, in drawing order.
@@ -49,6 +51,7 @@ impl Scene {
 
     /// The scene of every model-space entity of `doc`, seen from `view`.
     pub fn build_in(doc: &Document, view: View) -> Self {
+        let line_styles = linetype_styles(doc);
         let drawn = match view {
             View::Top => doc.drawing_all(),
             _ => doc
@@ -60,7 +63,10 @@ impl Scene {
         let mut scene = Self {
             entries: drawn
                 .into_iter()
-                .map(|(id, items)| entry(id, items))
+                .map(|(id, items)| {
+                    let (pattern, scale) = line_styles.get(&id).cloned().unwrap_or_default();
+                    entry(id, items, pattern, scale)
+                })
                 .collect(),
             index: HashMap::new(),
             view,
@@ -97,7 +103,7 @@ impl Scene {
     /// A scene of loose shapes, not of a document's entities: a preview's.
     pub(crate) fn from_items(items: Vec<DrawItem>) -> Self {
         let mut scene = Self {
-            entries: vec![entry(0, items)],
+            entries: vec![entry_without_style(0, items)],
             index: HashMap::new(),
             view: View::Top,
             revision: next_revision(),
@@ -130,15 +136,15 @@ impl Scene {
         for &id in changes.modified() {
             let items = self.drawing(doc, id).unwrap_or_default();
             match self.index.get(&id) {
-                Some(&i) => self.entries[i] = entry(id, items),
-                None => self.push(entry(id, items)),
+                Some(&i) => self.entries[i] = entry_for_document(doc, id, items),
+                None => self.push(entry_for_document(doc, id, items)),
             }
         }
         for &id in changes.created() {
             if let Some(items) = self.drawing(doc, id) {
                 match self.index.get(&id) {
-                    Some(&i) => self.entries[i] = entry(id, items),
-                    None => self.push(entry(id, items)),
+                    Some(&i) => self.entries[i] = entry_for_document(doc, id, items),
+                    None => self.push(entry_for_document(doc, id, items)),
                 }
             }
         }
@@ -252,12 +258,86 @@ fn projected(items: &[SpaceItem], view: View) -> Vec<DrawItem> {
     out
 }
 
-fn entry(id: EntityId, items: Vec<DrawItem>) -> Entry {
+fn linetype_styles(doc: &Document) -> HashMap<EntityId, (Vec<f64>, f64)> {
+    let definitions: HashMap<_, _> = doc
+        .linetype_definitions()
+        .into_iter()
+        .map(|definition| (definition.name.to_uppercase(), definition.pattern))
+        .collect();
+    let layers: HashMap<_, _> = doc
+        .layers()
+        .into_iter()
+        .map(|layer| (layer.name().to_uppercase(), layer.linetype().to_uppercase()))
+        .collect();
+    doc.entities()
+        .into_iter()
+        .map(|entity| {
+            let name = if entity.linetype().eq_ignore_ascii_case("ByLayer") {
+                layers
+                    .get(&entity.layer().to_uppercase())
+                    .map(String::as_str)
+                    .unwrap_or("CONTINUOUS")
+            } else {
+                entity.linetype()
+            };
+            let pattern = definitions
+                .get(&name.to_uppercase())
+                .filter(|pattern| !pattern.is_empty())
+                .cloned()
+                .unwrap_or_default();
+            let scale = entity.linetype_scale();
+            let scale = if scale.is_finite() && scale > 0.0 {
+                scale
+            } else {
+                1.0
+            };
+            (entity.id(), (pattern, scale))
+        })
+        .collect()
+}
+
+fn entry_for_document(doc: &Document, id: EntityId, items: Vec<DrawItem>) -> Entry {
+    let style = doc.entity(id).and_then(|entity| {
+        let name = if entity.linetype().eq_ignore_ascii_case("ByLayer") {
+            doc.layer_by_name(entity.layer())?.linetype().to_owned()
+        } else {
+            entity.linetype().to_owned()
+        };
+        let pattern = doc
+            .linetype_definitions()
+            .into_iter()
+            .find(|definition| definition.name.eq_ignore_ascii_case(&name))?
+            .pattern;
+        let scale = entity.linetype_scale();
+        Some((
+            pattern,
+            if scale.is_finite() && scale > 0.0 {
+                scale
+            } else {
+                1.0
+            },
+        ))
+    });
+    let (pattern, scale) = style.unwrap_or_default();
+    entry(id, items, pattern, scale)
+}
+
+fn entry_without_style(id: EntityId, items: Vec<DrawItem>) -> Entry {
+    entry(id, items, Vec::new(), 1.0)
+}
+
+fn entry(id: EntityId, items: Vec<DrawItem>, linetype: Vec<f64>, linetype_scale: f64) -> Entry {
     let bounds = items
         .iter()
         .map(|i| shape_bounds(&i.shape))
         .reduce(Bounds2::union);
-    Entry { id, items, bounds }
+    Entry {
+        id,
+        items,
+        bounds,
+        linetype,
+        linetype_scale,
+    }
 }
 
 pub(crate) fn shape_bounds(shape: &Shape) -> Bounds2 {

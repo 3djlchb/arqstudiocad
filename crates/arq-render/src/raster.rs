@@ -162,6 +162,10 @@ pub(crate) fn trace(scene: &Scene, camera: &Camera, style: Style, sink: &mut imp
         style,
         sink,
         current: None,
+        linetype: Vec::new(),
+        linetype_scale: 1.0,
+        linetype_phase: 0.0,
+        legacy_dashed: false,
         width: f64::from(width),
         height: f64::from(height),
     };
@@ -169,6 +173,9 @@ pub(crate) fn trace(scene: &Scene, camera: &Camera, style: Style, sink: &mut imp
         for entry in scene.entries() {
             if !entry.bounds.is_some_and(|b| b.intersects(view, tol)) {
                 continue;
+            }
+            if !fills {
+                tracer.set_linetype(&entry.linetype, entry.linetype_scale * camera.scale());
             }
             for item in &entry.items {
                 let is_fill = matches!(item.shape, Shape::Triangle(_));
@@ -187,13 +194,25 @@ struct Tracer<'a, S: Sink> {
     style: Style,
     sink: &'a mut S,
     current: Option<([u8; 3], bool)>,
+    linetype: Vec<f64>,
+    linetype_scale: f64,
+    linetype_phase: f64,
+    legacy_dashed: bool,
     width: f64,
     height: f64,
 }
 
 impl<S: Sink> Tracer<'_, S> {
+    fn set_linetype(&mut self, pattern: &[f64], scale: f64) {
+        self.linetype.clear();
+        self.linetype.extend_from_slice(pattern);
+        self.linetype_scale = scale;
+        self.linetype_phase = 0.0;
+    }
+
     /// Tells the sink when the color or the dash changes.
     fn set_color(&mut self, color: Color, dashed: bool) {
+        self.legacy_dashed = dashed;
         let rgb = ink(color, self.style);
         if self.current != Some((rgb, dashed)) {
             self.current = Some((rgb, dashed));
@@ -284,7 +303,33 @@ impl<S: Sink> Tracer<'_, S> {
     /// A segment in screen pixels, clipped to the view first.
     fn segment(&mut self, a: (f64, f64), b: (f64, f64)) {
         let pad = PAD_PX;
-        if let Some((a, b)) = clip(a, b, -pad, -pad, self.width + pad, self.height + pad) {
+        let visible = clip(a, b, -pad, -pad, self.width + pad, self.height + pad);
+        if !self.linetype.is_empty() && !self.legacy_dashed {
+            let mut parts = Vec::new();
+            let mut phase = self.linetype_phase;
+            super::linetype::split_segment(
+                a,
+                b,
+                &self.linetype,
+                self.linetype_scale,
+                &mut phase,
+                visible,
+                |part| parts.push(part),
+            );
+            self.linetype_phase = phase;
+            for part in parts {
+                match part {
+                    super::linetype::PatternPart::Dash(start, end) => self.sink.segment(
+                        (start.0 as f32, start.1 as f32),
+                        (end.0 as f32, end.1 as f32),
+                    ),
+                    super::linetype::PatternPart::Dot(point) => {
+                        let (x, y) = (point.0 as f32, point.1 as f32);
+                        self.sink.segment((x - 0.5, y), (x + 0.5, y));
+                    }
+                }
+            }
+        } else if let Some((a, b)) = visible {
             self.sink
                 .segment((a.0 as f32, a.1 as f32), (b.0 as f32, b.1 as f32));
         }

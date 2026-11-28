@@ -60,6 +60,27 @@ fn a_line_lands_on_its_pixels() {
 }
 
 #[test]
+fn layer_assigned_linetype_is_visible_in_the_cpu_viewport() {
+    let mut cad = CadDocument::new();
+    cad.load_linetypes(&[arq_core::LinetypeDefinition {
+        name: "DASHED".to_owned(),
+        description: "Dashed".to_owned(),
+        pattern: vec![5.0, -5.0],
+        complex: Vec::new(),
+    }])
+    .unwrap();
+    let (layer, _) = cad.create_layer("Dashed layer").unwrap();
+    cad.set_layer_linetype(layer, "DASHED").unwrap();
+    let (line, _) = cad.add_line(p(-30.0, -0.5), p(30.0, -0.5)).unwrap();
+    cad.set_entity_layer(&[line], layer).unwrap();
+
+    let img = render(&scene_of(&cad), &camera(), DARK);
+    assert_eq!(pixel(&img, 22, 50), [255, 255, 255]);
+    assert!(is_background(&img, 27, 50, DARK), "the first gap is empty");
+    assert_eq!(pixel(&img, 32, 50), [255, 255, 255]);
+}
+
+#[test]
 fn colors_and_a_light_background() {
     let mut cad = CadDocument::new();
     let (red, _) = cad.add_line(p(-30.0, 10.5), p(30.0, 10.5)).unwrap(); // row 39
