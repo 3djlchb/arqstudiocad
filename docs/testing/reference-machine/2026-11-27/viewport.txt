@@ -1,0 +1,29 @@
+GPU viewport check, commit 238fb06, 2026-11-27
+
+Machine: reference machine, Linux 6.12.118, Mesa 25.0.7, X11, 1920 × 1080
+at 60 Hz. The viewport was 1200 × 650 and contained 100,000 generated
+entities. The runner showed no desktop application processes during the
+measurement. Python 3.13.5, PySide6 6.12.0.
+
+Probes: OpenGL used hardware adapter NV106 (GeForce GT 730). Vulkan and the
+software backend used llvmpipe on the CPU. Each run measured 57 repaint frames
+after three warmups; values below are median and p95, in ms.
+
+| Pass | OpenGL pan | OpenGL zoom | CPU pan | CPU zoom | Overlay pixels outside one-pixel tolerance |
+|---|---:|---:|---:|---:|---:|
+| 1 (19:18:05) | 17.2 / 31.0 | 17.1 / 31.2 | 17.9 / 20.4 | 30.2 / 34.3 | 0 |
+| 2 (19:18:51) | 18.9 / 34.6 | 18.0 / 32.2 | 18.4 / 32.4 | 31.3 / 44.3 | 3,765 |
+| 3 (19:19:34) | 17.4 / 29.1 | 17.6 / 29.0 | 18.3 / 21.0 | 30.5 / 33.5 | 0 |
+| 4 (19:21:06) | 17.6 / 30.6 | 17.7 / 31.2 | 18.0 / 22.5 | 30.3 / 33.0 | 0 |
+| Median | 17.5 / 30.8 | 17.7 / 31.2 | 18.2 / 21.8 | 30.4 / 33.9 | — |
+
+The median GPU/CPU repaint ratios were 1.04 for pan and 1.72 for zoom (CPU
+time divided by GPU time). This session's pan medians were close, while zoom
+favored OpenGL. Three overlay captures matched; one had 3,765 pixels outside
+tolerance. The outlier did not reproduce in the fourth pass, but should be
+investigated before concluding the GPU/CPU images are consistently equivalent.
+
+Reports were generated with tools/gpu_viewport_check.py --entities 100000.
+The first two script reports shared a minute-stamped output name; this summary
+preserves both printed results. Passes 3 and 4 are retained under target.
+No images are committed.
