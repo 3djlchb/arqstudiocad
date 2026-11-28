@@ -1305,6 +1305,15 @@ impl CadDocument {
         self.layer_op(|doc| doc.set_layer_transparency(id, percent))
     }
 
+    /// Sets a user-authored layer note of at most 256 Unicode characters.
+    pub fn set_layer_description(
+        &mut self,
+        id: LayerId,
+        description: &str,
+    ) -> CadResult<ChangeSet> {
+        self.layer_op(|doc| doc.set_layer_description(id, description))
+    }
+
     /// Turns a layer on or off.
     pub fn set_layer_visible(&mut self, id: LayerId, visible: bool) -> CadResult<ChangeSet> {
         self.layer_op(|doc| doc.set_layer_visible(id, visible))

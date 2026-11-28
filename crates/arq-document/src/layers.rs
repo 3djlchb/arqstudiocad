@@ -27,6 +27,8 @@ pub struct Layer {
     linetype: String,
     lineweight: String,
     transparency: String,
+    description: String,
+    object_count: usize,
     visible: bool,
     frozen: bool,
     locked: bool,
@@ -58,6 +60,14 @@ impl Layer {
     pub fn transparency(&self) -> &str {
         &self.transparency
     }
+    /// The layer's user-authored note.
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+    /// Number of drawing entities assigned to this layer.
+    pub fn object_count(&self) -> usize {
+        self.object_count
+    }
     /// Whether it is on (shown).
     pub fn is_visible(&self) -> bool {
         self.visible
@@ -84,6 +94,8 @@ pub(crate) fn read_layer(l: &CodecLayer) -> Layer {
         linetype: l.line_type.clone(),
         lineweight: lineweight_text(l.line_weight),
         transparency: transparency_text(l.transparency),
+        description: l.description.clone(),
+        object_count: 0,
         visible: !l.flags.off,
         frozen: l.flags.frozen,
         locked: l.flags.locked,
@@ -170,8 +182,25 @@ impl Document {
     /// the own model.
     pub fn layers(&self) -> Vec<Layer> {
         let mut layers: Vec<Layer> = self.model.layers.values().cloned().collect();
+        let counts = self.layer_object_counts();
+        for layer in &mut layers {
+            layer.object_count = counts
+                .get(&normalize_name(&layer.name))
+                .copied()
+                .unwrap_or_default();
+        }
         layers.sort_by_key(|l| (l.name != "0", l.name.to_lowercase()));
         layers
+    }
+
+    fn layer_object_counts(&self) -> std::collections::HashMap<String, usize> {
+        let mut counts = std::collections::HashMap::new();
+        for entity in self.cad().entities() {
+            *counts
+                .entry(normalize_name(&entity.common().layer))
+                .or_insert(0) += 1;
+        }
+        counts
     }
 
     /// The linetypes loaded in this drawing, excluding entity-only
@@ -192,12 +221,19 @@ impl Document {
 
     /// The layer with this id.
     pub fn layer(&self, id: LayerId) -> Option<Layer> {
-        self.model.layers.get(&id).cloned()
+        let mut layer = self.model.layers.get(&id).cloned()?;
+        layer.object_count = self
+            .layer_object_counts()
+            .get(&normalize_name(&layer.name))
+            .copied()
+            .unwrap_or_default();
+        Some(layer)
     }
 
     /// The layer with this name (ignoring case).
     pub fn layer_by_name(&self, name: &str) -> Option<Layer> {
-        self.model_layer_by_name(name).cloned()
+        let id = self.model_layer_by_name(name)?.id();
+        self.layer(id)
     }
 
     fn codec_layer(&self, id: LayerId) -> Option<&CodecLayer> {
@@ -346,6 +382,23 @@ impl Document {
         self.edit_layer(id, |layer| layer.transparency = transparency)
     }
 
+    /// Sets a user-authored layer note of at most 256 Unicode characters.
+    pub fn set_layer_description(&mut self, id: LayerId, description: &str) -> DocumentResult<()> {
+        if self.codec_layer(id).is_none() {
+            return Err(DocumentError::LayerIdNotFound(id));
+        }
+        if description.chars().count() > 256 {
+            return Err(DocumentError::InvalidLayerDescription);
+        }
+        if self
+            .codec_layer(id)
+            .is_some_and(|layer| layer.description == description)
+        {
+            return Ok(());
+        }
+        self.edit_layer(id, |layer| layer.description = description.to_owned())
+    }
+
     /// Turns a layer on or off.
     pub fn set_layer_visible(&mut self, id: LayerId, visible: bool) -> DocumentResult<()> {
         self.edit_layer(id, |l| l.flags.off = !visible)
@@ -353,7 +406,7 @@ impl Document {
 
     /// Freezes or thaws a layer. The current layer cannot be frozen.
     pub fn set_layer_frozen(&mut self, id: LayerId, frozen: bool) -> DocumentResult<()> {
-        if frozen && self.current_layer().id == id {
+        if frozen && self.current_layer_without_count().id == id {
             return Err(DocumentError::ProtectedLayer(self.layer_name(id)?));
         }
         self.edit_layer(id, |l| l.flags.frozen = frozen)
@@ -373,7 +426,7 @@ impl Document {
     /// the current layer cannot be deleted; nor can a layer with entities.
     pub fn delete_layer(&mut self, id: LayerId) -> DocumentResult<()> {
         let name = self.layer_name(id)?;
-        if is_protected(&name) || self.current_layer().id == id {
+        if is_protected(&name) || self.current_layer_without_count().id == id {
             return Err(DocumentError::ProtectedLayer(name));
         }
         let key = normalize_name(&name);
@@ -393,6 +446,13 @@ impl Document {
 
     /// The layer new entities go to (AutoCAD's CLAYER).
     pub fn current_layer(&self) -> Layer {
+        self.layer(self.model.current)
+            .expect("the current layer is in the model")
+    }
+
+    /// The current layer without calculating its derived entity count.
+    /// Internal entity creation uses this to avoid rescanning the drawing.
+    pub(crate) fn current_layer_without_count(&self) -> Layer {
         self.model
             .layers
             .get(&self.model.current)
@@ -556,6 +616,34 @@ mod tests {
     }
 
     #[test]
+    fn layer_object_counts_cover_the_drawing_and_descriptions_are_validated() {
+        let mut doc = Document::new();
+        let walls = doc.create_layer("WALLS").unwrap();
+        let zero = doc.layer_by_name("0").unwrap().id();
+        line(&mut doc, walls);
+        line(&mut doc, walls);
+        line(&mut doc, zero);
+
+        let counts: std::collections::HashMap<_, _> = doc
+            .layers()
+            .into_iter()
+            .map(|layer| (layer.name().to_owned(), layer.object_count()))
+            .collect();
+        assert_eq!(counts["WALLS"], 2);
+        assert_eq!(counts["0"], 1);
+        assert_eq!(doc.layer(walls).unwrap().object_count(), 2);
+
+        let note = "Planos de fachada 🧱";
+        doc.set_layer_description(walls, note).unwrap();
+        assert_eq!(doc.layer(walls).unwrap().description(), note);
+        assert_eq!(
+            doc.set_layer_description(walls, &"ñ".repeat(257)),
+            Err(DocumentError::InvalidLayerDescription)
+        );
+        assert_eq!(doc.layer(walls).unwrap().description(), note);
+    }
+
+    #[test]
     fn linetype_choices_are_loaded_and_layer_assignment_is_case_insensitive() {
         use acadrust::tables::LineType;
 
@@ -668,6 +756,7 @@ mod tests {
         let a = doc.create_layer("A-MUROS").unwrap();
         doc.set_layer_color(a, Color::Index(3)).unwrap();
         doc.set_layer_locked(a, true).unwrap();
+        doc.set_layer_description(a, "Exterior facade").unwrap();
         let b = doc.create_layer("Ejes (1-5)").unwrap();
         doc.set_layer_visible(b, false).unwrap();
         doc.set_current_layer(a).unwrap();
@@ -677,6 +766,11 @@ mod tests {
             doc.save(&path).unwrap();
             let back = Document::open(&path).unwrap();
             assert_eq!(back.layer(a), doc.layer(a), "{name}");
+            assert_eq!(
+                back.layer(a).unwrap().description(),
+                "Exterior facade",
+                "{name}"
+            );
             assert_eq!(back.layer(b), doc.layer(b), "{name}");
             assert_eq!(back.current_layer().id(), a, "{name}");
             assert_eq!(back.entity(e).unwrap().layer(), "A-MUROS", "{name}");

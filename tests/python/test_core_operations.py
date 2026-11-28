@@ -367,6 +367,24 @@ def test_layer_transparency_api_is_validated_and_undoable(doc: CadDocument) -> N
     assert doc.get_layer(layer).transparency == "50%"
 
 
+def test_layer_description_and_object_count(doc: CadDocument) -> None:
+    layer, _ = doc.create_layer("NOTES")
+    doc.set_layer_description(layer, "Exterior walls 🧱")
+    assert doc.get_layer(layer).description == "Exterior walls 🧱"
+    assert doc.get_layer(layer).object_count == 0
+    with pytest.raises(InvalidOperationError, match="256 characters"):
+        doc.set_layer_description(layer, "x" * 257)
+    assert doc.get_layer(layer).description == "Exterior walls 🧱"
+
+    doc.set_current_layer(layer)
+    doc.add_line((0, 0), (1, 0))
+    doc.add_circle((2, 0), 1)
+    assert doc.get_layer(layer).object_count == 2
+    assert next(item for item in doc.get_layers() if item.id == layer).object_count == 2
+    doc.undo()
+    assert doc.get_layer(layer).object_count == 1
+
+
 # History
 
 

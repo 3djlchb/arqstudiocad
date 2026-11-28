@@ -18,7 +18,8 @@ use std::sync::Arc;
 use arq_core::{
     BlockData, BlockDefinition, BlockObjects, CadApplication as CoreApplication,
     CadChangeSet as ChangeSet, CadDocument as CoreDocument, CadError, ClashChoice, Currencies,
-    DocumentId, EntityId, LayerId, LinetypeDefinition, MatchSettings, Money,
+    DocumentId, EntityId, LayerId, LinetypeComplexContent, LinetypeComplexDefinition,
+    LinetypeDefinition, LinetypeRotationMode, MatchSettings, Money,
 };
 use arq_geometry::{Geometry2, Line, SelectionPolygon, Tolerance, selection_polygons};
 use pyo3::exceptions::{PyTypeError, PyValueError};
@@ -33,6 +34,94 @@ use crate::values::{
     CadArc, CadBounds2, CadCircle, CadColor, CadEllipse, CadGrip, CadLine, CadSnap, CadSpline,
     PyPoint, PyVector, snap_kinds,
 };
+
+type PyLinetypeComplex = (usize, String, String, String, f64, f64, String, f64, f64);
+type PyLinetypeDefinition = (String, String, Vec<f64>, Vec<PyLinetypeComplex>);
+
+fn linetype_to_py(item: LinetypeDefinition) -> PyLinetypeDefinition {
+    let complex = item
+        .complex
+        .into_iter()
+        .map(|element| {
+            let (kind, content, reference) = match element.content {
+                LinetypeComplexContent::Text { text, style_name } => {
+                    ("text".to_owned(), text, style_name)
+                }
+                LinetypeComplexContent::Shape { name, shape_file } => {
+                    ("shape".to_owned(), name, shape_file)
+                }
+            };
+            let rotation_mode = match element.rotation_mode {
+                LinetypeRotationMode::Relative => "relative",
+                LinetypeRotationMode::Absolute => "absolute",
+                LinetypeRotationMode::Upright => "upright",
+            };
+            (
+                element.segment_index,
+                kind,
+                content,
+                reference,
+                element.scale,
+                element.rotation,
+                rotation_mode.to_owned(),
+                element.offset[0],
+                element.offset[1],
+            )
+        })
+        .collect();
+    (item.name, item.description, item.pattern, complex)
+}
+
+fn linetype_from_py(
+    (name, description, pattern, complex): PyLinetypeDefinition,
+) -> PyResult<LinetypeDefinition> {
+    let complex = complex
+        .into_iter()
+        .map(
+            |(segment_index, kind, content, reference, scale, rotation, mode, x, y)| {
+                let content = match kind.as_str() {
+                    "text" => LinetypeComplexContent::Text {
+                        text: content,
+                        style_name: reference,
+                    },
+                    "shape" => LinetypeComplexContent::Shape {
+                        name: content,
+                        shape_file: reference,
+                    },
+                    _ => {
+                        return Err(PyValueError::new_err(
+                            "complex linetype content must be text or shape",
+                        ));
+                    }
+                };
+                let rotation_mode = match mode.as_str() {
+                    "relative" => LinetypeRotationMode::Relative,
+                    "absolute" => LinetypeRotationMode::Absolute,
+                    "upright" => LinetypeRotationMode::Upright,
+                    _ => {
+                        return Err(PyValueError::new_err(
+                            "complex linetype rotation mode is invalid",
+                        ));
+                    }
+                };
+                Ok(LinetypeComplexDefinition {
+                    segment_index,
+                    content,
+                    scale,
+                    rotation,
+                    rotation_mode,
+                    offset: [x, y],
+                })
+            },
+        )
+        .collect::<PyResult<Vec<_>>>()?;
+    Ok(LinetypeDefinition {
+        name,
+        description,
+        pattern,
+        complex,
+    })
+}
 
 /// The open documents of one application.
 #[pyclass(frozen, module = "arqstudiocad._core")]
@@ -428,20 +517,41 @@ impl CadDocument {
         Ok(self
             .read(|cad| cad.linetype_definitions())?
             .into_iter()
+            .filter(|item| item.complex.is_empty())
             .map(|item| (item.name, item.description, item.pattern))
+            .collect())
+    }
+
+    /// Loaded linetype definitions, including text and shape descriptors.
+    fn get_linetype_definition_details(&self) -> PyResult<Vec<PyLinetypeDefinition>> {
+        Ok(self
+            .read(|cad| cad.linetype_definitions())?
+            .into_iter()
+            .map(linetype_to_py)
             .collect())
     }
 
     /// Parses simple AutoCAD `.lin` records; complex text/shape records are rejected.
     #[staticmethod]
     fn parse_linetype_file(contents: &str) -> PyResult<Vec<(String, String, Vec<f64>)>> {
+        let items = arq_core::Document::parse_linetype_file(contents)
+            .map_err(|error| PyValueError::new_err(error.to_string()))?;
+        if items.iter().any(|item| !item.complex.is_empty()) {
+            return Err(PyValueError::new_err(
+                "complex text/shape definitions require parse_linetype_file_full",
+            ));
+        }
+        Ok(items
+            .into_iter()
+            .map(|item| (item.name, item.description, item.pattern))
+            .collect())
+    }
+
+    /// Parses simple and complex AutoCAD `.lin` records.
+    #[staticmethod]
+    fn parse_linetype_file_full(contents: &str) -> PyResult<Vec<PyLinetypeDefinition>> {
         arq_core::Document::parse_linetype_file(contents)
-            .map(|items| {
-                items
-                    .into_iter()
-                    .map(|item| (item.name, item.description, item.pattern))
-                    .collect()
-            })
+            .map(|items| items.into_iter().map(linetype_to_py).collect())
             .map_err(|error| PyValueError::new_err(error.to_string()))
     }
 
@@ -456,8 +566,21 @@ impl CadDocument {
                 name,
                 description,
                 pattern,
+                complex: Vec::new(),
             })
             .collect::<Vec<_>>();
+        self.change(|cad| cad.load_linetypes(&definitions))
+    }
+
+    /// Loads selected simple and complex definitions from a `.lin` file.
+    fn load_linetypes_full(
+        &self,
+        definitions: Vec<PyLinetypeDefinition>,
+    ) -> PyResult<CadChangeSet> {
+        let definitions = definitions
+            .into_iter()
+            .map(linetype_from_py)
+            .collect::<PyResult<Vec<_>>>()?;
         self.change(|cad| cad.load_linetypes(&definitions))
     }
 
@@ -472,7 +595,14 @@ impl CadDocument {
             name: name.to_owned(),
             description: description.to_owned(),
             pattern,
+            complex: Vec::new(),
         };
+        self.change(|cad| cad.set_linetype(&definition))
+    }
+
+    /// Creates or replaces a simple or complex definition.
+    fn set_linetype_full(&self, definition: PyLinetypeDefinition) -> PyResult<CadChangeSet> {
+        let definition = linetype_from_py(definition)?;
         self.change(|cad| cad.set_linetype(&definition))
     }
 
@@ -1667,6 +1797,15 @@ impl CadDocument {
     /// Sets a layer transparency to an AutoCAD percentage from 0 through 90.
     fn set_layer_transparency(&self, layer_id: LayerId, percent: u8) -> PyResult<CadChangeSet> {
         self.change(|cad| cad.set_layer_transparency(layer_id, percent))
+    }
+
+    /// Sets a layer note of at most 256 Unicode characters.
+    fn set_layer_description(
+        &self,
+        layer_id: LayerId,
+        description: &str,
+    ) -> PyResult<CadChangeSet> {
+        self.change(|cad| cad.set_layer_description(layer_id, description))
     }
 
     /// Turns a layer on or off.

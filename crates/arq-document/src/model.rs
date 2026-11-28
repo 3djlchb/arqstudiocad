@@ -1,7 +1,7 @@
 //! The own internal model (ADR 0018 D2, stage 1).
 //!
 //! ArqStudioCAD's document model is its own; the DWG engine is an adapter.
-//! In stage 1 the model owns the layers (name, color, linetype, lineweight, transparency,
+//! In stage 1 the model owns the layers (name, color, linetype, lineweight, transparency, description,
 //! on, frozen, locked, plotted), the current layer, and every LINE, CIRCLE
 //! and ARC drawn in plan (geometry, elevation, layer, color). Reads of those
 //! come from here.

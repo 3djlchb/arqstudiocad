@@ -51,14 +51,13 @@ class SelectLinetypeDialog(QDialog):
     def _refresh(self, current: str | None = None) -> None:
         selected_name = current or self._current_name() or "Continuous"
         self._loaded.clear()
+        details = self._document.get_linetype_definition_details()
         definitions = {
-            name.casefold(): pattern
-            for name, _description, pattern in self._document.get_linetype_definitions()
+            name.casefold(): (pattern, complex) for name, _description, pattern, complex in details
         }
         for name in self._document.get_linetypes():
-            item = QListWidgetItem(
-                linetype_preview(tuple(definitions.get(name.casefold(), []))), name
-            )
+            pattern, complex = definitions.get(name.casefold(), ([], []))
+            item = QListWidgetItem(linetype_preview(tuple(pattern), tuple(complex)), name)
             item.setData(Qt.ItemDataRole.UserRole, name)
             self._loaded.addItem(item)
             if name.casefold() == selected_name.casefold():

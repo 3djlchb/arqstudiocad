@@ -54,7 +54,17 @@ def same_entities(a: list[CadEntityInfo], b: list[CadEntityInfo]) -> bool:
 
 def layer_state(layers: list[CadLayerInfo]) -> list[tuple[object, ...]]:
     return [
-        (y.id, y.name, y.color, y.is_visible, y.is_frozen, y.is_locked, y.is_plottable)
+        (
+            y.id,
+            y.name,
+            y.color,
+            y.is_visible,
+            y.is_frozen,
+            y.is_locked,
+            y.is_plottable,
+            y.description,
+            y.object_count,
+        )
         for y in layers
     ]
 
@@ -67,6 +77,7 @@ def draw_house(doc: CadDocument) -> dict[str, int]:
     doc.set_layer_color(walls, CadColor.from_rgb(200, 120, 40))
     doc.set_layer_color(doors, CadColor.from_index(5))
     doc.set_layer_plottable(columns, False)
+    doc.set_layer_description(columns, "Structural columns")
 
     doc.set_current_layer(walls)
     with doc.group("WALLS") as group:

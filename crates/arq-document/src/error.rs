@@ -107,6 +107,8 @@ pub enum DocumentError {
     InvalidLayerLineWeight(String),
     /// A layer transparency is outside AutoCAD's 0-to-90 percent range.
     InvalidLayerTransparency(u8),
+    /// A layer description exceeds 256 Unicode characters.
+    InvalidLayerDescription,
     /// An ACI color index must be 1 to 255 (0 means ByBlock).
     InvalidColorIndex(u8),
     /// A frozen layer cannot be the current layer.
@@ -199,6 +201,9 @@ impl fmt::Display for DocumentError {
             }
             Self::InvalidLayerTransparency(value) => {
                 write!(f, "invalid layer transparency {value}%")
+            }
+            Self::InvalidLayerDescription => {
+                write!(f, "layer description must not exceed 256 characters")
             }
             Self::InvalidColorIndex(i) => {
                 write!(f, "color index {i} is not 1 to 255 (0 means ByBlock)")

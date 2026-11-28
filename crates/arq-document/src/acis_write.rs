@@ -49,7 +49,7 @@ impl Document {
     /// from it (ADR 0024 step 4); returns its id. A body not written as
     /// ACIS yet is [`DocumentError::UnsupportedOperation`].
     pub fn add_solid(&mut self, body: &Body) -> DocumentResult<EntityId> {
-        let layer = self.current_layer().name().to_owned();
+        let layer = self.current_layer_without_count().name().to_owned();
         self.add_solid_on(body, &layer)
     }
 

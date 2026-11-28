@@ -7,7 +7,15 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QComboBox, QFileDialog, QTableWidgetItem, QTreeWidgetItem
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QInputDialog,
+    QLabel,
+    QMessageBox,
+    QTableWidgetItem,
+    QTreeWidgetItem,
+)
 from pytestqt.qtbot import QtBot
 from ui_fakes import QuietUi
 
@@ -27,11 +35,13 @@ from arqstudiocad.ui import layers_panel, linetype_manager_dialog
 from arqstudiocad.ui.layers_panel import (
     COLOR,
     CURRENT,
+    DESCRIPTION,
     FROZEN,
     LINETYPE,
     LINEWEIGHT,
     LOCKED,
     NAME,
+    OBJECTS,
     ON,
     PLOT,
     TRANSPARENCY,
@@ -135,6 +145,48 @@ def test_new_layers_take_the_first_free_name(window: MainWindow) -> None:
     assert sorted(names(panel)) == ["0", "Layer1", "Layer2"]
 
 
+def test_layer_objects_update_and_description_is_editable(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window.runner.execute("NEW")
+    panel = window.layers_panel
+    document = window.session.active
+    assert document is not None
+    layer_id = panel.new_layer()
+    assert layer_id is not None
+    row = row_of(panel, "Layer1")
+    window.session.edit(document, lambda d: d.set_current_layer(layer_id))
+    window.session.edit(document, lambda d: d.add_line((0, 0), (1, 0))[1])
+    window.session.edit(document, lambda d: d.add_circle((2, 0), 1)[1])
+    row = row_of(panel, "Layer1")
+    assert cell(panel, row, OBJECTS).text() == "2"
+
+    monkeypatch.setattr(
+        QInputDialog,
+        "getMultiLineText",
+        lambda *_args, **_kwargs: ("Exterior walls", True),
+    )
+    panel._on_click(row, DESCRIPTION)
+    assert document.get_layer(layer_id).description == "Exterior walls"
+    assert cell(panel, row_of(panel, "Layer1"), DESCRIPTION).text() == "Exterior walls"
+    assert document.undo_name == "LAYER"
+
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        QInputDialog,
+        "getMultiLineText",
+        lambda *_args, **_kwargs: ("x" * 257, True),
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda _parent, _title, text: warnings.append(text),
+    )
+    panel._on_click(row_of(panel, "Layer1"), DESCRIPTION)
+    assert len(warnings) == 1
+    assert document.get_layer(layer_id).description == "Exterior walls"
+
+
 def test_toggles_change_the_layer(window: MainWindow) -> None:
     window.runner.execute("NEW")
     panel = window.layers_panel
@@ -183,7 +235,12 @@ def test_layer_linetype_selector_lists_loaded_types_and_lineweight_menu_edits(
     assert layer_id is not None
     document.set_linetype("DASHED", "Dashed", [0.5, -0.25])
     panel.refresh()
-    assert not cell(panel, 0, LINETYPE).icon().isNull()
+    linetype_cell = panel.table.cellWidget(0, LINETYPE)
+    assert linetype_cell is not None
+    preview_labels = linetype_cell.findChildren(QLabel)
+    assert any(
+        label.pixmap() is not None and not label.pixmap().isNull() for label in preview_labels
+    )
 
     selections = []
 
@@ -227,9 +284,9 @@ def test_layer_linetype_load_returns_loaded_pattern_to_selector(
     def load_selected(self: linetype_manager_dialog.LinetypeManagerDialog) -> int:
         assert self._load_only
         self._choose_file()
-        assert (
-            self._available.item(0).icon().cacheKey() == linetype_preview((0.5, -0.25)).cacheKey()
-        )
+        loaded_preview = self._available.item(0).icon().pixmap(64, 16).toImage()
+        expected_preview = linetype_preview((0.5, -0.25)).pixmap(64, 16).toImage()
+        assert loaded_preview == expected_preview
         self._load()
         return self.result()
 
@@ -244,7 +301,9 @@ def test_layer_linetype_load_returns_loaded_pattern_to_selector(
     ]
     assert len(loaded) == 1
     assert not loaded[0].icon().isNull()
-    assert loaded[0].icon().cacheKey() == linetype_preview((0.5, -0.25)).cacheKey()
+    loaded_preview = loaded[0].icon().pixmap(64, 16).toImage()
+    expected_preview = linetype_preview((0.5, -0.25)).pixmap(64, 16).toImage()
+    assert loaded_preview == expected_preview
     selector._loaded.setCurrentItem(loaded[0])
     selector._accept_selection()
     assert selector.selected_linetype == "DASHED"
